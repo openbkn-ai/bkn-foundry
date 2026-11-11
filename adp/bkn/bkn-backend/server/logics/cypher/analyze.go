@@ -2230,11 +2230,16 @@ func describeAtom(ctx parsing.IOC_AtomContext) string {
 	}
 }
 
-// parameterName reads $name. The numeric form ($0) is refused: it is a
-// positional parameter, and the request carries parameters by name.
+// parameterName reads $name. A name may be a reserved word, as in $end or
+// $limit, and is kept as written: $END and $end are two parameters. The
+// numeric form ($0) is refused: it is a positional parameter, and the request
+// carries parameters by name.
 func parameterName(ctx parsing.IOC_ParameterContext) (string, error) {
 	if symbolic := ctx.OC_SymbolicName(); symbolic != nil {
 		return namedIdentifier(symbolic, "parameter name")
+	}
+	if reserved := ctx.OC_ReservedWord(); reserved != nil {
+		return reserved.GetText(), nil
 	}
 	return "", unsupportedf(ctx, "positional parameters", "name the parameter, as in $value")
 }

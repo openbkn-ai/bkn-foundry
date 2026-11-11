@@ -560,8 +560,11 @@ oC_MapLiteral
 oC_PropertyKeyName
                :  oC_SchemaName ;
 
+// Unlike the openCypher reference grammar, a parameter may be named after a
+// reserved word ($end, $limit), as Neo4j allows: only a name can follow '$',
+// so the word cannot be read as a keyword there.
 oC_Parameter
-         :  '$' ( oC_SymbolicName | DecimalInteger ) ;
+         :  '$' ( oC_SymbolicName | oC_ReservedWord | DecimalInteger ) ;
 
 oC_SchemaName
           :  oC_SymbolicName

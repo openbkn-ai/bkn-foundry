@@ -96,7 +96,7 @@ func cypherParserInit() {
 	}
 	staticData.PredictionContextCache = antlr.NewPredictionContextCache()
 	staticData.serializedATN = []int32{
-		4, 1, 127, 1581, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4,
+		4, 1, 127, 1582, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4,
 		7, 4, 2, 5, 7, 5, 2, 6, 7, 6, 2, 7, 7, 7, 2, 8, 7, 8, 2, 9, 7, 9, 2, 10,
 		7, 10, 2, 11, 7, 11, 2, 12, 7, 12, 2, 13, 7, 13, 2, 14, 7, 14, 2, 15, 7,
 		15, 2, 16, 7, 16, 2, 17, 7, 17, 2, 18, 7, 18, 2, 19, 7, 19, 2, 20, 7, 20,
@@ -270,10 +270,10 @@ func cypherParserInit() {
 		3, 94, 1533, 8, 94, 1, 94, 1, 94, 3, 94, 1537, 8, 94, 1, 94, 1, 94, 3,
 		94, 1541, 8, 94, 1, 94, 1, 94, 3, 94, 1545, 8, 94, 1, 94, 1, 94, 3, 94,
 		1549, 8, 94, 5, 94, 1551, 8, 94, 10, 94, 12, 94, 1554, 9, 94, 3, 94, 1556,
-		8, 94, 1, 94, 1, 94, 1, 95, 1, 95, 1, 96, 1, 96, 1, 96, 3, 96, 1565, 8,
-		96, 1, 97, 1, 97, 3, 97, 1569, 8, 97, 1, 98, 1, 98, 1, 99, 1, 99, 1, 100,
-		1, 100, 1, 101, 1, 101, 1, 102, 1, 102, 1, 102, 0, 0, 103, 0, 2, 4, 6,
-		8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42,
+		8, 94, 1, 94, 1, 94, 1, 95, 1, 95, 1, 96, 1, 96, 1, 96, 1, 96, 3, 96, 1566,
+		8, 96, 1, 97, 1, 97, 3, 97, 1570, 8, 97, 1, 98, 1, 98, 1, 99, 1, 99, 1,
+		100, 1, 100, 1, 101, 1, 101, 1, 102, 1, 102, 1, 102, 0, 0, 103, 0, 2, 4,
+		6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42,
 		44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78,
 		80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112,
 		114, 116, 118, 120, 122, 124, 126, 128, 130, 132, 134, 136, 138, 140, 142,
@@ -282,7 +282,7 @@ func cypherParserInit() {
 		204, 0, 10, 1, 0, 68, 71, 1, 0, 18, 19, 1, 0, 93, 94, 1, 0, 95, 97, 1,
 		0, 105, 106, 5, 0, 46, 58, 61, 82, 84, 88, 92, 94, 109, 118, 5, 0, 83,
 		83, 89, 91, 98, 98, 119, 121, 124, 124, 2, 0, 14, 14, 27, 30, 2, 0, 15,
-		15, 31, 34, 2, 0, 19, 19, 35, 45, 1800, 0, 207, 1, 0, 0, 0, 2, 221, 1,
+		15, 31, 34, 2, 0, 19, 19, 35, 45, 1802, 0, 207, 1, 0, 0, 0, 2, 221, 1,
 		0, 0, 0, 4, 225, 1, 0, 0, 0, 6, 227, 1, 0, 0, 0, 8, 249, 1, 0, 0, 0, 10,
 		253, 1, 0, 0, 0, 12, 290, 1, 0, 0, 0, 14, 314, 1, 0, 0, 0, 16, 325, 1,
 		0, 0, 0, 18, 330, 1, 0, 0, 0, 20, 334, 1, 0, 0, 0, 22, 347, 1, 0, 0, 0,
@@ -311,9 +311,9 @@ func cypherParserInit() {
 		1, 0, 0, 0, 172, 1470, 1, 0, 0, 0, 174, 1473, 1, 0, 0, 0, 176, 1481, 1,
 		0, 0, 0, 178, 1483, 1, 0, 0, 0, 180, 1487, 1, 0, 0, 0, 182, 1489, 1, 0,
 		0, 0, 184, 1491, 1, 0, 0, 0, 186, 1493, 1, 0, 0, 0, 188, 1518, 1, 0, 0,
-		0, 190, 1559, 1, 0, 0, 0, 192, 1561, 1, 0, 0, 0, 194, 1568, 1, 0, 0, 0,
-		196, 1570, 1, 0, 0, 0, 198, 1572, 1, 0, 0, 0, 200, 1574, 1, 0, 0, 0, 202,
-		1576, 1, 0, 0, 0, 204, 1578, 1, 0, 0, 0, 206, 208, 5, 125, 0, 0, 207, 206,
+		0, 190, 1559, 1, 0, 0, 0, 192, 1561, 1, 0, 0, 0, 194, 1569, 1, 0, 0, 0,
+		196, 1571, 1, 0, 0, 0, 198, 1573, 1, 0, 0, 0, 200, 1575, 1, 0, 0, 0, 202,
+		1577, 1, 0, 0, 0, 204, 1579, 1, 0, 0, 0, 206, 208, 5, 125, 0, 0, 207, 206,
 		1, 0, 0, 0, 207, 208, 1, 0, 0, 0, 208, 209, 1, 0, 0, 0, 209, 214, 3, 2,
 		1, 0, 210, 212, 5, 125, 0, 0, 211, 210, 1, 0, 0, 0, 211, 212, 1, 0, 0,
 		0, 212, 213, 1, 0, 0, 0, 213, 215, 5, 1, 0, 0, 214, 211, 1, 0, 0, 0, 214,
@@ -857,35 +857,36 @@ func cypherParserInit() {
 		1553, 1, 0, 0, 0, 1553, 1556, 1, 0, 0, 0, 1554, 1552, 1, 0, 0, 0, 1555,
 		1522, 1, 0, 0, 0, 1555, 1556, 1, 0, 0, 0, 1556, 1557, 1, 0, 0, 0, 1557,
 		1558, 5, 25, 0, 0, 1558, 189, 1, 0, 0, 0, 1559, 1560, 3, 194, 97, 0, 1560,
-		191, 1, 0, 0, 0, 1561, 1564, 5, 26, 0, 0, 1562, 1565, 3, 198, 99, 0, 1563,
-		1565, 5, 96, 0, 0, 1564, 1562, 1, 0, 0, 0, 1564, 1563, 1, 0, 0, 0, 1565,
-		193, 1, 0, 0, 0, 1566, 1569, 3, 198, 99, 0, 1567, 1569, 3, 196, 98, 0,
-		1568, 1566, 1, 0, 0, 0, 1568, 1567, 1, 0, 0, 0, 1569, 195, 1, 0, 0, 0,
-		1570, 1571, 7, 5, 0, 0, 1571, 197, 1, 0, 0, 0, 1572, 1573, 7, 6, 0, 0,
-		1573, 199, 1, 0, 0, 0, 1574, 1575, 7, 7, 0, 0, 1575, 201, 1, 0, 0, 0, 1576,
-		1577, 7, 8, 0, 0, 1577, 203, 1, 0, 0, 0, 1578, 1579, 7, 9, 0, 0, 1579,
-		205, 1, 0, 0, 0, 292, 207, 211, 214, 217, 225, 229, 234, 241, 246, 249,
-		253, 257, 261, 267, 271, 276, 281, 285, 288, 290, 294, 298, 303, 307, 312,
-		316, 325, 330, 334, 338, 342, 345, 349, 359, 366, 379, 383, 389, 393, 397,
-		402, 407, 411, 417, 421, 427, 431, 437, 441, 445, 449, 453, 457, 462, 469,
-		473, 478, 485, 491, 496, 502, 505, 511, 513, 517, 521, 526, 530, 533, 540,
-		547, 550, 556, 559, 565, 569, 573, 577, 581, 586, 591, 595, 600, 603, 612,
-		621, 626, 639, 642, 650, 654, 659, 664, 668, 673, 679, 684, 691, 695, 700,
-		704, 708, 710, 714, 716, 720, 722, 728, 734, 738, 741, 744, 748, 754, 758,
-		761, 764, 770, 773, 776, 780, 786, 789, 792, 796, 800, 804, 806, 810, 812,
-		815, 819, 821, 827, 831, 835, 839, 842, 847, 852, 857, 862, 868, 872, 874,
-		878, 882, 884, 886, 894, 899, 910, 920, 930, 935, 939, 946, 951, 956, 961,
-		966, 971, 976, 981, 984, 990, 992, 1005, 1008, 1015, 1029, 1033, 1037,
-		1041, 1045, 1048, 1050, 1055, 1059, 1063, 1067, 1071, 1075, 1078, 1080,
-		1085, 1089, 1094, 1100, 1103, 1107, 1114, 1118, 1122, 1125, 1127, 1132,
-		1137, 1141, 1144, 1148, 1157, 1161, 1165, 1176, 1180, 1185, 1189, 1193,
-		1198, 1200, 1203, 1207, 1210, 1213, 1219, 1223, 1227, 1233, 1237, 1241,
-		1244, 1247, 1253, 1257, 1261, 1263, 1267, 1271, 1273, 1277, 1281, 1287,
-		1291, 1295, 1301, 1305, 1309, 1315, 1319, 1323, 1329, 1333, 1337, 1341,
-		1345, 1348, 1354, 1358, 1370, 1374, 1378, 1380, 1384, 1388, 1392, 1396,
-		1399, 1408, 1412, 1417, 1420, 1422, 1425, 1431, 1435, 1439, 1443, 1447,
-		1451, 1454, 1470, 1481, 1487, 1495, 1499, 1503, 1507, 1511, 1514, 1520,
-		1524, 1528, 1532, 1536, 1540, 1544, 1548, 1552, 1555, 1564, 1568,
+		191, 1, 0, 0, 0, 1561, 1565, 5, 26, 0, 0, 1562, 1566, 3, 198, 99, 0, 1563,
+		1566, 3, 196, 98, 0, 1564, 1566, 5, 96, 0, 0, 1565, 1562, 1, 0, 0, 0, 1565,
+		1563, 1, 0, 0, 0, 1565, 1564, 1, 0, 0, 0, 1566, 193, 1, 0, 0, 0, 1567,
+		1570, 3, 198, 99, 0, 1568, 1570, 3, 196, 98, 0, 1569, 1567, 1, 0, 0, 0,
+		1569, 1568, 1, 0, 0, 0, 1570, 195, 1, 0, 0, 0, 1571, 1572, 7, 5, 0, 0,
+		1572, 197, 1, 0, 0, 0, 1573, 1574, 7, 6, 0, 0, 1574, 199, 1, 0, 0, 0, 1575,
+		1576, 7, 7, 0, 0, 1576, 201, 1, 0, 0, 0, 1577, 1578, 7, 8, 0, 0, 1578,
+		203, 1, 0, 0, 0, 1579, 1580, 7, 9, 0, 0, 1580, 205, 1, 0, 0, 0, 292, 207,
+		211, 214, 217, 225, 229, 234, 241, 246, 249, 253, 257, 261, 267, 271, 276,
+		281, 285, 288, 290, 294, 298, 303, 307, 312, 316, 325, 330, 334, 338, 342,
+		345, 349, 359, 366, 379, 383, 389, 393, 397, 402, 407, 411, 417, 421, 427,
+		431, 437, 441, 445, 449, 453, 457, 462, 469, 473, 478, 485, 491, 496, 502,
+		505, 511, 513, 517, 521, 526, 530, 533, 540, 547, 550, 556, 559, 565, 569,
+		573, 577, 581, 586, 591, 595, 600, 603, 612, 621, 626, 639, 642, 650, 654,
+		659, 664, 668, 673, 679, 684, 691, 695, 700, 704, 708, 710, 714, 716, 720,
+		722, 728, 734, 738, 741, 744, 748, 754, 758, 761, 764, 770, 773, 776, 780,
+		786, 789, 792, 796, 800, 804, 806, 810, 812, 815, 819, 821, 827, 831, 835,
+		839, 842, 847, 852, 857, 862, 868, 872, 874, 878, 882, 884, 886, 894, 899,
+		910, 920, 930, 935, 939, 946, 951, 956, 961, 966, 971, 976, 981, 984, 990,
+		992, 1005, 1008, 1015, 1029, 1033, 1037, 1041, 1045, 1048, 1050, 1055,
+		1059, 1063, 1067, 1071, 1075, 1078, 1080, 1085, 1089, 1094, 1100, 1103,
+		1107, 1114, 1118, 1122, 1125, 1127, 1132, 1137, 1141, 1144, 1148, 1157,
+		1161, 1165, 1176, 1180, 1185, 1189, 1193, 1198, 1200, 1203, 1207, 1210,
+		1213, 1219, 1223, 1227, 1233, 1237, 1241, 1244, 1247, 1253, 1257, 1261,
+		1263, 1267, 1271, 1273, 1277, 1281, 1287, 1291, 1295, 1301, 1305, 1309,
+		1315, 1319, 1323, 1329, 1333, 1337, 1341, 1345, 1348, 1354, 1358, 1370,
+		1374, 1378, 1380, 1384, 1388, 1392, 1396, 1399, 1408, 1412, 1417, 1420,
+		1422, 1425, 1431, 1435, 1439, 1443, 1447, 1451, 1454, 1470, 1481, 1487,
+		1495, 1499, 1503, 1507, 1511, 1514, 1520, 1524, 1528, 1532, 1536, 1540,
+		1544, 1548, 1552, 1555, 1565, 1569,
 	}
 	deserializer := antlr.NewATNDeserializer(nil)
 	staticData.atn = deserializer.Deserialize(staticData.serializedATN)
@@ -21653,6 +21654,7 @@ type IOC_ParameterContext interface {
 
 	// Getter signatures
 	OC_SymbolicName() IOC_SymbolicNameContext
+	OC_ReservedWord() IOC_ReservedWordContext
 	DecimalInteger() antlr.TerminalNode
 
 	// IsOC_ParameterContext differentiates from other interfaces.
@@ -21707,6 +21709,22 @@ func (s *OC_ParameterContext) OC_SymbolicName() IOC_SymbolicNameContext {
 	return t.(IOC_SymbolicNameContext)
 }
 
+func (s *OC_ParameterContext) OC_ReservedWord() IOC_ReservedWordContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IOC_ReservedWordContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IOC_ReservedWordContext)
+}
+
 func (s *OC_ParameterContext) DecimalInteger() antlr.TerminalNode {
 	return s.GetToken(CypherParserDecimalInteger, 0)
 }
@@ -21741,7 +21759,7 @@ func (p *CypherParser) OC_Parameter() (localctx IOC_ParameterContext) {
 			goto errorExit
 		}
 	}
-	p.SetState(1564)
+	p.SetState(1565)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -21754,9 +21772,15 @@ func (p *CypherParser) OC_Parameter() (localctx IOC_ParameterContext) {
 			p.OC_SymbolicName()
 		}
 
-	case CypherParserDecimalInteger:
+	case CypherParserUNION, CypherParserALL, CypherParserOPTIONAL, CypherParserMATCH, CypherParserUNWIND, CypherParserAS, CypherParserMERGE, CypherParserON, CypherParserCREATE, CypherParserSET, CypherParserDETACH, CypherParserDELETE, CypherParserREMOVE, CypherParserWITH, CypherParserRETURN, CypherParserDISTINCT, CypherParserORDER, CypherParserBY, CypherParserL_SKIP, CypherParserLIMIT, CypherParserASCENDING, CypherParserASC, CypherParserDESCENDING, CypherParserDESC, CypherParserWHERE, CypherParserOR, CypherParserXOR, CypherParserAND, CypherParserNOT, CypherParserSTARTS, CypherParserENDS, CypherParserCONTAINS, CypherParserIN, CypherParserIS, CypherParserNULL, CypherParserCASE, CypherParserELSE, CypherParserEND, CypherParserWHEN, CypherParserTHEN, CypherParserEXISTS, CypherParserTRUE, CypherParserFALSE, CypherParserCONSTRAINT, CypherParserDO, CypherParserFOR, CypherParserREQUIRE, CypherParserUNIQUE, CypherParserMANDATORY, CypherParserSCALAR, CypherParserOF, CypherParserADD, CypherParserDROP:
 		{
 			p.SetState(1563)
+			p.OC_ReservedWord()
+		}
+
+	case CypherParserDecimalInteger:
+		{
+			p.SetState(1564)
 			p.Match(CypherParserDecimalInteger)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -21882,7 +21906,7 @@ func (s *OC_SchemaNameContext) Accept(visitor antlr.ParseTreeVisitor) interface{
 func (p *CypherParser) OC_SchemaName() (localctx IOC_SchemaNameContext) {
 	localctx = NewOC_SchemaNameContext(p, p.GetParserRuleContext(), p.GetState())
 	p.EnterRule(localctx, 194, CypherParserRULE_oC_SchemaName)
-	p.SetState(1568)
+	p.SetState(1569)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -21892,14 +21916,14 @@ func (p *CypherParser) OC_SchemaName() (localctx IOC_SchemaNameContext) {
 	case CypherParserCOUNT, CypherParserANY, CypherParserNONE, CypherParserSINGLE, CypherParserHexLetter, CypherParserFILTER, CypherParserEXTRACT, CypherParserUnescapedSymbolicName, CypherParserEscapedSymbolicName:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(1566)
+			p.SetState(1567)
 			p.OC_SymbolicName()
 		}
 
 	case CypherParserUNION, CypherParserALL, CypherParserOPTIONAL, CypherParserMATCH, CypherParserUNWIND, CypherParserAS, CypherParserMERGE, CypherParserON, CypherParserCREATE, CypherParserSET, CypherParserDETACH, CypherParserDELETE, CypherParserREMOVE, CypherParserWITH, CypherParserRETURN, CypherParserDISTINCT, CypherParserORDER, CypherParserBY, CypherParserL_SKIP, CypherParserLIMIT, CypherParserASCENDING, CypherParserASC, CypherParserDESCENDING, CypherParserDESC, CypherParserWHERE, CypherParserOR, CypherParserXOR, CypherParserAND, CypherParserNOT, CypherParserSTARTS, CypherParserENDS, CypherParserCONTAINS, CypherParserIN, CypherParserIS, CypherParserNULL, CypherParserCASE, CypherParserELSE, CypherParserEND, CypherParserWHEN, CypherParserTHEN, CypherParserEXISTS, CypherParserTRUE, CypherParserFALSE, CypherParserCONSTRAINT, CypherParserDO, CypherParserFOR, CypherParserREQUIRE, CypherParserUNIQUE, CypherParserMANDATORY, CypherParserSCALAR, CypherParserOF, CypherParserADD, CypherParserDROP:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(1567)
+			p.SetState(1568)
 			p.OC_ReservedWord()
 		}
 
@@ -22256,7 +22280,7 @@ func (p *CypherParser) OC_ReservedWord() (localctx IOC_ReservedWordContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(1570)
+		p.SetState(1571)
 		_la = p.GetTokenStream().LA(1)
 
 		if !(((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&-1729452625654448128) != 0) || ((int64((_la-64)) & ^0x3f) == 0 && ((int64(1)<<(_la-64))&35993614558953471) != 0)) {
@@ -22395,7 +22419,7 @@ func (p *CypherParser) OC_SymbolicName() (localctx IOC_SymbolicNameContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(1572)
+		p.SetState(1573)
 		_la = p.GetTokenStream().LA(1)
 
 		if !((int64((_la-83)) & ^0x3f) == 0 && ((int64(1)<<(_la-83))&2680059625921) != 0) {
@@ -22485,7 +22509,7 @@ func (p *CypherParser) OC_LeftArrowHead() (localctx IOC_LeftArrowHeadContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(1574)
+		p.SetState(1575)
 		_la = p.GetTokenStream().LA(1)
 
 		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&2013282304) != 0) {
@@ -22575,7 +22599,7 @@ func (p *CypherParser) OC_RightArrowHead() (localctx IOC_RightArrowHeadContext) 
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(1576)
+		p.SetState(1577)
 		_la = p.GetTokenStream().LA(1)
 
 		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&32212287488) != 0) {
@@ -22665,7 +22689,7 @@ func (p *CypherParser) OC_Dash() (localctx IOC_DashContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(1578)
+		p.SetState(1579)
 		_la = p.GetTokenStream().LA(1)
 
 		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&70334384963584) != 0) {
