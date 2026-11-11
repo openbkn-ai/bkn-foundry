@@ -8,6 +8,8 @@ package worker
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -43,6 +45,9 @@ type ConceptSyncer struct {
 	ota        interfaces.ObjectTypeAccess
 	rta        interfaces.RelationTypeAccess
 	riskTypeA  interfaces.RiskTypeAccess
+	// knva and db tell versioned networks apart; the syncer leaves those to the version service.
+	knva interfaces.KNVersionAccess
+	db   *sql.DB
 
 	cachedDefaultModel *interfaces.SmallModel
 }
@@ -78,6 +83,8 @@ func NewConceptSyncer(appSetting *common.AppSetting) *ConceptSyncer {
 			ota:        logics.OTA,
 			rta:        logics.RTA,
 			riskTypeA:  logics.RiskTypeAccess,
+			knva:       logics.KNVA,
+			db:         logics.DB,
 		}
 	})
 	return cSyncer
@@ -145,9 +152,25 @@ func (cs *ConceptSyncer) handleKNs() error {
 		return err
 	}
 
+	versioned, err := cs.versionedKNIDs(ctx)
+	if err != nil {
+		logger.Errorf("Failed to list versioned knowledge networks: %v", err)
+		return err
+	}
+
 	for _, knInDB := range knsInDB {
 		need_update := false
 		knInDataset, exist := knsInDataset[knBranch{knInDB.KNID, knInDB.Branch}]
+		// Definition writes and version operations keep the concept index of every branch
+		// of a versioned network under the network lock; rebuilding it here from rows read
+		// earlier could bring back what a publish or reset removed.
+		if versioned[knInDB.KNID] {
+			if !exist {
+				logger.Warnf("Versioned knowledge network %s (%s %s) has no concept document; rebuild its index through the version service",
+					knInDB.KNName, knInDB.KNID, knInDB.Branch)
+			}
+			continue
+		}
 		if !exist {
 			need_update = true
 		} else if knInDB.UpdateTime != knInDataset.UpdateTime {
@@ -217,10 +240,13 @@ func (cs *ConceptSyncer) handleKnowledgeNetwork(ctx context.Context, kn *interfa
 	kn.BKNRawContent = bknsdk.SerializeBknNetwork(bknNetwork)
 
 	// Update knowledge-network details.
-	err = cs.kna.UpdateKNDetail(ctx, kn.KNID, kn.Branch, kn.BKNRawContent)
+	written, err := cs.writeKNDetail(ctx, kn)
 	if err != nil {
 		logger.Errorf("Failed to update KN detail for %s (%s %s): %v", kn.KNName, kn.KNID, kn.Branch, err)
 		return err
+	}
+	if !written {
+		return nil
 	}
 
 	err = cs.insertDatasetDataForKN(ctx, kn)
@@ -231,6 +257,67 @@ func (cs *ConceptSyncer) handleKnowledgeNetwork(ctx context.Context, kn *interfa
 
 	logger.Debugf("Generated KN detail for %s (%s %s): %s", kn.KNName, kn.KNID, kn.Branch, kn.BKNRawContent)
 	return nil
+}
+
+// versionedKNIDs returns the networks that have a version state. Without version access
+// wired in, no network is versioned.
+func (cs *ConceptSyncer) versionedKNIDs(ctx context.Context) (map[string]bool, error) {
+	versioned := map[string]bool{}
+	if cs.knva == nil {
+		return versioned, nil
+	}
+	ids, err := cs.knva.ListVersionedKNIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		versioned[id] = true
+	}
+	return versioned, nil
+}
+
+// writeKNDetail writes the network row of one branch and reports whether it did. It holds
+// the network lock in share mode and reads the version state under it, so a network whose
+// versioning was enabled after this round listed the versioned ones is not written. A
+// branch row that is gone is not written either.
+func (cs *ConceptSyncer) writeKNDetail(ctx context.Context, kn *interfaces.KN) (bool, error) {
+	if cs.knva == nil || cs.db == nil {
+		return true, cs.kna.UpdateKNDetail(ctx, nil, kn.KNID, kn.Branch, kn.BKNRawContent)
+	}
+	tx, err := cs.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := cs.knva.LockNetwork(ctx, tx, kn.KNID, false); err != nil {
+		return false, err
+	}
+	state, err := cs.knva.GetState(ctx, tx, kn.KNID, false)
+	if err != nil {
+		return false, err
+	}
+	if state != nil {
+		logger.Infof("Knowledge network %s (%s %s) became versioned during the sync round; left to the version service",
+			kn.KNName, kn.KNID, kn.Branch)
+		return false, nil
+	}
+	if err := cs.kna.UpdateKNDetail(ctx, tx, kn.KNID, kn.Branch, kn.BKNRawContent); err != nil {
+		if errors.Is(err, common.ErrRowNotFound) {
+			logger.Infof("Knowledge network %s (%s %s) is gone; nothing to sync", kn.KNName, kn.KNID, kn.Branch)
+			return false, nil
+		}
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	committed = true
+	return true, nil
 }
 
 // handleObjectTypes gets object types for a knowledge network.
