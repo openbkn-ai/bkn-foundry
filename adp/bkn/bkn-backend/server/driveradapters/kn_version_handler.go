@@ -400,6 +400,11 @@ func (r *restHandler) resolveWrite(ctx *context.Context, c *gin.Context, knID st
 	}
 	if resolved.Versioned {
 		missing := ""
+		// The write that versioned the network had only main to read; preconditions it sends are
+		// still checked.
+		if resolved.Converted {
+			need = preconditionNone
+		}
 		switch need {
 		case preconditionIfMatch:
 			if dw.IfMatch == "" {

@@ -204,18 +204,3 @@ func (w *bufferedResponse) flush() {
 		_, _ = w.ResponseWriter.Write(w.body.Bytes())
 	}
 }
-
-// createdKNNotes is the note of the first version of a network, taken when it is created.
-const createdKNNotes = "Created"
-
-// versionCreatedKN turns versioning on for a network just written to main, so it starts with
-// a running v1. A failure does not fail the create: the network is there, and the server
-// versions it on its next round.
-func (r *restHandler) versionCreatedKN(ctx context.Context, knID string, skipped bool) {
-	if r.kvs == nil || skipped || knID == "" {
-		return
-	}
-	if _, err := r.kvs.EnableUnversioned(ctx, knID, createdKNNotes); err != nil {
-		otellog.LogError(ctx, "Turn on versioning of a created knowledge network failed", err)
-	}
-}

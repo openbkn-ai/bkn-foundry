@@ -61,7 +61,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	knversionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/worker"
@@ -74,25 +73,23 @@ type Options struct{}
 // Application is a booted bkn-backend process that has not started serving yet.
 // Extension assembly belongs between Boot and Run.
 type Application struct {
-	appSetting      *common.AppSetting
-	db              *sql.DB
-	otelProviders   *otel.Providers
-	restHandler     driveradapters.RestHandler
-	conceptSyncer   *worker.ConceptSyncer
-	scheduleWorker  *worker.ScheduleWorker
-	proxySyncWorker *worker.ProxySyncWorker
-	// versioningEnabler is built once the logics are initialized, which it reads.
-	versioningEnabler *worker.VersioningEnabler
-	evidenceRuntime   *evidencepublisher.PublisherRuntime
-	evidenceProducer  interface{ Close() error }
-	auditRuntime      *operationaudit.KafkaRuntime
-	auditTelemetry    *operationaudit.PublishTelemetry
-	refresh           func(stop <-chan struct{})
-	stop              chan struct{}
-	extensionMu       sync.Mutex
-	extensionsFrozen  bool
-	routeExtensions   map[string]func(*gin.Engine)
-	workerExtensions  map[string]func(context.Context) error
+	appSetting       *common.AppSetting
+	db               *sql.DB
+	otelProviders    *otel.Providers
+	restHandler      driveradapters.RestHandler
+	conceptSyncer    *worker.ConceptSyncer
+	scheduleWorker   *worker.ScheduleWorker
+	proxySyncWorker  *worker.ProxySyncWorker
+	evidenceRuntime  *evidencepublisher.PublisherRuntime
+	evidenceProducer interface{ Close() error }
+	auditRuntime     *operationaudit.KafkaRuntime
+	auditTelemetry   *operationaudit.PublishTelemetry
+	refresh          func(stop <-chan struct{})
+	stop             chan struct{}
+	extensionMu      sync.Mutex
+	extensionsFrozen bool
+	routeExtensions  map[string]func(*gin.Engine)
+	workerExtensions map[string]func(context.Context) error
 }
 
 // Setting exposes immutable boot configuration to explicitly assembled extensions.
@@ -246,8 +243,6 @@ func (server *Application) Run() {
 	logger.Info("Server Register API Success")
 
 	go server.conceptSyncer.Start()
-	server.versioningEnabler = worker.NewVersioningEnabler(logics.KNVA, knversionlogic.Current)
-	go server.versioningEnabler.Start()
 	go server.scheduleWorker.Start()
 	server.proxySyncWorker.Start()
 	extensionCtx, stopExtensions := context.WithCancel(context.Background())
@@ -312,7 +307,6 @@ func (server *Application) Run() {
 	// outbox workers are canceled. Otherwise a request can enqueue work after
 	// every local worker has already exited.
 	server.proxySyncWorker.Stop()
-	server.versioningEnabler.Stop()
 	if server.evidenceRuntime != nil {
 		if _, err := server.evidenceRuntime.Close(ctx); err != nil {
 			logger.Warnf("Evidence publisher runtime close failed: %v", err)

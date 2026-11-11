@@ -639,49 +639,39 @@ func TestPurgeDeletesTheIndexAfterCommit(t *testing.T) {
 	}
 }
 
-func listsUnversioned(t *testing.T, f *fixture) bool {
-	t.Helper()
-	ids, err := f.svc.va.ListUnversionedKNIDs(f.ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range ids {
-		if id == f.knID {
-			return true
+// A network without versioning is its main branch until the first write to its draft, which
+// versions it in that request: v1 and the draft start as copies of main.
+func TestFirstDraftWriteVersionsTheNetwork(t *testing.T) {
+	f := setup(t)
+	for _, req := range []interfaces.KNBranchRequest{
+		{KNVersion: interfaces.DRAFT_BRANCH}, {Branch: interfaces.DRAFT_BRANCH}, {KNVersion: "running"}, {},
+	} {
+		resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, req)
+		if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || resolved.Versioned {
+			t.Fatalf("read %+v before the first draft write: %+v %v", req, resolved, err)
 		}
 	}
-	return false
-}
-
-// The server versions a network made before every network was versioned, once, and leaves
-// alone one whose versioning was turned off.
-func TestEnableUnversionedVersionsOnlyNetworksNeverVersioned(t *testing.T) {
-	f := setup(t)
-	if !listsUnversioned(t, f) {
-		t.Fatal("a network never versioned is not listed")
+	// A write that does not name the draft keeps writing main.
+	resolved, err := f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true})
+	if err != nil || resolved.Branch != interfaces.MAIN_BRANCH || f.state().Enabled {
+		t.Fatalf("write to main: %+v %v, versioned %v", resolved, err, f.state().Enabled)
 	}
-	ok, err := f.svc.EnableUnversioned(context.Background(), f.knID, "upgrade")
-	if err != nil || !ok {
-		t.Fatalf("enable unversioned: %v %v", ok, err)
+	_, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH, KNVersion: "draft"})
+	wantCode(t, err, berrors.BknBackend_KNVersion_InvalidVersion)
+
+	resolved, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH})
+	if err != nil || resolved.Branch != interfaces.DRAFT_BRANCH || !resolved.Versioned || !resolved.Converted || resolved.RunningVersion != 1 {
+		t.Fatalf("first draft write: %+v %v", resolved, err)
 	}
 	if view := f.state(); !view.Enabled || view.RunningVersion != 1 {
 		t.Fatalf("state %+v", view)
 	}
-	if listsUnversioned(t, f) {
-		t.Fatal("a versioned network is still listed")
+	if f.objectName("draft") != "name-1" || f.objectName("v1") != "name-1" {
+		t.Fatalf("draft %q v1 %q", f.objectName("draft"), f.objectName("v1"))
 	}
-	// A second pod reaching it later does nothing.
-	if ok, err = f.svc.EnableUnversioned(context.Background(), f.knID, "upgrade"); err != nil || ok {
-		t.Fatalf("enable again: %v %v", ok, err)
-	}
-	if _, err = f.svc.Disable(f.ctx, f.knID, &interfaces.KNDisableVersioningRequest{}); err != nil {
-		t.Fatal(err)
-	}
-	if listsUnversioned(t, f) {
-		t.Fatal("a network whose versioning was turned off is listed again")
-	}
-	// A network deleted meanwhile is skipped.
-	if ok, err = f.svc.EnableUnversioned(context.Background(), "it_ver_missing", "upgrade"); err != nil || ok {
-		t.Fatalf("enable a missing network: %v %v", ok, err)
+	// The next one writes the draft like any other.
+	resolved, err = f.svc.ResolveBranch(f.ctx, f.knID, interfaces.KNBranchRequest{Write: true, Branch: interfaces.DRAFT_BRANCH})
+	if err != nil || resolved.Converted || resolved.Branch != interfaces.DRAFT_BRANCH {
+		t.Fatalf("second draft write: %+v %v", resolved, err)
 	}
 }

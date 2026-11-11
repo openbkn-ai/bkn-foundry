@@ -349,11 +349,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		}
 	}
 
-	// The capabilities are in place, so v1 carries them.
-	if branch == interfaces.MAIN_BRANCH {
-		r.versionCreatedKN(ctx, knID, kn.ImportSkipped)
-	}
-
 	if r.auditRecorder != nil {
 		name := kn.KNName
 		if kn.ImportSkipped {

@@ -633,8 +633,8 @@ components:
           type: string
           description: |
             Which version of a versioned network to compare: `running`, `draft` or a version number.
-            On a network without versioning only `running` is accepted, and it means main. Do not
-            combine it with `branch`.
+            On a network without versioning `running` and `draft` are accepted, and both mean main.
+            Do not combine it with `branch`.
           example: draft
 
     ObjectDataStatsSideRequest:

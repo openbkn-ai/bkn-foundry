@@ -1421,12 +1421,15 @@ components:
           type: string
         versioning:
           description: >-
-            Ignored: every network is versioned. A created network starts with what the request
-            defines as its running version 1 and a draft that is a copy of it; a later write that
-            does not name `branch=draft` is published at once (see `kn_version`). The version
-            operations are described in the knowledge-network versions API (`kn-versions.yaml`).
+            Set true to create the network with versioning from the start: what the request defines
+            is stored in its draft, and no version is running until the first one is published
+            (`POST /knowledge-networks/{kn_id}/versions`), so reads of the running version return
+            nothing meanwhile. `branch` must then be `main` or `draft`. Omit or false creates an
+            unversioned network; versioning can also be enabled later with
+            `POST /knowledge-networks/{kn_id}/versioning`. The version operations are described in
+            the knowledge-network versions API (`kn-versions.yaml`).
           type: boolean
-          deprecated: true
+          default: false
     UpdateKnowledgeNetwork:
       description: >-
         Business knowledge network update request body. Name, tags, comment, icon and color belong to

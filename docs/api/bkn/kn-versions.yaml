@@ -9,10 +9,10 @@ info:
     **running**: reads, queries and the proxy grants of the network use it unless a request names
     another version with `kn_version`.
 
-    Every network is versioned. A network is created with its content as running version 1, and
-    after an upgrade the server turns versioning on by itself, shortly after start and then every
-    ten minutes, for each network that was never versioned; a network whose versioning an operator
-    turned off stays off until it is enabled again.
+    A network without versioning is its main branch, and reads of its draft or running version
+    read main. It is versioned by the first write that names `branch=draft`, which needs no
+    precondition: main becomes the running version 1 and the draft a copy of it. Enabling
+    versioning explicitly does the same without a write.
 
     Operations here enable versioning, publish the draft as a new version, switch the running
     version (activate), copy a version into the draft or discard the draft's changes
@@ -127,8 +127,7 @@ paths:
       tags: [KN Versioning]
       summary: Enable versioning for a knowledge network
       description: |
-        Turns an existing network into a versioned one; the server does this by itself for networks
-        never versioned, so a caller needs it only to turn versioning back on. The current content of the main branch becomes
+        Turns an existing network into a versioned one. The current content of the main branch becomes
         the first running version (the next free number if the network was versioned before) and the
         draft starts as a copy of it. Idempotent with `Idempotency-Key`. Refused with 409
         `BknBackend.KNVersion.ReservedBranchInUse` when the network already holds data on a reserved
