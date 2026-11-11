@@ -39,6 +39,7 @@ var (
 type ScheduleWorker struct {
 	appSetting *common.AppSetting
 	asa        interfaces.ActionScheduleAccess
+	ata        interfaces.ActionTypeAccess
 	cronParser cron.Parser
 	httpClient *http.Client
 	podID      string
@@ -60,6 +61,7 @@ func NewScheduleWorker(appSetting *common.AppSetting) *ScheduleWorker {
 		sWorker = &ScheduleWorker{
 			appSetting: appSetting,
 			asa:        logics.ASA,
+			ata:        logics.ATA,
 			cronParser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow),
 			httpClient: &http.Client{
 				Timeout: DefaultExecutionTimeout,
@@ -194,6 +196,19 @@ func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfac
 	executionSubject := schedule.ExecutionSubject
 	if executionSubject.ID == "" || executionSubject.Type == "" {
 		return "", fmt.Errorf("schedule execution subject is missing")
+	}
+	if w.ata == nil {
+		return "", fmt.Errorf("schedule action type access is unavailable")
+	}
+	actionTypes, err := w.ata.GetActionTypesByIDs(ctx, schedule.KNID, schedule.Branch, []string{schedule.ActionTypeID})
+	if err != nil {
+		return "", fmt.Errorf("load scheduled action type: %w", err)
+	}
+	if len(actionTypes) == 0 {
+		return "", fmt.Errorf("scheduled action type %q no longer exists", schedule.ActionTypeID)
+	}
+	if err := interfaces.ValidateIdentitySchedule(actionTypes[0], schedule.InstanceIdentities); err != nil {
+		return "", fmt.Errorf("schedule %q cannot execute: %w", schedule.ID, err)
 	}
 
 	// Build the request to ontology-query

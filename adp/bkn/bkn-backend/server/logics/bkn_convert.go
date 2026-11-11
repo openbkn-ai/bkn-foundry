@@ -408,6 +408,12 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		adpAction.ActionIntent = bknAction.ActionType
 	}
 
+	if cfg := bknAction.OperationConfig; cfg != nil {
+		adpAction.OperationConfig = &interfaces.ActionOperationConfig{
+			Type: cfg.Type, RelationTypeID: cfg.RelationTypeID, RelationOperation: cfg.RelationOperation,
+			AnchorRole: cfg.AnchorRole, OtherObjectCondition: toADPActionCondCfg(cfg.OtherObjectCondition),
+		}
+	}
 	for _, ic := range bknAction.ImpactContracts {
 		if ic == nil {
 			continue
@@ -493,6 +499,12 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 		bknAction.ActionType = bknAction.ActionIntent
 	}
 
+	if cfg := adpAction.OperationConfig; cfg != nil {
+		bknAction.OperationConfig = &bknsdk.ActionOperationConfig{
+			Type: cfg.Type, RelationTypeID: cfg.RelationTypeID, RelationOperation: cfg.RelationOperation,
+			AnchorRole: cfg.AnchorRole, OtherObjectCondition: toBKNActionCondCfg(cfg.OtherObjectCondition),
+		}
+	}
 	for _, ic := range adpAction.ImpactContracts {
 		bknAction.ImpactContracts = append(bknAction.ImpactContracts,
 			&bknsdk.ImpactContractItem{

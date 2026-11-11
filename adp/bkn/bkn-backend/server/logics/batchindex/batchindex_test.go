@@ -82,3 +82,18 @@ func TestEnsureObjectTypePropertyMap(t *testing.T) {
 		t.Fatalf("PropertyMap = %#v", ot.PropertyMap)
 	}
 }
+
+func TestRelationBatchRejectsConflictingEndpointDefinitions(t *testing.T) {
+	first := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "supply", SourceObjectTypeID: "orders", TargetObjectTypeID: "suppliers"}}
+	second := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "supply", SourceObjectTypeID: "orders", TargetObjectTypeID: "products"}}
+	index := NewBatchIDIndex("kn", "main")
+	if err := ingestRelationType(index, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := ingestRelationType(index, second); err == nil {
+		t.Fatal("conflicting relation must not replace action dependency schema")
+	}
+	if index.RelationTypes["supply"].TargetObjectTypeID != "suppliers" {
+		t.Fatal("existing dependency was overwritten")
+	}
+}

@@ -355,6 +355,7 @@ type BknActionTypeFrontmatter struct {
 
 // BknActionType represents an action type definition.
 type BknActionType struct {
+	OperationConfig *ActionOperationConfig
 	BknActionTypeFrontmatter
 
 	Summary     string
@@ -504,4 +505,13 @@ type ValueTypeEnumItem struct {
 	Display     string
 	Deprecated  bool
 	Description string
+}
+
+// ActionOperationConfig preserves single-operation execution semantics in BKN packages.
+type ActionOperationConfig struct {
+	Type                 string         `yaml:"type"`
+	RelationTypeID       string         `yaml:"relation_type_id,omitempty"`
+	RelationOperation    string         `yaml:"relation_operation,omitempty"`
+	AnchorRole           string         `yaml:"anchor_role,omitempty"`
+	OtherObjectCondition *ActionCondCfg `yaml:"other_object_condition,omitempty"`
 }

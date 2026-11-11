@@ -702,6 +702,7 @@ components:
     ActionTypeDetail:
       description: Action type
       required:
+        - operation_config
         - action_source
         - action_type
         - affect
@@ -723,6 +724,8 @@ components:
         - updater
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         id:
           description: Action typeID
           type: string
@@ -877,45 +880,61 @@ components:
             request (a nested `affect.object_type` is two levels down — go up to the action type).
           type: string
     ActionCondition:
-      description: Action condition
       type: object
+      required:
+      - operation
       properties:
         object_type_id:
-          description: Object type ID. Include it when filtering multiple object types; otherwise any matching property name can be filtered.
           type: string
         field:
-          description: Field name, which is the object type property name
           type: string
         operation:
-          description: Operator
-          enum:
-            - and
-            - or
-            - ==
-            - "!="
-            - ">"
-            - ">="
-            - <
-            - <=
-            - in
-            - not_in
-            - range
-            - out_range
-            - exist
-            - not_exist
           type: string
+          enum:
+          - and
+          - or
+          - ==
+          - '!='
+          - '>'
+          - '>='
+          - <
+          - <=
+          - in
+          - not_in
+          - empty
+          - not_empty
+          - 'true'
+          - 'false'
+          - range
+          - out_range
+          - before
+          - between
+          - exist
+          - not_exist
+          - like
+          - not_like
+          - prefix
+          - not_prefix
+          - 'null'
+          - not_null
+          - regex
+          - contain
+          - not_contain
+          - current
         sub_conditions:
-          description: Nested filter conditions
           type: array
           items:
-            $ref: "#/components/schemas/ActionCondition"
-        value:
-          description: Field value
+            $ref: '#/components/schemas/ActionCondition'
         value_from:
-          description: Field value source. Currently supports const only.
-          enum:
-            - const
           type: string
+          enum:
+          - const
+          - property
+          - input
+          default: const
+        value:
+          description: Literal value for const; same-endpoint property name for property; runtime parameter name for
+            input. Applicability does not supply target identities.
     Parameter:
       description: Tool parameters
       required:
@@ -938,10 +957,12 @@ components:
             - property
             - input
             - const
+            - source_identity
+            - target_identity
           type: string
         value:
-          description: Parameter value. For value_from=property, provide the object type data property name. For value_from=input, omit this field.
-          type: string
+          description: Literal constant, or an object property name for property. Omit for input
+            and endpoint identity sources.
     Schedule:
       description: Execution frequency configuration
       required:
@@ -1494,3 +1515,42 @@ components:
           type: array
           items:
             type: string
+    ActionOperationConfig:
+      type: object
+      required:
+      - type
+      additionalProperties: false
+      description: Single-operation definition. Required by the new action runtime; migrate stored definitions before
+        switching services.
+      oneOf:
+        - properties:
+            type:
+              enum: [object, tool]
+          additionalProperties: false
+        - required: [relation_type_id, relation_operation]
+          properties:
+            type:
+              enum: [relation]
+      properties:
+        type:
+          type: string
+          enum:
+          - object
+          - relation
+          - tool
+        relation_type_id:
+          type: string
+          description: Required for relation operations; must connect the selected object type.
+        relation_operation:
+          type: string
+          enum:
+          - create
+          - delete
+        anchor_role:
+          type: string
+          enum:
+          - source
+          - target
+          description: Role of object_type_id in the relation. Self relations require an explicit role.
+        other_object_condition:
+          $ref: '#/components/schemas/ActionCondition'

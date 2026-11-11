@@ -1183,7 +1183,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot1").Return("ot1", true, nil)
 			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
 			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{
-				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATName: "at1"}},
+				{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATName: "at1", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}},
 			}, 1, nil)
 			req := httptest.NewRequest(http.MethodDelete, baseURL, nil)
 			w := httptest.NewRecorder()

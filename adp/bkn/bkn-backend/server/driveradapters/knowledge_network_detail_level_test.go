@@ -51,15 +51,17 @@ func exportedKN() *interfaces.KN {
 			},
 		}},
 		ActionTypes: []*interfaces.ActionType{{
-			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at_cancel", ATName: "cancel"},
+			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at_cancel", ATName: "cancel", OperationConfig:
+
+			// The contract says detail_level chooses how much of each concept definition comes back, and
+			// concept definitions only come back with mode=export. Without that mode there is nothing for
+			// it to act on, and the two values have to agree byte for byte — which is what a caller
+			// reporting "detail_level does nothing" was seeing.
+			&interfaces.ActionOperationConfig{Type: "tool"}},
 		}},
 	}
 }
 
-// The contract says detail_level chooses how much of each concept definition comes back, and
-// concept definitions only come back with mode=export. Without that mode there is nothing for
-// it to act on, and the two values have to agree byte for byte — which is what a caller
-// reporting "detail_level does nothing" was seeing.
 func Test_GetKN_DetailLevelOnlyActsOnTheExportedView(t *testing.T) {
 	Convey("detail_level has no effect without mode=export", t, func() {
 		reset := setGinMode()

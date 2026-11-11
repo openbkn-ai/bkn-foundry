@@ -12,9 +12,11 @@
     "input_schema.properties.response_format.description": "Response format is ignored; this tool always returns JSON-compatible tool definitions.",
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
-    "input_schema.properties._instance_identities.description": "Object instances for which executable action tools should be generated.",
+    "input_schema.properties._instance_identities.description": "Explicit targets for object modification or deletion, taken from instance query results. Missing identities never trigger a condition scan. Definition discovery may omit targets.",
     "output_schema.properties.headers.description": "Headers required when calling the returned action tools.",
-    "output_schema.properties._dynamic_tools.description": "Dynamic tool definitions. Each entry carries parameters (the input schema, with dynamic parameters under parameters.properties.dynamic_params), and, when the tool declares an output contract, output_schema: the shape of the result field on success, to be used when describing the outcome in natural language."
+    "output_schema.properties._dynamic_tools.description": "Dynamic tool definitions. Each entry carries parameters (the input schema, with dynamic parameters under parameters.properties.dynamic_params), and, when the tool declares an output contract, output_schema: the shape of the result field on success, to be used when describing the outcome in natural language.",
+    "input_schema.properties.relation_target.description": "One explicit directed source and target instance pair for establishing or removing a relation. Identity keys follow each endpoint object type primary keys; applicability conditions do not provide identities.",
+    "input_schema.properties.object_input.description": "New object attribute values for object creation. Existing instances are not scanned."
   },
   "get_kn_detail": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -305,13 +307,15 @@
   "execute_action": {
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
-    "input_schema.properties._instance_identities.description": "Target instances; when empty the action driver scans all instances matching the action condition. Each element must be taken from the _instance_identity field of query_object_instance or query_instance_subgraph, never fabricated.",
+    "input_schema.properties._instance_identities.description": "Explicit targets for object modification or deletion, taken from instance query results. Missing identities never trigger a condition scan. Definition discovery may omit targets.",
     "input_schema.properties.dynamic_params.description": "Dynamic parameter values for the action (parameters whose value_from=input). First call get_action_info to obtain this action's dynamic_params schema and parameter names, then fill in the real values by name. Each parameter is a separate key; do not concatenate multiple parameter names into one key.",
     "output_schema.properties.execution_id.description": "Execution id, usable to query execution status and results.",
     "output_schema.properties.status.description": "Execution status; usually pending right after submission.",
     "output_schema.properties.message.description": "Submission result message.",
     "output_schema.properties.created_at.description": "Submission time (Unix milliseconds).",
-    "input_schema.properties._instance_identities.items.description": "Instance identity object, holding dynamic property key/value pairs"
+    "input_schema.properties._instance_identities.items.description": "Instance identity object, holding dynamic property key/value pairs",
+    "input_schema.properties.relation_target.description": "One explicit directed source and target instance pair for establishing or removing a relation. Identity keys follow each endpoint object type primary keys; applicability conditions do not provide identities.",
+    "input_schema.properties.object_input.description": "New object attribute values for object creation. Existing instances are not scanned."
   },
   "get_action_execution": {
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",

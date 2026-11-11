@@ -28,6 +28,8 @@ const (
 
 // KnActionRecallRequest Knowledge Network Action Recall Request
 type KnActionRecallRequest struct {
+	RelationTarget *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput    map[string]any        `json:"object_input,omitempty"`
 	// Query Parameters
 	KnID string `json:"kn_id" validate:"required"` // Knowledge Network ID
 	AtID string `json:"at_id" validate:"required"` // Action Type ID
@@ -72,40 +74,46 @@ type KnFixedParams struct {
 
 // ActionDriverFixedParams action driver request default value.
 type ActionDriverFixedParams struct {
-	DynamicParams      map[string]any   `json:"dynamic_params"`       // Fixed parameters determined after action instantiation.
-	InstanceIdentities []map[string]any `json:"_instance_identities"` // By default, the _instance_identity of the current get_action_info is filled in.
+	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput        map[string]any        `json:"object_input,omitempty"`
+	DynamicParams      map[string]any        `json:"dynamic_params"`       // Fixed parameters determined after action instantiation.
+	InstanceIdentities []map[string]any      `json:"_instance_identities"` // By default, the _instance_identity of the current get_action_info is filled in.
 }
 
 // ==================== Action Query Related Structures ====================
 
 // QueryActionsRequest Action Query Request
 type QueryActionsRequest struct {
-	KnID                string           `json:"kn_id"`
-	AtID                string           `json:"at_id"`
-	InstanceIdentities  []map[string]any `json:"_instance_identities"`
-	IncludeTypeInfo     bool             `json:"include_type_info"`
-	XHTTPMethodOverride string           `json:"-"` // Fixed to GET
+	RelationTarget      *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput         map[string]any        `json:"object_input,omitempty"`
+	KnID                string                `json:"kn_id"`
+	AtID                string                `json:"at_id"`
+	InstanceIdentities  []map[string]any      `json:"_instance_identities"`
+	IncludeTypeInfo     bool                  `json:"include_type_info"`
+	XHTTPMethodOverride string                `json:"-"` // Fixed to GET
 }
 
 // QueryActionsResponse Action Query Response
 type QueryActionsResponse struct {
-	ActionType   *ActionTypeInfo `json:"action_type,omitempty"` // Action Type Info
-	ActionSource *ActionSource   `json:"action_source"`         // Action Source
-	Actions      []ActionParams  `json:"actions"`               // Action Parameters List
-	TotalCount   int             `json:"total_count"`
-	OverallMs    int             `json:"overall_ms"`
+	ExecutionSchema map[string]any  `json:"execution_schema"`
+	ActionType      *ActionTypeInfo `json:"action_type,omitempty"` // Action Type Info
+	ActionSource    *ActionSource   `json:"action_source"`         // Action Source
+	Actions         []ActionParams  `json:"actions"`               // Action Parameters List
+	TotalCount      int             `json:"total_count"`
+	OverallMs       int             `json:"overall_ms"`
 }
 
 // ActionTypeInfo Action Type Info
 type ActionTypeInfo struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	ActionType   string            `json:"action_type"` // add/modify/delete
-	ObjectTypeID string            `json:"object_type_id"`
-	Parameters   []ActionTypeParam `json:"parameters"`
-	Condition    map[string]any    `json:"condition"`
-	Affect       map[string]any    `json:"affect"`
-	Schedule     map[string]any    `json:"schedule"`
+	OperationConfig map[string]any    `json:"operation_config"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	ActionType      string            `json:"action_type"` // add/modify/delete
+	ObjectTypeID    string            `json:"object_type_id"`
+	Parameters      []ActionTypeParam `json:"parameters"`
+	Condition       map[string]any    `json:"condition"`
+	Affect          map[string]any    `json:"affect"`
+	Schedule        map[string]any    `json:"schedule"`
 }
 
 // ActionTypeParam Action Type Parameter
@@ -114,7 +122,7 @@ type ActionTypeParam struct {
 	Type      string `json:"type"`
 	Source    string `json:"source"`
 	ValueFrom string `json:"value_from"` // property/input/const
-	Value     string `json:"value,omitempty"`
+	Value     any    `json:"value,omitempty"`
 }
 
 // ActionSource Action Source
@@ -136,12 +144,14 @@ type ActionParams struct {
 
 // KnActionExecuteRequest Knowledge Network Action Execution Request
 type KnActionExecuteRequest struct {
+	RelationTarget *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput    map[string]any        `json:"object_input,omitempty"`
 	// Query Parameters
 	KnID string `json:"kn_id" validate:"required"` // Knowledge Network ID
 	AtID string `json:"at_id" validate:"required"` // Action Type ID
 
 	// Request Body
-	InstanceIdentities []map[string]any `json:"_instance_identities" validate:"omitempty"` // Target instances; empty means scan-by-condition
+	InstanceIdentities []map[string]any `json:"_instance_identities" validate:"omitempty"` // Explicit targets for object modification and deletion
 	DynamicParams      map[string]any   `json:"dynamic_params" validate:"omitempty"`       // Dynamic parameter values (value_from=input)
 
 	// Header Fields
@@ -159,10 +169,12 @@ type KnActionExecuteResponse struct {
 
 // ExecuteActionsRequest Action Execution Request to ontology-query
 type ExecuteActionsRequest struct {
-	KnID               string           `json:"-"`
-	AtID               string           `json:"-"`
-	InstanceIdentities []map[string]any `json:"_instance_identities"`
-	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
+	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput        map[string]any        `json:"object_input,omitempty"`
+	KnID               string                `json:"-"`
+	AtID               string                `json:"-"`
+	InstanceIdentities []map[string]any      `json:"_instance_identities"`
+	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
 }
 
 // ExecuteActionsResponse Action Execution Response from ontology-query
@@ -231,4 +243,10 @@ type IKnActionRecallService interface {
 	GetActionExecution(ctx context.Context, req *KnGetActionExecutionRequest) (map[string]any, error)
 	// ListActionExecutions lists action execution history with optional filters and pagination
 	ListActionExecutions(ctx context.Context, req *KnListActionExecutionsRequest) (map[string]any, error)
+}
+
+// ActionRelationTarget is one directed source/target pair for relation operations.
+type ActionRelationTarget struct {
+	SourceIdentity map[string]any `json:"source_identity"`
+	TargetIdentity map[string]any `json:"target_identity"`
 }

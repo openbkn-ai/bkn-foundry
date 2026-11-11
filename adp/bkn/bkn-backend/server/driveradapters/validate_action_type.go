@@ -183,6 +183,10 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 		}
 	}
 
+	if err := interfaces.ValidateActionOperation(actionType); err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
+	}
+
 	err = syncImpactAffect(ctx, actionType)
 	if err != nil {
 		return err
@@ -206,6 +210,11 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 		}
 	}
 
+	if config := actionType.OperationConfig; config != nil && config.OtherObjectCondition != nil {
+		if err := validateActionCondition(ctx, config.OtherObjectCondition, ""); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -296,6 +305,9 @@ func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContr
 // syncImpactAffect rejects requests containing both affect and impact_contracts, except for a folded affect entry.
 // When only affect is provided, it appends an impact_contracts entry without changing affect.
 func syncImpactAffect(ctx context.Context, actionType *interfaces.ActionType) error {
+	if config := actionType.OperationConfig; config != nil && config.Type == interfaces.ActionOperationRelation && actionType.Affect != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("relation operations must declare impact_contracts explicitly instead of affect")
+	}
 	hasIC := len(actionType.ImpactContracts) > 0
 	hasAff := actionType.Affect != nil
 	if hasIC && hasAff {
@@ -431,6 +443,15 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		}
 	}
 
+	if cfg.ValueFrom == "property" || cfg.ValueFrom == "input" {
+		if _, noValue := cond.NotRequiredValueOperationMap[cfg.Operation]; noValue {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("this condition operator does not accept a value reference")
+		}
+		if name, ok := cfg.Value.(string); !ok || strings.TrimSpace(name) == "" {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("condition reference must be a nonempty name")
+		}
+		return nil
+	}
 	switch cfg.Operation {
 	case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte, cond.OperationLt, cond.OperationLte:
 		// The right-hand side contains a single value.
