@@ -9,16 +9,9 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var knVersionEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"BknBackend.KNVersion.NotVersioned":           "Versioning is not enabled for this knowledge network.",
 		"BknBackend.KNVersion.AlreadyVersioned":       "Versioning is already enabled for this knowledge network.",
 		"BknBackend.KNVersion.ReservedBranchInUse":    "The knowledge network already has data on a reserved branch (draft or v<N>). Remove that data before enabling versioning.",
-		"BknBackend.KNVersion.InvalidVersion":         "Invalid knowledge network version. Use draft, running or a version number; a versioned network accepts only the main or draft branch.",
-		"BknBackend.KNVersion.VersionNotFound":        "The knowledge network version does not exist.",
-		"BknBackend.KNVersion.VersionPurged":          "The knowledge network version has been purged and its content is no longer available.",
-		"BknBackend.KNVersion.EditionRestricted":      "This version operation requires the Professional edition. The Community edition keeps only the running and the previous version.",
-		"BknBackend.KNVersion.VersioningDisabling":    "Versioning is being disabled for this knowledge network. Writes, version operations and reads of the draft or older versions are paused.",
 		"BknBackend.KNVersion.RunningVersionMismatch": "The running version has changed. Reload the version state and retry.",
-		"BknBackend.KNVersion.DraftRevisionMismatch":  "The draft has changed. Reload the draft and retry.",
 		"BknBackend.KNVersion.DraftHasChanges":        "The draft has unpublished changes. Confirm overwriting them to continue.",
 		"BknBackend.KNVersion.DraftBaseOutdated":      "The running version was switched after the draft was based on it. Review the difference and confirm publishing an outdated draft.",
 		"BknBackend.KNVersion.DefinitionModified":     "The definition was modified by someone else. Reload it and retry.",

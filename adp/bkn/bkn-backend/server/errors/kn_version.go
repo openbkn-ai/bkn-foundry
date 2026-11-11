@@ -4,18 +4,22 @@
 
 package errors
 
-// Knowledge network versioning error codes.
+import "github.com/openbkn-ai/bkn-foundry/comm-go/knversion"
+
+// Knowledge network versioning error codes. The refusals about the requested version are
+// declared in comm-go/knversion, which registers them: the services that read through
+// bkn-backend answer with the same codes.
 const (
-	BknBackend_KNVersion_NotVersioned           = "BknBackend.KNVersion.NotVersioned"
+	BknBackend_KNVersion_NotVersioned           = knversion.NotVersioned
 	BknBackend_KNVersion_AlreadyVersioned       = "BknBackend.KNVersion.AlreadyVersioned"
 	BknBackend_KNVersion_ReservedBranchInUse    = "BknBackend.KNVersion.ReservedBranchInUse"
-	BknBackend_KNVersion_InvalidVersion         = "BknBackend.KNVersion.InvalidVersion"
-	BknBackend_KNVersion_VersionNotFound        = "BknBackend.KNVersion.VersionNotFound"
-	BknBackend_KNVersion_VersionPurged          = "BknBackend.KNVersion.VersionPurged"
-	BknBackend_KNVersion_EditionRestricted      = "BknBackend.KNVersion.EditionRestricted"
-	BknBackend_KNVersion_VersioningDisabling    = "BknBackend.KNVersion.VersioningDisabling"
+	BknBackend_KNVersion_InvalidVersion         = knversion.InvalidVersion
+	BknBackend_KNVersion_VersionNotFound        = knversion.VersionNotFound
+	BknBackend_KNVersion_VersionPurged          = knversion.VersionPurged
+	BknBackend_KNVersion_EditionRestricted      = knversion.EditionRestricted
+	BknBackend_KNVersion_VersioningDisabling    = knversion.VersioningDisabling
 	BknBackend_KNVersion_RunningVersionMismatch = "BknBackend.KNVersion.RunningVersionMismatch"
-	BknBackend_KNVersion_DraftRevisionMismatch  = "BknBackend.KNVersion.DraftRevisionMismatch"
+	BknBackend_KNVersion_DraftRevisionMismatch  = knversion.DraftRevisionMismatch
 	BknBackend_KNVersion_DraftHasChanges        = "BknBackend.KNVersion.DraftHasChanges"
 	BknBackend_KNVersion_DraftBaseOutdated      = "BknBackend.KNVersion.DraftBaseOutdated"
 	BknBackend_KNVersion_DefinitionModified     = "BknBackend.KNVersion.DefinitionModified"
@@ -33,17 +37,11 @@ const (
 	BknBackend_KNVersion_InternalError          = "BknBackend.KNVersion.InternalError"
 )
 
+// KNVersionErrCodeList are the codes this service registers itself.
 var KNVersionErrCodeList = []string{
-	BknBackend_KNVersion_NotVersioned,
 	BknBackend_KNVersion_AlreadyVersioned,
 	BknBackend_KNVersion_ReservedBranchInUse,
-	BknBackend_KNVersion_InvalidVersion,
-	BknBackend_KNVersion_VersionNotFound,
-	BknBackend_KNVersion_VersionPurged,
-	BknBackend_KNVersion_EditionRestricted,
-	BknBackend_KNVersion_VersioningDisabling,
 	BknBackend_KNVersion_RunningVersionMismatch,
-	BknBackend_KNVersion_DraftRevisionMismatch,
 	BknBackend_KNVersion_DraftHasChanges,
 	BknBackend_KNVersion_DraftBaseOutdated,
 	BknBackend_KNVersion_DefinitionModified,
