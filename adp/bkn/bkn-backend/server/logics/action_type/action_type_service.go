@@ -49,6 +49,7 @@ type actionTypeService struct {
 	db         *sql.DB
 	aoa        interfaces.AgentOperatorAccess
 	nr         *logics.NetworkRelations
+	rta        interfaces.RelationTypeAccess
 	ata        interfaces.ActionTypeAccess
 	cga        interfaces.ConceptGroupAccess
 	mfs        interfaces.ModelFactoryService
@@ -64,6 +65,7 @@ func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeSe
 			appSetting: appSetting,
 			db:         logics.DB,
 			nr:         logics.NewNetworkRelations(),
+			rta:        logics.RTA,
 			ata:        logics.ATA,
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
@@ -255,12 +257,6 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 
 		// When strictMode is true, validate bound object type and affect object types exist
 		if strictMode {
-			if actionType.ObjectTypeID != "" {
-				_, err = ats.ots.GetObjectTypeByID(ctx, tx, actionType.KNID, actionType.Branch, actionType.ObjectTypeID)
-				if err != nil {
-					return []string{}, err
-				}
-			}
 			if actionType.Affect != nil && actionType.Affect.ObjectTypeID != "" {
 				_, err = ats.ots.GetObjectTypeByID(ctx, tx, actionType.KNID, actionType.Branch, actionType.Affect.ObjectTypeID)
 				if err != nil {
@@ -278,6 +274,9 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			}
 		}
 
+		if err = ats.checkOperation(ctx, tx, actionType, nil, strictMode); err != nil {
+			return nil, err
+		}
 		if err = ats.checkDeclarations(ctx, actionType); err != nil {
 			return []string{}, err
 		}
@@ -457,18 +456,13 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 	for _, actionType := range actionTypes {
 		actionType.KNID = knID
 		actionType.Branch = branch
+		if err = ats.checkOperation(ctx, nil, actionType, batch, strictMode); err != nil {
+			return err
+		}
 		if err = ats.checkDeclarations(ctx, actionType); err != nil {
 			return err
 		}
 		if strictMode {
-			if actionType.ObjectTypeID != "" {
-				if batch == nil || !batchindex.HasObjectTypeID(actionType.ObjectTypeID, batch) {
-					_, err = ats.ots.GetObjectTypeByID(ctx, nil, knID, branch, actionType.ObjectTypeID)
-					if err != nil {
-						return err
-					}
-				}
-			}
 			if actionType.Affect != nil && actionType.Affect.ObjectTypeID != "" {
 				if batch == nil || !batchindex.HasObjectTypeID(actionType.Affect.ObjectTypeID, batch) {
 					_, err = ats.ots.GetObjectTypeByID(ctx, nil, knID, branch, actionType.Affect.ObjectTypeID)
@@ -692,6 +686,9 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 			return err
 		}
 	}
+	if err = ats.checkOperation(ctx, tx, actionType, nil, strictMode); err != nil {
+		return err
+	}
 	if err = ats.checkDeclarations(ctx, actionType); err != nil {
 		return err
 	}
@@ -708,12 +705,6 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	}
 
 	if strictMode {
-		if actionType.ObjectTypeID != "" {
-			_, err = ats.ots.GetObjectTypeByID(ctx, tx, actionType.KNID, actionType.Branch, actionType.ObjectTypeID)
-			if err != nil {
-				return err
-			}
-		}
 		if actionType.Affect != nil && actionType.Affect.ObjectTypeID != "" {
 			_, err = ats.ots.GetObjectTypeByID(ctx, tx, actionType.KNID, actionType.Branch, actionType.Affect.ObjectTypeID)
 			if err != nil {
@@ -1384,7 +1375,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			if paramsStr, exists := entry["parameters"]; exists {
 				if paramsStrStr, ok := paramsStr.(string); ok && paramsStrStr != "" {
 					var params []interfaces.Parameter
-					if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
+					if err := (sonic.Config{UseNumber: true}).Froze().Unmarshal([]byte(paramsStrStr), &params); err != nil {
 						logger.Errorf("Failed to unmarshal action_type parameters: %s", err.Error())
 						return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_InternalError_UnMarshalDataFailed).
@@ -1392,6 +1383,14 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 					}
 					entry["parameters"] = params
 				}
+			}
+
+			if raw, ok := entry["operation_config"].(string); ok && raw != "" {
+				var config interfaces.ActionOperationConfig
+				if err := sonic.UnmarshalString(raw, &config); err != nil {
+					return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails("invalid indexed operation_config")
+				}
+				entry["operation_config"] = &config
 			}
 
 			// Convert to an action type struct.

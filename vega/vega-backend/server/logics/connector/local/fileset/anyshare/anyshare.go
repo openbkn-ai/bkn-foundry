@@ -21,6 +21,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/fileset"
 )
 
 const (
@@ -418,4 +419,39 @@ func (c *AnyShareConnector) GetMetadata(ctx context.Context) (map[string]any, er
 		"protocol":         c.config.Protocol,
 		"paths_configured": len(c.config.Paths) > 0,
 	}, nil
+}
+
+// ValidateFilterability 按可信源列校验文件集字段，不从 Schema 构造缺失源列，不访问源端或修改资源。
+func (c *AnyShareConnector) ValidateFilterability(resource *interfaces.Resource) error {
+	enabled := false
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable != nil && *property.Filterable {
+			enabled = true
+			break
+		}
+	}
+	if !enabled {
+		return nil
+	}
+	columns, err := fileset.ColumnMetadata(resource)
+	if err != nil {
+		return err
+	}
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable == nil || !*property.Filterable {
+			continue
+		}
+		name := property.OriginalName
+		if name == "" {
+			name = property.Name
+		}
+		column, exists := columns[name]
+		if !exists || column.Type == "" {
+			return interfaces.NewConditionBuildError("cannot confirm filterability for field %q without source type metadata", property.Name)
+		}
+		if !c.IsFilterable(&column) {
+			return interfaces.NewConditionBuildError("field %q does not support filterable=true", property.Name)
+		}
+	}
+	return nil
 }

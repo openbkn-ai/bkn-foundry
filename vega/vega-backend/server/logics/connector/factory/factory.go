@@ -20,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/remote"
 )
 
@@ -257,7 +258,7 @@ func (cf *connectorFactory) ValidateBuildSchema(tp string, resource *interfaces.
 }
 
 // ValidateFilterCondition 直接复用连接器的完整条件转换，不访问源端。
-func (cf *connectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, properties []*interfaces.Property, columns map[string]interfaces.TableColumnMeta) error {
+func (cf *connectorFactory) ValidateFilterCondition(tp string, condition interfaces.FilterCondition, resource *interfaces.Resource) error {
 	if condition == nil {
 		return nil
 	}
@@ -276,13 +277,60 @@ func (cf *connectorFactory) ValidateFilterCondition(tp string, condition interfa
 	}
 	switch converter := connector.(type) {
 	case interfaces.TableConnector:
-		_, err := converter.ConvertFilterCondition(condition, properties, columns)
+		columns, err := table.ColumnMetadata(resource)
+		if err != nil {
+			return err
+		}
+		_, err = converter.ConvertFilterCondition(condition, resource.SchemaDefinition, columns)
 		return err
 	case interfaces.IndexConnector:
-		_, err := converter.ConvertFilterCondition(condition, properties)
+		_, err := converter.ConvertFilterCondition(condition, resource.SchemaDefinition)
 		return err
 	default:
 		return interfaces.NewConditionBuildError("connector %s does not support filter condition conversion", tp)
+	}
+}
+
+// ValidateFilterability 只校验显式开启的字段，复用注册连接器且不创建源端连接。
+func (cf *connectorFactory) ValidateFilterability(tp string, resource *interfaces.Resource) error {
+	enabled := false
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable != nil && *property.Filterable {
+			enabled = true
+			break
+		}
+	}
+	if !enabled {
+		return nil
+	}
+
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+	}
+	if minimum, exists := cf.connectorRequiredEditions[tp]; exists && !entitlement.AtLeast(minimum) {
+		return fmt.Errorf("connector %s requires edition %s: %w", tp, minimum, ErrConnectorEntitlementDenied)
+	}
+	if !connector.GetEnabled() {
+		return fmt.Errorf("connector %s is disabled: %w", tp, ErrConnectorDisabled)
+	}
+
+	switch connector := connector.(type) {
+	case interfaces.TableConnector:
+		columns, err := table.ColumnMetadata(resource)
+		if err != nil {
+			return err
+		}
+		return table.ValidateFilterability(resource, connector, columns)
+	case interfaces.IndexConnector:
+		return connector.ValidateFilterability(resource)
+	case interfaces.FilesetConnector:
+		return connector.ValidateFilterability(resource)
+	default:
+		return interfaces.NewConditionBuildError("connector %s does not support field filterability validation", tp)
 	}
 }
 

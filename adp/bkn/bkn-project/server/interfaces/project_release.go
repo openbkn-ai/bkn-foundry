@@ -6,7 +6,7 @@ package interfaces
 
 import "context"
 
-// A project publishes its branch as a new release of its network's lineage. Before it does, the
+// A project publishes its branch as a new version of its network. Before it does, the
 // owner reviews what the release would bring and whether it may go: the release checks, the changes
 // by name, the risks to what is live, and what the release does with functions and Skills. Codes
 // are for machines; clients word them.
@@ -201,13 +201,52 @@ type SimilarNames struct {
 	Other ReleaseItem `json:"other"`
 }
 
-// ProjectPublish is the body of a project's release. Signature is that of the review the owner
-// read; Accepts are what the owner accepts of the checks that did not pass.
+// ProjectPrepare is the body of preparing a project's release. Signature is that of the review
+// the owner read; Accepts are what the owner accepts of the checks that did not pass.
+// OverwriteDraftChanges confirms dropping edits made to the network and not published.
+type ProjectPrepare struct {
+	Version               string   `json:"version"`
+	Signature             string   `json:"signature"`
+	Accepts               []string `json:"accepts"`
+	OverwriteDraftChanges bool     `json:"overwrite_draft_changes"`
+}
+
+// ProjectPublish is the body of publishing a prepared release. AllowOutdatedBase confirms bringing
+// back what a rollback took out.
 type ProjectPublish struct {
-	Version   string   `json:"version"`
-	Notes     string   `json:"notes"`
-	Signature string   `json:"signature"`
-	Accepts   []string `json:"accepts"`
+	Version           string `json:"version"`
+	Notes             string `json:"notes"`
+	AllowOutdatedBase bool   `json:"allow_outdated_base"`
+}
+
+// Where a version of a project's network came from.
+const (
+	VERSION_ORIGIN_PROJECT       = "project"
+	VERSION_ORIGIN_OTHER_PROJECT = "other_project"
+	// VERSION_ORIGIN_WORKSPACE: published in the workspace, not by a project.
+	VERSION_ORIGIN_WORKSPACE = "workspace"
+)
+
+// ProjectVersions are the versions of a project's network, newest first, the network's draft, and
+// the project's release prepared and not yet published, if any.
+type ProjectVersions struct {
+	Versioning KNVersioning     `json:"versioning"`
+	Prepared   *Release         `json:"prepared,omitempty"`
+	Entries    []ProjectVersion `json:"entries"`
+}
+
+// ProjectVersion is a version of the network, with the release that published it: Release is its
+// version when a release of the lineage did.
+type ProjectVersion struct {
+	KNVersion
+	Origin  string `json:"origin"`
+	Release string `json:"release,omitempty"`
+}
+
+// ProjectCopyVersion is the body of copying a version as the draft: OverwriteDraftChanges confirms
+// dropping edits made to the network and not published.
+type ProjectCopyVersion struct {
+	OverwriteDraftChanges bool `json:"overwrite_draft_changes"`
 }
 
 // RELEASE_NOTES_ACCEPTED starts the line of release notes that records, as codes, what the owner
@@ -229,8 +268,12 @@ type ProjectReleaseService interface {
 	// it may, as the caller.
 	ReviewRelease(ctx context.Context, token string, projectID string, version string,
 		caller AccountInfo) (*ReleaseReview, error)
-	// PublishRelease publishes the project's branch, for the owner, once its review still stands
-	// and every check passed or was accepted, and then starts its regression in the background.
+	// PrepareRelease writes the project's branch into the network's draft, for the owner, once its
+	// review still stands and every check passed or was accepted, and then starts its regression on
+	// the draft in the background.
+	PrepareRelease(ctx context.Context, token string, projectID string, req ProjectPrepare,
+		caller AccountInfo) (*Release, error)
+	// PublishRelease publishes the prepared release, for the owner.
 	PublishRelease(ctx context.Context, token string, projectID string, req ProjectPublish,
 		caller AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 	// SyncBranch brings the live version into the project's branch, for the owner.
@@ -240,22 +283,23 @@ type ProjectReleaseService interface {
 	// owner.
 	CommitDrift(ctx context.Context, token string, projectID string, caller AccountInfo,
 		author GitAuthor) (*ProjectDriftCommit, error)
-	// PlanSwitch reports what switching consumers to a release of the project would do.
-	PlanSwitch(ctx context.Context, token string, projectID string, toNetworkID string) (*SwitchPlan, error)
 	// GetRegression returns the regression of a release of the project, read by anyone who can
 	// read the project.
-	GetRegression(ctx context.Context, token string, projectID string, networkID string) (*Regression, error)
+	GetRegression(ctx context.Context, token string, projectID string, version string) (*Regression, error)
 	// RunRegression starts the regression of a release of the project again, for the owner, with
 	// the questions the specification has now, and returns it, running.
-	RunRegression(ctx context.Context, token string, projectID string, networkID string,
+	RunRegression(ctx context.Context, token string, projectID string, version string,
 		caller AccountInfo) (*Regression, error)
-	// SwitchConsumers switches consumers to a release of the project, for the owner.
-	SwitchConsumers(ctx context.Context, token string, projectID string, toNetworkID string,
-		caller AccountInfo) (*Switch, error)
-	// PlanRollback reports what rolling the lineage's consumers back to the network before the one in
-	// use would do, without doing it.
-	PlanRollback(ctx context.Context, token string, projectID string) (*RollbackPlan, error)
-	// Rollback switches the consumers back as the plan read says, for the owner, once it still stands.
+	// ListVersions lists the versions of the project's network, read by anyone who can read the project.
+	ListVersions(ctx context.Context, token string, projectID string) (*ProjectVersions, error)
+	// CopyVersion puts a version's definitions back into the project's branch, for the owner.
+	CopyVersion(ctx context.Context, token string, projectID string, knVersion int, req ProjectCopyVersion,
+		caller AccountInfo, author GitAuthor) (*CommitDefinitionsResult, error)
+	// PlanRollback reports what switching the running version back to toVersion would do, without
+	// doing it; 0 is the previous version.
+	PlanRollback(ctx context.Context, token string, projectID string, toVersion int) (*RollbackPlan, error)
+	// Rollback switches the running version back as the plan read says, for the owner, once it
+	// still stands.
 	Rollback(ctx context.Context, token string, projectID string, req ProjectRollback,
-		caller AccountInfo) (*Switch, error)
+		caller AccountInfo) (*RollbackResult, error)
 }

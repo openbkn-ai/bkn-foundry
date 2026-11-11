@@ -10,8 +10,10 @@ import cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/com
 
 // Action query request body.
 type ActionQuery struct {
-	InstanceIdentities []map[string]any `json:"_instance_identities,omitempty"`
-	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
+	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput        map[string]any        `json:"object_input,omitempty"`
+	InstanceIdentities []map[string]any      `json:"_instance_identities,omitempty"`
+	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
 
 	KNID         string `json:"-"`
 	Branch       string `json:"-"`
@@ -21,11 +23,12 @@ type ActionQuery struct {
 
 // Action query response body.
 type Actions struct {
-	ActionType   *ActionType   `json:"action_type,omitempty"`
-	ActionSource ActionSource  `json:"action_source"`
-	Actions      []ActionParam `json:"actions"`
-	TotalCount   int           `json:"total_count,omitempty"`
-	OverallMs    int64         `json:"overall_ms"`
+	ExecutionSchema map[string]any `json:"execution_schema"`
+	ActionType      *ActionType    `json:"action_type,omitempty"`
+	ActionSource    ActionSource   `json:"action_source"`
+	Actions         []ActionParam  `json:"actions"`
+	TotalCount      int            `json:"total_count,omitempty"`
+	OverallMs       int64          `json:"overall_ms"`
 }
 
 // Instantiated action parameters.
@@ -56,17 +59,33 @@ type ImpactContractItem struct {
 }
 
 type ActionType struct {
-	ATID            string               `json:"id"`
-	ATName          string               `json:"name"`
-	ActionType      string               `json:"action_type"`
-	ActionIntent    string               `json:"action_intent,omitempty"`
-	ObjectTypeID    string               `json:"object_type_id"`
-	ImpactContracts []ImpactContractItem `json:"impact_contracts,omitempty"`
-	Condition       *cond.CondCfg        `json:"condition,omitempty"`
-	Affect          *ActionAffect        `json:"affect"`
-	ActionSource    ActionSource         `json:"action_source"`
-	Parameters      []Parameter          `json:"parameters"`
-	Schedule        Schedule             `json:"schedule"`
+	OperationConfig *ActionOperationConfig `json:"operation_config"`
+	ATID            string                 `json:"id"`
+	ATName          string                 `json:"name"`
+	ActionType      string                 `json:"action_type"`
+	ActionIntent    string                 `json:"action_intent,omitempty"`
+	ObjectTypeID    string                 `json:"object_type_id"`
+	ImpactContracts []ImpactContractItem   `json:"impact_contracts,omitempty"`
+	Condition       *cond.CondCfg          `json:"condition,omitempty"`
+	Affect          *ActionAffect          `json:"affect"`
+	ActionSource    ActionSource           `json:"action_source"`
+	Parameters      []Parameter            `json:"parameters"`
+	Schedule        Schedule               `json:"schedule"`
+}
+
+// ActionOperationConfig is the single-operation model published by bkn-backend.
+type ActionOperationConfig struct {
+	Type                 string        `json:"type"`
+	RelationTypeID       string        `json:"relation_type_id,omitempty"`
+	RelationOperation    string        `json:"relation_operation,omitempty"`
+	AnchorRole           string        `json:"anchor_role,omitempty"`
+	OtherObjectCondition *cond.CondCfg `json:"other_object_condition,omitempty"`
+}
+
+// ActionRelationTarget specifies one directed pair, never two lists to cross join.
+type ActionRelationTarget struct {
+	SourceIdentity map[string]any `json:"source_identity"`
+	TargetIdentity map[string]any `json:"target_identity"`
 }
 
 type ActionAffect struct {

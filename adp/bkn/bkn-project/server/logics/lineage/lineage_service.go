@@ -47,11 +47,12 @@ type lineageService struct {
 	efa interfaces.ExecutionFactoryAccess
 	ds  interfaces.DriftService
 	ra  interfaces.ReleaseAccess
+	kva interfaces.KNVersionAccess
 }
 
 func NewLineageService() interfaces.LineageService {
 	lsOnce.Do(func() {
-		ls = &lineageService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
+		ls = &lineageService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA, kva: logics.KVA}
 	})
 	return ls
 }
@@ -65,7 +66,7 @@ func (s *lineageService) CreateLineage(ctx context.Context, token string, knID s
 		span.SetStatus(codes.Error, "Empty kn_id")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidKNID)
 	}
-	files, err := s.bba.ExportBKN(ctx, token, knID)
+	files, err := s.kva.ExportVersion(ctx, token, knID, interfaces.KN_VERSION_RUNNING)
 	if err != nil {
 		span.SetStatus(codes.Error, "Export live definitions failed")
 		return nil, toHTTPError(ctx, "Export live definitions failed", err)
@@ -563,6 +564,10 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 		otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
 		return httperrors.NewHTTPError(ctx, status, perrors.BknProject_Lineage_CapabilityRequestFailed).
 			WithErrorDetails(details)
+	}
+	if versionErr, ok := logics.KNVersionHTTPError(ctx, err); ok {
+		otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
+		return versionErr
 	}
 	var backendErr *interfaces.BknBackendError
 	if errors.As(err, &backendErr) {

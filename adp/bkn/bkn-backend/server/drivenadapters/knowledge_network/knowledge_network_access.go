@@ -568,7 +568,9 @@ func (kna *knowledgeNetworkAccess) execUpdate(ctx context.Context, tx *sql.Tx, b
 	return ret, nil
 }
 
-func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
+// UpdateKNDetail writes the serialized network of one branch. With tx it runs on that
+// transaction. A branch row that does not exist returns common.ErrRowNotFound.
+func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context, tx *sql.Tx,
 	knID string, branch string, detail string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, fmt.Sprintf("Update knowledge network detail[%s]", knID))
 	defer span.End()
@@ -578,13 +580,10 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 		attr.Key("db_type").String(libdb.GetDBType()),
 		attr.Key("kn_id").String(knID))
 
-	data := map[string]any{
-		"f_bkn_raw_content": detail,
-	}
+	branchRow := sq.Eq{"f_id": knID, "f_branch": branch}
 	sqlStr, vals, err := sq.Update(KN_TABLE_NAME).
-		SetMap(data).
-		Where(sq.Eq{"f_id": knID}).
-		Where(sq.Eq{"f_branch": branch}).
+		Set("f_bkn_raw_content", detail).
+		Where(branchRow).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network detail by knowledge network_id, error", err)
@@ -594,22 +593,20 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context,
 	// Record the processed SQL string.
 	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
-	ret, err := kna.db.Exec(sqlStr, vals...)
+	var q interface {
+		ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+		QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	} = kna.db
+	if tx != nil {
+		q = tx
+	}
+	ret, err := q.ExecContext(ctx, sqlStr, vals...)
 	if err != nil {
 		common.LogSafeError(ctx, "Update data error", err)
 		return err
 	}
-
-	// Number of rows affected by the SQL statement.
-	RowsAffected, err := ret.RowsAffected()
-	if err != nil {
-		common.LogSafeError(ctx, "Get RowsAffected error", err)
+	if err := common.EnsureRowUpdated(ctx, q, ret, KN_TABLE_NAME, branchRow); err != nil {
 		return err
-	}
-
-	if RowsAffected != 1 {
-		otellog.LogWarn(ctx, fmt.Sprintf("Update knowledge network detail %s RowsAffected not equal 1, RowsAffected is %d",
-			knID, RowsAffected))
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help generate-mock wsl fmt lint vet test test-cover ci dev
+.PHONY: help generate-mock wsl fmt lint vet test test-cover test-helm ci dev
 
 PKG_LIST_CMD = go list ./server/... | grep -v '/server/tests/' | grep -v '/server/mocks'
 SHELL_STRICT = set -eu; set -o pipefail 2>/dev/null || true;
@@ -80,6 +80,10 @@ test-cover:
 	@command -v gocover-cobertura >/dev/null 2>&1 && \
 		gocover-cobertura < $(TEST_RESULT_DIR)/coverage.out > $(TEST_RESULT_DIR)/coverage.xml || \
 		(echo "WARN: gocover-cobertura not found, coverage.xml not generated; install for CI compliance")
+
+test-helm:
+	bash scripts/test_health_probes_chart.sh
+	bash scripts/test_license_hub_chart.sh
 
 ci: lint test-cover
 

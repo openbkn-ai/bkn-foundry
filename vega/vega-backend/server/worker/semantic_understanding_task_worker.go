@@ -459,16 +459,10 @@ func (sutw *SemanticUnderstandingTaskWorker) applyAndMark(ctx context.Context, t
 	if err != nil {
 		return fmt.Errorf("begin semantic understanding apply transaction: %w", err)
 	}
-	ctx, parentTracker, trackerOwner := resource.WithResourceParentTracker(ctx)
 	committed := false
 	defer func() {
 		if !committed {
 			_ = tx.Rollback()
-			if trackerOwner {
-				if cleanupErr := parentTracker.Cleanup(ctx); cleanupErr != nil {
-					logger.Errorf("Clean up resource parents after semantic understanding transaction failure: %v", cleanupErr)
-				}
-			}
 		}
 	}()
 

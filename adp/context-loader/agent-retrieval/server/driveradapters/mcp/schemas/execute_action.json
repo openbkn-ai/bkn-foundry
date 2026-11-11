@@ -12,7 +12,7 @@
       },
       "_instance_identities": {
         "type": "array",
-        "description": "目标实例列表；为空时由行动驱动按行动条件扫描全部匹配实例。每个元素需从 query_object_instance 或 query_instance_subgraph 的 _instance_identity 字段提取，不可臆造。",
+        "description": "修改或删除对象实例时明确指定的目标主键列表，从查询结果的 _instance_identity 提取。不能省略后依靠条件扫描；工具调用和新建对象不传此字段。",
         "items": {
           "type": "object",
           "description": "实例标识对象，包含动态的属性键值对",
@@ -22,6 +22,30 @@
       "dynamic_params": {
         "type": "object",
         "description": "行动的动态参数值（对应行动类型中 value_from=input 的参数）。请先调用 get_action_info 获取该行动的 dynamic_params schema 与参数名，再在此按名逐个填入真实值。注意：每个参数是独立的键，不要把多个参数名拼成一个键。",
+        "additionalProperties": true
+      },
+      "relation_target": {
+        "type": "object",
+        "description": "建立或解除关系时明确指定一对起点和终点实例。身份字段由两端对象类的唯一标识定义决定，值从实例查询结果取得；不能由适用条件推断。",
+        "properties": {
+          "source_identity": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "target_identity": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "source_identity",
+          "target_identity"
+        ],
+        "additionalProperties": false
+      },
+      "object_input": {
+        "type": "object",
+        "description": "新建对象实例时的新对象属性值；不查询或扫描已有实例。",
         "additionalProperties": true
       }
     },

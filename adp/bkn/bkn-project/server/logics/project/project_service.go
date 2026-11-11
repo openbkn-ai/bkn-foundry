@@ -46,13 +46,14 @@ type projectService struct {
 	pa  interfaces.ProjectAccess
 	ra  interfaces.ReleaseAccess
 	bba interfaces.BknBackendAccess
+	kva interfaces.KNVersionAccess
 	ls  interfaces.LineageService
 	va  interfaces.VegaAccess
 }
 
 func NewProjectService() interfaces.ProjectService {
 	psOnce.Do(func() {
-		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, ls: lineage.NewLineageService(), va: logics.VA}
+		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, kva: logics.KVA, ls: lineage.NewLineageService(), va: logics.VA}
 	})
 	return ps
 }
@@ -70,12 +71,15 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 
 	knID := req.KNID
 	if req.NewKN != nil {
-		if knID, err = s.bba.CreateKN(ctx, token, req.NewKN.ID, strings.TrimSpace(req.NewKN.Name)); err != nil {
+		if knID, err = s.kva.CreateVersionedKN(ctx, token, req.NewKN.ID, strings.TrimSpace(req.NewKN.Name)); err != nil {
 			span.SetStatus(codes.Error, "Create network failed")
 			return nil, backendHTTPError(ctx, "Create network failed", err)
 		}
 	} else if knID, err = s.lineageOf(ctx, token, knID); err != nil {
 		span.SetStatus(codes.Error, "Get network failed")
+		return nil, err
+	} else if err = s.versioned(ctx, token, knID, req.EnableVersioning); err != nil {
+		span.SetStatus(codes.Error, "Network not versioned")
 		return nil, err
 	}
 
@@ -402,24 +406,41 @@ func networkError(ctx context.Context, err error) error {
 	return backendHTTPError(ctx, "Get network failed", err)
 }
 
-// lineageOf returns the lineage a visible network belongs to: the base network
-// of the release that published it, or the network itself. The caller must be
-// able to see that base network too, as every later read of the project checks it.
+// lineageOf returns the lineage of a visible network: the network itself, which keeps its id across
+// releases.
 func (s *projectService) lineageOf(ctx context.Context, token string, knID string) (string, error) {
 	if _, err := s.bba.GetKN(ctx, token, knID); err != nil {
 		return "", backendHTTPError(ctx, "Get network failed", err)
 	}
-	release, exist, err := s.ra.GetReleaseByNetworkID(ctx, knID)
+	return knID, nil
+}
+
+// versioned makes sure a project's network keeps versions. A network that does not is turned on
+// only once the owner confirmed it, since that changes it for everyone who edits it.
+func (s *projectService) versioned(ctx context.Context, token string, knID string, confirmed bool) error {
+	versioning, err := s.kva.GetVersioning(ctx, token, knID)
 	if err != nil {
-		return "", internalError(ctx, "Get release failed", err)
+		return backendHTTPError(ctx, "Get versioning failed", err)
 	}
-	if !exist {
-		return knID, nil
+	if versioning.Enabled {
+		return nil
 	}
-	if _, err = s.bba.GetKN(ctx, token, release.LineageID); err != nil {
-		return "", backendHTTPError(ctx, "Get base network failed", err)
+	if !confirmed {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Project_VersioningRequired).
+			WithErrorDetails(map[string]any{"kn_id": knID})
 	}
-	return release.LineageID, nil
+	err = s.kva.EnableVersioning(ctx, token, knID, "Turned on by BKN-project for its projects")
+	var backendErr *interfaces.BknBackendError
+	switch {
+	case errors.As(err, &backendErr) && backendErr.HTTPCode == http.StatusForbidden:
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_VersioningForbidden).
+			WithErrorDetails(map[string]any{"kn_id": knID})
+	case errors.As(err, &backendErr) && backendErr.ErrorCode == interfaces.KN_VERSION_ERROR_ALREADY_VERSIONED:
+		return nil
+	case err != nil:
+		return backendHTTPError(ctx, "Turn on versioning failed", err)
+	}
+	return nil
 }
 
 // liveNetworkID is the network that is live for the lineage.

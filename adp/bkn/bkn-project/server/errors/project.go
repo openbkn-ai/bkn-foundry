@@ -16,6 +16,8 @@ const (
 
 	// 403
 	BknProject_Project_NotOwner = "BknProject.Project.NotOwner"
+	// BknProject_Project_VersioningForbidden: the caller cannot turn versioning on for the network.
+	BknProject_Project_VersioningForbidden = "BknProject.Project.VersioningForbidden"
 
 	// 404
 	BknProject_Project_NotFound = "BknProject.Project.NotFound"
@@ -23,6 +25,9 @@ const (
 	// 409
 	// BknProject_Project_CatalogMissing: a catalog set on the project no longer exists in vega.
 	BknProject_Project_CatalogMissing = "BknProject.Project.CatalogMissing"
+	// BknProject_Project_VersioningRequired: the network does not keep versions; the owner confirms
+	// turning it on (enable_versioning) before a project is made on it.
+	BknProject_Project_VersioningRequired = "BknProject.Project.VersioningRequired"
 
 	// 4xx or 502
 	BknProject_Project_BknBackendRequestFailed = "BknProject.Project.BknBackendRequestFailed"
@@ -87,6 +92,8 @@ var (
 		BknProject_Project_NotOwner,
 		BknProject_Project_NotFound,
 		BknProject_Project_CatalogMissing,
+		BknProject_Project_VersioningRequired,
+		BknProject_Project_VersioningForbidden,
 		BknProject_Project_BknBackendRequestFailed,
 		BknProject_Project_InternalError,
 		BknProject_Requirement_InvalidRequestBody,

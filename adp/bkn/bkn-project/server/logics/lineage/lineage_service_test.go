@@ -246,14 +246,14 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		bba := pmock.NewMockBknBackendAccess(mockCtrl)
-		svc := &lineageService{gs: realGS, bba: bba}
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
+		svc := &lineageService{gs: realGS, kva: kva}
 		ctx := context.Background()
 		id := newLineageID()
 		live := definitions("A part.", "A supplier.")
 
-		Convey("The live definitions become the first commit on main\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+		Convey("The definitions of the running version become the first commit on main\n", func() {
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(live, nil)
 
 			result, err := svc.CreateLineage(ctx, token, id, author)
 
@@ -265,7 +265,7 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 			So(files, ShouldResemble, live)
 
 			Convey("and a second create replies 409\n", func() {
-				bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(live, nil)
 
 				_, err := svc.CreateLineage(ctx, token, id, author)
 
@@ -276,7 +276,7 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 		})
 
 		Convey("A refusal from bkn-backend keeps its status\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusForbidden})
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusForbidden})
 
 			_, err := svc.CreateLineage(ctx, token, id, author)
 
@@ -287,7 +287,7 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 
 		Convey("A network bkn-backend cannot export as BKN 3.0 says what to fix, and leaves no lineage\n", func() {
 			found := map[string]any{"misplaced_parameters": []any{map[string]any{"action_type_id": "restock"}}}
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(nil, &interfaces.BknBackendError{
 				HTTPCode: http.StatusBadRequest,
 				BaseError: httperrors.BaseError{
 					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck",
@@ -309,7 +309,7 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 
 		Convey("A network whose definitions do not read back as BKN 3.0 names the one to fix, and leaves no lineage\n", func() {
 			const unreadable = `load object_types/part.bkn: data property name is empty`
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(nil, &interfaces.BknBackendError{
 				HTTPCode: http.StatusBadRequest,
 				BaseError: httperrors.BaseError{
 					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNotReadableAsV3",
@@ -330,7 +330,7 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 		})
 
 		Convey("A bkn-backend server error is a bad gateway\n", func() {
-			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
 
 			_, err := svc.CreateLineage(ctx, token, id, author)
 
@@ -706,7 +706,7 @@ func Test_LineageService_CheckDrift(t *testing.T) {
 		svc := &lineageService{ds: ds, ra: ra}
 		ctx := context.Background()
 		// Before its first release a lineage's live network is the network it was started from.
-		ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
+		ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
 			Return([]*interfaces.Release{}, nil).AnyTimes()
 		drifted := &interfaces.DriftReport{LineageID: "orders", KNID: "orders",
 			PathDiff: interfaces.PathDiff{Added: []string{}, Changed: []string{"network.bkn"}, Removed: []string{}}}
@@ -749,7 +749,7 @@ func Test_LineageService_CheckDrift(t *testing.T) {
 			So(status, ShouldEqual, http.StatusNotFound)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BknBackendRequestFailed)
 
-			ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "missing", Limit: 1}).
+			ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "missing", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
 				Return([]*interfaces.Release{}, nil)
 			ds.EXPECT().DriftCheck(gomock.Any(), token, "missing", "missing").
 				Return(nil, fmt.Errorf("read main of lineage missing: %w", git.ErrRepositoryNotExists))
@@ -766,18 +766,18 @@ func Test_LineageService_CheckDrift(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Lineage_NotLiveNetwork)
 		})
 
-		Convey("After a release only the released network is live, not the one it replaced\n", func() {
+		Convey("After a release the lineage's network is still the live one, not a network named after the version\n", func() {
 			released := pmock.NewMockReleaseAccess(mockCtrl)
 			svc := &lineageService{ds: ds, ra: released}
-			released.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
-				Return([]*interfaces.Release{{LineageID: "orders", NetworkID: "orders_v1_1_0", Version: "1.1.0"}}, nil).Times(2)
+			released.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
+				Return([]*interfaces.Release{{LineageID: "orders", NetworkID: "orders", Version: "1.1.0", KNVersion: 2}}, nil).Times(2)
 
-			_, err := svc.CheckDrift(ctx, token, "orders", "orders", true, author)
+			_, err := svc.CheckDrift(ctx, token, "orders", "orders_v1_1_0", true, author)
 			_, code := httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_NotLiveNetwork)
 
-			ds.EXPECT().DriftCheck(gomock.Any(), token, "orders", "orders_v1_1_0").Return(drifted, nil)
-			_, err = svc.CheckDrift(ctx, token, "orders", "orders_v1_1_0", false, author)
+			ds.EXPECT().DriftCheck(gomock.Any(), token, "orders", "orders").Return(drifted, nil)
+			_, err = svc.CheckDrift(ctx, token, "orders", "orders", false, author)
 			So(err, ShouldBeNil)
 		})
 

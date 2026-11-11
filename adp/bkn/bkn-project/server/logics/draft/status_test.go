@@ -361,39 +361,49 @@ func Test_ProjectStatus(t *testing.T) {
 
 		Convey("A release by the project of its current confirmation makes it published\n", func() {
 			passed := checkOf("c1", interfaces.CHECK_STATUS_PASSED)
-			release := &interfaces.Release{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 100}
+			release := &interfaces.Release{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply", KNVersion: 3,
+				State: interfaces.RELEASE_STATE_PUBLISHED, CreateTime: 100}
 
-			Convey("Consumers not yet on it wait for the owner to switch them\n", func() {
+			Convey("The owner may then review rolling it back\n", func() {
 				s := status(project(), confirmed(), passed, owner, fresh)
 				withRelease(s, project(), release, nil, owner)
 
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
-				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply_v1_1_0"})
+				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply", KNVersion: 3})
+				So(s.Blockers, ShouldBeEmpty)
 				So(action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldBeNil)
-				So(*action(s, interfaces.ACTION_SWITCH_CONSUMERS), ShouldResemble, interfaces.ProjectStatusNextAction{
-					Action: interfaces.ACTION_SWITCH_CONSUMERS, Method: "POST", Path: "/projects/p1/switches",
-					Body: map[string]any{"to_network_id": "supply_v1_1_0"}, Allowed: true,
-				})
-
-				s = status(project(), confirmed(), passed, editor, fresh)
-				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply"}, editor)
-				So(action(s, interfaces.ACTION_SWITCH_CONSUMERS).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
-			})
-
-			Convey("Consumers already on it leave nothing to switch\n", func() {
-				s := status(project(), confirmed(), passed, owner, fresh)
-				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, owner)
-
-				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
-				So(s.Release.InUse, ShouldBeTrue)
-				So(action(s, interfaces.ACTION_SWITCH_CONSUMERS), ShouldBeNil)
-				So(*action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldResemble, interfaces.ProjectStatusNextAction{
+				So(s.NextActions[0], ShouldResemble, interfaces.ProjectStatusNextAction{
 					Action: interfaces.ACTION_REVIEW_ROLLBACK, Method: "GET", Path: "/projects/p1/rollback-plan", Allowed: true,
 				})
+
 				other := interfaces.AccountInfo{ID: "u9", Type: "user"}
 				s = status(project(), confirmed(), passed, other, fresh)
-				withRelease(s, project(), release, &interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, other)
+				withRelease(s, project(), release, nil, other)
+				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK).Allowed, ShouldBeFalse)
 				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
+			})
+
+			Convey("Rolled back, it says which version runs and offers publishing again, not rolling back\n", func() {
+				s := status(project(), confirmed(), passed, owner, fresh)
+				withRelease(s, project(), release, &interfaces.KNVersion{Version: 2, Label: "v1.0.0"}, owner)
+
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
+				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply", KNVersion: 3,
+					RolledBack: true, Running: &interfaces.ProjectStatusRunning{KNVersion: 2, Label: "v1.0.0"}})
+				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldBeNil)
+				review := action(s, interfaces.ACTION_REVIEW_RELEASE)
+				So(review, ShouldNotBeNil)
+				So(review.Allowed, ShouldBeTrue)
+				So(review.Path, ShouldEqual, "/projects/p1/release-review?version=1.1.1")
+			})
+
+			Convey("Running the release's own version, it stays published with rolling back offered\n", func() {
+				s := status(project(), confirmed(), passed, owner, fresh)
+				withRelease(s, project(), release, &interfaces.KNVersion{Version: 3, Label: "v1.1.0"}, owner)
+
+				So(s.Release.RolledBack, ShouldBeFalse)
+				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldNotBeNil)
+				So(action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldBeNil)
 			})
 
 			Convey("A partial check published is published, its blocker settled\n", func() {
@@ -697,7 +707,7 @@ func Test_GetStatus(t *testing.T) {
 			So(s.Blockers, ShouldBeEmpty)
 		})
 
-		Convey("A current confirmation is read against the lineage's newest release and switch\n", func() {
+		Convey("A current confirmation is read against the lineage's newest published release\n", func() {
 			d := confirmableDraft()
 			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: d.UpdateTime, Commit: "c1", Time: 100}
 			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(project, false, nil)
@@ -705,20 +715,21 @@ func Test_GetStatus(t *testing.T) {
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
 
 			Convey("A release of it is published\n", func() {
-				ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "supply", Limit: 1}).Return(
-					[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 200}}, nil)
-				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(&interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, true, nil)
+				ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "supply",
+					State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).Return(
+					[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply", KNVersion: 2,
+						State: interfaces.RELEASE_STATE_PUBLISHED, CreateTime: 200}}, nil)
 
 				s, err := svc.GetStatus(ctx, token, "p1", caller)
 
 				So(err, ShouldBeNil)
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
-				So(s.Release.InUse, ShouldBeTrue)
+				So(s.Release.KNVersion, ShouldEqual, 2)
+				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldNotBeNil)
 			})
 
 			Convey("Before any release, reviewing suggests the first version\n", func() {
 				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
 
 				s, err := svc.GetStatus(ctx, token, "p1", caller)
 
@@ -733,15 +744,6 @@ func Test_GetStatus(t *testing.T) {
 
 			Convey("A failure to read the releases is an internal error\n", func() {
 				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
-
-				_, err := svc.GetStatus(ctx, token, "p1", caller)
-
-				shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
-			})
-
-			Convey("A failure to read the switches is an internal error\n", func() {
-				ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-				ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, errors.New("db down"))
 
 				_, err := svc.GetStatus(ctx, token, "p1", caller)
 
@@ -1051,8 +1053,7 @@ func Test_GetStatus(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(
-				[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply_v1_1_0", CreateTime: 200}}, nil)
-			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(&interfaces.Switch{ToNetworkID: "supply_v1_1_0"}, true, nil)
+				[]*interfaces.Release{{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply", KNVersion: 2, CreateTime: 200}}, nil)
 
 			s, err := svc.GetStatus(ctx, token, "p1", caller)
 
@@ -1075,7 +1076,6 @@ func Test_GetStatus(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
 
 			s, err := svc.GetStatus(ctx, token, "p1", caller)
 
@@ -1161,7 +1161,6 @@ func Test_GetStatus(t *testing.T) {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			ra.EXPECT().GetLatestSwitch(gomock.Any(), "supply").Return(nil, false, nil)
 
 			s, err := svc.GetStatus(ctx, token, "p1", caller)
 

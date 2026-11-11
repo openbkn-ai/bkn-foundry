@@ -17,6 +17,45 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockBknAgentVersionAccess is a mock of BknAgentVersionAccess interface.
+type MockBknAgentVersionAccess struct {
+	ctrl     *gomock.Controller
+	recorder *MockBknAgentVersionAccessMockRecorder
+	isgomock struct{}
+}
+
+// MockBknAgentVersionAccessMockRecorder is the mock recorder for MockBknAgentVersionAccess.
+type MockBknAgentVersionAccessMockRecorder struct {
+	mock *MockBknAgentVersionAccess
+}
+
+// NewMockBknAgentVersionAccess creates a new mock instance.
+func NewMockBknAgentVersionAccess(ctrl *gomock.Controller) *MockBknAgentVersionAccess {
+	mock := &MockBknAgentVersionAccess{ctrl: ctrl}
+	mock.recorder = &MockBknAgentVersionAccessMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockBknAgentVersionAccess) EXPECT() *MockBknAgentVersionAccessMockRecorder {
+	return m.recorder
+}
+
+// CurrentTaskVersion mocks base method.
+func (m *MockBknAgentVersionAccess) CurrentTaskVersion(arg0 context.Context, arg1 interfaces.BknAgentAccount, arg2 string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CurrentTaskVersion", arg0, arg1, arg2)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CurrentTaskVersion indicates an expected call of CurrentTaskVersion.
+func (mr *MockBknAgentVersionAccessMockRecorder) CurrentTaskVersion(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CurrentTaskVersion", reflect.TypeOf((*MockBknAgentVersionAccess)(nil).CurrentTaskVersion), arg0, arg1, arg2)
+}
+
 // MockBknAgentAccess is a mock of BknAgentAccess interface.
 type MockBknAgentAccess struct {
 	ctrl     *gomock.Controller

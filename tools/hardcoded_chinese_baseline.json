@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2423,
+  "violation_count": 2422,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -391,9 +391,6 @@
     ],
     "adp/bkn/ontology-query/server/logics/action_logs/action_logs_service.go": [
       "76a3c707fc92d45711b7"
-    ],
-    "adp/bkn/ontology-query/server/logics/action_type/action_type_service.go": [
-      "d3a6cff656649dde8f68"
     ],
     "adp/bkn/ontology-query/server/logics/common.go": [
       "2681bac9a67fd71bf325",

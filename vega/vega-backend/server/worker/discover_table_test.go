@@ -63,8 +63,10 @@ func TestReconcileTableResources(t *testing.T) {
 		connector := vmock.NewMockTableConnector(ctrl)
 		dh := &DiscoverTaskWorker{rs: rs}
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "users", Status: interfaces.ResourceStatusActive}
-		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+		rs.EXPECT().InternalCreate(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+				assert.Empty(t, req.SchemaDefinition)
 				require.NotNil(t, req.Builtin)
 				assert.True(t, *req.Builtin)
 				assert.Equal(t, "users", req.Name)
@@ -218,6 +220,43 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 }
 
 func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
+	t.Run("does not preserve a previous type default as a stored override", func(t *testing.T) {
+		for _, nextType := range []string{interfaces.DataType_Binary, interfaces.DataType_Integer} {
+			t.Run(nextType, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				rs := vmock.NewMockResourceService(ctrl)
+				connector := vmock.NewMockTableConnector(ctrl)
+				nextDefault := (&interfaces.Property{Type: nextType}).EffectiveFilterable()
+				previousType := interfaces.DataType_Integer
+				if nextType == interfaces.DataType_Integer {
+					previousType = interfaces.DataType_Binary
+				}
+				// Internal reads complete the historical missing flag for the old type.
+				property := &interfaces.Property{Name: "field", Type: previousType}
+				property.SetDefaultFilterable()
+				resource := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{property}}
+				table := &interfaces.TableMeta{Name: "orders"}
+				connector.EXPECT().GetTableMeta(gomock.Any(), table, false).DoAndReturn(
+					func(_ context.Context, metadata *interfaces.TableMeta, _ bool) error {
+						metadata.Columns = []interfaces.TableColumnMeta{{Name: "field", Type: "new_source_type", Filterable: &nextDefault}}
+						return nil
+					})
+				connector.EXPECT().MapType("new_source_type").Return(nextType)
+				rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+						require.Len(t, got.SchemaDefinition, 1)
+						assert.Equal(t, nextType, got.SchemaDefinition[0].Type)
+						require.NotNil(t, got.SchemaDefinition[0].Filterable)
+						assert.Equal(t, nextDefault, *got.SchemaDefinition[0].Filterable)
+						return nil
+					})
+				require.NoError(t, (&DiscoverTaskWorker{rs: rs}).enrichTableMetadata(t.Context(), &interfaces.DiscoverTask{}, connector,
+					[]tableDiscoverItem{{resource: resource, tableMeta: table}}, &interfaces.DiscoverResult{},
+					&discoverTaskReconcileProgress{lastProgress: 95}))
+			})
+		}
+	})
+
 	ctrl := gomock.NewController(t)
 	rs := vmock.NewMockResourceService(ctrl)
 	dh := &DiscoverTaskWorker{rs: rs}

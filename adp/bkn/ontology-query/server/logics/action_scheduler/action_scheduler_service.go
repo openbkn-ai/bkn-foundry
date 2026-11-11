@@ -8,6 +8,7 @@ package action_scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
-	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
@@ -92,6 +92,9 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 	if !exists {
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
 	}
+	if err := validateActionOperation(&actionType); err != nil {
+		return actionTargetError(ctx, err.Error())
+	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
 			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
@@ -132,7 +135,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		attr.Key("action_type_id").String(req.ActionTypeID),
 	)
 
-	// Get action type from ontology-manager first (needed for both scan mode and normal mode)
+	// Load the published single-operation definition before target resolution.
 	actionType, actionTypeSnapshot, exists, err := s.omAccess.GetActionType(ctx, req.KNID, req.Branch, req.ActionTypeID)
 	if err != nil {
 		logger.Errorf("Failed to get action type: %v", err)
@@ -147,6 +150,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 			WithErrorDetails(fmt.Sprintf("Action type not found: %s", req.ActionTypeID))
 	}
 
+	if err := validateActionOperation(&actionType); err != nil {
+		return nil, actionTargetError(ctx, err.Error())
+	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
 			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
@@ -185,8 +191,8 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		}
 	}
 
-	// Get instances based on action type configuration and request parameters
-	instances, objDatas, err := s.getInstancesForAction(ctx, &actionType, req.KNID, req.Branch, req.InstanceIdentities)
+	// Resolve the explicitly requested operation targets.
+	instances, objDatas, err := s.getInstancesForAction(ctx, &actionType, req)
 	if err != nil {
 		return nil, err
 	}
@@ -194,15 +200,21 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Set instances and object data to request
 	req.Instances = instances
 	req.ObjDatas = objDatas
+	for index, data := range objDatas {
+		if _, err := s.buildExecutionParams(&actionType, data, req.DynamicParams, instances[index].InstanceIdentity); err != nil {
+			identity, _ := json.Marshal(instances[index].InstanceIdentity)
+			return nil, actionTargetError(ctx, fmt.Sprintf("target %d identity %s: %v", index+1, identity, err))
+		}
+	}
 
-	// If no matching instances found after scanning, return appropriate response
+	// Never accept an execution without a resolved target context.
 	if len(req.Instances) == 0 {
 		logger.Infof("No matching instances found for action type %s", req.ActionTypeID)
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails("No matching instances found for the action type condition")
 	}
 
-	logger.Infof("Found %d matching instances for action type %s", len(req.Instances), req.ActionTypeID)
+	logger.Infof("Resolved %d explicit targets for action type %s", len(req.Instances), req.ActionTypeID)
 	span.SetAttributes(attr.Key("instances_count").Int(len(req.Instances)))
 
 	// Check execution objects limit. A condition scan stops one object past the
@@ -214,7 +226,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 				logics.ActionExecutionMaxObjects))
 	}
 
-	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams)
+	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
 	if err != nil {
 		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
@@ -414,7 +426,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		startTime := time.Now().UnixMilli()
 
 		// Build parameters for this object
-		params, err := s.buildExecutionParams(actionType, objData, req.DynamicParams)
+		params, err := s.buildExecutionParams(actionType, objData, req.DynamicParams, req.Instances[i].InstanceIdentity)
 		if err != nil {
 			endTime := time.Now().UnixMilli()
 			results.add(interfaces.ObjectExecutionResult{
@@ -430,7 +442,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		}
 
 		// Execute based on action source type
-		params, result, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params, req.DynamicParams)
+		params, result, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params)
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
@@ -498,18 +510,11 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		execution.ID, successCount, failedCount, cancelledCount)
 }
 
-// resolveExecutionMode decides whether the tool has to be invoked once per matched instance.
-//
-// A parameter sourced from an instance property makes every instance resolve a different
-// parameter set, so each instance needs its own invocation. Without any such parameter every
-// matched instance resolves a byte-identical parameter set — const values and the
-// execution-level dynamic_params are the only inputs — and invoking once per instance would
-// submit the very same request N times, i.e. repeat the same side effect N times.
+// resolveExecutionMode runs object and relation operations for each explicit target.
+// Independent tool calls have one execution context and one invocation.
 func resolveExecutionMode(actionType *interfaces.ActionType) string {
-	for _, param := range actionType.Parameters {
-		if param.ValueFrom == interfaces.LOGIC_PARAMS_VALUE_FROM_PROP {
-			return interfaces.ExecutionModePerInstance
-		}
+	if actionType.OperationConfig != nil && actionType.OperationConfig.Type != "tool" {
+		return interfaces.ExecutionModePerInstance
 	}
 	return interfaces.ExecutionModeOnce
 }
@@ -518,7 +523,7 @@ func resolveExecutionMode(actionType *interfaces.ActionType) string {
 // were actually submitted, so the recorded result reflects the real request payload.
 func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 	permissionSnapshot []interfaces.PermissionRequirement, actionType *interfaces.ActionType,
-	params map[string]any, dynamicParams map[string]any) (map[string]any, any, error) {
+	params map[string]any) (map[string]any, any, error) {
 	if err := s.authorizeExecution(ctx, permissionSnapshot); err != nil {
 		return params, nil, err
 	}
@@ -531,8 +536,6 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 		result, err := ExecuteTool(ctx, s.aoAccess, actionType, params)
 		return params, result, err
 	case interfaces.ActionSourceTypeMCP:
-		// MCP tools define their own input schema, so forward dynamic_params not declared by the action type.
-		params = buildMCPParameters(params, dynamicParams)
 		result, err := ExecuteMCP(ctx, s.aoAccess, actionType, params)
 		return params, result, err
 	default:
@@ -585,7 +588,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.ErrorMessage = fmt.Sprintf("Failed to build parameters: %v", err)
 		failedCount = 1
 	} else {
-		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params, req.DynamicParams)
+		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params)
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed
@@ -720,304 +723,55 @@ func (s *actionSchedulerService) flushFinalResults(ctx context.Context, executio
 	}
 }
 
-// getInstancesForAction gets instances based on action type configuration and request parameters.
-// Handles all combinations: bound/unbound object type, with/without identities, action types (add/update/delete).
-func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, actionType *interfaces.ActionType,
-	knID, branch string, instanceIdentities []map[string]any) ([]interfaces.ObjectSystemInfo, []map[string]any, error) {
-
-	var instances []interfaces.ObjectSystemInfo
-	var objDatas []map[string]any
-
-	// Check if object type is bound
-	isObjectTypeBound := actionType.ObjectTypeID != ""
-
-	if !isObjectTypeBound {
-		// Case: unbound object type.
-		if len(instanceIdentities) == 0 {
-			// Case 4: unbound object type + without identities → construct a temporary virtual instance.
-			logger.Infof("Action type %s has no bound object type and no identities provided, creating virtual instance", actionType.ATID)
-			virtualInstance := interfaces.ObjectSystemInfo{
-				InstanceIdentity: map[string]any{},
-			}
-			virtualObjData := map[string]any{}
-			instances = append(instances, virtualInstance)
-			objDatas = append(objDatas, virtualObjData)
-		} else {
-			// Case 5: unbound object type + with identities → construct instances by identities.
-			logger.Infof("Action type %s has no bound object type, constructing instances from identities", actionType.ATID)
-			for _, identity := range instanceIdentities {
-				instanceInfo := interfaces.ObjectSystemInfo{
-					InstanceIdentity: identity,
-				}
-				objData := make(map[string]any)
-				for k, v := range identity {
-					objData[k] = v
-				}
-				instances = append(instances, instanceInfo)
-				objDatas = append(objDatas, objData)
-			}
-		}
-		return instances, objDatas, nil
-	}
-
-	// Case: bound object type.
-	hasIdentities := len(instanceIdentities) > 0
-	isAddAction := actionType.ActionType == "add"
-
-	if !hasIdentities {
-		// Case 1: bound object type + no identities -> scan instances that satisfy the action condition.
-		logger.Infof("No _instance_identities provided, scanning all matching instances for action type %s", actionType.ATID)
-		condition := actionType.Condition
-
-		objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
-			ActualCondition: condition,
-			KNID:            knID,
-			Branch:          branch,
-			ObjectTypeID:    actionType.ObjectTypeID,
-			CommonQueryParameters: interfaces.CommonQueryParameters{
-				IncludeTypeInfo: false,
-			},
-		}
-
-		objects, err := s.ots.ScanObjectsByObjectTypeID(ctx, objectQuery, logics.ActionExecutionMaxObjects)
-		if err != nil {
-			logger.Errorf("Failed to scan matching instances: %v", err)
-			return nil, nil, err
-		}
-		if err := requireCompleteScan(ctx, objects, actionType); err != nil {
-			return nil, nil, err
-		}
-
-		for _, objData := range objects.Datas {
-			instanceInfo := interfaces.ObjectSystemInfo{
-				InstanceIdentity: map[string]any{},
-			}
-			if instance_id, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]; ok {
-				instanceInfo.InstanceID = instance_id
-			}
-			if identity, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY]; ok {
-				if identityMap, ok := identity.(map[string]any); ok {
-					instanceInfo.InstanceIdentity = identityMap
-				}
-			}
-			if display, ok := objData[interfaces.SYSTEM_PROPERTY_DISPLAY]; ok {
-				instanceInfo.Display = display
-			}
-			instances = append(instances, instanceInfo)
-			objDatas = append(objDatas, objData)
-		}
-	} else {
-		// Case: bound object type + with identities.
-		if isAddAction {
-			// Case 2: bound object type + identities + add -> query first; if not found, construct an instance and evaluate conditions; if found, filter by identities and action conditions.
-			logger.Infof("Add action type with identities provided, checking instances first for action type %s", actionType.ATID)
-
-			// First, query instances only by identities (without action condition)
-			instanceCondition := logics.BuildInstanceIdentitiesCondition(instanceIdentities)
-			instanceQuery := &interfaces.ObjectQueryBaseOnObjectType{
-				ActualCondition: instanceCondition,
-				PageQuery: interfaces.PageQuery{
-					Limit:     interfaces.MAX_LIMIT,
-					NeedTotal: true,
-				},
-				KNID:         knID,
-				Branch:       branch,
-				ObjectTypeID: actionType.ObjectTypeID,
-				CommonQueryParameters: interfaces.CommonQueryParameters{
-					IncludeTypeInfo: false,
-				},
-			}
-
-			instanceObjects, err := s.ots.GetObjectsByObjectTypeID(ctx, instanceQuery)
-			if err != nil {
-				logger.Errorf("Failed to query instances by identities: %v", err)
-				return nil, nil, err
-			}
-
-			if len(instanceObjects.Datas) == 0 {
-				// All instances not found: construct instances from identities and evaluate condition
-				logger.Infof("No instances found by identities, constructing instances and evaluating condition")
-				objectType, exists, err := s.omAccess.GetObjectType(ctx, knID, branch, actionType.ObjectTypeID)
-				if err != nil {
-					logger.Errorf("Failed to get object type: %v", err)
-					if versionErr, ok := logics.KNVersionError(ctx, err); ok {
-						return nil, nil, versionErr
-					}
-					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
-						WithErrorDetails(fmt.Sprintf("Failed to get object type: %v", err))
-				}
-				if !exists {
-					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
-						WithErrorDetails(fmt.Sprintf("Object type not found: %s", actionType.ObjectTypeID))
-				}
-
-				for _, identity := range instanceIdentities {
-					// Evaluate condition if exists
-					if actionType.Condition != nil {
-						satisfies, err := logics.EvaluateInstanceAgainstCondition(ctx, identity, actionType.Condition, &objectType)
-						if err != nil {
-							logger.Errorf("Error evaluating condition for instance[%v], error: %v", identity, err)
-							continue
-						}
-						if !satisfies {
-							// Condition not satisfied, skip
-							continue
-						}
-					}
-
-					// Condition satisfied (or no condition), construct instance
-					instanceInfo := interfaces.ObjectSystemInfo{
-						InstanceIdentity: identity,
-					}
-					objData := make(map[string]any)
-					for k, v := range identity {
-						objData[k] = v
-					}
-					instances = append(instances, instanceInfo)
-					objDatas = append(objDatas, objData)
-				}
-			} else {
-				// Instances found: filter by identities and action condition
-				logger.Infof("Instances found by identities, filtering by action condition")
-				var condition *cond.CondCfg
-				if actionType.Condition != nil {
-					condition = &cond.CondCfg{
-						Operation: "and",
-						SubConds:  []*cond.CondCfg{instanceCondition, actionType.Condition},
-					}
-				} else {
-					condition = instanceCondition
-				}
-
-				filteredQuery := &interfaces.ObjectQueryBaseOnObjectType{
-					ActualCondition: condition,
-					KNID:            knID,
-					Branch:          branch,
-					ObjectTypeID:    actionType.ObjectTypeID,
-					CommonQueryParameters: interfaces.CommonQueryParameters{
-						IncludeTypeInfo: false,
-					},
-				}
-
-				filteredObjects, err := s.ots.ScanObjectsByObjectTypeID(ctx, filteredQuery, logics.ActionExecutionMaxObjects)
-				if err != nil {
-					logger.Errorf("Failed to filter instances: %v", err)
-					return nil, nil, err
-				}
-				if err := requireCompleteScan(ctx, filteredObjects, actionType); err != nil {
-					return nil, nil, err
-				}
-
-				for _, objData := range filteredObjects.Datas {
-					instanceInfo := interfaces.ObjectSystemInfo{
-						InstanceIdentity: map[string]any{},
-					}
-					if instance_id, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]; ok {
-						instanceInfo.InstanceID = instance_id
-					}
-					if identity, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY]; ok {
-						if identityMap, ok := identity.(map[string]any); ok {
-							instanceInfo.InstanceIdentity = identityMap
-						}
-					}
-					if display, ok := objData[interfaces.SYSTEM_PROPERTY_DISPLAY]; ok {
-						instanceInfo.Display = display
-					}
-					instances = append(instances, instanceInfo)
-					objDatas = append(objDatas, objData)
-				}
-			}
-		} else {
-			// Case 3: bound object type + identities + update/delete -> filter instances by identities and action conditions.
-			logger.Infof("_instance_identities provided, filtering instances by identities and action condition for action type %s", actionType.ATID)
-			var condition *cond.CondCfg
-			instanceCondition := logics.BuildInstanceIdentitiesCondition(instanceIdentities)
-			if actionType.Condition != nil {
-				condition = &cond.CondCfg{
-					Operation: "and",
-					SubConds:  []*cond.CondCfg{instanceCondition, actionType.Condition},
-				}
-			} else {
-				condition = instanceCondition
-			}
-
-			objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
-				ActualCondition: condition,
-				KNID:            knID,
-				Branch:          branch,
-				ObjectTypeID:    actionType.ObjectTypeID,
-				CommonQueryParameters: interfaces.CommonQueryParameters{
-					IncludeTypeInfo: false,
-				},
-			}
-
-			objects, err := s.ots.ScanObjectsByObjectTypeID(ctx, objectQuery, logics.ActionExecutionMaxObjects)
-			if err != nil {
-				logger.Errorf("Failed to filter matching instances: %v", err)
-				return nil, nil, err
-			}
-			if err := requireCompleteScan(ctx, objects, actionType); err != nil {
-				return nil, nil, err
-			}
-
-			for _, objData := range objects.Datas {
-				instanceInfo := interfaces.ObjectSystemInfo{
-					InstanceIdentity: map[string]any{},
-				}
-				if instance_id, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]; ok {
-					instanceInfo.InstanceID = instance_id
-				}
-				if identity, ok := objData[interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY]; ok {
-					if identityMap, ok := identity.(map[string]any); ok {
-						instanceInfo.InstanceIdentity = identityMap
-					}
-				}
-				if display, ok := objData[interfaces.SYSTEM_PROPERTY_DISPLAY]; ok {
-					instanceInfo.Display = display
-				}
-				instances = append(instances, instanceInfo)
-				objDatas = append(objDatas, objData)
-			}
-		}
-	}
-
-	return instances, objDatas, nil
-}
-
-// requireCompleteScan rejects an execution whose match set could not be read
-// to the end, instead of running on the part that was read.
-func requireCompleteScan(ctx context.Context, objects interfaces.Objects, actionType *interfaces.ActionType) error {
-	if !objects.Incomplete {
-		return nil
-	}
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-		WithErrorDetails(fmt.Sprintf("object type [%s] matches %d objects but cannot be read past the first %d: "+
-			"map its primary keys to resource fields", actionType.ObjectTypeID, objects.TotalCount, len(objects.Datas)))
-}
-
 // buildExecutionParams builds the execution parameters from action type parameters and object data.
 // Uses getNestedValue to support dot-separated nested parameter names (e.g. "props.headers").
 func (s *actionSchedulerService) buildExecutionParams(actionType *interfaces.ActionType,
-	instance map[string]any, dynamicParams map[string]any) (map[string]any, error) {
-
+	instance map[string]any, dynamicParams map[string]any, identities ...map[string]any) (map[string]any, error) {
 	params := make(map[string]any)
-
 	for _, param := range actionType.Parameters {
+		var value any
 		switch param.ValueFrom {
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_PROP:
-			if propName, ok := param.Value.(string); ok {
-				if val := getNestedValue(instance, propName); val != nil {
-					setNestedValue(params, param.Name, val)
-				}
+			propName, ok := param.Value.(string)
+			if !ok || propName == "" {
+				return nil, fmt.Errorf("parameter %q requires a property name", param.Name)
+			}
+			value = getNestedValue(instance, propName)
+			if value == nil {
+				return nil, fmt.Errorf("missing property %q for parameter %q", propName, param.Name)
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-			setNestedValue(params, param.Name, param.Value)
+			value = param.Value
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
-			if val := logics.ActionDynamicParamGetValue(dynamicParams, param.Name); val != nil {
-				setNestedValue(params, param.Name, val)
+			value = logics.ActionDynamicParamGetValue(dynamicParams, param.Name)
+			if value == nil {
+				return nil, fmt.Errorf("missing dynamic input %q", param.Name)
 			}
+		case "source_identity", "target_identity":
+			if actionType.OperationConfig == nil || actionType.OperationConfig.Type != "relation" || len(identities) != 1 {
+				return nil, fmt.Errorf("parameter %q requires a resolved relation target", param.Name)
+			}
+			endpoint := "source"
+			if param.ValueFrom == "target_identity" {
+				endpoint = "target"
+			}
+			identity, ok := identities[0][endpoint].(map[string]any)
+			if !ok || len(identity) != 1 {
+				return nil, fmt.Errorf("parameter %q requires one endpoint primary key", param.Name)
+			}
+			for _, item := range identity {
+				value = item
+			}
+			if value == nil {
+				return nil, fmt.Errorf("parameter %q has a missing endpoint identity", param.Name)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported value_from %q for parameter %q", param.ValueFrom, param.Name)
 		}
+		if err := logics.ValidateActionValue(param.Type, value); err != nil {
+			return nil, fmt.Errorf("parameter %q: %w", param.Name, err)
+		}
+		setNestedValue(params, param.Name, value)
 	}
-
 	return params, nil
 }

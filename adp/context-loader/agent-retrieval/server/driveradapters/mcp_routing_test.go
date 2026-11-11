@@ -157,3 +157,25 @@ func TestCompactRouteSitsBesideTheFullRoute(t *testing.T) {
 		}
 	}
 }
+
+// A client that registers the endpoint without the trailing slash must reach the
+// MCP server directly. Gin answers /mcp with a 307 to /mcp/ when only the
+// catch-all is registered, and clients that refuse redirects (the execution
+// factory does, on purpose) then see an empty response instead of MCP.
+func TestMCPServedWithoutTrailingSlashRedirect(t *testing.T) {
+	engine, hit := newRegisteredRouter(t)
+
+	for path, want := range map[string]string{
+		"/api/agent-retrieval/v1/mcp":         "mcp",
+		"/api/agent-retrieval/v1/mcp-compact": "mcp-compact",
+	} {
+		for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
+			*hit = ""
+			w := serveRoute(engine, method, path)
+			if w.Code != http.StatusOK || *hit != want {
+				t.Fatalf("%s %s: status %d (Location %q) reached %q, want 200 and %q",
+					method, path, w.Code, w.Header().Get("Location"), *hit, want)
+			}
+		}
+	}
+}

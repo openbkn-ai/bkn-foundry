@@ -65,37 +65,37 @@ func Test_ListLogicNeeds(t *testing.T) {
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
 		live := func() {
-			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", Limit: 1}).
-				Return([]*interfaces.Release{{NetworkID: "kn1_v2"}}, nil)
+			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
+				Return([]*interfaces.Release{{NetworkID: "kn1"}}, nil)
 		}
 
 		Convey("Each linked implementation is read live from the live network, once per list\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linkSpec(), true, nil)
 			live()
-			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1_v2").Return([]string{"customer", "carrier"}, nil)
-			bba.EXPECT().GetObjectMetric(gomock.Any(), token, "kn1_v2", "m1").Return(&interfaces.KNObjectMetric{ID: "m1",
+			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return([]string{"customer", "carrier"}, nil)
+			bba.EXPECT().GetObjectMetric(gomock.Any(), token, "kn1", "m1").Return(&interfaces.KNObjectMetric{ID: "m1",
 				Version: 3, Name: "Late rate", Description: "late share", Status: "published",
 				OwnerObjectTypeID: "customer", OwnerObjectTypeName: "Customer"}, nil)
 			// A function is read from the functions, an API from those bound from OpenAPI.
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_FUNCTION, "").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
 				[]*interfaces.KNCapability{
 					{CapabilityID: "f1", BoxID: "box2", Name: "Other box"},
 					{CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d", Status: "enabled"},
 					{CapabilityID: "f2", BoxID: "box1", Name: "Rates", MetadataType: "openapi"},
 				}, nil).Times(1)
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_FUNCTION, "openapi").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "openapi").Return(
 				[]*interfaces.KNCapability{{CapabilityID: "f2", BoxID: "box1", Name: "Rates", MetadataType: "openapi"}}, nil).Times(1)
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_SKILL, "").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(
 				[]*interfaces.KNCapability{{CapabilityID: "s1", Name: "Triage"}}, nil)
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_MCP_TOOL, "").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_MCP_TOOL, "").Return(
 				[]*interfaces.KNCapability{{CapabilityID: "lookup", BoxID: "mcp1", Name: "Lookup"}}, nil)
-			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1_v2", "").Return(
+			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
 				[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
 
 			got, err := svc.ListLogicNeeds(ctx, token, "p1")
 
 			So(err, ShouldBeNil)
-			So(got.NetworkID, ShouldEqual, "kn1_v2")
+			So(got.NetworkID, ShouldEqual, "kn1")
 			So(got.UpdateTime, ShouldEqual, 7)
 			So(got.Reason, ShouldBeEmpty)
 			So(got.Needs, ShouldHaveLength, 9)
@@ -154,7 +154,7 @@ func Test_ListLogicNeeds(t *testing.T) {
 		Convey("Object types the live network does not answer leave no live object types and say why\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
 			live()
-			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1_v2").Return(nil, backendErr(http.StatusForbidden, "x"))
+			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return(nil, backendErr(http.StatusForbidden, "x"))
 
 			got, err := svc.ListLogicNeeds(ctx, token, "p1")
 
@@ -166,12 +166,12 @@ func Test_ListLogicNeeds(t *testing.T) {
 		Convey("A project without a specification has no needs, which is no error; a failed release read is one\n", func() {
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
 			live()
-			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1_v2").Return([]string{}, nil)
+			bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return([]string{}, nil)
 			got, err := svc.ListLogicNeeds(ctx, token, "p1")
 			So(err, ShouldBeNil)
 			So(got.Needs, ShouldBeEmpty)
 			So(got.Released, ShouldBeTrue)
-			So(got.NetworkID, ShouldEqual, "kn1_v2")
+			So(got.NetworkID, ShouldEqual, "kn1")
 
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
 			rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
@@ -251,7 +251,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linkSpec(), true, nil).AnyTimes()
-		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{{NetworkID: "kn1_v2"}}, nil).AnyTimes()
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{{NetworkID: "kn1"}}, nil).AnyTimes()
 		idsOf := func(c *interfaces.LogicNeedCandidates) []string {
 			out := []string{}
 			for _, x := range c.Candidates {
@@ -262,7 +262,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 
 		Convey("Metrics of the same name come first, then similar names, then those of the need's object types\n", func() {
 			// n1 is "Late rate" on sales_order and customer.
-			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1_v2", "").Return([]*interfaces.KNObjectMetric{
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return([]*interfaces.KNObjectMetric{
 				{ID: "other_type", Name: "Order count", OwnerObjectTypeID: "customer"},
 				{ID: "unrelated", Name: "Stock level", OwnerObjectTypeID: "warehouse"},
 				{ID: "similar", Name: "Late rate daily", OwnerObjectTypeID: "warehouse"},
@@ -273,7 +273,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 			got, err := svc.LogicNeedCandidates(ctx, token, "p1", "n1")
 
 			So(err, ShouldBeNil)
-			So(got.NetworkID, ShouldEqual, "kn1_v2")
+			So(got.NetworkID, ShouldEqual, "kn1")
 			So(got.Reason, ShouldBeEmpty)
 			So(idsOf(got), ShouldResemble, []string{"same_on_type", "same", "similar", "other_type"})
 			So(got.Candidates[0], ShouldResemble, &interfaces.LogicNeedCandidate{Type: interfaces.LOGIC_LINK_OBJECT_METRIC,
@@ -289,7 +289,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 				metrics = append(metrics, &interfaces.KNObjectMetric{ID: fmt.Sprintf("m%d", i), Name: fmt.Sprintf("x%d", i),
 					OwnerObjectTypeID: "customer"})
 			}
-			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1_v2", "").Return(metrics, nil)
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(metrics, nil)
 
 			got, err := svc.LogicNeedCandidates(ctx, token, "p1", "n1")
 
@@ -298,7 +298,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 		})
 
 		Convey("An API need is offered the functions bound from OpenAPI descriptions\n", func() {
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_FUNCTION, "openapi").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "openapi").Return(
 				[]*interfaces.KNCapability{{CapabilityID: "f2", BoxID: "box1", Name: "Rates", Description: "d"}}, nil)
 
 			got, err := svc.LogicNeedCandidates(ctx, token, "p1", "n5")
@@ -309,7 +309,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 		})
 
 		Convey("A function need is offered every bound function\n", func() {
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_FUNCTION, "").Return(
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
 				[]*interfaces.KNCapability{{CapabilityID: "f1", BoxID: "box1", Name: "window check"}}, nil)
 
 			got, err := svc.LogicNeedCandidates(ctx, token, "p1", "n4")
@@ -324,7 +324,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 			ra2 := pmock.NewMockRequirementAccess(ctrl)
 			svc.ra = ra2
 			ra2.EXPECT().GetRequirement(gomock.Any(), "p1").Return(req, true, nil)
-			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1_v2", "").Return([]*interfaces.KNActionType{
+			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return([]*interfaces.KNActionType{
 				{ID: "a2", Name: "Release order", ObjectTypeID: "sales_order"},
 				{ID: "a3", Name: "Ship", ObjectTypeID: "carrier"},
 				{ID: "a1", Name: "Hold order", ObjectTypeID: "carrier"},
@@ -338,7 +338,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 		})
 
 		Convey("A list the network does not answer leaves no candidates and says why\n", func() {
-			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1_v2", "").Return(nil, backendErr(http.StatusNotFound, ""))
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(nil, backendErr(http.StatusNotFound, ""))
 
 			got, err := svc.LogicNeedCandidates(ctx, token, "p1", "n1")
 
@@ -346,7 +346,7 @@ func Test_LogicNeedCandidates(t *testing.T) {
 			So(got.Reason, ShouldEqual, interfaces.LOGIC_IMPLEMENTATION_UNAVAILABLE)
 			So(got.Candidates, ShouldResemble, []*interfaces.LogicNeedCandidate{})
 
-			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1_v2", interfaces.LOGIC_LINK_SKILL, "").Return(nil, backendErr(http.StatusForbidden, "x"))
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(nil, backendErr(http.StatusForbidden, "x"))
 			got, err = svc.LogicNeedCandidates(ctx, token, "p1", "n6")
 			So(err, ShouldBeNil)
 			So(got.Reason, ShouldEqual, interfaces.LOGIC_IMPLEMENTATION_FORBIDDEN)

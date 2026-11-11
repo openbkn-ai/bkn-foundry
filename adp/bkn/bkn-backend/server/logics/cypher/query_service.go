@@ -334,6 +334,12 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(err.Error())
 	}
+	// SKIP $name and LIMIT $name take their values here, so a bound LIMIT
+	// meets the ceiling below exactly as a written one does.
+	if err := bindRowCounts(analyzed, query.Parameters); err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+			WithErrorDetails(err.Error())
+	}
 	if limitExceeded(analyzed) {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT})
 		if renderErr != nil {

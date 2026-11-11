@@ -466,6 +466,20 @@ components:
             过滤条件树。叶节点使用 field、operation、value 和 value_from（const/field）；
             and/or 通过 sub_conditions 嵌套。Override=DELETE 时必填且非空。
 
+            OpenSearch multi_match 要求至少一个已绑定的具体物理字段。fields=["*"] 由 Vega
+            按当前查询 Schema／视图发布范围解析后下推；最终物理字段名为空或包含 `*`、`^` 时返回 400，
+            避免 OpenSearch 将其重新解释为通配或权重表达式，也不允许空列表回退到默认字段。
+            这些字符不能通过添加反斜杠按字面转义；此限制不改变 match／match_phrase 的字段名语义。
+
+            like/not_like 使用完整字符串的 SQL LIKE 模式，不自动补充前后 `%`。
+            `%` 匹配任意长度字符串，`_` 匹配一个字符；反斜杠转义下一个字符，
+            因此 `\%`、`\_`、`\\` 分别匹配字面百分号、下划线和反斜杠。
+            这些示例表示 JSON 解码后的模式文本；在 JSON 字符串中传递时，反斜杠还需按 JSON 规则转义。
+            孤立的结尾反斜杠返回 400；正则 `.*` 和索引通配符 `*`、`?` 在此作为字面字符。
+            例如 `foo` 仅匹配完整值，`%foo%` 表示包含，`foo%` 表示前缀。
+            大小写与排序规则沿用实际连接器。not_like 不匹配 NULL 或缺失精确索引值的记录；
+            TEXT 仍要求 keyword Feature，不因使用 not_like 而绕过此要求。
+
             时间常量：date 为 YYYY-MM-DD；time 为 HH:mm:ss[.fraction]；
             datetime 支持 RFC3339、YYYY-MM-DD HH:mm:ss[.fraction] 或 int64 整数毫秒时间戳
             （JSON 整数或数字字符串）。小数秒支持 1–9 位；无时区 datetime 按服务器 TZ 解释，默认 UTC。

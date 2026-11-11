@@ -4,7 +4,8 @@ info:
   title: BKN 知识网络 · 行动调度 API
   version: 0.1.0
   description: |-
-    Action Schedule management. An action schedule triggers an action type on designated instances according to a cron expression.
+    Action Schedule management. The current schedule contract supports only object modify and delete actions with explicit instance identities.
+    Object creation, relation changes, and independent tool invocation require target fields that this schedule API does not yet store or dispatch; creating or activating such schedules is rejected.
     All APIs are exposed under /api/bkn-backend/v1, require OAuth2 authentication, default the branch query parameter
     to main, and use Unix milliseconds for timestamps.
 security:
@@ -453,7 +454,7 @@ components:
           description: Name, with a maximum length of 100
         action_type_id:
           type: string
-          description: Action type ID, which must exist in the specified knowledge network and branch
+          description: Action type ID, which must identify an object modify or delete operation in the specified knowledge network and branch
         cron_expression:
           type: string
           description: Valid five-field cron expression

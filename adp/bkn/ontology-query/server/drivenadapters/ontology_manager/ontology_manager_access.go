@@ -681,7 +681,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var response struct {
 		ActionTypes []interfaces.ActionType `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = common.UnmarshalPreciseJSON(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal action type info failed")

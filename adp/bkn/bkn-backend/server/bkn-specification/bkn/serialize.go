@@ -528,6 +528,13 @@ func serializeActionType(at *BknActionType, opts serializeOptions) string {
 		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(at.Description))
 	}
 
+	if at.OperationConfig != nil {
+		_, _ = fmt.Fprintf(&sb, "### Operation Config\n\n")
+		payload := struct {
+			OperationConfig *ActionOperationConfig `yaml:"operation_config"`
+		}{at.OperationConfig}
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", encodeYAMLBlock(payload))
+	}
 	// Bound Object
 	_, _ = fmt.Fprintf(&sb, "### Bound Object\n\n")
 	_, _ = fmt.Fprintf(&sb, "| Bound Object |\n")
@@ -581,6 +588,11 @@ func serializeActionType(at *BknActionType, opts serializeOptions) string {
 	_, _ = fmt.Fprintf(&sb, "|------|------|--------|-----------|-----------|-------|-------------|\n")
 	for _, p := range at.Parameters {
 		v := p.Value
+		if at.OperationConfig != nil && p.ValueFrom == "const" {
+			if encoded, err := json.Marshal(p.Value); err == nil {
+				v = string(encoded)
+			}
+		}
 		if v == nil {
 			v = ""
 		}

@@ -116,21 +116,6 @@ func (mr *MockLineageServiceMockRecorder) CreateLineage(ctx, token, knID, author
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLineage", reflect.TypeOf((*MockLineageService)(nil).CreateLineage), ctx, token, knID, author)
 }
 
-// PlanSwitch mocks base method.
-func (m *MockLineageService) PlanSwitch(ctx context.Context, token, lineageID, toNetworkID string) (*interfaces.SwitchPlan, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PlanSwitch", ctx, token, lineageID, toNetworkID)
-	ret0, _ := ret[0].(*interfaces.SwitchPlan)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// PlanSwitch indicates an expected call of PlanSwitch.
-func (mr *MockLineageServiceMockRecorder) PlanSwitch(ctx, token, lineageID, toNetworkID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockLineageService)(nil).PlanSwitch), ctx, token, lineageID, toNetworkID)
-}
-
 // PreflightDefinitions mocks base method.
 func (m *MockLineageService) PreflightDefinitions(ctx context.Context, lineageID, branch string, paths, owned []string) (*interfaces.DefinitionsPreflight, error) {
 	m.ctrl.T.Helper()
@@ -144,6 +129,21 @@ func (m *MockLineageService) PreflightDefinitions(ctx context.Context, lineageID
 func (mr *MockLineageServiceMockRecorder) PreflightDefinitions(ctx, lineageID, branch, paths, owned any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreflightDefinitions", reflect.TypeOf((*MockLineageService)(nil).PreflightDefinitions), ctx, lineageID, branch, paths, owned)
+}
+
+// PrepareRelease mocks base method.
+func (m *MockLineageService) PrepareRelease(ctx context.Context, token, lineageID string, req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo) (*interfaces.Release, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareRelease", ctx, token, lineageID, req, publisher)
+	ret0, _ := ret[0].(*interfaces.Release)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareRelease indicates an expected call of PrepareRelease.
+func (mr *MockLineageServiceMockRecorder) PrepareRelease(ctx, token, lineageID, req, publisher any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareRelease", reflect.TypeOf((*MockLineageService)(nil).PrepareRelease), ctx, token, lineageID, req, publisher)
 }
 
 // PreviewRelease mocks base method.
@@ -174,21 +174,6 @@ func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageI
 func (mr *MockLineageServiceMockRecorder) PublishRelease(ctx, token, lineageID, req, publisher, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishRelease", reflect.TypeOf((*MockLineageService)(nil).PublishRelease), ctx, token, lineageID, req, publisher, author)
-}
-
-// SwitchConsumers mocks base method.
-func (m *MockLineageService) SwitchConsumers(ctx context.Context, token, lineageID string, req interfaces.SwitchRequest, operator interfaces.AccountInfo) (*interfaces.Switch, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SwitchConsumers", ctx, token, lineageID, req, operator)
-	ret0, _ := ret[0].(*interfaces.Switch)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SwitchConsumers indicates an expected call of SwitchConsumers.
-func (mr *MockLineageServiceMockRecorder) SwitchConsumers(ctx, token, lineageID, req, operator any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SwitchConsumers", reflect.TypeOf((*MockLineageService)(nil).SwitchConsumers), ctx, token, lineageID, req, operator)
 }
 
 // SyncBranch mocks base method.

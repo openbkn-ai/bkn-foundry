@@ -132,8 +132,8 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	req.KNID = knID
 	req.Branch = branch
 	req.ActionTypeID = atID
-	// Note: _instance_identities is optional
-	// If not provided, the action will apply to all entities matching the action type's conditions
+	// Target requirements depend on operation_config; missing object or relation
+	// targets are rejected by the scheduler before external invocation.
 
 	// Execute action
 	result, err := r.ass.ExecuteAction(ctx, &req)

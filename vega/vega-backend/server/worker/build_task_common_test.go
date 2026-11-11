@@ -340,6 +340,13 @@ func TestBuildLocalIndexSchemaExcludesBinaryAndOtherFields(t *testing.T) {
 }
 
 func TestBuildLocalIndexSchemaDisablesJSONOnCopy(t *testing.T) {
+	t.Run("corrupt columns do not produce a local index schema", func(t *testing.T) {
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		schema, err := buildLocalIndexSchema(&interfaces.BuildTask{}, resource)
+		require.Error(t, err)
+		assert.Nil(t, schema)
+		assert.Nil(t, resource.SchemaDefinition[0].Attributes)
+	})
 	t.Run("decimal uses authoritative source metadata on the copy", func(t *testing.T) {
 		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT", OriginalType: "numeric", Type: interfaces.DataType_Decimal}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "AMOUNT", NumPrecision: 12, NumScale: 2}}}}
 		schema, err := buildLocalIndexSchema(&interfaces.BuildTask{}, resource)

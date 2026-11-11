@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS t_action_type (
   f_condition TEXT DEFAULT NULL COMMENT '行动条件',
   f_affect TEXT DEFAULT NULL COMMENT '行动影响',
   f_impact_contracts TEXT DEFAULT NULL COMMENT '行动影响契约',
+  f_operation_config TEXT DEFAULT NULL COMMENT '行动操作定义',
   f_action_source VARCHAR(255) NOT NULL COMMENT '行动资源',
   f_parameters TEXT DEFAULT NULL COMMENT '行动参数',
   f_schedule VARCHAR(255) DEFAULT NULL COMMENT '行动监听',

@@ -49,7 +49,8 @@ func (r *objectMetricRecord) metric() *interfaces.KNObjectMetric {
 		Status: d.Lifecycle.Status}
 }
 
-// getJSON reads path under the network, on its main branch, as the caller, into out.
+// getJSON reads path under the network, in its draft, as the caller, into out: what is built in the
+// workspace, metrics above all, is in the draft until it is published.
 func (bba *bknBackendAccess) getJSON(ctx context.Context, name string, token string, knID string, path string,
 	query url.Values, out any) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, name)
@@ -61,7 +62,7 @@ func (bba *bknBackendAccess) getJSON(ctx context.Context, name string, token str
 	if query == nil {
 		query = url.Values{}
 	}
-	query.Set("branch", interfaces.GIT_MAIN_BRANCH)
+	query.Set("kn_version", interfaces.KN_VERSION_DRAFT)
 	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
 	logger.Debugf("%s finished, kn_id is [%s], response code is [%d]", name, knID, respCode)
 	if err != nil {

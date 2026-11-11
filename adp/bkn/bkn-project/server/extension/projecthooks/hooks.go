@@ -21,7 +21,6 @@ import (
 type Hooks struct {
 	Drafts       Drafts
 	Publications Publications
-	Lineages     Lineages
 	Projects     Projects
 }
 
@@ -56,6 +55,8 @@ func Current() Hooks { return current }
 // ReleaseTarget is the release a publication is for.
 type ReleaseTarget struct {
 	ProjectID, LineageID, Branch, BranchCommit, NetworkID string
+	// Version is the release's version; a lineage's network keeps its id across releases.
+	Version string
 	// DeclaredProjectID is the project the release request names, if any.
 	DeclaredProjectID string
 	Publisher         interfaces.AccountInfo
@@ -79,12 +80,6 @@ type Publication interface {
 	Mount(ctx context.Context, token string) error
 	// Activate runs once the release is recorded; a failure does not fail the release.
 	Activate(ctx context.Context) error
-}
-
-// Lineages is what document items add to a lineage.
-type Lineages interface {
-	// CheckSwitch refuses switching the network in use while the edition still writes to it.
-	CheckSwitch(ctx context.Context, lineageID string) error
 }
 
 // Projects is what document items add to a project.

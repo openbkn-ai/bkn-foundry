@@ -72,9 +72,9 @@ func (mr *MockRegressionAccessMockRecorder) FinishRegression(ctx, r any) *gomock
 }
 
 // GetRegression mocks base method.
-func (m *MockRegressionAccess) GetRegression(ctx context.Context, networkID string) (*interfaces.Regression, bool, error) {
+func (m *MockRegressionAccess) GetRegression(ctx context.Context, releaseID string) (*interfaces.Regression, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRegression", ctx, networkID)
+	ret := m.ctrl.Call(m, "GetRegression", ctx, releaseID)
 	ret0, _ := ret[0].(*interfaces.Regression)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
@@ -82,9 +82,9 @@ func (m *MockRegressionAccess) GetRegression(ctx context.Context, networkID stri
 }
 
 // GetRegression indicates an expected call of GetRegression.
-func (mr *MockRegressionAccessMockRecorder) GetRegression(ctx, networkID any) *gomock.Call {
+func (mr *MockRegressionAccessMockRecorder) GetRegression(ctx, releaseID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockRegressionAccess)(nil).GetRegression), ctx, networkID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockRegressionAccess)(nil).GetRegression), ctx, releaseID)
 }
 
 // StartRegression mocks base method.

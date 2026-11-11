@@ -32,6 +32,20 @@ var safeAdminResourceTypes = map[string]string{
 	"profile":                  "user",
 }
 
+// Extension target types are supplied by trusted assembly/handler code. Built-in
+// resource mappings remain authoritative and cannot be changed by an extension.
+func validExtensionTargetType(value string) bool {
+	if len(value) == 0 || len(value) > 64 || value[0] < 'a' || value[0] > 'z' {
+		return false
+	}
+	for _, ch := range value {
+		if ch != '_' && (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 func boundedAuditDisplayName(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	runes := []rune(value)
@@ -50,6 +64,12 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 		return nil, errors.New("invalid Safe Audit environment")
 	}
 	targetType, ok := safeAdminResourceTypes[entry.Resource]
+	if entry.TargetType != "" {
+		if !validExtensionTargetType(entry.TargetType) || (ok && targetType != entry.TargetType) {
+			return nil, errors.New("invalid Safe Audit extension target type")
+		}
+		targetType, ok = entry.TargetType, true
+	}
 	if !ok {
 		return nil, fmt.Errorf("unregistered Safe Audit resource %q", entry.Resource)
 	}

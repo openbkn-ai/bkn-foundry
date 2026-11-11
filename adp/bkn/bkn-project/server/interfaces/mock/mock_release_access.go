@@ -56,50 +56,20 @@ func (mr *MockReleaseAccessMockRecorder) CountReleases(ctx, lineageID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountReleases", reflect.TypeOf((*MockReleaseAccess)(nil).CountReleases), ctx, lineageID)
 }
 
-// CreateRelease mocks base method.
-func (m *MockReleaseAccess) CreateRelease(ctx context.Context, release *interfaces.Release) error {
+// GetRelease mocks base method.
+func (m *MockReleaseAccess) GetRelease(ctx context.Context, lineageID, version string) (*interfaces.Release, bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRelease", ctx, release)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CreateRelease indicates an expected call of CreateRelease.
-func (mr *MockReleaseAccessMockRecorder) CreateRelease(ctx, release any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelease", reflect.TypeOf((*MockReleaseAccess)(nil).CreateRelease), ctx, release)
-}
-
-// GetLatestSwitch mocks base method.
-func (m *MockReleaseAccess) GetLatestSwitch(ctx context.Context, lineageID string) (*interfaces.Switch, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestSwitch", ctx, lineageID)
-	ret0, _ := ret[0].(*interfaces.Switch)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// GetLatestSwitch indicates an expected call of GetLatestSwitch.
-func (mr *MockReleaseAccessMockRecorder) GetLatestSwitch(ctx, lineageID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestSwitch", reflect.TypeOf((*MockReleaseAccess)(nil).GetLatestSwitch), ctx, lineageID)
-}
-
-// GetReleaseByNetworkID mocks base method.
-func (m *MockReleaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID string) (*interfaces.Release, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetReleaseByNetworkID", ctx, networkID)
+	ret := m.ctrl.Call(m, "GetRelease", ctx, lineageID, version)
 	ret0, _ := ret[0].(*interfaces.Release)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// GetReleaseByNetworkID indicates an expected call of GetReleaseByNetworkID.
-func (mr *MockReleaseAccessMockRecorder) GetReleaseByNetworkID(ctx, networkID any) *gomock.Call {
+// GetRelease indicates an expected call of GetRelease.
+func (mr *MockReleaseAccessMockRecorder) GetRelease(ctx, lineageID, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReleaseByNetworkID", reflect.TypeOf((*MockReleaseAccess)(nil).GetReleaseByNetworkID), ctx, networkID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRelease", reflect.TypeOf((*MockReleaseAccess)(nil).GetRelease), ctx, lineageID, version)
 }
 
 // ListReleases mocks base method.
@@ -117,16 +87,45 @@ func (mr *MockReleaseAccessMockRecorder) ListReleases(ctx, query any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListReleases", reflect.TypeOf((*MockReleaseAccess)(nil).ListReleases), ctx, query)
 }
 
-// RecordSwitch mocks base method.
-func (m *MockReleaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) error {
+// MarkPublished mocks base method.
+func (m *MockReleaseAccess) MarkPublished(ctx context.Context, releaseID string, knVersion int, notes string, updateTime int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordSwitch", ctx, sw)
+	ret := m.ctrl.Call(m, "MarkPublished", ctx, releaseID, knVersion, notes, updateTime)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// RecordSwitch indicates an expected call of RecordSwitch.
-func (mr *MockReleaseAccessMockRecorder) RecordSwitch(ctx, sw any) *gomock.Call {
+// MarkPublished indicates an expected call of MarkPublished.
+func (mr *MockReleaseAccessMockRecorder) MarkPublished(ctx, releaseID, knVersion, notes, updateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordSwitch", reflect.TypeOf((*MockReleaseAccess)(nil).RecordSwitch), ctx, sw)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPublished", reflect.TypeOf((*MockReleaseAccess)(nil).MarkPublished), ctx, releaseID, knVersion, notes, updateTime)
+}
+
+// PrepareRelease mocks base method.
+func (m *MockReleaseAccess) PrepareRelease(ctx context.Context, release *interfaces.Release) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareRelease", ctx, release)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareRelease indicates an expected call of PrepareRelease.
+func (mr *MockReleaseAccessMockRecorder) PrepareRelease(ctx, release any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareRelease", reflect.TypeOf((*MockReleaseAccess)(nil).PrepareRelease), ctx, release)
+}
+
+// SavePublishRequest mocks base method.
+func (m *MockReleaseAccess) SavePublishRequest(ctx context.Context, releaseID string, req *interfaces.KNVersionPublish) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SavePublishRequest", ctx, releaseID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SavePublishRequest indicates an expected call of SavePublishRequest.
+func (mr *MockReleaseAccessMockRecorder) SavePublishRequest(ctx, releaseID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePublishRequest", reflect.TypeOf((*MockReleaseAccess)(nil).SavePublishRequest), ctx, releaseID, req)
 }

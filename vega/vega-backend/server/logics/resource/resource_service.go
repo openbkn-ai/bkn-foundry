@@ -33,9 +33,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	model_factory "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/query_error"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/user_mgmt"
 )
 
@@ -60,6 +62,7 @@ type resourceService struct {
 	bta        interfaces.BuildTaskAccess
 	dta        interfaces.DiscoverTaskAccess
 	lim        interfaces.LocalIndexManager
+	cf         interfaces.ConnectorFactory
 	mfs        interfaces.ModelFactoryService
 }
 
@@ -77,6 +80,7 @@ func NewResourceService(appSetting *common.AppSetting, datasetService interfaces
 			bta:        logics.BTA,
 			dta:        logics.DTA,
 			lim:        local_index.NewLocalIndexManager(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 		}
 	})
@@ -131,19 +135,25 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 
-	// Get account info from context
-	accountInfo := interfaces.AccountInfo{}
-	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
-		accountInfo = v.(interfaces.AccountInfo)
-	}
-
 	resourceBuiltin := req.Builtin != nil && *req.Builtin
 	if resourceBuiltin != parentCatalog.Builtin {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails("resource built_in must match its catalog built_in value")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("resource built_in must match its catalog built_in value")
 	}
+	if req.Category != interfaces.ResourceCategoryDataset && req.Category != interfaces.ResourceCategoryLogicalView {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_CategoryNotCreatable).
+			WithErrorDetails("only dataset and logical_view resources can be created by users; physical resources require discovery")
+	}
+	resource, err := rs.InternalCreate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return resource, nil
+}
 
-	now := time.Now().UnixMilli()
+// prepareNewResource 按类别准备并初始化记录；HTTP 基础字段和公开 Dataset 类型规则仍由请求层负责。
+// 内部物理资源保留连接器给出的源 Schema，不执行用户建模的默认值或能力校验。
+func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	id := req.ID
 	if id == "" {
 		generatedID, err := uuid.NewV7()
@@ -153,148 +163,105 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		id = generatedID.String()
 	}
 
-	var logicalType string
-	switch req.Category {
-	case interfaces.ResourceCategoryLogicalView:
-		var viewFields []*interfaces.Property
-		req.SourceMetadata = nil
-		logicalType, viewFields, err = PrepareLogicalView(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		req.SchemaDefinition = viewFields
-		req.SourceIdentifier = id
-		req.Schema = ""
-	}
-	keepStoredPropertyAPINames(nil, req.SchemaDefinition)
-	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
-		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
-	}
-
-	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
-		return nil, err
-	}
-	if req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset {
-		if err := validateKeywordConfig(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
-			return nil, err
-		}
-	}
-	if req.Category == interfaces.ResourceCategoryTable {
-		if err := validateLocalIndexVectorOutputs(ctx, req.SchemaDefinition); err != nil {
-			return nil, err
-		}
-	}
-	if req.Category == interfaces.ResourceCategoryDataset {
-		if err := validateDatasetVectorOutputs(ctx, req.SchemaDefinition); err != nil {
-			return nil, err
-		}
-	}
-	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig, req.Category); err != nil {
-		return nil, err
-	}
-	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
-		return nil, err
-	}
+	now := time.Now().UnixMilli()
+	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	resource := &interfaces.Resource{
-		ID:                    id,
-		CatalogID:             req.CatalogID,
-		Name:                  req.Name,
-		Tags:                  req.Tags,
-		Description:           req.Description,
-		Category:              req.Category,
-		Builtin:               resourceBuiltin,
-		Enabled:               true,
-		Status:                req.Status,
-		Schema:                req.Schema,
-		SourceIdentifier:      req.SourceIdentifier,
-		SourceMetadata:        req.SourceMetadata,
-		SchemaDefinition:      req.SchemaDefinition,
-		IndexConfig:           req.IndexConfig,
-		LocalIndexStatus:      interfaces.ResourceLocalIndexStatusUnavailable,
-		LogicalType:           logicalType,
-		LogicalViewDefinition: req.LogicalViewDefinition,
-		Creator:               accountInfo,
-		CreateTime:            now,
-		Updater:               accountInfo,
-		UpdateTime:            now,
+		ID:               id,
+		CatalogID:        req.CatalogID,
+		Name:             req.Name,
+		Tags:             req.Tags,
+		Description:      req.Description,
+		Category:         req.Category,
+		Builtin:          req.Builtin != nil && *req.Builtin,
+		Enabled:          true,
+		Status:           req.Status,
+		Schema:           req.Schema,
+		SourceIdentifier: req.SourceIdentifier,
+		SourceMetadata:   req.SourceMetadata,
+		SchemaDefinition: req.SchemaDefinition,
+		IndexConfig:      req.IndexConfig,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
+		Creator:          account,
+		CreateTime:       now,
+		Updater:          account,
+		UpdateTime:       now,
 	}
-
-	if err := encodeResourceLogicFields(resource); err != nil {
-		span.SetStatus(codes.Error, "Encode resource definition failed")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails("failed to encode resource definition")
-	}
-
-	if resource.Category == interfaces.ResourceCategoryDataset {
-		if err := rs.ds.Create(ctx, resource); err != nil {
+	switch resource.Category {
+	case interfaces.ResourceCategoryDataset:
+		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
+		AddDefaultStringAndTextFeatures(resource.SchemaDefinition, resource.IndexConfig)
+		if err := validatePropertyFeatures(ctx, resource.SchemaDefinition); err != nil {
 			return nil, err
 		}
-	}
-	creationCompleted := false
-	defer func() {
-		if creationCompleted {
-			return
+		if err := validateKeywordConfig(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+			return nil, err
 		}
-		if resource.Category == interfaces.ResourceCategoryDataset {
-			if cleanupErr := rs.ds.Delete(context.WithoutCancel(ctx), resource); cleanupErr != nil {
-				logger.Errorf("Delete dataset index after resource creation failure: resource %s: %v",
-					resource.ID, cleanupErr)
+		if err := validateDatasetVectorOutputs(ctx, resource.SchemaDefinition); err != nil {
+			return nil, err
+		}
+		// 能力检查必须早于模型调用，并包含省略后将保存为 true 的默认值。
+		completeResourceFilterability(resource)
+		filterabilityEnabled := false
+		for _, property := range resource.SchemaDefinition {
+			if *property.Filterable {
+				filterabilityEnabled = true
+				break
 			}
 		}
-	}()
-
-	tx, err := rs.db.BeginTx(ctx, nil)
-	if err != nil {
-		otellog.LogError(ctx, "Create resource transaction failed", err)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails("failed to create resource")
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	err = rs.ra.Create(ctx, tx, resource)
-	if err != nil {
-		otellog.LogError(ctx, "Create resource failed", err)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails("failed to create resource")
-	}
-
-	if err := tx.Commit(); err != nil {
-		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails("failed to create resource")
-	}
-
-	if resource.CatalogID != "" {
-		parentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
-		err = rs.ps.UpsertResourceParents(parentCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, []interfaces.PermissionResourceParent{{
-				ResourceID: resource.ID, ParentID: resource.CatalogID,
-			}})
-		cancel()
+		if filterabilityEnabled {
+			if err := mapFilterabilityError(ctx, rs.lim.ValidateFilterability(resource.SchemaDefinition)); err != nil {
+				return nil, err
+			}
+		}
+		if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig, resource.Category); err != nil {
+			return nil, err
+		}
+		if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
+			return nil, err
+		}
+	case interfaces.ResourceCategoryLogicalView:
+		logicalType, fields, err := PrepareLogicalView(ctx, req)
 		if err != nil {
-			logger.Errorf("Upsert resource parent after resource creation: resource %s: %v", resource.ID, err)
-			span.SetStatus(codes.Error, "failed to register resource parent")
-
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
-			if cleanupErr := rs.ra.DeleteByIDs(cleanupCtx, []string{resource.ID}, false); cleanupErr != nil {
-				logger.Errorf("Delete resource after parent publication failure: resource %s: %v",
-					resource.ID, cleanupErr)
-			}
-			if cleanupErr := rs.ps.DeleteResourceParents(cleanupCtx,
-				interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID}); cleanupErr != nil {
-				logger.Errorf("Delete resource parent after parent publication failure: resource %s: %v",
-					resource.ID, cleanupErr)
-			}
-			cleanupCancel()
 			return nil, err
 		}
+		resource.LogicalType = logicalType
+		resource.LogicalViewDefinition = req.LogicalViewDefinition
+		resource.SchemaDefinition = fields
+		resource.SourceMetadata = req.SourceMetadata
+		resource.Schema = ""
+		resource.SourceIdentifier = id
+		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
+		if err := validatePropertyFeatures(ctx, resource.SchemaDefinition); err != nil {
+			return nil, err
+		}
+		completeResourceFilterability(resource)
+	default:
+		keepStoredPropertyAPINames(nil, resource.SchemaDefinition)
 	}
-	creationCompleted = true
-
-	span.SetStatus(codes.Ok, "")
+	if err := encodeResourceLogicFields(resource); err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to encode resource definition")
+	}
 	return resource, nil
+}
+
+// mapFilterabilityError 仅转换过滤能力错误，不读取业务对象或选择执行通道。
+func mapFilterabilityError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if httpErr := query_error.DecimalIndexHTTPError(ctx, err); httpErr != nil {
+		return httpErr
+	}
+	if reason, ok := interfaces.RequestSideQueryError(err); ok {
+		return unsupportedResourceUpdateError(ctx, reason)
+	}
+	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails("connector entitlement does not allow filterability validation")
+	}
+	if errors.Is(err, factory.ErrConnectorDisabled) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails("connector is disabled")
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails("failed to validate field filterability")
 }
 
 // Get retrieves a Resource by ID.
@@ -313,6 +280,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	decodeResourceLogicFields(resource)
+	completeResourceFilterability(resource)
 	populateResourceColumnCount(resource)
 
 	// Apply the fixed internal guard before checking resource permissions.
@@ -376,6 +344,7 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id s
 		return nil, err
 	}
 	decodeResourceLogicFields(resource)
+	completeResourceFilterability(resource)
 	populateResourceColumnCount(resource)
 	return resource, nil
 }
@@ -396,6 +365,7 @@ func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (
 	}
 	for _, resource := range resourcesByID {
 		decodeResourceLogicFields(resource)
+		completeResourceFilterability(resource)
 		populateResourceColumnCount(resource)
 	}
 	span.SetStatus(codes.Ok, "")
@@ -414,6 +384,7 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 	}
 	for _, resource := range resources {
 		decodeResourceLogicFields(resource)
+		completeResourceFilterability(resource)
 		populateResourceColumnCount(resource)
 	}
 	span.SetStatus(codes.Ok, "")
@@ -444,6 +415,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 	}
 	for _, resource := range resources {
 		decodeResourceLogicFields(resource)
+		completeResourceFilterability(resource)
 		populateResourceColumnCount(resource)
 	}
 
@@ -529,6 +501,16 @@ func decodeResourceLogicFields(resource *interfaces.Resource) {
 			// Preserve the existing read behavior; view validation handles invalid stored definitions.
 			_ = common.UnmarshalPreciseJSON([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
 		}
+	}
+}
+
+// completeResourceFilterability resolves legacy schemas on read and normal saves.
+func completeResourceFilterability(resource *interfaces.Resource) {
+	if resource == nil {
+		return
+	}
+	for _, property := range resource.SchemaDefinition {
+		property.SetDefaultFilterable()
 	}
 }
 
@@ -734,6 +716,12 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		return err
 	}
 
+	for _, property := range req.SchemaDefinition {
+		if property == nil || property.Filterable == nil {
+			return unsupportedResourceUpdateError(ctx, "schema_definition fields require a boolean filterable")
+		}
+	}
+
 	resource, err := rs.ra.GetByID(ctx, nil, req.ID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
@@ -745,6 +733,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	decodeResourceLogicFields(resource)
+	completeResourceFilterability(resource)
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
@@ -772,6 +761,36 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
+	}
+	if req.SchemaDefinition != nil && resource.Category != interfaces.ResourceCategoryLogicalView {
+		filterabilityEnabled := false
+		for _, property := range req.SchemaDefinition {
+			if *property.Filterable {
+				filterabilityEnabled = true
+				break
+			}
+		}
+		if filterabilityEnabled {
+			var filterabilityErr error
+			switch resource.Category {
+			case interfaces.ResourceCategoryDataset:
+				filterabilityErr = rs.lim.ValidateFilterability(req.SchemaDefinition)
+			default:
+				catalog, err := rs.cs.InternalGetByID(ctx, resource.CatalogID, false)
+				if err != nil {
+					return err
+				}
+				if catalog == nil {
+					return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+				}
+				candidate := *resource
+				candidate.SchemaDefinition = req.SchemaDefinition
+				filterabilityErr = rs.cf.ValidateFilterability(catalog.ConnectorType, &candidate)
+			}
+			if err := mapFilterabilityError(ctx, filterabilityErr); err != nil {
+				return err
+			}
+		}
 	}
 	if resource.Category == interfaces.ResourceCategoryDataset && resource.LocalIndexName != "" {
 		if field := changedDatasetFulltextAnalyzer(resource, req); field != "" {
@@ -835,7 +854,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		resource.IndexConfig = req.IndexConfig
 	}
 
-	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
+	if err := validatePropertyFeatures(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
 	if resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryDataset {
@@ -894,6 +913,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	resource.Updater = accountInfo
 	resource.UpdateTime = now
 
+	completeResourceFilterability(resource)
 	if err := encodeResourceLogicFields(resource); err != nil {
 		span.SetStatus(codes.Error, "Encode resource definition failed")
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
@@ -1032,9 +1052,6 @@ func normalizeJSONNumbers(value any) any {
 
 func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
 	for _, property := range schema {
-		if property == nil {
-			continue
-		}
 		for _, feature := range property.Features {
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
 				continue
@@ -1095,6 +1112,7 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	decodeResourceLogicFields(resource)
+	completeResourceFilterability(resource)
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
@@ -1341,6 +1359,7 @@ func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
 	defer span.End()
 
+	completeResourceFilterability(resource)
 	if err := encodeResourceLogicFields(resource); err != nil {
 		span.SetStatus(codes.Error, "Encode resource definition failed")
 		return err
@@ -1389,12 +1408,18 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 		span.SetStatus(codes.Error, "Resource not found")
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	previousFingerprint, err := ResourceIndexConfigFingerprint(current)
-	if err != nil {
-		span.SetStatus(codes.Error, "Fingerprint current discovered resource failed")
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(fmt.Sprintf("invalid current resource index configuration: %v", err))
+	storedProperties := make(map[string]*interfaces.Property, len(current.SchemaDefinition))
+	for _, property := range current.SchemaDefinition {
+		storedProperties[property.Name] = property
 	}
+	for _, property := range resource.SchemaDefinition {
+		if stored, exists := storedProperties[property.Name]; exists && stored.Filterable != nil {
+			property.Filterable = stored.Filterable
+		}
+		property.SetDefaultFilterable()
+	}
+	// 扫描结果必须可形成有效契约；旧契约无法读取时允许修复，但不能继续信任已有索引。
+	previousFingerprint, previousFingerprintErr := ResourceIndexConfigFingerprint(current)
 	currentFingerprint, err := ResourceIndexConfigFingerprint(resource)
 	if err != nil {
 		span.SetStatus(codes.Error, "Fingerprint discovered resource failed")
@@ -1409,7 +1434,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	if rowsAffected == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if previousFingerprint != currentFingerprint && current.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
+	if (previousFingerprintErr != nil || previousFingerprint != currentFingerprint) && current.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, current.ID,
 			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "")
 		if err != nil || !updated {
@@ -1433,86 +1458,75 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	return nil
 }
 
-func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
-	if tx == nil {
-		return nil, fmt.Errorf("transaction is required")
-	}
-	if _, ok := ctx.Value(resourceParentTrackerKey{}).(*ResourceParentTracker); !ok {
-		return nil, fmt.Errorf("resource parent tracker is required")
-	}
-	resourceBuiltin := req.Builtin != nil && *req.Builtin
+// InternalCreate 为已授权内部流程准备资源并管理完整创建事务；失败先回滚，再尽力清理外部副作用。
+func (rs *resourceService) InternalCreate(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalCreate")
+	defer span.End()
 
-	now := time.Now().UnixMilli()
-	id := req.ID
-	if id == "" {
-		generatedID, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("generate resource UUIDv7: %w", err)
-		}
-		id = generatedID.String()
-	}
-
-	var (
-		logicalType string
-		err         error
-	)
-	if req.Category == interfaces.ResourceCategoryLogicalView {
-		logicalType, req.SchemaDefinition, err = PrepareLogicalView(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		req.SourceIdentifier = id
-		req.Schema = ""
-	}
-	if (req.Category == interfaces.ResourceCategoryTable || req.Category == interfaces.ResourceCategoryDataset) && req.SchemaDefinition != nil {
-		AddDefaultStringAndTextFeatures(req.SchemaDefinition, req.IndexConfig)
-		if err := validateKeywordConfig(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
-			return nil, err
-		}
-	}
-
-	keepStoredPropertyAPINames(nil, req.SchemaDefinition)
-	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	resource := &interfaces.Resource{
-		ID:                    id,
-		CatalogID:             req.CatalogID,
-		Name:                  req.Name,
-		Tags:                  req.Tags,
-		Description:           req.Description,
-		Category:              req.Category,
-		Enabled:               true,
-		Builtin:               resourceBuiltin,
-		Status:                req.Status,
-		Schema:                req.Schema,
-		SourceIdentifier:      req.SourceIdentifier,
-		SourceMetadata:        req.SourceMetadata,
-		SchemaDefinition:      req.SchemaDefinition,
-		IndexConfig:           req.IndexConfig,
-		LocalIndexStatus:      interfaces.ResourceLocalIndexStatusUnavailable,
-		LogicalType:           logicalType,
-		LogicalViewDefinition: req.LogicalViewDefinition,
-		Creator:               accountInfo,
-		CreateTime:            now,
-		Updater:               accountInfo,
-		UpdateTime:            now,
-	}
-	if err := encodeResourceLogicFields(resource); err != nil {
+	resource, err := rs.prepareNewResource(ctx, req)
+	if err != nil {
 		return nil, err
 	}
+
+	if resource.Category == interfaces.ResourceCategoryDataset {
+		if err := rs.ds.Create(ctx, resource); err != nil {
+			return nil, err
+		}
+	}
+
+	datasetSnapshot := *resource
+	completed := false
+	parentAttempted := false
+	defer func() {
+		if completed || !parentAttempted && resource.Category != interfaces.ResourceCategoryDataset {
+			return
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+		defer cancel()
+
+		if parentAttempted {
+			if err := rs.ps.DeleteResourceParents(cleanupCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{resource.ID}); err != nil {
+				logger.Errorf("Delete resource parent after resource creation failure: resource %s: %v", resource.ID, err)
+			}
+		}
+		if resource.Category == interfaces.ResourceCategoryDataset {
+			if err := rs.ds.Delete(cleanupCtx, &datasetSnapshot); err != nil {
+				logger.Errorf("Delete dataset index after resource creation failure: resource %s: %v", resource.ID, err)
+			}
+		}
+	}()
+
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		otellog.LogError(ctx, "Create resource transaction failed", err)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to create resource")
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	if err := rs.ra.Create(ctx, tx, resource); err != nil {
+		otellog.LogError(ctx, "Create resource failed", err)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to create resource")
+	}
+
+	// 登记可能已部分生效的外部副作用，以便 Upsert 或后续 Commit 失败时清理。
+	parentAttempted = true
+	parentCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+	err = rs.ps.UpsertResourceParents(parentCtx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		[]interfaces.PermissionResourceParent{{ResourceID: resource.ID, ParentID: resource.CatalogID}})
+	cancel()
+	if err != nil {
+		logger.Errorf("Upsert resource parent after resource creation: resource %s: %v", resource.ID, err)
 		return nil, err
 	}
-	if resource.CatalogID != "" {
-		parentItems := []interfaces.PermissionResourceParent{{
-			ResourceID: resource.ID,
-			ParentID:   resource.CatalogID,
-		}}
-		if err := rs.ps.UpsertResourceParents(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			interfaces.AUTH_RESOURCE_TYPE_CATALOG, parentItems); err != nil {
-			return nil, err
-		}
-		trackResourceParents(ctx, rs.ps, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, parentItems)
+	if err := tx.Commit(); err != nil {
+		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to create resource")
 	}
+	completed = true
+	span.SetStatus(codes.Ok, "")
 	return resource, nil
 }
 
@@ -1596,9 +1610,29 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 		}
 		// 先带回已存的 api_name 再比较，否则只差 api_name 也会被当成结构变化。
 		keepStoredPropertyAPINames(resource.SchemaDefinition, viewFields)
+		requestedFilterability := make(map[string]*bool, len(req.SchemaDefinition))
+		for _, property := range req.SchemaDefinition {
+			requestedFilterability[property.Name] = property.Filterable
+		}
+		for _, property := range viewFields {
+			if value := requestedFilterability[property.Name]; value != nil {
+				property.Filterable = value
+			}
+			property.SetDefaultFilterable()
+		}
 		req.SchemaDefinition = viewFields
+		// Filterability restricts query use without changing materialized data.
+		comparableSchemas := make([][]*interfaces.Property, 2)
+		for i, schema := range [][]*interfaces.Property{resource.SchemaDefinition, viewFields} {
+			comparableSchemas[i] = make([]*interfaces.Property, len(schema))
+			for j, property := range schema {
+				copy := *property
+				copy.Filterable = nil
+				comparableSchemas[i][j] = &copy
+			}
+		}
 		return !jsonNumbersEqual(resource.LogicalViewDefinition, req.LogicalViewDefinition) ||
-			!jsonNumbersEqual(resource.SchemaDefinition, viewFields), nil
+			!jsonNumbersEqual(comparableSchemas[0], comparableSchemas[1]), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
@@ -1630,9 +1664,6 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	}
 	models := map[string]*interfaces.SmallModel{}
 	for _, prop := range schema {
-		if prop == nil {
-			continue
-		}
 		for i := range prop.Features {
 			feature := &prop.Features[i]
 			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
@@ -1697,9 +1728,6 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 		defaultAnalyzer = strings.TrimSpace(indexConfig.DefaultFulltextAnalyzer)
 	}
 	for _, prop := range schema {
-		if prop == nil {
-			continue
-		}
 		for _, feature := range prop.Features {
 			if feature.FeatureType != interfaces.PropertyFeatureType_Fulltext {
 				continue
@@ -1737,9 +1765,6 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 // fulltextAnalyzerConfigFor 返回 Dataset mapping 使用的字段级 analyzer 配置。
 // 缺省配置与显式 standard 必须区分；Dataset mapping 不读取资源默认 analyzer。
 func fulltextAnalyzerConfigFor(prop *interfaces.Property) (string, bool) {
-	if prop == nil {
-		return "", false
-	}
 	for _, feature := range prop.Features {
 		if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
 			return strings.TrimSpace(fulltextAnalyzerConfigValue(feature.Config)), true
@@ -1788,9 +1813,7 @@ func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Prop
 
 	schemaFields := make(map[string]*interfaces.Property, len(schema))
 	for _, prop := range schema {
-		if prop != nil {
-			schemaFields[prop.Name] = prop
-		}
+		schemaFields[prop.Name] = prop
 	}
 	primaryKeys := make(map[string]struct{}, len(indexConfig.PrimaryKeyFields))
 	for _, field := range indexConfig.PrimaryKeyFields {
@@ -1829,11 +1852,8 @@ func unsupportedResourceUpdateError(ctx context.Context, details string) error {
 		WithErrorDetails(details)
 }
 
-func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property) error {
+func validatePropertyFeatures(ctx context.Context, schema []*interfaces.Property) error {
 	for _, property := range schema {
-		if property == nil {
-			return unsupportedResourceUpdateError(ctx, "schema_definition cannot contain null fields")
-		}
 		seenTypes := make(map[string]struct{}, len(property.Features))
 		seenNames := make(map[string]struct{}, len(property.Features))
 		for _, feature := range property.Features {
@@ -1890,12 +1910,10 @@ func validateKeywordConfig(ctx context.Context, schema []*interfaces.Property, i
 func validateLocalIndexVectorOutputs(ctx context.Context, schema []*interfaces.Property) error {
 	logicalFields := make(map[string]struct{}, len(schema))
 	for _, property := range schema {
-		if property != nil {
-			logicalFields[property.Name] = struct{}{}
-		}
+		logicalFields[property.Name] = struct{}{}
 	}
 	for _, property := range schema {
-		if property == nil || (property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text) {
+		if property.Type != interfaces.DataType_String && property.Type != interfaces.DataType_Text {
 			continue
 		}
 		for _, feature := range property.Features {
@@ -1921,9 +1939,6 @@ func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Prop
 		return err
 	}
 	for _, property := range schema {
-		if property == nil {
-			continue
-		}
 		for _, feature := range property.Features {
 			// HTTP validation rejects this already. Keep the Dataset business
 			// invariant here as well because internal callers can bypass the
@@ -1938,7 +1953,7 @@ func validateDatasetVectorOutputs(ctx context.Context, schema []*interfaces.Prop
 
 func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) (bool, error) {
 	if !allowPropertyAdditions && len(current) != len(requested) {
-		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+		return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, filterable, and features")
 	}
 	if len(requested) < len(current) {
 		return false, unsupportedResourceUpdateError(ctx, "schema_definition cannot remove or rename fields")
@@ -1946,7 +1961,7 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 
 	currentByName := make(map[string]*interfaces.Property, len(current))
 	for _, prop := range current {
-		if prop == nil || prop.Name == "" {
+		if prop.Name == "" {
 			return false, unsupportedResourceUpdateError(ctx, "current schema_definition contains an invalid field")
 		}
 		currentByName[prop.Name] = prop
@@ -1955,7 +1970,7 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 	schemaChanged := false
 	seen := make(map[string]struct{}, len(requested))
 	for _, requestedProp := range requested {
-		if requestedProp == nil || requestedProp.Name == "" {
+		if requestedProp.Name == "" {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition contains an invalid field")
 		}
 		if _, dup := seen[requestedProp.Name]; dup {
@@ -1976,11 +1991,13 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		currentComparable.DisplayName = ""
 		currentComparable.Description = ""
 		currentComparable.Features = nil
+		currentComparable.Filterable = nil
 		requestedComparable.DisplayName = ""
 		requestedComparable.Description = ""
 		requestedComparable.Features = nil
+		requestedComparable.Filterable = nil
 		if !jsonNumbersEqual(currentComparable, requestedComparable) {
-			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, and features")
+			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, filterable, and features")
 		}
 		if !mutableFeaturesEqual(currentProp.Features, requestedProp.Features) {
 			schemaChanged = true
@@ -2057,7 +2074,7 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 // 已有 Dataset 字段不调用此函数，避免改变不可变的 enabled 参数。
 func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
 	for _, prop := range schema {
-		if prop == nil || prop.Type != interfaces.DataType_Json {
+		if prop.Type != interfaces.DataType_Json {
 			continue
 		}
 		attributes := make(map[string]any, len(prop.Attributes)+1)
@@ -2074,14 +2091,10 @@ func InitializeJSONIndexAttributes(schema []*interfaces.Property) {
 func keepStoredPropertyAPINames(stored, next []*interfaces.Property) {
 	apiNames := make(map[string]string, len(stored))
 	for _, property := range stored {
-		if property != nil {
-			apiNames[property.Name] = property.APIName
-		}
+		apiNames[property.Name] = property.APIName
 	}
 	for _, property := range next {
-		if property != nil {
-			property.APIName = apiNames[property.Name]
-		}
+		property.APIName = apiNames[property.Name]
 	}
 }
 
@@ -2091,17 +2104,13 @@ func applyMutableSchemaFields(current []*interfaces.Property, requested []*inter
 	}
 	currentByName := make(map[string]*interfaces.Property, len(current))
 	for _, prop := range current {
-		if prop != nil {
-			currentByName[prop.Name] = prop
-		}
+		currentByName[prop.Name] = prop
 	}
 	for _, requestedProp := range requested {
-		if requestedProp == nil {
-			continue
-		}
 		if currentProp, ok := currentByName[requestedProp.Name]; ok {
 			currentProp.DisplayName = requestedProp.DisplayName
 			currentProp.Description = requestedProp.Description
+			currentProp.Filterable = requestedProp.Filterable
 			currentProp.Features = requestedProp.Features
 			continue
 		}

@@ -87,7 +87,7 @@ func Test_RestHandler_VerifyOAuth_Failure(t *testing.T) {
 
 		for _, path := range []string{
 			"/api/bkn-project/v1/lineages/orders/releases",
-			"/api/bkn-project/v1/releases/orders_1-0-0",
+			"/api/bkn-project/v1/lineages/orders/releases/1.0.0",
 		} {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, errors.New("invalid token"))
 
