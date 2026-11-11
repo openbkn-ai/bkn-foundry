@@ -120,6 +120,15 @@ button,.btn{width:100%;height:48px;box-sizing:border-box;border:0;border-radius:
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{width:min(400px,100%);margin:0 auto}
+.identity-providers{width:min(400px,100%);margin:0 auto}
+.identity-divider{display:flex;align-items:center;gap:12px;margin:20px 0 16px;color:#8c99ad;font-size:13px}
+.identity-divider:before,.identity-divider:after{content:"";height:1px;flex:1;background:#e5eaf1}
+.identity-login{width:100%;min-height:48px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  padding:10px 16px;margin-top:10px;border:1px solid #d9dfe8;border-radius:9px;background:#fff;
+  color:#334155;font-size:15px;font-weight:500;text-align:center;text-decoration:none;overflow-wrap:anywhere;
+  transition:border-color .2s,color .2s,background .2s}
+.identity-login:hover{border-color:#2563eb;color:#2563eb;background:#f8faff}
+.identity-login:focus-visible{outline:2px solid rgba(37,99,235,.5);outline-offset:2px}
 @media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}.locale-switch{right:18px}}
 </style>`
 
@@ -168,6 +177,9 @@ func brand(name string) string {
 const authMessagePrefix = "BknSafe.Auth."
 
 type authPageText struct {
+	LoginAlternative           string
+	LoginWithPrefix            string
+	LoginWithSuffix            string
 	AccountPlaceholder         string
 	PasswordPlaceholder        string
 	LoginButton                string
@@ -222,6 +234,9 @@ func localizedAuthMessage(c *gin.Context, key string) string {
 func localizedAuthPageData(c *gin.Context) authPageData {
 	message := func(key string) string { return localizedAuthMessage(c, key) }
 	return authPageData{Language: string(i18n.GetLanguageByCtx(c.Request.Context())), Text: authPageText{
+		LoginAlternative:           message("LoginAlternative"),
+		LoginWithPrefix:            message("LoginWithPrefix"),
+		LoginWithSuffix:            message("LoginWithSuffix"),
 		AccountPlaceholder:         message("AccountPlaceholder"),
 		PasswordPlaceholder:        message("PasswordPlaceholder"),
 		LoginButton:                message("LoginButton"),
@@ -267,7 +282,10 @@ var loginPage = template.Must(template.New("login").Parse(`<!doctype html><html 
   {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
   <button class="primary" type="submit">{{.Text.LoginButton}}</button>
 </form>
-{{range .IdentityProviders}}<a class="identity-login" href="{{.URL}}">{{.Name}}</a>{{end}}
+{{if .IdentityProviders}}<div class="identity-providers">
+  <div class="identity-divider">{{.Text.LoginAlternative}}</div>
+  {{range .IdentityProviders}}<a class="identity-login" href="{{.URL}}">{{$.Text.LoginWithPrefix}}{{.Name}}{{$.Text.LoginWithSuffix}}</a>{{end}}
+</div>{{end}}
 </div></body></html>`))
 
 var changePasswordPage = template.Must(template.New("changepw").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>

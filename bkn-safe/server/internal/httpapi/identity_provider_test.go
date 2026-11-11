@@ -85,6 +85,12 @@ func TestLoginExtensionAndLocalBypass(t *testing.T) {
 			if mode == "choices" && !strings.Contains(w.Body.String(), "Customer IdP") {
 				t.Fatal("missing extension choice")
 			}
+			if mode == "choices" && (!strings.Contains(w.Body.String(), `<div class="identity-providers">`) || !strings.Contains(w.Body.String(), `<a class="identity-login" href="/external/start">`)) {
+				t.Fatal("missing styled identity provider section")
+			}
+			if mode != "choices" && strings.Contains(w.Body.String(), `<div class="identity-providers">`) {
+				t.Fatal("unexpected identity provider section")
+			}
 			if mode == "local" && called {
 				t.Fatal("local bypass invoked external identity provider")
 			}
