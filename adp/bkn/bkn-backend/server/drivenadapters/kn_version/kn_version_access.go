@@ -107,6 +107,26 @@ func (va *versionAccess) GetState(ctx context.Context, tx *sql.Tx, knID string, 
 	return s, nil
 }
 
+func (va *versionAccess) ListVersionedKNIDs(ctx context.Context) ([]string, error) {
+	rows, err := va.db.QueryContext(ctx, "SELECT f_kn_id FROM "+stateTable)
+	if err != nil {
+		return nil, fmt.Errorf("list versioned networks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("list versioned networks: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list versioned networks: %w", err)
+	}
+	return ids, nil
+}
+
 func (va *versionAccess) CreateState(ctx context.Context, tx *sql.Tx, state *interfaces.KNVersionState) error {
 	_, err := tx.ExecContext(ctx, "INSERT INTO "+stateTable+" ("+stateColumns+") VALUES (?"+strings.Repeat(", ?", 14)+")",
 		stateValues(state)...)

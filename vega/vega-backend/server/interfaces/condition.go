@@ -28,13 +28,6 @@ type FilterCondCfg struct {
 	Value     any              `json:"value,omitempty" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:",omitempty" mapstructure:",remain"`
-
-	// LegacyLikeWildcards marks a like/not_like that came from a view definition written before
-	// the literal-substring contract, i.e. one using % as a wildcard. When set, each backend
-	// renders the value the way it did before that change: the SQL family escapes % into a
-	// literal, the index path translates it back into a wildcard regexp. Set only by the server
-	// when it reads a stored definition — it is not on the wire and cannot be sent by a caller.
-	LegacyLikeWildcards bool `json:"-" mapstructure:"-"`
 }
 
 //go:generate mockgen -source ../interfaces/condition.go -destination ../interfaces/mock/mock_condition.go

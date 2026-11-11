@@ -314,14 +314,13 @@ func TestResourceServiceInternalCreateStoresLogicFields(t *testing.T) {
 	SetLogicalViewService(&prepareViewService{sourceMetadata: map[string]any{"source_resource": map[string]any{"original_name": "orders"}}})
 	t.Cleanup(func() { SetLogicalViewService(previous) })
 	rs, ra, _, _, _, _, _ := newTestService(t)
-	ctx, _, _ := WithResourceParentTracker(t.Context())
-	tx := &sql.Tx{}
-	ra.EXPECT().Create(gomock.Any(), tx, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+	expectResourceServiceTransaction(t, rs, true)
+	ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
 		assert.Equal(t, interfaces.LogicalType_Derived, got.LogicType)
 		assert.JSONEq(t, `{"source_resource_id":"source-1"}`, got.LogicDefinitionStr)
 		return nil
 	})
-	got, err := rs.InternalCreate(ctx, tx, &interfaces.ResourceRequest{
+	got, err := rs.InternalCreate(t.Context(), &interfaces.ResourceRequest{
 		ID: "view", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicalView,
 		LogicalType:           interfaces.LogicalType_Derived,
 		LogicalViewDefinition: &interfaces.DerivedLogicalViewDefinition{SourceResourceID: "source-1"},

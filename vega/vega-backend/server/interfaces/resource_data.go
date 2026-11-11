@@ -91,7 +91,8 @@ type ResourceDataQueryParams struct {
 	// It is internal query provenance and must never be accepted from the API.
 	FixedFilterCondCfg    *FilterCondCfg  `json:"-"`
 	FixedActualFilterCond FilterCondition `json:"-"`
-	ActualFilterCond      FilterCondition `json:"-"`
+	// ActualFilterCond 为包含固定条件的完整执行树；复用时仍校验原始条件和当前资源能力。
+	ActualFilterCond FilterCondition `json:"-"`
 
 	// CursorEncoded keyset cursor values are injected by the query session; When not empty, use WHERE (sort_cols) > cursor instead of OFFSET
 	CursorEncoded string `json:"-"`

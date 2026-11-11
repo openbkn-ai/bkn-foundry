@@ -29,7 +29,7 @@ func newActionSummaryTestService(t *testing.T) (*actionTypeService, *bmock.MockA
 func summaryAction(id, objectTypeID string) *interfaces.ActionType {
 	return &interfaces.ActionType{
 		ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
-			ATID: id, ObjectTypeID: objectTypeID,
+			ATID: id, ObjectTypeID: objectTypeID, OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
 		},
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
 	}

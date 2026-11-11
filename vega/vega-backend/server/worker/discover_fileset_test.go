@@ -33,8 +33,10 @@ func TestReconcileFilesetResources(t *testing.T) {
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 		created := &interfaces.Resource{ID: "r1", SourceIdentifier: "/team/docs", Category: interfaces.ResourceCategoryFileset}
 
-		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+		rs.EXPECT().InternalCreate(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
 			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+				assert.Empty(t, req.SchemaDefinition)
 				assert.Equal(t, "catalog-1", req.CatalogID)
 				require.NotNil(t, req.Builtin)
 				assert.True(t, *req.Builtin)

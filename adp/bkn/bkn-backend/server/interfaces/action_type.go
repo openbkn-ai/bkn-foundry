@@ -91,14 +91,15 @@ type ImpactContractItem struct {
 }
 
 type ActionTypeWithKeyField struct {
-	ATID         string           `json:"id" mapstructure:"id"`
-	ATName       string           `json:"name" mapstructure:"name"`
-	ActionType   string           `json:"action_type" mapstructure:"action_type"`
-	ActionIntent string           `json:"action_intent,omitempty" mapstructure:"action_intent"`
-	ObjectTypeID string           `json:"object_type_id" mapstructure:"object_type_id"`
-	ObjectType   SimpleObjectType `json:"object_type,omitempty" mapstructure:"object_type"` // Bound object type for display
-	Condition    *ActionCondCfg   `json:"condition,omitempty" mapstructure:"condition"`
-	Affect       *ActionAffect    `json:"affect" mapstructure:"affect"`
+	OperationConfig *ActionOperationConfig `json:"operation_config,omitempty" mapstructure:"operation_config"`
+	ATID            string                 `json:"id" mapstructure:"id"`
+	ATName          string                 `json:"name" mapstructure:"name"`
+	ActionType      string                 `json:"action_type" mapstructure:"action_type"`
+	ActionIntent    string                 `json:"action_intent,omitempty" mapstructure:"action_intent"`
+	ObjectTypeID    string                 `json:"object_type_id" mapstructure:"object_type_id"`
+	ObjectType      SimpleObjectType       `json:"object_type,omitempty" mapstructure:"object_type"` // Bound object type for display
+	Condition       *ActionCondCfg         `json:"condition,omitempty" mapstructure:"condition"`
+	Affect          *ActionAffect          `json:"affect" mapstructure:"affect"`
 	// ImpactContracts and the legacy affect field are mutually exclusive. When only affect is supplied,
 	// validation adds one contract with expected_operation from action_type and retains affect.
 	ImpactContracts []ImpactContractItem `json:"impact_contracts,omitempty" mapstructure:"impact_contracts"`
@@ -178,13 +179,15 @@ type Schedule struct {
 // Object type pagination query.
 type ActionTypesQueryParams struct {
 	PaginationQueryParameters
-	NamePattern   string
-	Tag           string
-	Branch        string
-	KNID          string
-	ObjectTypeIDs []string
-	ATIDs         []string
-	ActionType    string
+	NamePattern       string
+	Tag               string
+	Branch            string
+	KNID              string
+	ObjectTypeIDs     []string
+	ATIDs             []string
+	ActionType        string
+	OperationKind     string
+	RelationOperation string
 	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
 	// as canonical Safe child resources.
 	ValidAuthorizationIDsOnly bool

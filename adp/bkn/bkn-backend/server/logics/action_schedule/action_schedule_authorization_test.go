@@ -6,6 +6,7 @@ package action_schedule
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/robfig/cron/v3"
@@ -50,10 +51,17 @@ func actionScheduleSubjectContext() context.Context {
 	})
 }
 
+func schedulableActionType(id string) *interfaces.ActionType {
+	return &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+		ATID: id, ActionType: interfaces.ACTION_TYPE_MODIFY,
+		OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationObject},
+	}}
+}
+
 func TestCreateScheduleChecksAndStoresCurrentExecutionSubject(t *testing.T) {
 	service, schedules, actionTypes, checks := actionScheduleAuthorizationTestService(t)
 	actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
-		Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at-1"}}}, nil)
+		Return([]*interfaces.ActionType{schedulableActionType("at-1")}, nil)
 	schedules.EXPECT().CreateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ any, schedule *interfaces.ActionSchedule) error {
 			if schedule.ExecutionSubject.ID != "user-current" || schedule.ExecutionSubject.Type != "user" {
@@ -65,6 +73,7 @@ func TestCreateScheduleChecksAndStoresCurrentExecutionSubject(t *testing.T) {
 	_, err := service.CreateSchedule(actionScheduleSubjectContext(), &interfaces.ActionSchedule{
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
 		CronExpression: "* * * * *", DynamicParams: map[string]any{"threshold": 3},
+		InstanceIdentities: []map[string]any{{"id": "target-1"}},
 	})
 	if err != nil {
 		t.Fatalf("CreateSchedule() error = %v", err)
@@ -100,11 +109,14 @@ func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
 	})
 
 	t.Run("dynamic parameters recheck and rotate the subject", func(t *testing.T) {
-		service, schedules, _, checks := actionScheduleAuthorizationTestService(t)
+		service, schedules, actionTypes, checks := actionScheduleAuthorizationTestService(t)
 		schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
 			ID: "schedule-1", KNID: "kn-1", ActionTypeID: "at-1", CronExpression: "* * * * *",
-			DynamicParams: map[string]any{"threshold": 1},
+			DynamicParams:      map[string]any{"threshold": 1},
+			InstanceIdentities: []map[string]any{{"id": "target-1"}},
 		}, nil)
+		actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", "", []string{"at-1"}).
+			Return([]*interfaces.ActionType{schedulableActionType("at-1")}, nil)
 		schedules.EXPECT().UpdateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ any, update *interfaces.ActionSchedule) error {
 				if update.ExecutionSubject.ID != "user-current" || update.ExecutionSubject.Type != "user" {
@@ -125,11 +137,14 @@ func TestUpdateScheduleRotatesSubjectOnlyForExecutableChanges(t *testing.T) {
 }
 
 func TestActivateScheduleRechecksAndRotatesExecutionSubject(t *testing.T) {
-	service, schedules, _, checks := actionScheduleAuthorizationTestService(t)
+	service, schedules, actionTypes, checks := actionScheduleAuthorizationTestService(t)
 	schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
 		ID: "schedule-1", KNID: "kn-1", ActionTypeID: "at-1", CronExpression: "* * * * *",
-		Status: interfaces.ScheduleStatusInactive,
+		Status:             interfaces.ScheduleStatusInactive,
+		InstanceIdentities: []map[string]any{{"id": "target-1"}},
 	}, nil)
+	actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", "", []string{"at-1"}).
+		Return([]*interfaces.ActionType{schedulableActionType("at-1")}, nil)
 	schedules.EXPECT().UpdateSchedule(gomock.Any(), nil, gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ any, update *interfaces.ActionSchedule) error {
 			if update.Status != interfaces.ScheduleStatusActive || update.ExecutionSubject.ID != "user-current" {
@@ -144,5 +159,62 @@ func TestActivateScheduleRechecksAndRotatesExecutionSubject(t *testing.T) {
 	}
 	if checks.calls != 1 {
 		t.Fatalf("permission checks = %d, want 1", checks.calls)
+	}
+}
+
+func TestScheduleRejectsTargetsTheLegacyTransportCannotRepresent(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		action *interfaces.ActionType
+	}{
+		{"new object", &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "at-1", ActionType: interfaces.ACTION_TYPE_ADD,
+			OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationObject},
+		}}},
+		{"relation", &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationRelation},
+		}}},
+		{"tool", &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+			ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationTool},
+		}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, _, actionTypes, checks := actionScheduleAuthorizationTestService(t)
+			actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
+				Return([]*interfaces.ActionType{test.action}, nil)
+			_, err := service.CreateSchedule(actionScheduleSubjectContext(), &interfaces.ActionSchedule{
+				KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
+				CronExpression: "* * * * *", InstanceIdentities: []map[string]any{{"id": "target-1"}},
+			})
+			if err == nil || !strings.Contains(err.Error(), "supports only modify or delete") || checks.calls != 0 {
+				t.Fatalf("CreateSchedule() = %v, checks=%d; want unsupported operation before persistence", err, checks.calls)
+			}
+		})
+	}
+}
+
+func TestScheduleUpdateAndActivationRejectUnsupportedOperation(t *testing.T) {
+	for _, update := range []bool{true, false} {
+		t.Run(map[bool]string{true: "update", false: "activate"}[update], func(t *testing.T) {
+			service, schedules, actionTypes, checks := actionScheduleAuthorizationTestService(t)
+			schedules.EXPECT().GetSchedule(gomock.Any(), "schedule-1").Return(&interfaces.ActionSchedule{
+				ID: "schedule-1", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+				ActionTypeID: "at-1", CronExpression: "* * * * *", Status: interfaces.ScheduleStatusInactive,
+				InstanceIdentities: []map[string]any{{"id": "target-1"}},
+			}, nil)
+			actionTypes.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, []string{"at-1"}).
+				Return([]*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID: "at-1", OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationTool},
+				}}}, nil)
+			var err error
+			if update {
+				err = service.UpdateSchedule(actionScheduleSubjectContext(), "schedule-1", &interfaces.ActionScheduleUpdateRequest{DynamicParams: map[string]any{"x": 1}})
+			} else {
+				err = service.UpdateScheduleStatus(actionScheduleSubjectContext(), "schedule-1", interfaces.ScheduleStatusActive)
+			}
+			if err == nil || !strings.Contains(err.Error(), "supports only modify or delete") || checks.calls != 0 {
+				t.Fatalf("schedule change = %v, checks=%d; want unsupported operation", err, checks.calls)
+			}
+		})
 	}
 }

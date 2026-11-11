@@ -244,7 +244,7 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order)-[:R {x: 1}]->(b:Customer) RETURN a.id", "inline property maps"},
 		{"MATCH (a:Order) RETURN *", "RETURN *"},
 		{"MATCH (a:Order) RETURN sum(a)", "sum over a whole node"},
-		{"MATCH (a:Order) RETURN lower(a.id)", "function calls"},
+		{"MATCH (a:Order) RETURN lower(a.id)", "the function lower() is not supported"},
 		{"MATCH (a:Order) WHERE a.x + 1 IN [2] RETURN a.id", "arithmetic here"},
 		{"MATCH (a:Order) RETURN a.x ^ 2", "exponentiation"},
 		{"MATCH (a:Order) RETURN CASE WHEN a.x > 1 THEN true END", "a boolean as the result of CASE"},

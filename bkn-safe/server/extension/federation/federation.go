@@ -59,3 +59,9 @@ type Directory interface {
 
 func NewUserStore(db *gorm.DB) UserStore { return auth.NewUserStore(db) }
 func NewDirectory(db *gorm.DB) Directory { return directory.New(db) }
+
+// DeleteEmptyDepartments preserves core's hierarchy, membership and companion
+// cleanup invariants while avoiding one full forest scan per deleted node.
+func DeleteEmptyDepartments(ctx context.Context, db *gorm.DB, ids []string) ([]string, error) {
+	return directory.New(db).DeleteEmptyDepartments(ctx, ids)
+}

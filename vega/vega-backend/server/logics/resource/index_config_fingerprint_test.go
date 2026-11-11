@@ -17,6 +17,16 @@ import (
 )
 
 func TestIndexConfigFingerprint(t *testing.T) {
+	t.Run("corrupt source columns cannot produce a fingerprint from fallback declarations", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
+		contract, err := BuildIndexConfigContract(resource)
+		require.Error(t, err)
+		assert.Zero(t, contract)
+		fingerprint, err := ResourceIndexConfigFingerprint(resource)
+		require.Error(t, err)
+		assert.Empty(t, fingerprint)
+		assert.Nil(t, resource.SchemaDefinition[0].Attributes)
+	})
 	t.Run("decimal metadata changes invalidate snapshots without including unrelated source metadata", func(t *testing.T) {
 		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT", Type: interfaces.DataType_Decimal, OriginalType: "numeric"}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "AMOUNT", NumPrecision: 12, NumScale: 2}}}}
 		contract, err := BuildIndexConfigContract(resource)

@@ -181,7 +181,7 @@ func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalo
 		SourceIdentifier: sourceIdentifier,
 		SourceMetadata:   meta,
 	}
-	resource, err := dtw.rs.Create(ctx, req)
+	resource, err := dtw.rs.InternalCreate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -214,14 +214,18 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 		resource.SourceMetadata = sourceMetadata
 		resource.SchemaDefinition = []*interfaces.Property{}
 		for _, col := range fs.Columns {
-			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
-				Name:         col.Name,
-				Type:         col.Type,
+			property := &interfaces.Property{
+				Name:        col.Name,
+				DisplayName: col.Name,
+				Type:        col.Type,
+				Description: "",
+
 				OriginalType: col.Type,
-				DisplayName:  col.Name,
 				OriginalName: col.Name,
-				Description:  "",
-			})
+
+				Filterable: col.Filterable,
+			}
+			resource.SchemaDefinition = append(resource.SchemaDefinition, property)
 		}
 
 		discoverStatus := resource.LastDiscoverStatus

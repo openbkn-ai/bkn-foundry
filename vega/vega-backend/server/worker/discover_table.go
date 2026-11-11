@@ -196,7 +196,7 @@ func (dtw *DiscoverTaskWorker) createTableResource(ctx context.Context, catalog 
 		Schema:           table.Schema,
 		SourceIdentifier: sourceIdentifier,
 	}
-	resource, err := dtw.rs.Create(ctx, req)
+	resource, err := dtw.rs.InternalCreate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +314,8 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 				OriginalName:        column.Name,
 				OriginalType:        column.Type,
 				OriginalDescription: column.Description,
+
+				Filterable: column.Filterable,
 			}
 			if existing, ok := existingProperties[column.Name]; ok {
 				property.DisplayName = existing.DisplayName

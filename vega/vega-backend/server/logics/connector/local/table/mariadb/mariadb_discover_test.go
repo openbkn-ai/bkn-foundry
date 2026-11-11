@@ -179,6 +179,10 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 	table := &interfaces.TableMeta{Database: "app", Name: "orders"}
 	require.NoError(t, connector.fetchColumns(context.Background(), table))
 	require.Len(t, table.Columns, 2)
+	for _, column := range table.Columns {
+		require.NotNil(t, column.Filterable)
+		assert.Equal(t, connector.IsFilterable(&column), *column.Filterable)
+	}
 	assert.Equal(t, "int(11)", table.Columns[0].Type)
 	assert.Equal(t, "enum('Active','Inactive')", table.Columns[1].Type)
 	assert.Equal(t, interfaces.DataType_String, connector.MapType(table.Columns[1].Type))

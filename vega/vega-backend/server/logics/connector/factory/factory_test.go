@@ -8,6 +8,7 @@ package factory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -23,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/remote"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
@@ -524,6 +526,18 @@ func TestConnectorFactoryValidateBuildSchema(t *testing.T) {
 }
 
 func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
+	t.Run("corrupt table metadata stops before converting the condition", func(t *testing.T) {
+		for _, raw := range []any{nil, []interfaces.TableColumnMeta(nil), "corrupt"} {
+			connector := vmock.NewMockTableConnector(gomock.NewController(t))
+			connector.EXPECT().GetEnabled().Return(true)
+			cf := &connectorFactory{connectors: map[string]interfaces.Connector{"table": connector}}
+			resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": raw}}
+			err := cf.ValidateFilterCondition("table", &filter_condition.AndCond{}, resource)
+			require.ErrorContains(t, err, "invalid stored source column metadata")
+			var invalid *interfaces.ConditionBuildError
+			assert.NotErrorAs(t, err, &invalid)
+		}
+	})
 	t.Run("uses actual table converter without creating a connection", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 		cf.RegisterCoreLocalConnectors()
@@ -552,7 +566,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 					cond,
 					&filter_condition.AndCond{SubConds: []interfaces.FilterCondition{&filter_condition.OrCond{SubConds: []interfaces.FilterCondition{cond}}}},
 				} {
-					err = cf.ValidateFilterCondition(tc.connector, tree, nil, nil)
+					err = cf.ValidateFilterCondition(tc.connector, tree, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}})
 					if tc.valid {
 						require.NoError(t, err)
 					} else {
@@ -569,7 +583,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Field: "content", Operation: filter_condition.OperationMatch, ValueFrom: interfaces.ValueFrom_Const, Value: "search"}
 		condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"content": {Name: "content", Type: interfaces.DataType_Text}})
 		require.NoError(t, err)
-		err = cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, nil, nil)
+		err = cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text}}})
 		var unsupported *interfaces.UnsupportedOperationError
 		require.ErrorAs(t, err, &unsupported)
 	})
@@ -584,7 +598,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			cfg := &interfaces.FilterCondCfg{Field: field.Name, Operation: filter_condition.OperationEqual, ValueFrom: interfaces.ValueFrom_Const, Value: value}
 			cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
 			require.NoError(t, err)
-			err = cf.ValidateFilterCondition(interfaces.ConnectorTypeOpenSearch, cond, source.SchemaDefinition, nil)
+			err = cf.ValidateFilterCondition(interfaces.ConnectorTypeOpenSearch, cond, source)
 			if value == "okay" {
 				require.NoError(t, err)
 			} else {
@@ -594,20 +608,61 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			}
 		}
 	})
-	t.Run("passes all table inputs and preserves the converter error", func(t *testing.T) {
-		builder := vmock.NewMockTableConnector(gomock.NewController(t))
-		builder.EXPECT().GetEnabled().Return(true)
-		want := errors.New("conversion failed")
-		connector := &metadataFilterConnector{TableConnector: builder, conversionErr: want}
-		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"oracle": connector}}
+
+	t.Run("passes table schema and source column metadata without mutation", func(t *testing.T) {
+		for _, persisted := range []bool{false, true} {
+			t.Run(map[bool]string{false: "discovery metadata", true: "persisted JSON metadata"}[persisted], func(t *testing.T) {
+				builder := vmock.NewMockTableConnector(gomock.NewController(t))
+				builder.EXPECT().GetEnabled().Return(true)
+				want := errors.New("conversion failed")
+				connector := &metadataFilterConnector{TableConnector: builder, conversionErr: want}
+				cf := &connectorFactory{connectors: map[string]interfaces.Connector{"oracle": connector}}
+				condition := &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{&filter_condition.OrCond{}}}
+				source := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "flag", OriginalType: "NUMBER", Type: interfaces.DataType_Decimal}}, SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "flag", Type: "NUMBER", NumPrecision: 1, Nullable: true}}}}
+				if persisted {
+					encoded, err := json.Marshal(source)
+					require.NoError(t, err)
+					var stored interfaces.Resource
+					require.NoError(t, json.Unmarshal(encoded, &stored))
+					source = &stored
+				}
+				before, err := json.Marshal(source)
+				require.NoError(t, err)
+				err = cf.ValidateFilterCondition("oracle", condition, source)
+				assert.Same(t, want, err)
+				assert.Same(t, condition, connector.condition)
+				require.Len(t, connector.properties, 1)
+				assert.Same(t, source.SchemaDefinition[0], connector.properties[0])
+				assert.Same(t, &source.SchemaDefinition[0], &connector.properties[0])
+				assert.Equal(t, map[string]interfaces.TableColumnMeta{"flag": {Name: "flag", Type: "NUMBER", NumPrecision: 1, Nullable: true}}, connector.columns)
+				after, err := json.Marshal(source)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("native index receives original schema without source table assumptions", func(t *testing.T) {
+		connector := vmock.NewMockIndexConnector(gomock.NewController(t))
+		connector.EXPECT().GetEnabled().Return(true)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"index": connector}}
+		field := &interfaces.Property{Name: "body", OriginalName: "native.body", OriginalType: "text", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "native_keyword"}}}
+		source := &interfaces.Resource{Category: interfaces.ResourceCategoryIndex, SchemaDefinition: []*interfaces.Property{field}, SourceMetadata: map[string]any{"columns": "index metadata does not define table columns"}}
 		condition := &filter_condition.AndCond{}
-		properties := []*interfaces.Property{{Name: "flag", OriginalType: "NUMBER", Type: interfaces.DataType_Decimal}}
-		columns := map[string]interfaces.TableColumnMeta{"flag": {Name: "flag", Type: "NUMBER", NumPrecision: 1}}
-		err := cf.ValidateFilterCondition("oracle", condition, properties, columns)
-		assert.Same(t, want, err)
-		assert.Same(t, condition, connector.condition)
-		assert.Equal(t, properties, connector.properties)
-		assert.Equal(t, columns, connector.columns)
+		before, err := json.Marshal(source)
+		require.NoError(t, err)
+		connector.EXPECT().ConvertFilterCondition(condition, gomock.Any()).DoAndReturn(func(got interfaces.FilterCondition, schema []*interfaces.Property) (map[string]any, error) {
+			assert.Same(t, condition, got)
+			require.Len(t, schema, 1)
+			assert.Same(t, field, schema[0])
+			assert.Same(t, &source.SchemaDefinition[0], &schema[0])
+			assert.Equal(t, "native.body", schema[0].OriginalName)
+			assert.Equal(t, "text", schema[0].OriginalType)
+			return map[string]any{"match_all": map[string]any{}}, nil
+		})
+		require.NoError(t, cf.ValidateFilterCondition("index", condition, source))
+		after, err := json.Marshal(source)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(after))
 	})
 	t.Run("concurrent registry updates", func(t *testing.T) {
 		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
@@ -637,7 +692,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			defer group.Done()
 			<-start
 			for range 2000 {
-				err := cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, []*interfaces.Property{property}, nil)
+				err := cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}})
 				if err != nil && !errors.Is(err, ErrConnectorDisabled) {
 					failures <- err
 					return
@@ -658,7 +713,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 		}
 	})
 	t.Run("absent condition needs no connector", func(t *testing.T) {
-		require.NoError(t, (&connectorFactory{}).ValidateFilterCondition("", nil, nil, nil))
+		require.NoError(t, (&connectorFactory{}).ValidateFilterCondition("", nil, nil))
 	})
 	t.Run("preserves connector availability errors", func(t *testing.T) {
 		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
@@ -681,7 +736,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 				if tc.name == "disabled" {
 					connector.EXPECT().GetEnabled().Return(false)
 				}
-				assert.ErrorIs(t, cf.ValidateFilterCondition(tc.name, &filter_condition.BeforeCond{}, nil, nil), tc.want)
+				assert.ErrorIs(t, cf.ValidateFilterCondition(tc.name, &filter_condition.BeforeCond{}, &interfaces.Resource{}), tc.want)
 			})
 		}
 	})
@@ -705,4 +760,160 @@ func TestConnectorFactoryGetConnectorFieldConfig(t *testing.T) {
 		assert.False(t, fields["options"].Required)
 		assert.False(t, fields["options"].Encrypted)
 	}
+}
+
+func TestConnectorFactoryValidateFilterability(t *testing.T) {
+	flag := func(value bool) *bool { return &value }
+	t.Run("closed flags do not require a connector", func(t *testing.T) {
+		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "corrupt"}, SchemaDefinition: []*interfaces.Property{{Name: "closed", Filterable: flag(false)}, {Name: "omitted"}}}
+		require.NoError(t, (&connectorFactory{}).ValidateFilterability("unavailable", resource))
+	})
+	t.Run("table directly uses shared validation with registered connector", func(t *testing.T) {
+		for _, result := range []string{"supported", "persisted JSON", "unsupported", "corrupt columns"} {
+			t.Run(result, func(t *testing.T) {
+				connector := vmock.NewMockTableConnector(gomock.NewController(t))
+				connector.EXPECT().GetEnabled().Return(true)
+				column := interfaces.TableColumnMeta{Name: "native", Type: "NATIVE", NumPrecision: 12, NumScale: 4, Filterable: flag(false)}
+				resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+					SchemaDefinition: []*interfaces.Property{{Name: "enabled", OriginalName: "native", OriginalType: "stale", Filterable: flag(true)}, {Name: "closed", Filterable: flag(false)}, {Name: "legacy"}},
+					SourceMetadata:   map[string]any{"columns": []interfaces.TableColumnMeta{column}, "mapping": "not table metadata"}}
+				if result == "corrupt columns" {
+					resource.SourceMetadata["columns"] = "corrupt"
+				} else {
+					connector.EXPECT().IsFilterable(gomock.Eq(&column)).Return(result != "unsupported")
+				}
+				if result == "persisted JSON" {
+					data, err := json.Marshal(resource)
+					require.NoError(t, err)
+					var stored interfaces.Resource
+					require.NoError(t, json.Unmarshal(data, &stored))
+					resource = &stored
+				}
+				before, err := json.Marshal(resource)
+				require.NoError(t, err)
+				cf := &connectorFactory{connectors: map[string]interfaces.Connector{"source": connector}}
+				err = cf.ValidateFilterability("source", resource)
+				var invalid *interfaces.ConditionBuildError
+				switch result {
+				case "supported", "persisted JSON":
+					require.NoError(t, err)
+				case "unsupported":
+					require.ErrorAs(t, err, &invalid)
+					assert.Contains(t, invalid.Reason, "enabled")
+				case "corrupt columns":
+					require.Error(t, err)
+					assert.NotErrorAs(t, err, &invalid)
+				}
+				after, err := json.Marshal(resource)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("index and fileset delegate complete resource without interpreting metadata", func(t *testing.T) {
+		for _, category := range []string{interfaces.ResourceCategoryIndex, interfaces.ResourceCategoryFileset} {
+			for _, result := range []string{"supported", "unsupported", "provider failure"} {
+				t.Run(category+"/"+result, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					var connector interfaces.Connector
+					var validation *gomock.Call
+					switch category {
+					case interfaces.ResourceCategoryIndex:
+						index := vmock.NewMockIndexConnector(ctrl)
+						connector = index
+						index.EXPECT().GetEnabled().Return(true)
+						validation = index.EXPECT().ValidateFilterability(gomock.Any())
+					case interfaces.ResourceCategoryFileset:
+						fileset := vmock.NewMockFilesetConnector(ctrl)
+						connector = fileset
+						fileset.EXPECT().GetEnabled().Return(true)
+						validation = fileset.EXPECT().ValidateFilterability(gomock.Any())
+					}
+					cf := &connectorFactory{connectors: map[string]interfaces.Connector{"source": connector}}
+					resource := &interfaces.Resource{Category: category,
+						SchemaDefinition: []*interfaces.Property{{Name: "enabled", OriginalName: "native", Filterable: flag(true)}, {Name: "closed", Filterable: flag(false)}},
+						SourceMetadata:   map[string]any{"columns": "provider-owned columns", "mapping": "provider-owned mapping"}}
+					before, err := json.Marshal(resource)
+					require.NoError(t, err)
+					var want error
+					switch result {
+					case "unsupported":
+						want = interfaces.NewConditionBuildError("provider rejects enabled field")
+					case "provider failure":
+						want = errors.New("provider metadata failure")
+					}
+					validation.DoAndReturn(func(got *interfaces.Resource) error { assert.Same(t, resource, got); return want })
+					err = cf.ValidateFilterability("source", resource)
+					if want == nil {
+						require.NoError(t, err)
+					} else {
+						assert.Same(t, want, err)
+					}
+					after, err := json.Marshal(resource)
+					require.NoError(t, err)
+					assert.JSONEq(t, string(before), string(after))
+				})
+			}
+		}
+	})
+	t.Run("availability is checked before provider validation", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+		for _, tc := range []struct {
+			name string
+			want error
+		}{{"unavailable", ErrConnectorUnavailable}, {"disabled", ErrConnectorDisabled}, {"unlicensed", ErrConnectorEntitlementDenied}} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := vmock.NewMockTableConnector(gomock.NewController(t))
+				cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+				if tc.name != "unavailable" {
+					cf.connectors[tc.name] = connector
+				}
+				if tc.name == "unlicensed" {
+					cf.connectorRequiredEditions[tc.name] = licverify.EditionEnterprise
+				}
+				if tc.name == "disabled" {
+					connector.EXPECT().GetEnabled().Return(false)
+				}
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "enabled", Filterable: flag(true)}}}
+				assert.ErrorIs(t, cf.ValidateFilterability(tc.name, resource), tc.want)
+			})
+		}
+	})
+	t.Run("unsupported providers reject enabled filtering without a connection", func(t *testing.T) {
+		for _, provider := range []string{"remote", "basic"} {
+			for _, tc := range []struct {
+				name string
+				flag *bool
+			}{{"omitted", nil}, {"disabled", flag(false)}, {"enabled", flag(true)}} {
+				t.Run(provider+"/"+tc.name, func(t *testing.T) {
+					var connector interfaces.Connector
+					if provider == "remote" {
+						connector = remote.NewRemoteConnector(&interfaces.ConnectorType{Type: "remote", Enabled: true})
+					} else {
+						basic := vmock.NewMockConnector(gomock.NewController(t))
+						connector = basic
+						if tc.flag != nil && *tc.flag {
+							basic.EXPECT().GetEnabled().Return(true)
+						}
+					}
+					cf := &connectorFactory{connectors: map[string]interfaces.Connector{provider: connector}}
+					resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "field", Type: interfaces.DataType_Integer, Filterable: tc.flag}}}
+					before, err := json.Marshal(resource)
+					require.NoError(t, err)
+					err = cf.ValidateFilterability(provider, resource)
+					if tc.flag != nil && *tc.flag {
+						var unsupported *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &unsupported)
+					} else {
+						require.NoError(t, err)
+					}
+					after, err := json.Marshal(resource)
+					require.NoError(t, err)
+					assert.JSONEq(t, string(before), string(after))
+					assert.Same(t, tc.flag, resource.SchemaDefinition[0].Filterable)
+				})
+			}
+		}
+	})
 }

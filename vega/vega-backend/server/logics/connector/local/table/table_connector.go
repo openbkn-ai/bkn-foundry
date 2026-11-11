@@ -9,6 +9,9 @@ package table
 
 import (
 	"database/sql"
+	"fmt"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -183,4 +186,54 @@ func ScanSQLRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any
 		row[column.Name] = value
 	}
 	return row, nil
+}
+
+// ValidateFilterability 使用外部解析的真实源列校验显式开启字段，缺列时返回错误。
+func ValidateFilterability(resource *interfaces.Resource, connector interfaces.TableConnector, columns map[string]interfaces.TableColumnMeta) error {
+	for _, property := range resource.SchemaDefinition {
+		if property.Filterable == nil || !*property.Filterable {
+			continue
+		}
+		name := property.OriginalName
+		if name == "" {
+			name = property.Name
+		}
+		column, exists := columns[name]
+		if !exists {
+			return interfaces.NewConditionBuildError("field %q does not exist in source column metadata", property.Name)
+		}
+		if column.Type == "" {
+			return interfaces.NewConditionBuildError("cannot confirm filterability for field %q without source type metadata", property.Name)
+		}
+		if !connector.IsFilterable(&column) {
+			return interfaces.NewConditionBuildError("field %q does not support filterable=true", property.Name)
+		}
+	}
+	return nil
+}
+
+// ColumnMetadata 还原已加载资源中的源列元数据；缺失时返回 nil，损坏时返回错误。
+func ColumnMetadata(r *interfaces.Resource) (map[string]interfaces.TableColumnMeta, error) {
+	if r == nil || r.SourceMetadata == nil {
+		return nil, nil //nolint:nilnil // 历史资源缺少列元数据是正常缺省状态。
+	}
+	raw, ok := r.SourceMetadata["columns"]
+	if !ok {
+		return nil, nil //nolint:nilnil // 历史资源缺少列元数据是正常缺省状态。
+	}
+	columns, ok := raw.([]interfaces.TableColumnMeta)
+	if !ok {
+		encoded, err := sonic.Marshal(raw)
+		if err != nil || sonic.Unmarshal(encoded, &columns) != nil {
+			return nil, fmt.Errorf("invalid stored source column metadata")
+		}
+	}
+	if columns == nil {
+		return nil, fmt.Errorf("invalid stored source column metadata")
+	}
+	result := make(map[string]interfaces.TableColumnMeta, len(columns))
+	for _, column := range columns {
+		result[column.Name] = column
+	}
+	return result, nil
 }

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"testing"
@@ -23,9 +24,59 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
+
+// These fixtures exercise query orchestration, not connector schema projection.
+// Cases that verify projected capabilities provide explicit manager responses.
+func newResourceDataLocalIndexManagerMock(ctrl *gomock.Controller) *mock_interfaces.MockLocalIndexManager {
+	manager := mock_interfaces.NewMockLocalIndexManager(ctrl)
+	manager.EXPECT().SchemaForQuery(gomock.Any()).DoAndReturn(func(schema []*interfaces.Property) ([]*interfaces.Property, error) {
+		projected := make([]*interfaces.Property, 0, len(schema))
+		for _, source := range schema {
+			if source == nil {
+				continue
+			}
+			if source.Type == interfaces.DataType_Binary || source.Type == interfaces.DataType_Json || source.Type == interfaces.DataType_Other {
+				continue
+			}
+			field := *source
+			field.OriginalName = source.Name
+			field.Filterable = new(true)
+			if field.Type == interfaces.DataType_LargeInteger {
+				field.Type = interfaces.DataType_String
+			}
+			projected = append(projected, &field)
+		}
+		for _, field := range resourceDataGeneratedFieldsFixture(schema) {
+			projected = append(projected, field)
+		}
+		return projected, nil
+	}).AnyTimes()
+	manager.EXPECT().GeneratedFields(gomock.Any()).DoAndReturn(func(schema []*interfaces.Property) (map[string]*interfaces.Property, error) {
+		return resourceDataGeneratedFieldsFixture(schema), nil
+	}).AnyTimes()
+	return manager
+}
+
+// resourceDataGeneratedFieldsFixture 为查询编排测试提供显式的生成字段元数据。
+func resourceDataGeneratedFieldsFixture(schema []*interfaces.Property) map[string]*interfaces.Property {
+	generated := map[string]*interfaces.Property{}
+	for _, source := range schema {
+		if source == nil {
+			continue
+		}
+		for _, feature := range source.Features {
+			if feature.FeatureType == interfaces.PropertyFeatureType_Vector && feature.RefProperty == "" && (source.Type == interfaces.DataType_String || source.Type == interfaces.DataType_Text) {
+				name := source.Name + "_vector"
+				generated[name] = &interfaces.Property{Name: name, Type: interfaces.DataType_Vector, Filterable: new(true), Features: []interfaces.PropertyFeature{feature}}
+			}
+		}
+	}
+	return generated
+}
 
 func registerMockLogicalViewService(t *testing.T, service interfaces.LogicalViewService) {
 	t.Helper()
@@ -117,7 +168,7 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 			default:
 				mockMFS.EXPECT().GetModelByID(gomock.Any(), "removed-model").Return(nil, nil)
 			}
-			rds := &resourceDataService{cs: mockCS, mfs: mockMFS}
+			rds := &resourceDataService{cs: mockCS, mfs: mockMFS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 			resource := &interfaces.Resource{
 				ID: "source", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable,
 				LocalIndexName: "source-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
@@ -251,7 +302,7 @@ func TestQuerySourcePageSearchPrerequisitesPrecedeOutputFields(t *testing.T) {
 					}
 					params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, OutputFields: []string{"id", "_score"}, FilterCondCfg: condition}
 					models := mock_interfaces.NewMockModelFactoryService(ctrl)
-					rowsResult, err := (&resourceDataService{cs: catalogs, mfs: models}).QuerySourcePage(context.Background(), resource, params)
+					rowsResult, err := (&resourceDataService{cs: catalogs, mfs: models, lim: newResourceDataLocalIndexManagerMock(ctrl)}).QuerySourcePage(context.Background(), resource, params)
 					var rows []map[string]any
 					var total int64
 					if rowsResult != nil {
@@ -403,7 +454,7 @@ func TestQuerySourcePagePreservesUnavailableIndexOutput(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/output=%v", typ, selected), func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-				index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				index := newResourceDataLocalIndexManagerMock(ctrl)
 				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
 				resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "value", Type: typ}}}
 				params := &interfaces.ResourceDataQueryParams{OutputFields: selected}
@@ -447,7 +498,7 @@ func TestQuerySourcePageProjectsAggregateOutput(t *testing.T) {
 				if channel == "local_index" {
 					resource.LocalIndexName = "index"
 					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
-					index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+					index := newResourceDataLocalIndexManagerMock(ctrl)
 					rds.lim = index
 					index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: int64(42)}, nil)
 				} else {
@@ -663,6 +714,670 @@ func TestResourceDataServiceQueryWithPagingProjectsAggregateOutput(t *testing.T)
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
+	t.Run("非法逻辑字段向量在模型和索引调用前拒绝", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			value any
+		}{
+			{"number", float64(42)},
+			{"boolean", true},
+			{"object", map[string]any{"x": 1}},
+			{"string elements", []any{"0.1", "0.2"}},
+		} {
+			for _, nested := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/nested=%v", tc.name, nested), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					models := mock_interfaces.NewMockModelFactoryService(ctrl)
+					models.EXPECT().GetModelByID(gomock.Any(), gomock.Any()).Times(0)
+					models.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					indexes := newResourceDataLocalIndexManagerMock(ctrl)
+					resource := &interfaces.Resource{ID: "resource", Enabled: true, Status: interfaces.ResourceStatusActive, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+						SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}}}}}
+					cfg := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}
+					if nested {
+						cfg = &interfaces.FilterCondCfg{Operation: filter_condition.OperationAnd, SubConds: []*interfaces.FilterCondCfg{cfg}}
+					}
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					called := false
+					indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(func(context.Context, string, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						called = true
+						return nil, errors.New("invalid backend vector payload")
+					}).AnyTimes()
+					result, err := (&resourceDataService{cs: catalogs, lim: indexes, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+					assert.Nil(t, result)
+					assert.False(t, called, "invalid vector queries must not reach the index backend")
+				})
+			}
+		}
+	})
+	t.Run("模型非法数值向量保留服务端错误且不调用索引", func(t *testing.T) {
+		for _, vector := range [][]float32{nil, {}, {0.1, float32(math.NaN())}, {0.1, float32(math.Inf(1))}} {
+			t.Run(fmt.Sprint(vector), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				indexes := newResourceDataLocalIndexManagerMock(ctrl)
+				models := mock_interfaces.NewMockModelFactoryService(ctrl)
+				model := &interfaces.SmallModel{ModelID: "model"}
+				resource := &interfaces.Resource{ID: "resource", Enabled: true, Status: interfaces.ResourceStatusActive, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+					IndexConfig:      &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"},
+					SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+				cfg := &interfaces.FilterCondCfg{Field: "title", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+				models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: vector}}, nil)
+				called := false
+				indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, gomock.Any()).DoAndReturn(func(context.Context, string, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+					called = true
+					return nil, errors.New("invalid backend vector payload")
+				}).AnyTimes()
+				result, err := (&resourceDataService{cs: catalogs, lim: indexes, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+				assert.Nil(t, result)
+				assert.False(t, called)
+				assert.Equal(t, "title", cfg.Field)
+				assert.Equal(t, "query text", cfg.Value)
+			})
+		}
+	})
+	t.Run("向量解析与续页复用执行树并分别保留固定和发布全文范围", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		models := mock_interfaces.NewMockModelFactoryService(ctrl)
+		feature := interfaces.PropertyFeature{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 2}}
+		content := &interfaces.Property{Name: "content", Type: interfaces.DataType_Text, Filterable: new(false), Features: []interfaces.PropertyFeature{feature}}
+		hidden := &interfaces.Property{Name: "hidden", Type: interfaces.DataType_Text, Filterable: new(false)}
+		vector := &interfaces.Property{Name: "content_vector", Type: interfaces.DataType_Vector, Filterable: new(true), Features: []interfaces.PropertyFeature{feature}}
+		resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+			Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{content, hidden}, IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}}
+		queryFields := map[string]*interfaces.Property{"content": content, "hidden": hidden, "content_vector": vector}
+		requestWildcard := &interfaces.FilterCondCfg{Operation: "match", Value: "query", RemainCfg: map[string]any{"fields": []any{"*"}}}
+		request := &interfaces.FilterCondCfg{Field: "content", Operation: "knn_vector", Value: "search", SubConds: []*interfaces.FilterCondCfg{requestWildcard}}
+		requestActual, err := filter_condition.NewFilterCondition(t.Context(), request, queryFields)
+		require.NoError(t, err)
+		require.NoError(t, filter_condition.ResolveFulltextWildcardFields(requestActual, []string{"content"}))
+		fixed := &interfaces.FilterCondCfg{Operation: "match_phrase", Value: "stored", RemainCfg: map[string]any{"fields": []any{"*"}}}
+		fixedActual, err := filter_condition.NewFilterCondition(t.Context(), fixed, queryFields)
+		require.NoError(t, err)
+		merged := &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{fixed, request}}
+		prepared := &filter_condition.AndCond{Cfg: merged, SubConds: []interfaces.FilterCondition{fixedActual, requestActual}}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: merged, FixedFilterCondCfg: fixed,
+			ActualFilterCond: prepared, FixedActualFilterCond: fixedActual}
+		indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{content, hidden, vector}, nil).Times(2)
+		indexes.EXPECT().GeneratedFields(resource.SchemaDefinition).Return(map[string]*interfaces.Property{"content_vector": vector}, nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil).Times(2)
+		model := &interfaces.SmallModel{ModelID: "model"}
+		models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+		models.EXPECT().GetVector(gomock.Any(), model, []string{"search"}).Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2}}}, nil)
+		indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(
+			func(ctx context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				assert.Same(t, prepared, query.ActualFilterCond)
+				assert.Same(t, fixedActual, query.FixedActualFilterCond)
+				knn := requestActual.(*filter_condition.KnnVectorCond)
+				assert.Same(t, request, knn.Cfg)
+				assert.Equal(t, "content_vector", knn.FilterFieldName)
+				assert.Equal(t, []float32{0.1, 0.2}, knn.Cfg.Value)
+				assert.Equal(t, []*interfaces.Property{content}, knn.SubConds[0].(*filter_condition.MatchCond).Fields)
+				assert.Contains(t, fixedActual.(*filter_condition.MatchPhraseCond).Fields, hidden)
+				dsl, err := (&opensearch.OpenSearchConnector{}).ConvertFilterCondition(knn, []*interfaces.Property{content, hidden, vector})
+				require.NoError(t, err)
+				encoded, err := json.Marshal(dsl)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), "content_vector")
+				assert.NotContains(t, string(encoded), "hidden")
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"content": "row"}}}, nil
+			}).Times(2)
+		service := &resourceDataService{cs: catalogs, lim: indexes, mfs: models}
+		for range 2 {
+			result, err := service.QuerySourcePage(t.Context(), resource, params)
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"content": "row"}}, result.Entries)
+		}
+		assert.Equal(t, []any{"*"}, requestWildcard.RemainCfg["fields"])
+		assert.Equal(t, []any{"*"}, fixed.RemainCfg["fields"])
+		assert.False(t, *content.Filterable)
+		assert.False(t, *hidden.Filterable)
+	})
+	t.Run("执行已绑定的全文字段范围而不重新展开原始通配", func(t *testing.T) {
+		for _, operation := range []string{"match", "match_phrase", "multi_match"} {
+			t.Run(operation, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				resources := mock_interfaces.NewMockResourceService(ctrl)
+				published := &interfaces.Property{Name: "published", Type: interfaces.DataType_Text, Filterable: new(false)}
+				hidden := &interfaces.Property{Name: "hidden", Type: interfaces.DataType_Text, Filterable: new(false)}
+				resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+					Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+					SchemaDefinition: []*interfaces.Property{published, hidden}}
+				cfg := &interfaces.FilterCondCfg{Operation: operation, Value: "query", RemainCfg: map[string]any{"fields": []any{"*"}}}
+				var prepared interfaces.FilterCondition
+				switch operation {
+				case "match":
+					prepared = &filter_condition.MatchCond{Cfg: cfg, Fields: []*interfaces.Property{published}}
+				case "match_phrase":
+					prepared = &filter_condition.MatchPhraseCond{Cfg: cfg, Fields: []*interfaces.Property{published}}
+				case "multi_match":
+					prepared = &filter_condition.MultiMatchCond{Cfg: cfg, Fields: []*interfaces.Property{published}}
+				}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg, ActualFilterCond: prepared}
+				indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return(resource.SchemaDefinition, nil)
+				resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(
+					func(ctx context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						assert.Same(t, prepared, query.ActualFilterCond)
+						dsl, err := (&opensearch.OpenSearchConnector{}).ConvertFilterCondition(query.ActualFilterCond, resource.SchemaDefinition)
+						require.NoError(t, err)
+						encoded, err := json.Marshal(dsl)
+						require.NoError(t, err)
+						assert.Contains(t, string(encoded), "published")
+						assert.NotContains(t, string(encoded), "hidden")
+						return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"published": "row"}}}, nil
+					})
+				result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"published": "row"}}, result.Entries)
+				assert.Equal(t, []any{"*"}, cfg.RemainCfg["fields"])
+			})
+		}
+	})
+	t.Run("不完整 LIKE 转义在查询下游前拒绝", func(t *testing.T) {
+		for _, operation := range []string{"like", "not_like"} {
+			for _, fixed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/fixed=%v", operation, fixed), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+					indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+					resource := &interfaces.Resource{ID: "native-index", CatalogID: "catalog", Category: interfaces.ResourceCategoryIndex,
+						Enabled: true, Status: interfaces.ResourceStatusActive,
+						SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String, Filterable: new(true)}}}
+					cfg := &interfaces.FilterCondCfg{Field: "title", Operation: operation, Value: `trailing\`}
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+					if fixed {
+						params.FixedFilterCondCfg = cfg
+					}
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, cf: connectors, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					if fixed {
+						assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+					} else {
+						assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+						assert.Contains(t, httpErr.ErrorDetails, "escape")
+					}
+					assert.Nil(t, result)
+					assert.Nil(t, params.ActualFilterCond)
+					assert.Nil(t, params.FixedActualFilterCond)
+					assert.Equal(t, `trailing\`, cfg.Value)
+				})
+			}
+		}
+	})
+	t.Run("已有执行条件不绕过原始条件的开关校验", func(t *testing.T) {
+		for _, operation := range []string{"match", "match_phrase", "multi_match"} {
+			for _, scenario := range []string{"expanded", "explicit", "sibling", "rhs", "fixed", "nonfulltext"} {
+				t.Run(operation+"/"+scenario, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					field := &interfaces.Property{Name: "title", OriginalName: "source_title", Type: interfaces.DataType_Text, Filterable: new(false)}
+					projected := *field
+					projected.OriginalName = field.Name
+					resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+						Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+						SchemaDefinition: []*interfaces.Property{field}}
+					cfg := &interfaces.FilterCondCfg{Operation: operation, Value: "query",
+						RemainCfg: map[string]any{"fields": []any{"*"}}}
+					prepared, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"title": &projected})
+					require.NoError(t, err)
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg, ActualFilterCond: prepared}
+					explicit := &interfaces.FilterCondCfg{Field: "title", Operation: "eq", Value: "query"}
+					switch scenario {
+					case "explicit":
+						cfg.RemainCfg["fields"] = []any{"title"}
+					case "sibling":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{cfg, explicit}}
+					case "rhs":
+						cfg.ValueFrom, cfg.Value = interfaces.ValueFrom_Field, "title"
+					case "fixed":
+						params.FixedFilterCondCfg = explicit
+					case "nonfulltext":
+						cfg.Operation, cfg.Field = "eq", "title"
+					}
+					indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{&projected}, nil)
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					if scenario == "expanded" {
+						indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(
+							func(_ context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+								assert.Same(t, prepared, query.ActualFilterCond)
+								assert.NotNil(t, query.ActualFilterCond)
+								dsl, err := (&opensearch.OpenSearchConnector{}).ConvertFilterCondition(query.ActualFilterCond, []*interfaces.Property{&projected})
+								require.NoError(t, err)
+								assert.Contains(t, dsl, operation)
+								return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"title": "result"}}}, nil
+							})
+					}
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
+					if scenario == "expanded" {
+						require.NoError(t, err)
+						assert.Equal(t, []map[string]any{{"title": "result"}}, result.Entries)
+					} else {
+						var httpErr *httperrors.HTTPError
+						require.ErrorAs(t, err, &httpErr)
+						if scenario == "fixed" {
+							assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+						} else {
+							assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+							assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+						}
+						assert.Nil(t, result)
+						assert.Same(t, prepared, params.ActualFilterCond)
+					}
+					assert.False(t, *field.Filterable)
+					assert.Equal(t, "source_title", field.OriginalName)
+					assert.Empty(t, field.Features)
+				})
+			}
+		}
+	})
+	t.Run("wildcard retains logical and generated fields without exposing feature subfields", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		resources := mock_interfaces.NewMockResourceService(ctrl)
+		main := &interfaces.Property{Name: "field", OriginalName: "field", Type: interfaces.DataType_Text, Filterable: new(false),
+			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, FeatureName: "raw"}, {FeatureType: interfaces.PropertyFeatureType_Vector}}}
+		raw := &interfaces.Property{Name: "field.raw", OriginalName: "field.raw", Type: interfaces.DataType_String, Filterable: new(true)}
+		vector := &interfaces.Property{Name: "field_vector", OriginalName: "field_vector", Type: interfaces.DataType_Vector, Filterable: new(true)}
+		resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+			Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{main}}
+		indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{main, raw, vector}, nil)
+		indexes.EXPECT().GeneratedFields(gomock.Any()).Times(0)
+		resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Operation: "multi_match", Value: "query", RemainCfg: map[string]any{"fields": []any{"*"}}}}
+		indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(
+			func(_ context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+				actual, ok := query.ActualFilterCond.(*filter_condition.MultiMatchCond)
+				require.True(t, ok)
+				names := make([]string, len(actual.Fields))
+				for i, field := range actual.Fields {
+					names[i] = field.Name
+				}
+				assert.ElementsMatch(t, []string{"field", "field_vector"}, names)
+				return &interfaces.ResourceDataQueryResult{}, nil
+			})
+		_, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
+		require.NoError(t, err)
+		assert.False(t, *main.Filterable)
+	})
+	t.Run("native index and forced source do not borrow managed physical capability", func(t *testing.T) {
+		for _, category := range []string{interfaces.ResourceCategoryIndex, interfaces.ResourceCategoryTable} {
+			for _, physicalReference := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/physical=%v", category, physicalReference), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+					main := &interfaces.Property{Name: "field", Type: interfaces.DataType_String, Filterable: new(false),
+						Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, FeatureName: "search"}}}
+					resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: category, Enabled: true,
+						Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, SchemaDefinition: []*interfaces.Property{main}}
+					cfg := &interfaces.FilterCondCfg{Field: "field", Operation: "match", Value: "query"}
+					if physicalReference {
+						cfg.Field, cfg.Operation = "field.search", "eq"
+					}
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+					if category == interfaces.ResourceCategoryTable {
+						params.IgnoreLocalIndex = new(true)
+					}
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes, cf: connectors}).QueryWithPaging(t.Context(), resource, params)
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Nil(t, result)
+					if physicalReference {
+						assert.Contains(t, httpErr.ErrorDetails, "not found")
+					} else {
+						assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+					}
+				})
+			}
+		}
+	})
+
+	t.Run("managed filters check the physical field selected by the feature", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, kind, operation, feature, featureName, physicalName, physicalType string
+			parent, child, allowed                                                  bool
+		}{
+			{"string fulltext uses enabled child", interfaces.DataType_String, "match", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, false, true, true},
+			{"string fulltext rejects disabled child", interfaces.DataType_String, "match", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, true, false, false},
+			{"text exact uses enabled keyword", interfaces.DataType_Text, "eq", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, false, true, true},
+			{"text exact rejects disabled keyword", interfaces.DataType_Text, "eq", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, true, false, false},
+			{"string exact cannot borrow fulltext capability", interfaces.DataType_String, "eq", interfaces.PropertyFeatureType_Fulltext, "search", "field.search", interfaces.DataType_Text, false, true, false},
+			{"text fulltext cannot borrow keyword capability", interfaces.DataType_Text, "match", interfaces.PropertyFeatureType_Keyword, "raw", "field.raw", interfaces.DataType_String, false, true, false},
+			{"knn uses enabled generated vector", interfaces.DataType_String, "knn_vector", interfaces.PropertyFeatureType_Vector, "embedding", "field_vector", interfaces.DataType_Vector, false, true, true},
+			{"knn rejects disabled generated vector before model lookup", interfaces.DataType_String, "knn_vector", interfaces.PropertyFeatureType_Vector, "embedding", "field_vector", interfaces.DataType_Vector, true, false, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				models := mock_interfaces.NewMockModelFactoryService(ctrl)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				resources := mock_interfaces.NewMockResourceService(ctrl)
+				feature := interfaces.PropertyFeature{FeatureType: tc.feature, FeatureName: tc.featureName}
+				if tc.feature == interfaces.PropertyFeatureType_Vector {
+					feature.Config = map[string]any{"dimension": 2}
+				}
+				main := &interfaces.Property{Name: "field", OriginalName: "field", Type: tc.kind, Filterable: &tc.parent, Features: []interfaces.PropertyFeature{feature}}
+				physical := &interfaces.Property{Name: tc.physicalName, OriginalName: tc.physicalName, Type: tc.physicalType, Filterable: &tc.child}
+				generated := map[string]*interfaces.Property{}
+				if tc.feature == interfaces.PropertyFeatureType_Vector {
+					physical.Features = []interfaces.PropertyFeature{feature}
+					generated[tc.physicalName] = physical
+				}
+				resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+					Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+					IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{main}}
+				indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{main, physical}, nil)
+				generatedCalls := 0
+				if tc.operation == "knn_vector" && tc.allowed {
+					generatedCalls = 1
+					model := &interfaces.SmallModel{ModelID: "model"}
+					models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+					models.EXPECT().GetVector(gomock.Any(), model, []string{"query"}).Return([]*interfaces.VectorResp{{Vector: []float32{1, 2}}}, nil)
+				}
+				indexes.EXPECT().GeneratedFields(resource.SchemaDefinition).Return(generated, nil).Times(generatedCalls)
+				resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				cfg := &interfaces.FilterCondCfg{Field: "field", Operation: tc.operation, Value: "query"}
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg, OutputFields: []string{"field"}}
+				if tc.allowed {
+					indexes.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).DoAndReturn(
+						func(_ context.Context, _ string, _ *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+							require.NotNil(t, query.ActualFilterCond)
+							if tc.operation == "knn_vector" {
+								assert.Equal(t, "field_vector", query.FilterCondCfg.Field)
+							} else {
+								assert.Equal(t, "field", query.FilterCondCfg.Field)
+							}
+							return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"field": "returned"}}}, nil
+						})
+				}
+				result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes, mfs: models}).QueryWithPaging(t.Context(), resource, params)
+				if tc.allowed {
+					require.NoError(t, err)
+					assert.Equal(t, []map[string]any{{"field": "returned"}}, result.Entries)
+				} else {
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+					assert.Nil(t, result)
+				}
+				assert.Equal(t, tc.parent, *main.Filterable)
+				assert.Equal(t, tc.child, *physical.Filterable)
+			})
+		}
+	})
+
+	t.Run("LIM metadata failures retain query error classification before model or backend calls", func(t *testing.T) {
+		for _, failure := range []struct {
+			name   string
+			cause  error
+			status int
+		}{
+			{"decimal mapping", interfaces.NewDecimalIndexError("amount", "invalid_scale"), http.StatusBadRequest},
+			{"unknown mapping", errors.New("private mapping diagnostic"), http.StatusInternalServerError},
+		} {
+			t.Run(failure.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				models := mock_interfaces.NewMockModelFactoryService(ctrl)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				resources := mock_interfaces.NewMockResourceService(ctrl)
+				connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+				resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+					Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+					SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text}}}
+				resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return(nil, failure.cause)
+				indexes.EXPECT().GeneratedFields(gomock.Any()).Times(0)
+				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "title", Operation: "knn_vector", Value: "query"}}
+				result, err := (&resourceDataService{rs: resources, cs: catalogs, cf: connectors, lim: indexes, mfs: models}).QueryWithPaging(t.Context(), resource, params)
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, failure.status, httpErr.HTTPCode)
+				assert.Nil(t, result)
+				assert.Nil(t, params.ActualFilterCond)
+				if failure.status == http.StatusBadRequest {
+					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+					assert.Equal(t, "amount", httpErr.Metadata["field"])
+					assert.Equal(t, "invalid_scale", httpErr.Metadata["reason"])
+				} else {
+					assert.NotContains(t, httpErr.ErrorDetails, "private mapping diagnostic")
+				}
+			})
+		}
+	})
+
+	t.Run("injected LIM query schema can reject a source-enabled field", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		resources := mock_interfaces.NewMockResourceService(ctrl)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		models := mock_interfaces.NewMockModelFactoryService(ctrl)
+		resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+			Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Filterable: new(true)}}}
+		projected := *resource.SchemaDefinition[0]
+		projected.Filterable = new(false)
+		indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return([]*interfaces.Property{&projected}, nil)
+		indexes.EXPECT().GeneratedFields(gomock.Any()).Times(0)
+		resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "title", Operation: "knn_vector", Value: "query"}}
+		result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes, mfs: models}).QueryWithPaging(t.Context(), resource, params)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+		assert.Nil(t, result)
+		assert.True(t, *resource.SchemaDefinition[0].Filterable)
+	})
+
+	t.Run("dataset feature capability requires an available index", func(t *testing.T) {
+		for _, status := range []string{"", interfaces.ResourceLocalIndexStatusUnavailable, interfaces.ResourceLocalIndexStatusStale, interfaces.ResourceLocalIndexStatusAvailable} {
+			for _, indexName := range []string{"", "dataset-index"} {
+				t.Run(status+"/"+indexName, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					datasets := mock_interfaces.NewMockDatasetService(ctrl)
+					resource := &interfaces.Resource{ID: "dataset", CatalogID: "catalog", Category: interfaces.ResourceCategoryDataset,
+						Enabled: true, Status: interfaces.ResourceStatusActive, LocalIndexName: indexName, LocalIndexStatus: status,
+						SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Filterable: new(false)}}}
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Field: "title", Operation: "match", Value: "query"}}
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					available := status == interfaces.ResourceLocalIndexStatusAvailable && indexName != ""
+					if available {
+						datasets.EXPECT().ListDocuments(gomock.Any(), resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"title": "result"}}}, nil)
+					}
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, ds: datasets, lim: newResourceDataLocalIndexManagerMock(ctrl)}).QueryWithPaging(t.Context(), resource, params)
+					if available {
+						require.NoError(t, err)
+						assert.Equal(t, "result", result.Entries[0]["title"])
+					} else {
+						var httpErr *httperrors.HTTPError
+						require.ErrorAs(t, err, &httpErr)
+						assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+						assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+						assert.Nil(t, result)
+					}
+					assert.False(t, *resource.SchemaDefinition[0].Filterable)
+				})
+			}
+		}
+	})
+
+	t.Run("native index rejects disabled fields before connector creation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		resources := mock_interfaces.NewMockResourceService(ctrl)
+		connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+		indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		resource := &interfaces.Resource{ID: "native-index", CatalogID: "catalog", Category: interfaces.ResourceCategoryIndex,
+			SourceIdentifier: "physical-index", Enabled: true, Status: interfaces.ResourceStatusActive,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "title", Type: interfaces.DataType_String, Filterable: new(false)},
+			}}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
+			Field: "title", Operation: filter_condition.OperationEqual, Value: "protected",
+		}}
+		resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
+			Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+		result, err := (&resourceDataService{rs: resources, cs: catalogs, cf: connectors, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+		assert.Nil(t, result)
+		assert.Nil(t, params.ActualFilterCond)
+		// Neither connector creation nor a managed local-index call is permitted.
+	})
+
+	t.Run("filterability follows the execution schema and preserves projection", func(t *testing.T) {
+		for _, indexed := range []bool{false, true} {
+			for _, operation := range []string{"plain", "nested", "right field", "multi field", "match", "match phrase", "vector", "vector ordinary subfilter", "generated vector", "projection", "wildcard"} {
+				t.Run(fmt.Sprintf("index=%v/%s", indexed, operation), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					indexes := newResourceDataLocalIndexManagerMock(ctrl)
+					connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+					models := mock_interfaces.NewMockModelFactoryService(ctrl)
+					resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+						Enabled: true, Status: interfaces.ResourceStatusActive,
+						SchemaDefinition: []*interfaces.Property{
+							{Name: "allowed", Type: interfaces.DataType_String},
+							{Name: "blocked", Type: interfaces.DataType_String, Filterable: new(false), Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext}, {FeatureType: interfaces.PropertyFeatureType_Vector}}},
+						}}
+					if indexed {
+						resource.LocalIndexName = "table-index"
+						resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+						resource.IndexConfig = &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}
+					}
+					shouldSucceed := indexed || operation == "projection" || operation == "wildcard"
+					params := &interfaces.ResourceDataQueryParams{OutputFields: []string{"blocked"}}
+					switch operation {
+					case "plain":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "blocked", Operation: "eq", Value: "x"}
+					case "nested":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{{Operation: "or", SubConds: []*interfaces.FilterCondCfg{{Field: "blocked", Operation: "null"}}}}}
+					case "right field":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "allowed", Operation: "eq", ValueFrom: interfaces.ValueFrom_Field, Value: "blocked"}
+					case "multi field":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Operation: "multi_match", Value: "x", RemainCfg: map[string]any{"fields": []any{"allowed", "blocked"}}}
+					case "match":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "blocked", Operation: "match", Value: "x"}
+					case "match phrase":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "blocked", Operation: "match_phrase", Value: "x"}
+					case "vector", "vector ordinary subfilter":
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "blocked", Operation: "knn_vector", Value: "x"}
+						if operation == "vector ordinary subfilter" {
+							params.FilterCondCfg.SubConds = []*interfaces.FilterCondCfg{{Field: "blocked", Operation: "eq", Value: "x"}}
+						}
+						if indexed {
+							model := &interfaces.SmallModel{ModelID: "model"}
+							models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+							models.EXPECT().GetVector(gomock.Any(), model, []string{"x"}).Return([]*interfaces.VectorResp{{Vector: []float32{1, 2}}}, nil)
+						}
+					case "wildcard":
+						if !indexed {
+							return
+						}
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Operation: "multi_match", Value: "x", RemainCfg: map[string]any{"fields": []any{"*"}}}
+					case "generated vector":
+						if !indexed {
+							return
+						}
+						params.FilterCondCfg = &interfaces.FilterCondCfg{Field: "blocked_vector", Operation: "knn_vector", Value: []float32{1, 2}}
+					}
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					rows := []map[string]any{{"blocked": "still returned"}}
+					if shouldSucceed {
+						if indexed {
+							indexes.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, gomock.Any()).DoAndReturn(
+								func(_ context.Context, _ string, _ *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+									if operation == "wildcard" {
+										match, ok := actual.ActualFilterCond.(*filter_condition.MultiMatchCond)
+										require.True(t, ok)
+										names := make([]string, len(match.Fields))
+										for i, property := range match.Fields {
+											names[i] = property.Name
+										}
+										assert.ElementsMatch(t, []string{"allowed", "blocked", "blocked_vector"}, names)
+									}
+									if operation == "vector" || operation == "vector ordinary subfilter" || operation == "generated vector" {
+										actualVector, ok := actual.ActualFilterCond.(*filter_condition.KnnVectorCond)
+										require.True(t, ok)
+										assert.Equal(t, "blocked_vector", actualVector.FilterFieldName)
+									}
+									return &interfaces.ResourceDataQueryResult{Entries: rows}, nil
+								})
+						} else {
+							source := mock_interfaces.NewMockTableConnector(ctrl)
+							connectors.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Return(source, nil)
+							source.EXPECT().Connect(gomock.Any()).Return(nil)
+							source.EXPECT().Close(gomock.Any()).Return(nil)
+							source.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: rows}, nil)
+						}
+					}
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes, cf: connectors, mfs: models}).QueryWithPaging(context.Background(), resource, params)
+					if shouldSucceed {
+						require.NoError(t, err)
+						assert.Equal(t, rows, result.Entries)
+						assert.False(t, *resource.SchemaDefinition[1].Filterable)
+					} else {
+						require.Error(t, err)
+						assert.Nil(t, result)
+						var httpErr *httperrors.HTTPError
+						require.ErrorAs(t, err, &httpErr)
+						assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+						assert.Contains(t, httpErr.ErrorDetails, "not filterable")
+						// No expectation permits a connector, index, or model call.
+					}
+				})
+			}
+		}
+	})
+
 	for _, tc := range []struct {
 		name       string
 		allow      *bool
@@ -681,7 +1396,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 			resources := mock_interfaces.NewMockResourceService(ctrl)
-			indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			indexes := newResourceDataLocalIndexManagerMock(ctrl)
 			connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
 			source := mock_interfaces.NewMockTableConnector(ctrl)
 			resource := &interfaces.Resource{ID: "table", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
@@ -731,7 +1446,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
 		resources := mock_interfaces.NewMockResourceService(ctrl)
-		index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		index := newResourceDataLocalIndexManagerMock(ctrl)
 		resource := &interfaces.Resource{ID: "table-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable,
 			Enabled: true, Status: interfaces.ResourceStatusActive,
 			LocalIndexName: "table-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
@@ -779,7 +1494,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 	t.Run("query table with local index uses local index manager", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		mockLIM := newResourceDataLocalIndexManagerMock(ctrl)
 		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
 		resource := &interfaces.Resource{
 			ID:               "resource-1",
@@ -819,7 +1534,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 	t.Run("query table with local index answers 400 for a condition the index cannot build", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		mockLIM := newResourceDataLocalIndexManagerMock(ctrl)
 		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
 		resource := &interfaces.Resource{
 			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
@@ -847,7 +1562,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 	t.Run("query table with local index preserves stored condition build failures", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		mockLIM := newResourceDataLocalIndexManagerMock(ctrl)
 		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
 		resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1",
 			Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
@@ -952,7 +1667,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-		rds := &resourceDataService{cs: mockCS, ds: mockDS}
+		rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 		resource := &interfaces.Resource{
 			ID: "dataset-1", Enabled: true, CatalogID: "catalog-1",
 			Category: interfaces.ResourceCategoryDataset, LocalIndexName: "vega-dataset-index-1",
@@ -978,13 +1693,14 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-		rds := &resourceDataService{cs: mockCS, ds: mockDS}
+		rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 		resource := &interfaces.Resource{
-			ID:             "dataset-1",
-			Enabled:        true,
-			CatalogID:      "catalog-1",
-			Category:       interfaces.ResourceCategoryDataset,
-			LocalIndexName: "vega-dataset-index-1",
+			ID:               "dataset-1",
+			Enabled:          true,
+			CatalogID:        "catalog-1",
+			Category:         interfaces.ResourceCategoryDataset,
+			LocalIndexName:   "vega-dataset-index-1",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name", OriginalName: "source_name", Type: interfaces.DataType_String},
 			},
@@ -1178,7 +1894,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
 		Enabled:          true,
@@ -1205,7 +1921,7 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
 		Enabled:          true,
@@ -1232,7 +1948,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	rds := &resourceDataService{cs: mockCS, ds: mockDS}
+	rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
 		Enabled:          true,
@@ -1379,7 +2095,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 							index.EXPECT().ExecuteQuery(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
 							service.cf = connectors
 						} else {
-							index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+							index := newResourceDataLocalIndexManagerMock(ctrl)
 							resource.LocalIndexName = "index"
 							resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 							index.EXPECT().ListDocuments(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
@@ -1688,7 +2404,7 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/stored=%v", fieldType, stored), func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				cs := mock_interfaces.NewMockCatalogService(ctrl)
-				lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				lim := newResourceDataLocalIndexManagerMock(ctrl)
 				cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{Enabled: true}, nil)
 				service := &resourceDataService{cs: cs, lim: lim}
 				resource := tableResource("index")
@@ -1769,7 +2485,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				cs := mock_interfaces.NewMockCatalogService(ctrl)
 				cf := mock_interfaces.NewMockConnectorFactory(ctrl)
-				lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				lim := newResourceDataLocalIndexManagerMock(ctrl)
 				service := &resourceDataService{cs: cs, cf: cf, lim: lim}
 				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_String, OriginalType: "VARCHAR", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
 				if connectorType == interfaces.ConnectorTypeDoris {
@@ -1839,7 +2555,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 		} {
 			ctrl := gomock.NewController(t)
 			cs := mock_interfaces.NewMockCatalogService(ctrl)
-			service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: mock_interfaces.NewMockLocalIndexManager(ctrl)}
+			service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: newResourceDataLocalIndexManagerMock(ctrl)}
 			resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}, {Name: "payload", Type: interfaces.DataType_Json}}}
 			cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
 			rowsResult20, err := service.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
@@ -1864,7 +2580,7 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 			t.Run(fmt.Sprintf("%s stored=%v", category, stored), func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				cs := mock_interfaces.NewMockCatalogService(ctrl)
-				service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: mock_interfaces.NewMockLocalIndexManager(ctrl), ds: mock_interfaces.NewMockDatasetService(ctrl)}
+				service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: newResourceDataLocalIndexManagerMock(ctrl), ds: mock_interfaces.NewMockDatasetService(ctrl)}
 				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: category, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
 				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL}, nil)
 				cfg := &interfaces.FilterCondCfg{Field: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"}
@@ -1927,7 +2643,7 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			index := newResourceDataLocalIndexManagerMock(ctrl)
 			models := mock_interfaces.NewMockModelFactoryService(ctrl)
 			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(1024)}}}}}}
 			field := "title_vector"
@@ -1977,7 +2693,7 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			index := newResourceDataLocalIndexManagerMock(ctrl)
 			models := mock_interfaces.NewMockModelFactoryService(ctrl)
 			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
 			cfg := &interfaces.FilterCondCfg{Field: "title_vector", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: make([]float32, 3)}
@@ -2084,7 +2800,7 @@ func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
 		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			index := newResourceDataLocalIndexManagerMock(ctrl)
 			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
 			resource := &interfaces.Resource{Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "status", Type: interfaces.DataType_String}}}
 			params := &interfaces.ResourceDataQueryParams{}

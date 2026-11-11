@@ -1155,8 +1155,8 @@ func TestSemanticUnderstandingTaskWorkerApplyCatalogResult(t *testing.T) {
 			{ID: "view-2", CatalogID: "catalog-1", Name: "old_view", Category: interfaces.ResourceCategoryLogicalView},
 		}, nil)
 	resourceService.EXPECT().
-		InternalCreate(gomock.Any(), gomock.Not(gomock.Nil()), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+		InternalCreate(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+		DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 			assert.Equal(t, "catalog-1", req.CatalogID)
 			assert.Equal(t, "customer_order_summary", req.Name)
 			assert.Equal(t, "customer_order_summary", req.SourceIdentifier)

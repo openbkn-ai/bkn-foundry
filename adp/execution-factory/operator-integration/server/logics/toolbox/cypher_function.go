@@ -140,10 +140,13 @@ func cypherPlaceholder(input *interfaces.ParameterDef) any {
 		if len(input.SubParameters) == 1 && input.SubParameters[0] != nil {
 			item = input.SubParameters[0]
 		}
-		// IN refuses an empty list, so the placeholder holds one element.
+		// One element, so the list reads as one of its kind.
 		return []any{cypherPlaceholder(item)}
 	default:
-		return "x"
+		// A date, because bkn-backend refuses a string that is not one when the
+		// statement compares it with a date property, and explain reads no
+		// data, so any string suits every other use.
+		return "2000-01-01"
 	}
 }
 
@@ -439,9 +442,11 @@ func cypherRefusal(ctx context.Context, result *interfaces.CypherQueryResult) er
 	}
 	details := decodeJSONBody(result.Body)
 	if refusal, ok := details.(map[string]any); ok {
+		// The details say what to change and where; the description only names
+		// the kind of error, in the server's language, so it is the fallback.
 		message := strings.TrimSpace(fmt.Sprint(refusal["description"]))
-		if extra, ok := refusal["error_details"]; ok && extra != nil && fmt.Sprint(extra) != "" {
-			message = strings.TrimSpace(message + ": " + fmt.Sprint(extra))
+		if extra, ok := refusal["error_details"]; ok && extra != nil && strings.TrimSpace(fmt.Sprint(extra)) != "" {
+			message = strings.TrimSpace(fmt.Sprint(extra))
 		}
 		if message != "" && message != "<nil>" {
 			return oerrors.DefaultHTTPError(ctx, status, "the cypher statement was refused: "+message)

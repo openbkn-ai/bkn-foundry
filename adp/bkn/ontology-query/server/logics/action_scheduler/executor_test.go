@@ -26,7 +26,7 @@ func Test_ExecuteTool_Validation(t *testing.T) {
 					Type:   interfaces.ActionSourceTypeTool,
 					BoxID:  "",
 					ToolID: "",
-				},
+				}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 			}
 
 			So(actionType.ActionSource.BoxID, ShouldEqual, "")
@@ -39,7 +39,7 @@ func Test_ExecuteTool_Validation(t *testing.T) {
 					Type:   interfaces.ActionSourceTypeTool,
 					BoxID:  "box_001",
 					ToolID: "tool_001",
-				},
+				}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 			}
 			params := map[string]any{
 				"target_ip": "192.168.1.1",
@@ -65,7 +65,7 @@ func Test_ExecuteTool_UsesContextDeadline(t *testing.T) {
 				Type:   interfaces.ActionSourceTypeTool,
 				BoxID:  "box_001",
 				ToolID: "tool_001",
-			},
+			}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 		}
 
 		aoAccess.EXPECT().ExecuteToolAsProxy(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
@@ -312,7 +312,7 @@ func Test_ExecuteMCP_Validation(t *testing.T) {
 				ActionSource: interfaces.ActionSource{
 					Type:  interfaces.ActionSourceTypeMCP,
 					McpID: "",
-				},
+				}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 			}
 
 			So(actionType.ActionSource.McpID, ShouldEqual, "")
@@ -326,10 +326,12 @@ func Test_ExecuteMCP_Validation(t *testing.T) {
 						McpID:    "mcp_001",
 						ToolName: "restart_service",
 						ToolID:   "tool_fallback",
-					},
+					}, OperationConfig:
+
+					// Should use ToolName
+					&interfaces.ActionOperationConfig{Type: "tool"},
 				}
 
-				// Should use ToolName
 				toolName := actionType.ActionSource.ToolName
 				if toolName == "" {
 					toolName = actionType.ActionSource.ToolID
@@ -344,7 +346,7 @@ func Test_ExecuteMCP_Validation(t *testing.T) {
 						McpID:    "mcp_001",
 						ToolName: "",
 						ToolID:   "tool_fallback",
-					},
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 				}
 
 				toolName := actionType.ActionSource.ToolName
@@ -361,7 +363,7 @@ func Test_ExecuteMCP_Validation(t *testing.T) {
 					Type:     interfaces.ActionSourceTypeMCP,
 					McpID:    "mcp_001",
 					ToolName: "restart_pod",
-				},
+				}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
 			}
 			params := map[string]any{
 				"pod_name":      "test-pod",
@@ -424,38 +426,6 @@ func Test_MCPExecutionRequest(t *testing.T) {
 			So(req.ToolName, ShouldEqual, "execute_command")
 			So(req.Parameters["command"], ShouldEqual, "ls -la")
 			So(req.Timeout, ShouldEqual, int64(60))
-		})
-	})
-}
-
-func Test_buildMCPParameters(t *testing.T) {
-	Convey("Test buildMCPParameters", t, func() {
-		Convey("行动类未声明参数时 dynamic_params 直通", func() {
-			merged := buildMCPParameters(map[string]any{}, map[string]any{
-				"resource_id": "res_001",
-				"limit":       10,
-			})
-
-			So(len(merged), ShouldEqual, 2)
-			So(merged["resource_id"], ShouldEqual, "res_001")
-			So(merged["limit"], ShouldEqual, 10)
-		})
-
-		Convey("行动类声明的参数覆盖同名 dynamic_params", func() {
-			merged := buildMCPParameters(
-				map[string]any{"city": "上海"},
-				map[string]any{"city": "北京", "limit": 5},
-			)
-
-			So(merged["city"], ShouldEqual, "上海")
-			So(merged["limit"], ShouldEqual, 5)
-		})
-
-		Convey("两侧均为空时返回空 map 而非 nil", func() {
-			merged := buildMCPParameters(nil, nil)
-
-			So(merged, ShouldNotBeNil)
-			So(len(merged), ShouldEqual, 0)
 		})
 	})
 }

@@ -398,6 +398,8 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 			ColumnKey:         columnKey.String,
 			OrdinalPosition:   int(ordinal.Int64),
 		}
+		filterable := c.IsFilterable(&column)
+		column.Filterable = &filterable
 		columns = append(columns, column)
 
 		// Only PRI marks a primary key; UNI is a unique-column marker.

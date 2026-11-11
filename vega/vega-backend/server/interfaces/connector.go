@@ -40,6 +40,8 @@ type TableColumnMeta struct {
 	AliasType   string `json:"alias_type,omitempty"`
 	Description string `json:"description"`
 
+	Filterable *bool `json:"filterable,omitempty"`
+
 	Nullable          bool   `json:"nullable"`
 	DefaultValue      string `json:"default_value,omitempty"`      // Default value
 	CharMaxLen        int    `json:"char_max_len,omitempty"`       // Maximum character length
@@ -91,8 +93,9 @@ type FilesetMeta struct {
 
 // FilesetColumnMeta represents column metadata.
 type FilesetColumnMeta struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Filterable *bool  `json:"filterable,omitempty"`
 }
 
 // TopicMeta represents message topic metadata.
@@ -127,12 +130,13 @@ type IndexMeta struct {
 
 // IndexFieldMeta represents index field metadata.
 type IndexFieldMeta struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Type        string         `json:"type"`
-	Analyzer    string         `json:"analyzer,omitempty"`
-	Searchable  bool           `json:"searchable"`
-	Attributes  map[string]any `json:"attributes"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+
+	Filterable *bool `json:"filterable,omitempty"`
+	// Attributes 保留索引字段的原生配置，例如 analyzer、index 和 doc_values。
+	Attributes map[string]any `json:"attributes"`
 	// SubFields (multi-fields) are arranged in alphabetical order by Name to ensure stable serialization
 	SubFields []IndexSubFieldMeta `json:"sub_fields,omitempty"`
 	// ResolvedType 保存别名目标的原生类型，仅用于当前探查，不写入源元数据。

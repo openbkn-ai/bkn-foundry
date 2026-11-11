@@ -85,6 +85,18 @@ paths:
             type: string
           in: query
           required: false
+        - name: operation_kind
+          in: query
+          description: Operation type; applied before authorization-filtered pagination and total count.
+          schema:
+            type: string
+            enum: [object, relation, tool]
+        - name: relation_operation
+          in: query
+          description: Relation operation; applied before pagination and total count.
+          schema:
+            type: string
+            enum: [create, delete]
         - name: object_type_id
           description: Bound object type
           schema:
@@ -134,6 +146,8 @@ paths:
                     icon: ""
                     color: ""
                     branch: main
+                    operation_config:
+                      type: object
                     action_type: modify
                     action_intent: modify
                     object_type_id: pod
@@ -283,6 +297,8 @@ paths:
                         updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                         update_time: 1758098535626
                         kn_id: kn_system_incident_event_network
+                        operation_config:
+                          type: object
                         action_type: modify
                         action_intent: modify
                         object_type_id: pod
@@ -343,6 +359,8 @@ paths:
                         updater: a0f02238-6cec-11f0-82bb-fa1c4529a151
                         update_time: 1758346280120
                         kn_id: kn_system_incident_event_network
+                        operation_config:
+                          type: object
                         action_type: modify
                         action_intent: modify
                         object_type_id: pod
@@ -945,10 +963,12 @@ components:
             - property
             - input
             - const
+            - source_identity
+            - target_identity
           type: string
         value:
-          description: Parameter value. For value_from=property, provide the object type data property name. For value_from=input, omit this field.
-          type: string
+          description: Literal constant, or an object property name for property. Omit for input
+            and endpoint identity sources.
     ActionTypeDetails:
       description: Action type details
       required:
@@ -1059,6 +1079,7 @@ components:
     ReqActionType:
       description: Action type creation information
       required:
+        - operation_config
         - action_type
         - groups
         - kn_id
@@ -1069,6 +1090,8 @@ components:
         - object_type_id
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         id:
           description: Action type ID
           type: string
@@ -1169,6 +1192,7 @@ components:
     UpdateActionType:
       description: Action type update information
       required:
+        - operation_config
         - action_type
         - groups
         - kn_id
@@ -1179,6 +1203,8 @@ components:
         - object_type_id
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         name:
           description: Action type name
           type: string
@@ -1271,6 +1297,7 @@ components:
     ActionTypeDetail:
       description: Action type
       required:
+        - operation_config
         - action_type
         - comment
         - id
@@ -1292,6 +1319,8 @@ components:
         - creator
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         id:
           description: Action type ID
           type: string
@@ -1409,6 +1438,7 @@ components:
     ActionType:
       description: Action type
       required:
+        - operation_config
         - action_type
         - comment
         - id
@@ -1430,6 +1460,8 @@ components:
         - creator
       type: object
       properties:
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
         id:
           description: Action type ID
           type: string
@@ -2166,18 +2198,97 @@ components:
             - not_exist
           type: string
     ActionCondition:
+      type: object
+      required:
+      - operation
+      properties:
+        object_type_id:
+          type: string
+        field:
+          type: string
+        operation:
+          type: string
+          enum:
+          - and
+          - or
+          - ==
+          - '!='
+          - '>'
+          - '>='
+          - <
+          - <=
+          - in
+          - not_in
+          - empty
+          - not_empty
+          - 'true'
+          - 'false'
+          - range
+          - out_range
+          - before
+          - between
+          - exist
+          - not_exist
+          - like
+          - not_like
+          - prefix
+          - not_prefix
+          - 'null'
+          - not_null
+          - regex
+          - contain
+          - not_contain
+          - current
+        sub_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionCondition'
+        value_from:
+          type: string
+          enum:
+          - const
+          - property
+          - input
+          default: const
+        value:
+          description: Literal value for const; same-endpoint property name for property; runtime parameter name for
+            input. Applicability does not supply target identities.
+    ActionOperationConfig:
+      type: object
+      required:
+      - type
+      additionalProperties: false
+      description: Single-operation definition. Required by the new action runtime; migrate stored definitions before
+        switching services.
       oneOf:
-        - $ref: "#/components/schemas/action_condition_and"
-        - $ref: "#/components/schemas/action_condition_or"
-        - $ref: "#/components/schemas/action_condition_eq"
-        - $ref: "#/components/schemas/action_condition_not_eq"
-        - $ref: "#/components/schemas/action_condition_gt"
-        - $ref: "#/components/schemas/action_condition_gte"
-        - $ref: "#/components/schemas/action_condition_lt"
-        - $ref: "#/components/schemas/action_condition_lte"
-        - $ref: "#/components/schemas/action_condition_in"
-        - $ref: "#/components/schemas/action_condition_not_in"
-        - $ref: "#/components/schemas/action_condition_range"
-        - $ref: "#/components/schemas/action_condition_out_range"
-        - $ref: "#/components/schemas/action_condition_exist"
-        - $ref: "#/components/schemas/action_condition_not_exist"
+        - properties:
+            type:
+              enum: [object, tool]
+          additionalProperties: false
+        - required: [relation_type_id, relation_operation]
+          properties:
+            type:
+              enum: [relation]
+      properties:
+        type:
+          type: string
+          enum:
+          - object
+          - relation
+          - tool
+        relation_type_id:
+          type: string
+          description: Required for relation operations; must connect the selected object type.
+        relation_operation:
+          type: string
+          enum:
+          - create
+          - delete
+        anchor_role:
+          type: string
+          enum:
+          - source
+          - target
+          description: Role of object_type_id in the relation. Self relations require an explicit role.
+        other_object_condition:
+          $ref: '#/components/schemas/ActionCondition'

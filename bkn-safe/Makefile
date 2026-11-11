@@ -33,4 +33,4 @@ test:
 
 test-integration:
 	@test -n "$$BKN_SAFE_TEST_MYSQL_DSN" || { echo "BKN_SAFE_TEST_MYSQL_DSN must reference a disposable MySQL/MariaDB test schema"; exit 1; }
-	cd server && go test -tags=integration ./internal/directory -run '^TestDepartmentHierarchyMySQL' -count=1 -timeout=30s
+	cd server && go test -tags=integration ./internal/directory -run '^(TestDepartmentHierarchyMySQL|TestEmptyDepartmentMySQL)' -count=1 -timeout=30s

@@ -19,6 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -44,7 +46,31 @@ const auditRecordTimeout = 10 * time.Second
 
 // sensitiveBodyKeys are masked in the audit Detail snapshot so credentials never
 // land in the trail.
-var sensitiveBodyKeys = []string{"password", "new_password", "old_password"}
+var auditKeyNormalizer = strings.NewReplacer("_", "", "-", "")
+var sensitiveBodyKeys = map[string]bool{
+	"password": true, "newpassword": true, "oldpassword": true, "secret": true,
+	"clientsecret": true, "webhooksecret": true, "accesstoken": true,
+	"refreshtoken": true, "idtoken": true, "token": true, "assertion": true,
+	"privatekey": true, "apikey": true,
+}
+
+func redactAuditSecrets(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			canonical := auditKeyNormalizer.Replace(strings.ToLower(key))
+			if sensitiveBodyKeys[canonical] {
+				value[key] = "***"
+			} else {
+				redactAuditSecrets(child)
+			}
+		}
+	case []any:
+		for _, child := range value {
+			redactAuditSecrets(child)
+		}
+	}
+}
 
 // auditMiddleware records every mutating (non-GET) admin request that reaches a
 // handler — i.e. one that already passed RequireAdmin, so the accessor id is
@@ -122,6 +148,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			return
 		}
 		explicitTargetName := ""
+		extensionTargetType := ""
 		var snapshotErr error
 		explicitOperation := false
 		if rawOperation, ok := c.Get(ctxAuditOperation); ok {
@@ -135,6 +162,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 				}
 				targetID = operation.TargetID
 				explicitTargetName = operation.TargetName
+				extensionTargetType = operation.TargetType
 				snapshotErr = operation.SnapshotErr
 			}
 		}
@@ -177,6 +205,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			Action:            action,
 			TargetID:          targetID,
 			TargetName:        targetName,
+			TargetType:        extensionTargetType,
 			Status:            status,
 			ClientIP:          c.ClientIP(),
 		}
@@ -259,11 +288,7 @@ func auditDetail(raw []byte) string {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return "" // array/scalar/invalid — nothing structured to summarize
 	}
-	for _, k := range sensitiveBodyKeys {
-		if _, ok := m[k]; ok {
-			m[k] = "***"
-		}
-	}
+	redactAuditSecrets(m)
 	b, err := json.Marshal(m)
 	if err != nil {
 		return ""
@@ -309,11 +334,7 @@ func auditDetailFromPrefix(raw []byte) string {
 		}
 		m[key] = value
 	}
-	for _, k := range sensitiveBodyKeys {
-		if _, ok := m[k]; ok {
-			m[k] = "***"
-		}
-	}
+	redactAuditSecrets(m)
 	b, err := json.Marshal(m)
 	if err != nil || len(b) > maxAuditDetail {
 		return marker
@@ -328,13 +349,7 @@ const ctxAuditOutcome = "audit_outcome"
 
 const ctxAuditOperation = "audit_operation"
 
-type auditOperation struct {
-	Action      string
-	TargetID    string
-	TargetName  string
-	SnapshotErr error
-	Suppress    bool
-}
+type auditOperation = adminwrite.AuditOperation
 
 func setAuditOperation(c *gin.Context, action, targetID, targetName string) {
 	c.Set(ctxAuditOperation, auditOperation{Action: action, TargetID: targetID, TargetName: targetName})
