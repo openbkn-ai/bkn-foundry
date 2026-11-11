@@ -94,3 +94,31 @@ jobs:
             exit 1
           fi
           echo "Every upgrade script selects a database."
+
+  upgrade-scripts-have-unique-numbers:
+    name: upgrade scripts must have unique numbers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No two upgrade scripts of a version share a number
+        run: |
+          set -u
+          # data-migrator resumes a version from the number of the last script it
+          # ran and skips every script numbered at or below it. Two scripts with
+          # the same number in one version therefore leave one of them unrun once
+          # an upgrade stops between them, and the rerun reports success.
+          scripts=$(find migrations -mindepth 4 -maxdepth 4 -type f | grep -E '/[0-9]+-[^/]*\.(sql|py|json)$')
+          dupes=$(printf '%s\n' "$scripts" | sed -E 's#^(.*)/0*([0-9]+)-[^/]*$#\1 \2#' | sort | uniq -d)
+
+          if [ -n "$dupes" ]; then
+            echo "::error::upgrade scripts of one version share a number; data-migrator would skip one of them on a resumed upgrade"
+            while read -r dir num; do
+              echo "$dir:"
+              printf '%s\n' "$scripts" | grep -E "^${dir}/0*${num}-" | sort | sed 's/^/  /'
+            done <<< "$dupes"
+            echo
+            echo "Fix: give the later script the next free number in that version."
+            exit 1
+          fi
+          echo "Every upgrade script number is unique within its version."
