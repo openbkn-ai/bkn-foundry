@@ -36,6 +36,19 @@ finish 的准备工作保留现有 1 秒 Trace 观察预算；最终 POST／幂�
 
 `list_resources`、`describe_resource`、`run_sql` 属于独立的物理资源查询面，按调用者自己的 Vega 数据资源权限授权，不受对象属性级别约束，可能暴露原始物理列。对象查询实现不得在内部调用这三个工具；仅当调用者明确要求物理资源分析时使用。
 
+## 可选 HTTP MCP 扩展与许可证
+
+HTTP 扩展提供者通过 `mcpExtensionManifestURL` 配置目录地址，通过
+`mcpExtensionManifestJSON` 提供部署工具定义。工具定义本身不授予付费能力。
+使用付费扩展时，设置 `licenseHub.url`，例如
+`--set-string licenseHub.url=http://bkn-safe:3000`；非空时 Chart 注入 `BKN_SAFE_URL`。
+此项默认为空，不从平台公共的 `bknSafe.url` 自动继承，因此社区默认部署保持原行为。
+发现和调用工具仍需有效许可证和当前用户权限。
+
+升级时应将地址保存在 Helm values 中，不能仅修改 Pod。Eval 企业部署描述同时提供
+工具清单和许可证地址；社区安装器会保留已有 Helm 配置及运行中的自定义许可证地址。
+EE 后端使用 `OPENBKN_EVAL_ENABLED=true` 启用 Eval，不再配置独立外部参评开关。
+
 ## 技术架构
 
 ### 技术栈
