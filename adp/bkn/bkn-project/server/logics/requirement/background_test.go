@@ -189,3 +189,46 @@ func Test_ExtractConceptsCitesNetworkBackground(t *testing.T) {
 		So(spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs.Documents, ShouldHaveLength, len(docs))
 	})
 }
+
+func Test_EditExampleFromNetworkBackground(t *testing.T) {
+	Convey("Test an input example the network's background states, as drafting may have cited it\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		gs := pmock.NewMockGitStore(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, bba: bba, gs: gs, now: func() int64 { return 100 }}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, KNID: "kn1", Branch: "project/p1"}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+		draft := testDraft()
+		draft.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{{Name: "order_no", Type: "string"}}
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+		req := readySpec()
+		req.Spec.Questions[0].Template = "Lines of {order}?"
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(req, true, nil)
+		// The uploaded documents do not state it; the network's background does.
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
+			doc("ex", interfaces.REQUIREMENT_DOC_PRD, "Lines of an order.")}, nil)
+		bba.EXPECT().GetKN(gomock.Any(), token, "kn1").Return(&interfaces.KnowledgeNetwork{ID: "kn1",
+			Comment: "A typical order is SO-1002."}, nil)
+		gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{}, nil)
+		var saved *interfaces.Requirement
+		ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), int64(7)).DoAndReturn(
+			func(_ context.Context, r *interfaces.Requirement, _ int64) (bool, error) {
+				saved = r
+				return true, nil
+			})
+
+		_, err := svc.EditItem(ctx, token, "p1", interfaces.REQUIREMENT_KIND_QUESTIONS, "q1",
+			interfaces.RequirementItemEdit{UpdateTime: 7, Inputs: &[]interfaces.RequirementInput{{Name: "order",
+				ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD, Example: "SO-1002"}}}, caller)
+
+		So(err, ShouldBeNil)
+		q := saved.Spec.Questions[0]
+		So((*q.Inputs)[0].Example, ShouldEqual, "SO-1002")
+		So(q.Citations[len(q.Citations)-1].DocumentID, ShouldEqual, interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID)
+	})
+}
