@@ -231,6 +231,40 @@ func TestListCapabilities(t *testing.T) {
 			So(len(list.Entries), ShouldEqual, 1)
 		})
 
+		Convey("仅挂载查询按数据库分页且不扫描模型引用", func() {
+			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
+			query := interfaces.CapabilityBindingsQueryParams{
+				KNID: "kn1", Branch: "main", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL,
+				MountedOnly:               true,
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{Offset: 2, Limit: 2},
+			}
+			cba.EXPECT().GetBindingsTotal(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) (int, error) {
+					So(q.MountedOnly, ShouldBeTrue)
+					So(q.CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_SKILL)
+					return 3, nil
+				})
+			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, error) {
+					So(q.Offset, ShouldEqual, 2)
+					So(q.Limit, ShouldEqual, 2)
+					return []*interfaces.CapabilityBinding{{ID: "bind-2", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "skill-2"}}, nil
+				})
+			aoa.EXPECT().GetSkillNamesByIDs(gomock.Any(), []string{"skill-2"}).
+				Return(map[string]string{"skill-2": "Skill 2"}, nil)
+
+			list, err := service.ListCapabilities(context.Background(), query)
+
+			So(err, ShouldBeNil)
+			So(list.TotalCount, ShouldEqual, 3)
+			So(len(list.Entries), ShouldEqual, 1)
+			So(list.Entries[0].ID, ShouldEqual, "bind-2")
+			So(list.Entries[0].Name, ShouldEqual, "Skill 2")
+			So(list.Entries[0].Releasable, ShouldBeTrue)
+			So(srcOf(list.Entries[0], interfaces.CAPABILITY_SOURCE_MANUAL), ShouldNotBeNil)
+			So(list.SourcesAvailable, ShouldBeFalse)
+		})
+
 		Convey("完整读取没有函数箱摘要时 boxes 仍序列化为空数组", func() {
 			service, cba, aoa := newTestServiceWithFactory(t, ctrl)
 			cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).Return([]*interfaces.CapabilityBinding{

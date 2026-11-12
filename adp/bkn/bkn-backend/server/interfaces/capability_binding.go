@@ -124,6 +124,9 @@ type CapabilityBindingsQueryParams struct {
 	// paginate over rows the filter then discards, and a page whose rows all belong to the other
 	// kind would read as "none bound".
 	MetadataType string
+	// MountedOnly returns stored bindings without scanning object or action type references.
+	// The default list retains model provenance for callers that inspect dependencies.
+	MountedOnly bool
 	// OwnerIDs restricts to a set of owners. A non-nil empty slice selects nothing; nil means no
 	// restriction. It is set by the service, not parsed from the query string.
 	OwnerIDs *[]string
@@ -194,7 +197,8 @@ type CapabilityBindingsList struct {
 	// are still returned in full — the names are missing, not the memberships — and the flag
 	// says so explicitly so an empty name is not read as a deleted capability.
 	MetadataAvailable bool `json:"metadata_available"`
-	// SourcesAvailable is false when the branch's object types or action types could not be read.
+	// SourcesAvailable is false when provenance was skipped or the branch's object types or
+	// action types could not be read.
 	// The mounted capabilities are still listed, but the ones only the model uses are missing and
 	// the sources on the rest are incomplete — an empty sources list would otherwise read as
 	// "nothing uses this", which is the opposite of unknown.
