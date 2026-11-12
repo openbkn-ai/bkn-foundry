@@ -575,10 +575,17 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 	}
 
 	for resourceType, resourceIDs := range resourceIDsByType {
-		matched, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, kns.ps, resourceType,
-			common.DuplicateSlice(resourceIDs))
+		candidateIDs, err := kns.narrowToGrantedChildren(ctx, resourceType, resourceIDs)
 		if err != nil {
 			return nil, err
+		}
+		matched := map[string]interfaces.PermissionResourceOps{}
+		if len(candidateIDs) > 0 {
+			matched, err = permission.FilterKNChildResourceIDsWithAnyOperation(ctx, kns.ps, resourceType,
+				common.DuplicateSlice(candidateIDs))
+			if err != nil {
+				return nil, err
+			}
 		}
 		visibility.visibleChildRows[resourceType] = matched
 	}
@@ -592,6 +599,34 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 		}
 	}
 	return visibility, nil
+}
+
+// narrowToGrantedChildren keeps the child resources the caller may have been granted, so the
+// per-resource filter runs on those alone. A caller who cannot see a network may still see it
+// through a grant on one of its children; asking about every child of every such network costs a
+// decision each and, with many networks, outlasts the filter's timeout. bkn-safe answers which
+// children of a type carry a grant for the caller in one call: none means nothing to filter, a
+// type-wide grant keeps them all, and a scope it cannot list falls back to filtering them all.
+func (kns *knowledgeNetworkService) narrowToGrantedChildren(ctx context.Context, resourceType string,
+	resourceIDs []string) ([]string, error) {
+	scope, err := kns.ps.ListAccessibleResourcesWithAnyOperation(ctx, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	if scope.Unrestricted || scope.RequiresCandidateFilter {
+		return resourceIDs, nil
+	}
+	granted := make(map[string]struct{}, len(scope.ResourceIDs))
+	for _, id := range scope.ResourceIDs {
+		granted[id] = struct{}{}
+	}
+	narrowed := make([]string, 0, len(scope.ResourceIDs))
+	for _, id := range resourceIDs {
+		if _, ok := granted[id]; ok {
+			narrowed = append(narrowed, id)
+		}
+	}
+	return narrowed, nil
 }
 
 func (kns *knowledgeNetworkService) ResolveKNReadAccess(ctx context.Context,

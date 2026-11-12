@@ -36,6 +36,7 @@ func newNavigationFixture(t *testing.T, visibleObjectTypes []string, objectTypeE
 		ata: bmock.NewMockActionTypeAccess(ctrl),
 	}
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	visible := map[string]struct{}{}
 	for _, id := range visibleObjectTypes {
 		visible[interfaces.KNChildResourceID("kn1", id)] = struct{}{}
@@ -158,6 +159,7 @@ func TestNavigation_ReferencesAcrossNetworksCostOneAuthorizationCall(t *testing.
 	kna := bmock.NewMockKNAccess(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ps: ps, rta: rta}
 
 	parameter := interfaces.KNsQueryParams{
