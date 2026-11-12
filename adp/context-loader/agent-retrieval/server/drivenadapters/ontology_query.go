@@ -421,6 +421,9 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.QueryActionsRequest) (resp *interfaces.QueryActionsResponse, err error) {
 	uri := fmt.Sprintf(queryActionsURI, url.PathEscape(req.KnID), url.PathEscape(req.AtID))
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
+	if req.IncludeTypeInfo {
+		url += "?include_type_info=true"
+	}
 
 	// Build the request body.
 	body := map[string]any{

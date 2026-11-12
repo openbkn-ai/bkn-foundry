@@ -46,8 +46,10 @@ paths:
           kn_id: '{cl_kn_id}'
           at_id: '{cl_at_id}'
       description: |
-        按行动类 ID（可选再加对象实例标识）召回行动，返回符合 Function Call 规范的
-        工具定义 `_dynamic_tools`。Agent 可以直接把它塞进自己的工具列表。
+        按行动类 ID（可选再加对象实例标识）召回行动。`action_type` 给出行动类的
+        业务名称、说明、操作意图及对象/关系/独立工具操作配置；`_dynamic_tools` 是
+        符合 Function Call 规范的底层工具定义。工具名和说明仍取自执行资源，调用方
+        应使用 `action_type` 判断业务意图，使用 `_dynamic_tools.parameters` 填写参数。
 
         不传 `_instance_identities` 时召回的是行动类级别的定义；传了则返回已就该批
         实例实例化过的参数。
@@ -109,12 +111,16 @@ paths:
       summary: 触发行动执行（异步）
       operationId: executeAction
       description: |
-        对一批对象实例执行某个行动类。**异步**：返回 `execution_id` 即代表已受理，
-        执行结果用 `get_action_execution` 轮询。
+        执行对象实例操作、关系操作或独立工具行动。**异步**：返回 `execution_id`
+        即代表已受理，执行结果用 `get_action_execution` 轮询。
 
-        `dynamic_params` 填 `get_action_info` 返回的 schema 里 `value_from=input`
-        的那些参数。`_instance_identities` 留空表示按行动类自身的条件扫描目标实例
-        （由下游决定命中范围），不是「不执行」。
+        `dynamic_params` 按 `get_action_info` 返回的
+        `_dynamic_tools[].parameters.properties.dynamic_params` 填写；该 Schema 已根据行动类
+        中 `value_from=input` 的映射生成。修改或删除对象实例必须传 `_instance_identities` 指定具体目标；
+        适用条件只验证所选实例，不能代替目标身份。新建对象实例使用 `object_input`
+        填写已映射的新实例属性；建立或解除关系使用 `relation_target` 指定一对起点
+        和终点实例；独立工具行动不传目标身份。具体必填字段以 `get_action_info`
+        返回的执行参数 schema 为准。
         必须提供有效的 `bkn_context`；缺失或传空时，执行前返回 400
         `conversation_required`，附 `required_action: create_conversation`。
         平台明确关闭证据采集时，`bkn_start_interaction` 不签发 ID，本接口可不带
@@ -374,21 +380,62 @@ components:
           additionalProperties:
             type: string
           description: 调用工具时需要一并带上的 HTTP 头。
+        action_type:
+          $ref: '#/components/schemas/ActionBusinessInfo'
+          description: 行动类的业务语义；与绑定工具的名称和说明分开。旧版服务未返回时可缺省。
         _dynamic_tools:
           type: array
           items:
             $ref: '#/components/schemas/DynamicTool'
           description: Function Call 形态的工具定义列表。
 
+    ActionBusinessInfo:
+      type: object
+      required: [id, name, operation_config]
+      properties:
+        id:
+          type: string
+          description: 行动类 ID。
+        name:
+          type: string
+          description: 行动类的业务名称。
+        description:
+          type: string
+          description: 行动类自身的业务说明，来自行动类 comment。
+        action_intent:
+          type: string
+          enum: [add, modify, delete]
+          description: 兼容旧定义的粗粒度意图；关系操作以 operation_config.relation_operation 为准，独立工具行动以 operation_config.type=tool 为准。旧定义仅有 action_type 时由其填充。
+        object_type_id:
+          type: string
+          description: 对象或关系操作所绑定的对象类 ID；独立工具行动不返回。
+        operation_config:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [object, relation, tool]
+            relation_type_id:
+              type: string
+            relation_operation:
+              type: string
+              enum: [create, delete]
+            anchor_role:
+              type: string
+              enum: [source, target]
+          additionalProperties: true
+          description: 对象、关系或独立工具操作的配置；关系操作还包含关系类及方向。
+
     DynamicTool:
       type: object
       properties:
         name:
           type: string
-          description: 工具名。
+          description: 底层工具名；行动类业务名称见 action_type.name。
         description:
           type: string
-          description: 工具描述。
+          description: 底层工具描述；行动类业务说明见 action_type.description。
         parameters:
           type: object
           additionalProperties: true

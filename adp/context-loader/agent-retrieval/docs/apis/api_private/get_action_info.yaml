@@ -2,7 +2,7 @@ openapi: 3.0.2
 info:
   title: 行动召回接口
   version: 1.0.0
-  description: 根据对象实例标识召回关联行动，返回符合 Function Call 规范的工具定义。支持多个对象实例标识。
+  description: 按行动类 ID 查询对象、关系或独立工具行动的业务语义与可执行参数。可选传入明确目标进行预览。
 
 servers:
   - url: http://agent-retrieval:30779
@@ -16,7 +16,7 @@ paths:
   /api/agent-retrieval/in/v1/kn/get_action_info:
     post:
       summary: get_action_info
-      description: 根据对象实例标识召回关联行动，返回 _dynamic_tools。
+      description: 返回行动类业务信息 action_type 及底层执行工具定义 _dynamic_tools；不传目标时返回行动类级别定义，不按条件扫描实例。
       operationId: getActionInfo
       tags:
         - action-recall
@@ -71,7 +71,7 @@ paths:
                     - disease_id: disease_000001
       responses:
         '200':
-          description: 成功返回动态工具列表
+          description: 成功返回行动类业务信息与动态工具列表
           content:
             application/json:
               schema:
@@ -153,7 +153,7 @@ components:
           description: 行动类ID（从 Schema 获取）
         _instance_identities:
           type: array
-          description: 对象实例标识列表（可选）。每个元素为主键键值对，必须从 query_object_instance 或 query_instance_subgraph 返回的 _instance_identity 字段提取，不可臆造。
+          description: 对象修改或删除时的明确实例身份列表；定义查询可省略，不会按适用条件扫描实例。
           items:
             type: object
             additionalProperties:
@@ -165,6 +165,21 @@ components:
           example:
             - disease_id: disease_000001
             - disease_id: disease_000002
+        relation_target:
+          type: object
+          description: 关系操作预览时的一对起点和终点实例身份。
+          required: [source_identity, target_identity]
+          properties:
+            source_identity:
+              type: object
+              additionalProperties: true
+            target_identity:
+              type: object
+              additionalProperties: true
+        object_input:
+          type: object
+          additionalProperties: true
+          description: 新建对象操作预览时的新实例属性值。
 
     ActionRecallResponse:
       type: object
@@ -174,6 +189,9 @@ components:
         headers:
           type: object
           additionalProperties: true
+        action_type:
+          $ref: '#/components/schemas/ActionBusinessInfo'
+          description: 行动类自身的业务语义；旧版服务可能不返回。
         _dynamic_tools:
           type: array
           description: Function Call 格式的工具列表
@@ -195,6 +213,42 @@ components:
                 type: string
               fixed_params:
                 type: object
+
+    ActionBusinessInfo:
+      type: object
+      required: [id, name, operation_config]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: 行动类业务名称，区别于底层工具名。
+        description:
+          type: string
+          description: 行动类 comment，区别于底层工具描述。
+        action_intent:
+          type: string
+          enum: [add, modify, delete]
+          description: 兼容旧定义的粗粒度意图；关系操作和独立工具行动的准确语义以 operation_config 为准。
+        object_type_id:
+          type: string
+          description: 对象或关系操作绑定的对象类 ID；独立工具行动不返回。
+        operation_config:
+          type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [object, relation, tool]
+            relation_type_id:
+              type: string
+            relation_operation:
+              type: string
+              enum: [create, delete]
+            anchor_role:
+              type: string
+              enum: [source, target]
+          additionalProperties: true
 
     ErrorResponse:
       type: object

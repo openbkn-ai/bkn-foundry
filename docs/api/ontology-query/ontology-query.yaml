@@ -772,9 +772,12 @@ paths:
     summary: 行动查询
     description: |
       使用 **POST + JSON 请求体**，并在请求头中设置 `X-HTTP-Method-Override: GET` 以语义上执行行动数据查询。
-      JSON 请求体字段与实现对齐，仅包含 `_instance_identities`、`dynamic_params`；`kn_id`、`at_id` 取自路径，`branch`、`include_type_info`、`exclude_system_properties` 取自查询参数。
+      JSON 请求体可包含 `_instance_identities`、`relation_target`、`object_input` 和 `dynamic_params`；
+      `kn_id`、`at_id` 取自路径，`branch`、`include_type_info`、`exclude_system_properties` 取自查询参数。
 
-      `_instance_identities` 可为空或省略，由服务端按行动类条件拉取实例。
+      不传目标身份时返回行动类级别的定义与 `execution_schema`，不按适用条件扫描实例。
+      对已有实例预览时显式传 `_instance_identities`；关系操作传一对 `relation_target`；
+      创建对象可传 `object_input`。`include_type_info=true` 时还返回行动类的业务定义。
     post:
       requestBody:
         content:
@@ -2386,7 +2389,8 @@ paths:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
           description: |
-            请求参数错误。条件命中或指定的对象超过执行上限（环境变量 `ACTION_EXECUTION_MAX_OBJECTS`，默认 10000）时，
+            请求参数错误。指定的目标超过执行上限（环境变量 `ACTION_EXECUTION_MAX_OBJECTS`，默认 10000）、
+            修改或删除对象时未指定实例身份，或目标不满足行动类适用条件时，
             整个执行被拒绝（`OntologyQuery.ActionExecution.InvalidParameter`），不会只执行其中一部分。
         "404":
           content:
@@ -3813,6 +3817,9 @@ components:
         name:
           description: 行动类名称
           type: string
+        comment:
+          description: 行动类自身的业务说明；与执行工具的描述不同。
+          type: string
         action_type:
           deprecated: true
           description: "**[已废弃]** 等价于 `action_intent`。若同时传入须与同名字段取值一致。"
@@ -3829,7 +3836,7 @@ components:
           - delete
           type: string
         object_type_id:
-          description: 行动类所绑定的对象类ID
+          description: 对象或关系操作所绑定的对象类 ID；独立工具行动为空。
           type: string
         condition:
           $ref: '#/components/schemas/ActionCondition'
@@ -3890,7 +3897,9 @@ components:
         action_type:
           $ref: '#/components/schemas/ActionType'
           description: |
-            内嵌的行动类负载（外层键名仍为 `action_type`，与载荷内枚举字段 **`action_intent`** 不相同）。载荷内推荐消费 `ActionType.action_intent` / `impact_contracts`。
+            仅在 include_type_info=true 时返回。内嵌的行动类负载（外层键名仍为 `action_type`，
+            与载荷内枚举字段 `action_intent` 不同）。操作类型以 `operation_config` 为准；
+            对象操作再看 `action_intent`，关系操作再看 `operation_config.relation_operation`。
         action_source:
           oneOf:
           - $ref: '#/components/schemas/ToolSource'

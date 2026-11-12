@@ -219,6 +219,11 @@ func TestGetActionInfo_ToolType_Success(t *testing.T) {
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ExecutionSchema: testActionExecutionSchema("pod_name", "namespace"),
+				ActionType: &interfaces.ActionTypeInfo{
+					ID: "at-001", Name: "Restart pod", Comment: "Restart the selected pod",
+					ActionIntent: "modify", ObjectTypeID: "pod",
+					OperationConfig: map[string]any{"type": "object"},
+				},
 				ActionSource: &interfaces.ActionSource{
 					Type:   interfaces.ActionSourceTypeTool,
 					BoxID:  "box-001",
@@ -267,6 +272,10 @@ func TestGetActionInfo_ToolType_Success(t *testing.T) {
 
 		tool := resp.DynamicTools[0]
 		convey.So(tool.Name, convey.ShouldEqual, "TestTool")
+		convey.So(resp.ActionType.Name, convey.ShouldEqual, "Restart pod")
+		convey.So(resp.ActionType.Description, convey.ShouldEqual, "Restart the selected pod")
+		convey.So(resp.ActionType.ActionIntent, convey.ShouldEqual, "modify")
+		convey.So(resp.ActionType.OperationConfig["type"], convey.ShouldEqual, "object")
 		convey.So(tool.APICallStrategy, convey.ShouldEqual, interfaces.ResultProcessStrategyKnActionRecall)
 		convey.So(tool.OriginalSchema, convey.ShouldBeNil)
 
@@ -333,8 +342,13 @@ func TestGetActionInfo_WithoutInstanceIdentity_Success(t *testing.T) {
 			DoAndReturn(func(_ context.Context, actionsReq *interfaces.QueryActionsRequest) (*interfaces.QueryActionsResponse, error) {
 				convey.So(actionsReq.InstanceIdentities, convey.ShouldNotBeNil)
 				convey.So(len(actionsReq.InstanceIdentities), convey.ShouldEqual, 0)
+				convey.So(actionsReq.IncludeTypeInfo, convey.ShouldBeTrue)
 				return &interfaces.QueryActionsResponse{
 					ExecutionSchema: testActionExecutionSchema("pod_name", "namespace"),
+					ActionType: &interfaces.ActionTypeInfo{
+						ID: "at-001", Name: "Send alert", Comment: "Notify the on-call team",
+						OperationConfig: map[string]any{"type": "tool"},
+					},
 					ActionSource: &interfaces.ActionSource{
 						Type:   interfaces.ActionSourceTypeTool,
 						BoxID:  "box-001",
@@ -368,6 +382,9 @@ func TestGetActionInfo_WithoutInstanceIdentity_Success(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
 		convey.So(len(resp.DynamicTools), convey.ShouldEqual, 1)
+		convey.So(resp.ActionType.Name, convey.ShouldEqual, "Send alert")
+		convey.So(resp.ActionType.ObjectTypeID, convey.ShouldBeEmpty)
+		convey.So(resp.ActionType.OperationConfig["type"], convey.ShouldEqual, "tool")
 
 		fixedParams, ok := resp.DynamicTools[0].FixedParams.(interfaces.ActionDriverFixedParams)
 		convey.So(ok, convey.ShouldBeTrue)
@@ -414,6 +431,11 @@ func TestGetActionInfo_MCPType_Success(t *testing.T) {
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ExecutionSchema: testActionExecutionSchema("disease_id"),
+				ActionType: &interfaces.ActionTypeInfo{
+					ID: "at-001", Name: "Connect disease", ActionType: "add",
+					ObjectTypeID:    "disease",
+					OperationConfig: map[string]any{"type": "relation", "relation_type_id": "related_disease", "relation_operation": "create"},
+				},
 				ActionSource: &interfaces.ActionSource{
 					Type:     interfaces.ActionSourceTypeMCP,
 					McpID:    "mcp-001",
@@ -445,6 +467,9 @@ func TestGetActionInfo_MCPType_Success(t *testing.T) {
 
 		tool := resp.DynamicTools[0]
 		convey.So(tool.Name, convey.ShouldEqual, "TestMCPTool")
+		convey.So(resp.ActionType.Name, convey.ShouldEqual, "Connect disease")
+		convey.So(resp.ActionType.ActionIntent, convey.ShouldEqual, "add")
+		convey.So(resp.ActionType.OperationConfig["relation_operation"], convey.ShouldEqual, "create")
 		convey.So(tool.APICallStrategy, convey.ShouldEqual, interfaces.ResultProcessStrategyKnActionRecall)
 		convey.So(tool.OriginalSchema, convey.ShouldBeNil)
 

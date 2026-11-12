@@ -41,7 +41,11 @@ func (s *stubActionRecallService) ListActionExecutions(_ context.Context, _ *int
 func (s *stubActionRecallService) GetActionInfo(_ context.Context, _ *interfaces.KnActionRecallRequest) (*interfaces.KnActionRecallResponse, error) {
 	s.called = true
 	return &interfaces.KnActionRecallResponse{
-		Headers:      map[string]string{"x-test": "ok"},
+		Headers: map[string]string{"x-test": "ok"},
+		ActionType: &interfaces.KnActionTypeInfo{
+			ID: "at-001", Name: "Send alert", Description: "Notify the on-call team",
+			OperationConfig: map[string]any{"type": "tool"},
+		},
 		DynamicTools: []interfaces.KnDynamicTool{},
 	}, nil
 }
@@ -69,7 +73,11 @@ func TestHandleGetActionInfo_IgnoresResponseFormatParam(t *testing.T) {
 		convey.So(result.IsError, convey.ShouldBeFalse)
 		convey.So(svc.called, convey.ShouldBeTrue)
 		expectedText := utils.ObjectToJSON(&interfaces.KnActionRecallResponse{
-			Headers:      map[string]string{"x-test": "ok"},
+			Headers: map[string]string{"x-test": "ok"},
+			ActionType: &interfaces.KnActionTypeInfo{
+				ID: "at-001", Name: "Send alert", Description: "Notify the on-call team",
+				OperationConfig: map[string]any{"type": "tool"},
+			},
 			DynamicTools: []interfaces.KnDynamicTool{},
 		})
 		raw, marshalErr := json.Marshal(result)

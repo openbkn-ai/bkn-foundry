@@ -77,10 +77,10 @@
   "get_action_info": {
     "title": "Action Info",
     "group_title": "Action execution",
-    "description": "Return executable action definitions for object instances, including the input schema and, when the tool declares one, output_schema: the shape of the execution result.",
+    "description": "Look up an action type by ID. action_type provides its business name, description, and object, relation, or independent-tool operation; _dynamic_tools provides the bound tool's input schema and, when declared, the result output_schema.",
     "gateway": {
-      "summary": "See which actions can run on an object and what parameters they take. Read-only: nothing is executed.",
-      "use_when": "You want to know what operations an object type supports and what each one needs.",
+      "summary": "Inspect an action type's business meaning and execution inputs. Read-only: nothing is executed.",
+      "use_when": "You have an action type ID and need to confirm what it does and which inputs it needs.",
       "not_for": "This entry cannot execute actions; execution needs execute_action on the full entry.",
       "next_step": "Take action type IDs from get_kn_detail or search_schema."
     }
@@ -88,7 +88,7 @@
   "execute_action": {
     "title": "Execute Action",
     "group_title": "Action execution",
-    "description": "Execute an action. First call get_action_info to obtain the action's dynamic_params schema, then fill in the real dynamic parameter values to trigger execution (asynchronous, returns an execution_id). Duplicate submissions for the same kn + action type + instance set + dynamic_params within the duplicate window return HTTP 409; do not retry—use get_action_execution to poll the existing execution instead.",
+    "description": "Execute an action. First use get_action_info for its business meaning and input schema. Supply object_input for object creation, _instance_identities for object modification or deletion, relation_target for relation operations, or only dynamic_params for an independent tool action. Execution is asynchronous and returns execution_id. A duplicate submission may return HTTP 409; do not retry. Use get_action_execution to check the existing execution.",
     "gateway": {
       "summary": "Execute an action on the network (asynchronous; it changes business data or triggers external work) and return its execution ID.",
       "use_when": "The user explicitly asks to run an action, such as raising a purchase order, closing a monitoring task or sending a notice.",
