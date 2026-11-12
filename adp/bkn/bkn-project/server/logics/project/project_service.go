@@ -84,7 +84,18 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 	}
 
 	// Every project of a network shares the network's lineage.
-	if _, err = s.ls.CreateLineage(ctx, token, knID, author); err != nil && !hasCode(err, perrors.BknProject_Lineage_AlreadyExists) {
+	_, err = s.ls.CreateLineage(ctx, token, knID, author)
+	switch {
+	case err == nil:
+	case hasCode(err, perrors.BknProject_Lineage_AlreadyExists):
+		// The network may have changed since its lineage was made, by edits in its workspace or
+		// in another project: main takes in the network as it is, as committing drift does, so
+		// the new project starts from what the network has now. A project still starts from main
+		// as it was if that fails; its review shows the drift later.
+		if _, derr := s.ls.CheckDrift(ctx, token, knID, knID, true, author); derr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Bring lineage %s up to the network failed: %v", knID, derr))
+		}
+	default:
 		span.SetStatus(codes.Error, "Create lineage failed")
 		return nil, err
 	}
