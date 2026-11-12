@@ -329,11 +329,15 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		// scan or backfill of reference-only tools is needed for a mount-management view.
 		total, countErr := cbs.cba.GetBindingsTotal(ctx, query)
 		if countErr != nil {
+			logger.Errorf("GetBindingsTotal in knowledge network[%s] error: %v", query.KNID, countErr)
+			span.SetStatus(codes.Error, common.SafeErrorSummary(countErr))
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(countErr.Error())
+				berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(countErr.Error())
 		}
 		entries, listErr := cbs.cba.ListBindings(ctx, query)
 		if listErr != nil {
+			logger.Errorf("ListBindings in knowledge network[%s] error: %v", query.KNID, listErr)
+			span.SetStatus(codes.Error, common.SafeErrorSummary(listErr))
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(listErr.Error())
 		}
