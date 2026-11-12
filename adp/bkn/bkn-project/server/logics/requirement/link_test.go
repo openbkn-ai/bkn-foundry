@@ -171,6 +171,7 @@ func Test_ListLogicNeeds(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(got.Needs, ShouldBeEmpty)
 			So(got.Released, ShouldBeTrue)
+			So(got.Live, ShouldBeTrue)
 			So(got.NetworkID, ShouldEqual, "kn1")
 
 			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(needsSpec(), true, nil)
@@ -207,11 +208,42 @@ func Test_ListLogicNeedsBeforeRelease(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(got.Released, ShouldBeFalse)
+		So(got.Live, ShouldBeFalse)
 		So(got.Reason, ShouldBeEmpty)
 		So(got.NetworkID, ShouldEqual, "kn1")
 		So(got.Needs[0].LiveObjectTypeIDs, ShouldBeEmpty)
 		So(got.Needs[0].Unconnected, ShouldResemble, []interfaces.ScenarioUnconnected{{From: "sales_order", To: "customer"}})
 		So(got.Needs[1].Unconnected, ShouldBeEmpty)
+	})
+
+	Convey("Before the first release, a network the project started from that runs a version is live\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		kva := pmock.NewMockKNVersionAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla, da: da, kva: kva}
+		ctx := context.Background()
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{
+			Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}, nil).Times(2)
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil).Times(2)
+		bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return([]string{"sales_order"}, nil).Times(2)
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil).Times(2)
+
+		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 1}, nil)
+		got, err := svc.ListLogicNeeds(ctx, token, "p1")
+		So(err, ShouldBeNil)
+		So(got.Released, ShouldBeFalse)
+		So(got.Live, ShouldBeTrue)
+
+		// One whose versions cannot be read is taken not to run one.
+		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(nil, errors.New("down"))
+		got, err = svc.ListLogicNeeds(ctx, token, "p1")
+		So(err, ShouldBeNil)
+		So(got.Live, ShouldBeFalse)
 	})
 
 	Convey("Before the first release, a network that fails to answer is still a failure to read\n", t, func() {

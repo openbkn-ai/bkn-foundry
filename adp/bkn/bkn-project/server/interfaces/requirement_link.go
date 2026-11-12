@@ -88,9 +88,12 @@ type LogicNeedsView struct {
 	NetworkID  string `json:"network_id"`
 	// Released says the project was ever released: before, no implementation can be made or read
 	// live for it, and that is no failure to read.
-	Released bool             `json:"released"`
-	Reason   string           `json:"reason,omitempty"`
-	Needs    []*LogicNeedView `json:"needs"`
+	Released bool `json:"released"`
+	// Live says the network runs a version: the project was released, or it started from a
+	// network already running one, whose implementations can be linked at once.
+	Live   bool             `json:"live"`
+	Reason string           `json:"reason,omitempty"`
+	Needs  []*LogicNeedView `json:"needs"`
 }
 
 // Why a candidate is offered for a need.
