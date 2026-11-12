@@ -272,6 +272,8 @@ type addedDraft struct {
 	existingTables []string
 	// existing is what the network already has, which the draft holds as its existing items.
 	existing interfaces.DraftItems
+	// catalogOf is the catalog of each table drafting read, by its id.
+	catalogOf map[string]string
 }
 
 // draftCatalogs drafts the tables of the catalogs added with the tables of the draft's object types,
@@ -319,7 +321,11 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 	if err != nil {
 		return nil, err
 	}
-	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left, existing: existing}
+	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left, existing: existing,
+		catalogOf: map[string]string{}}
+	for _, t := range all {
+		result.catalogOf[t.ID] = t.CatalogID
+	}
 	// Tables drafting itself could not read, such as a code table whose values it could not query,
 	// are unreadable as those the catalogs listed but vega did not give.
 	for _, t := range drafted.Unreadable {
@@ -349,8 +355,15 @@ func (s *draftService) recordIDs(ctx context.Context, ids []*interfaces.Register
 func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraft, added []string,
 	record *interfaces.DraftCatalogsAdded) interfaces.DraftItems {
 	// Merging rewrites what it takes, its ids and ends; a retry merges what drafting gave again.
-	merged := mergeDrafted(withExisting(items, result.existing), cloneItems(result.drafted), result.tables,
-		result.unreadable, record)
+	withNetwork := withExisting(items, result.existing)
+	// An existing object type's table is in the catalog vega says, as a drafted one's is: joins to it
+	// are counted within that catalog.
+	for _, ot := range withNetwork.ObjectTypes {
+		if ot.Existing && ot.Table.CatalogID == "" {
+			ot.Table.CatalogID = result.catalogOf[ot.Table.ResourceID]
+		}
+	}
+	merged := mergeDrafted(withNetwork, cloneItems(result.drafted), result.tables, result.unreadable, record)
 	inputs := interfaces.DraftInputs{}
 	if items.Inputs != nil {
 		inputs = *items.Inputs

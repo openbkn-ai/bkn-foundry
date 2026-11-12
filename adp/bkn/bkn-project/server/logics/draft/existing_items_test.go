@@ -247,6 +247,8 @@ func Test_GenerateDraftOnExistingNetwork(t *testing.T) {
 				So(item.ItemID, ShouldNotStartWith, "supply_")
 			}
 			So(undecidedItems(&items), ShouldBeEmpty)
+			// Nor does reviewing: only what drafting adds waits for a person to look at it.
+			So(unreviewed(&items), ShouldEqual, 2)
 		})
 	})
 }
@@ -280,5 +282,50 @@ func Test_ExistingItemRefusals(t *testing.T) {
 		refused(err)
 		_, err = svc.DeleteRelationType(ctx, token, "p1", "supply_order_region", readTime, caller)
 		refused(err)
+	})
+}
+
+func Test_AddCatalogsOnExistingNetwork(t *testing.T) {
+	Convey("Test adding a catalog to a draft made before it held what the network has\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		va := pmock.NewMockVegaAccess(ctrl)
+		setting := testSetting
+		setting.QueryTimeout = 60
+		svc := &draftService{setting: setting, va: va, ira: &fakeIDRegistry{}}
+		ctx := context.Background()
+		existing := existingItemsOf(existingNetwork(), nil)
+		draft := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{}, RelationTypes: []*interfaces.DraftRelationType{},
+			ValueTypes: []*interfaces.DraftValueType{}, Excluded: []*interfaces.DraftExcludedField{},
+			Unreadable: []*interfaces.DraftTable{}}}
+		orders := table("t_orders", "c1", "orders", 100, []string{"order_id"}, col("order_id", "string", ""),
+			col("customer_id", "string", ""), col("region_code", "string", ""))
+		orders.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_id", "customers", "customer_id")}
+		customers := table("t_customers", "c2", "customers", 100, []string{"customer_id"},
+			col("customer_id", "string", ""), col("customer_name", "string", ""))
+		va.EXPECT().ListTables(gomock.Any(), caller, "c2").Return([]*interfaces.VegaTable{{ID: "t_customers", CatalogID: "c2"}}, nil)
+		va.EXPECT().GetTables(gomock.Any(), caller, []string{"t_customers"}).Return([]*interfaces.VegaTable{customers}, nil)
+		// The existing object types' tables are read so the new table can relate to them; one vega
+		// does not give stays without a catalog.
+		va.EXPECT().GetTables(gomock.Any(), caller, []string{"t_orders", "t_regions"}).Return([]*interfaces.VegaTable{orders}, nil)
+		va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).Return([]map[string]any{{"total": float64(100),
+			"distinct_values": float64(100), "nulls": float64(0), "orphans": float64(0)}}, nil).AnyTimes()
+
+		result, err := svc.draftCatalogs(ctx, draft, []string{"c2"}, caller, existing)
+		So(err, ShouldBeNil)
+		record := &interfaces.DraftCatalogsAdded{}
+		items := svc.applyAdded(draft.Items, result, []string{"c2"}, record)
+
+		order := findObjectType(&items, "supply_sales_order")
+		So(order.Existing, ShouldBeTrue)
+		So(order.Table.CatalogID, ShouldEqual, "c1")
+		So(findObjectType(&items, "supply_region").Table.CatalogID, ShouldEqual, "")
+		So(findObjectType(&items, "customers").AddedByCatalog, ShouldEqual, "c2")
+		rt := relation(items, "supply_sales_order", "customers")
+		So(rt, ShouldNotBeNil)
+		So(rt.Mapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "buyer", TargetProperty: "customer_id"}})
+		So(record.ObjectTypes, ShouldResemble, []string{"customers"})
+		So(findRelationType(&items, "supply_order_region").Existing, ShouldBeTrue)
 	})
 }

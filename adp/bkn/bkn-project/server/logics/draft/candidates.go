@@ -95,14 +95,15 @@ func reviews(items *interfaces.DraftItems) (map[string]*interfaces.DraftReview, 
 func unreviewed(items *interfaces.DraftItems) int {
 	reviewed, _ := reviews(items)
 	n := 0
-	// Evidence follows its business items: no person reviews it.
+	// Evidence follows its business items, and what the network already has is reviewed there: no
+	// person reviews either here.
 	for _, ot := range items.ObjectTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil && !isEvidence(ot.Document) {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)] == nil && !isEvidence(ot.Document) && !ot.Existing {
 			n++
 		}
 	}
 	for _, rt := range items.RelationTypes {
-		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil && !isEvidence(rt.Document) {
+		if reviewed[itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)] == nil && !isEvidence(rt.Document) && !rt.Existing {
 			n++
 		}
 	}
@@ -225,6 +226,10 @@ func candidatesOf(draft *interfaces.Draft, needed map[string]*interfaces.DraftNe
 		result.Candidates = append(result.Candidates, c)
 	}
 	for _, ot := range items.ObjectTypes {
+		// What the network already has is no candidate: it is in the network as it is.
+		if ot.Existing {
+			continue
+		}
 		table, key := ot.Table, ot.Key
 		candidate := interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Adopted: ot.Adopted,
 			AddedByCatalog: ot.AddedByCatalog, Table: &table, Rows: rows[table.ResourceID], NeedsIdentity: ot.NeedsIdentity, Key: &key, Document: ot.Document}
@@ -235,6 +240,9 @@ func candidatesOf(draft *interfaces.Draft, needed map[string]*interfaces.DraftNe
 		add(candidate)
 	}
 	for _, rt := range items.RelationTypes {
+		if rt.Existing {
+			continue
+		}
 		evidence := rt.Evidence
 		candidate := interfaces.DraftCandidate{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Adopted: rt.Adopted,
 			DocumentRepair: rt.DocumentRepair, AddedByCatalog: rt.AddedByCatalog, Table: rt.LinkTable, Evidence: &evidence, Document: rt.Document}
@@ -321,7 +329,7 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 	for _, ot := range items.ObjectTypes {
 		key := itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID)
 		switch {
-		case reviewed[key] != nil:
+		case reviewed[key] != nil || ot.Existing:
 		case derived[key] || ot.NeedsIdentity || documentHooks().ObjectNeedsRepair(items, ot):
 			result.Skipped = append(result.Skipped, key)
 		default:
@@ -334,7 +342,7 @@ func (s *draftService) AcceptSuggestions(ctx context.Context, token string, proj
 	for _, rt := range items.RelationTypes {
 		key := itemKey(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)
 		switch {
-		case reviewed[key] != nil:
+		case reviewed[key] != nil || rt.Existing:
 		case derived[key] || rt.DocumentRepair != "" || !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)):
 			result.Skipped = append(result.Skipped, key)
 		default:
