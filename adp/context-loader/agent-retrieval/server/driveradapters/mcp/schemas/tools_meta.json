@@ -137,26 +137,22 @@
   },
   "get_action_info": {
     "name": "get_action_info",
-    "title": "行动信息",
+    "title": "行动类详情与参数",
     "group": "action",
     "group_title": "行动类执行",
     "order": 310,
-    "description": "按行动类 ID 查询业务定义与可执行参数。action_type 给出业务名称、说明和对象/关系/独立工具操作语义；_dynamic_tools 给出底层执行工具的入参 schema 与（工具已声明时的）结果 schema output_schema。",
+    "description": "按行动类 ID 查询业务定义与可执行参数，无需提供对象实例。显式提供目标时可预览该目标的参数；不按条件扫描实例或发现候选行动类。action_type 给出业务名称、说明和对象/关系/独立工具操作语义；_dynamic_tools 给出底层执行工具的入参 schema 与（工具已声明时的）结果 schema output_schema。",
     "gateway": {
       "summary": "查看一个行动类的业务语义与执行入参，只读，不会执行。",
       "use_when": "已知行动类 ID，想确认它对对象、关系或独立任务做什么，以及需要哪些参数。",
-      "not_for": "本入口不能执行行动；执行须使用完整入口的 execute_action。",
+      "not_for": "不用于发现有哪些行动类，也不执行行动；发现行动类用 search_schema 或 get_kn_detail，执行用 execute_action。",
       "next_step": "行动类 ID 取自 get_kn_detail 或 search_schema。",
       "keywords": [
-        "行动",
-        "操作",
-        "能做什么",
-        "可执行",
+        "行动类定义",
+        "需要哪些参数",
         "动作定义",
-        "action",
-        "operation",
-        "what can I do",
-        "available actions",
+        "action inputs",
+        "action parameters",
         "action definition"
       ],
       "example_arguments": {
@@ -175,7 +171,7 @@
     "gateway": {
       "summary": "执行知识网络上的一个行动（异步，会改变业务数据或触发外部操作），返回执行 ID。",
       "use_when": "用户明确要求执行某个行动，例如发起采购订单、关闭监控任务、发送通知。",
-      "not_for": "只想知道行动有哪些、要什么参数时用 get_action_info；查执行结果用 get_action_execution。",
+      "not_for": "查询有哪些行动类用 search_schema 或 get_kn_detail；查询已知行动类的参数用 get_action_info；查执行结果用 get_action_execution。",
       "next_step": "先用 get_action_info 取 dynamic_params 的定义；执行后用 get_action_execution 查结果。重复提交会返回 409，不要重试。",
       "keywords": [
         "执行行动",
@@ -202,7 +198,7 @@
   },
   "get_action_execution": {
     "name": "get_action_execution",
-    "title": "执行结果",
+    "title": "行动执行状态与结果",
     "group": "action",
     "group_title": "行动类执行",
     "order": 330,
@@ -211,7 +207,7 @@
       "summary": "按执行 ID 查看一次行动执行的状态和逐对象结果。",
       "use_when": "已经有执行 ID，想知道它成功了没有、每个对象的结果是什么。",
       "not_for": "不知道执行 ID 时先用 list_action_executions 查历史。",
-      "next_step": "执行 ID 取自 list_action_executions 的结果。",
+      "next_step": "执行 ID 取自 execute_action 的返回值，或从 list_action_executions 的历史记录中查找。",
       "keywords": [
         "执行结果",
         "执行状态",
@@ -232,7 +228,7 @@
   },
   "list_action_executions": {
     "name": "list_action_executions",
-    "title": "执行历史",
+    "title": "行动执行历史",
     "group": "action",
     "group_title": "行动类执行",
     "order": 340,
@@ -589,17 +585,17 @@
   },
   "search_native_tools": {
     "name": "search_native_tools",
-    "title": "查找可用查询能力",
+    "title": "查找按需工具",
     "group": "gateway",
-    "group_title": "按需查询",
+    "group_title": "按需工具",
     "order": 710,
     "description": "在本入口按需提供的工具中，按要做的事查找合适的工具，返回最多 5 个候选：名称、用途、适用与不适用的场景、下一步和参数签名。范围覆盖本入口没有直接公布的全部能力，包括统计查询、行动、技能和查找挂载函数的工具。候选不能按名称直接调用，要经执行器执行。结果里带 ready 时，它就是最佳候选的可执行参数 schema 与调用模板，直接照它调 execute_native_tool，不必再调 describe_native_tool；没有 ready（多个候选打平，或该工具 schema 太大）才去 describe_native_tool 取。本入口直接公布的工具不在搜索范围内。"
   },
   "describe_native_tool": {
     "name": "describe_native_tool",
-    "title": "读取查询能力说明",
+    "title": "查看按需工具说明",
     "group": "gateway",
-    "group_title": "按需查询",
+    "group_title": "按需工具",
     "order": 720,
     "description": "返回一个按需工具的说明：用途、可执行参数 schema、一份通过该 schema 校验的调用模板和输出字段提示；include_output_schema=true 时再附完整输出 schema。name 取自 search_native_tools 的结果。可执行参数 schema 不含 bkn_context，执行时由执行器从外层带入。"
   },
@@ -607,8 +603,8 @@
     "name": "execute_native_tool",
     "title": "执行按需工具",
     "group": "gateway",
-    "group_title": "按需查询",
+    "group_title": "按需工具",
     "order": 730,
-    "description": "执行一个按需工具：name 是目标工具名，arguments 按 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。目标可以是本入口没有直接公布的任何工具，包括会修改数据或调用外部系统的工具（执行行动、挂载函数等），执行前先确认用户的意图。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。本入口直接公布的工具请直接调用。"
+    "description": "执行一个按需工具：name 是目标工具名，arguments 按 search_native_tools 返回的 ready 或 describe_native_tool 返回的可执行参数 schema 填写，不要放 bkn_context。目标可以是本入口没有直接公布的任何工具，包括会修改数据或调用外部系统的工具（执行行动、挂载函数等），执行前先确认用户的意图。参数不合法时，错误中附目标的可执行参数 schema 和出错字段，可据此修正后重试。本入口直接公布的工具请直接调用。"
   }
 }

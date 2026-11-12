@@ -75,13 +75,13 @@
     "description": "Page through authorized participants of a query_metric result bucket only when available_actions contains participants. drill only means that more analysis dimensions are available; it does not allow participant lookup. Buckets with status=no_data do not advertise participants. Pass the same published version, complete query and server-issued bucket_key. This reads current data, not a historical snapshot."
   },
   "get_action_info": {
-    "title": "Action Info",
+    "title": "Action Details and Inputs",
     "group_title": "Action execution",
-    "description": "Look up an action type by ID. action_type provides its business name, description, and object, relation, or independent-tool operation; _dynamic_tools provides the bound tool's input schema and, when declared, the result output_schema.",
+    "description": "Look up an action type by ID without supplying an object instance. Explicit targets can preview target-specific inputs; this tool does not scan instances or discover candidate action types. action_type provides the business definition; _dynamic_tools provides the bound tool's input schema and, when declared, the result output_schema.",
     "gateway": {
       "summary": "Inspect an action type's business meaning and execution inputs. Read-only: nothing is executed.",
       "use_when": "You have an action type ID and need to confirm what it does and which inputs it needs.",
-      "not_for": "This entry cannot execute actions; execution needs execute_action on the full entry.",
+      "not_for": "Do not use this to discover action types or execute actions. Use search_schema or get_kn_detail for discovery, and execute_action for execution.",
       "next_step": "Take action type IDs from get_kn_detail or search_schema."
     }
   },
@@ -92,23 +92,23 @@
     "gateway": {
       "summary": "Execute an action on the network (asynchronous; it changes business data or triggers external work) and return its execution ID.",
       "use_when": "The user explicitly asks to run an action, such as raising a purchase order, closing a monitoring task or sending a notice.",
-      "not_for": "To see which actions exist and what they need, use get_action_info; for results, use get_action_execution.",
+      "not_for": "Use search_schema or get_kn_detail to discover action types, get_action_info to inspect a known action type's inputs, and get_action_execution to check a run.",
       "next_step": "Get the dynamic_params definition from get_action_info first; afterwards check the result with get_action_execution. A duplicate submission returns 409; do not retry."
     }
   },
   "get_action_execution": {
-    "title": "Action Result",
+    "title": "Action Status and Results",
     "group_title": "Action execution",
     "description": "Query one action execution by its execution_id. Use results_total, results_offset, and the current results length to decide whether to fetch another page. When pagination is requested, the default page size is 100 and the maximum is 1000; pages cannot pass result 10000.",
     "gateway": {
       "summary": "Look up one action execution by its ID: overall status and the result for each object.",
       "use_when": "You have an execution ID and want to know whether it succeeded and what each object's result was.",
       "not_for": "Without an execution ID, list the history with list_action_executions first.",
-      "next_step": "Take execution IDs from list_action_executions."
+      "next_step": "Take the execution ID from execute_action, or find it in list_action_executions."
     }
   },
   "list_action_executions": {
-    "title": "Action History",
+    "title": "Action Execution History",
     "group_title": "Action execution",
     "description": "List action execution history, filterable by action type, status, and trigger type, with pagination.",
     "gateway": {
@@ -270,18 +270,18 @@
     }
   },
   "search_native_tools": {
-    "title": "Find Query Tools",
-    "group_title": "On-demand Queries",
+    "title": "Find On-demand Tools",
+    "group_title": "On-demand Tools",
     "description": "Find the right tool for a task among the tools this entry offers on demand. Returns up to 5 candidates with their name, purpose, when to use them, when not to, the next step and an argument signature. The search covers every capability this entry does not publish directly, including statistics, actions, skills and the tool that finds mounted functions. Candidates cannot be called by name; run them through the executor. When the result carries `ready`, that is the top candidate's executable arguments schema and a call template for it: go straight to execute_native_tool with them and skip describe_native_tool. Ask describe_native_tool only when there is no `ready` — several candidates tied, or that tool's schema is too large to carry. Tools this entry publishes directly are not searched."
   },
   "describe_native_tool": {
-    "title": "Describe Query Tool",
-    "group_title": "On-demand Queries",
+    "title": "Describe On-demand Tool",
+    "group_title": "On-demand Tools",
     "description": "Describe one on-demand tool: its purpose, its executable arguments schema, a call template that passes that schema, and hints about the output fields; with include_output_schema=true the full output schema is added. Take name from the results of search_native_tools. The executable arguments schema has no bkn_context; the executor carries it over from the outer call."
   },
   "execute_native_tool": {
     "title": "Run On-demand Tool",
-    "group_title": "On-demand Queries",
-    "description": "Run one on-demand tool: name is the target tool, and arguments follows the executable arguments schema returned by describe_native_tool, without bkn_context. The target may be any tool this entry does not publish directly, including tools that change data or call external systems (actions, mounted functions and so on), so confirm the user's intent before running one. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Call the tools this entry publishes directly yourself."
+    "group_title": "On-demand Tools",
+    "description": "Run one on-demand tool: name is the target tool, and arguments follow the executable arguments schema from search_native_tools.ready or describe_native_tool, without bkn_context. The target may be any tool this entry does not publish directly, including tools that change data or call external systems (actions, mounted functions and so on), so confirm the user's intent before running one. When the arguments are invalid, the error carries the target's executable arguments schema and the failing fields, so you can fix them and retry. Call the tools this entry publishes directly yourself."
   }
 }
