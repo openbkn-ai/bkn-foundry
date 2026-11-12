@@ -79,11 +79,9 @@ func TestBoxesOfKindCoversUnmountedCapabilities(t *testing.T) {
 	})
 }
 
-// TestCountAPIBindingsWeighsUnmountedCapabilities: the totals count unmounted capabilities as
-// functions first and then move the openapi ones to APIs. Moving only the mounted ones left an
-// openapi tool the model uses on the Functions badge.
-func TestCountAPIBindingsWeighsUnmountedCapabilities(t *testing.T) {
-	Convey("API 计数包含 openapi 工具集里未挂载的能力", t, func() {
+// TestCountAPIBindingsCountsOnlyMounts keeps action references out of the API badge.
+func TestCountAPIBindingsCountsOnlyMounts(t *testing.T) {
+	Convey("API count includes only mounted tools", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -92,13 +90,9 @@ func TestCountAPIBindingsWeighsUnmountedCapabilities(t *testing.T) {
 			Return(map[string]int{"box-api": 2, "box-fn": 1}, nil)
 		expectBoxKind(aoa, "box-api", interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI)
 		expectBoxKind(aoa, "box-fn", interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION)
-		expectBoxKind(aoa, "box-api-2", interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI)
-
-		apis, err := service.countAPIBindings(context.Background(), "kn1", "main",
-			map[string]int{"box-api": 1, "box-api-2": 3, "box-fn": 4})
+		apis, err := service.countAPIBindings(context.Background(), "kn1", "main")
 		So(err, ShouldBeNil)
-		// Mounted 2 + unmounted 1 in box-api, unmounted 3 in box-api-2; box-fn is not an API.
-		So(apis, ShouldEqual, 6)
+		So(apis, ShouldEqual, 2)
 	})
 
 	Convey("工具集读取失败时返回错误，由调用方退回全部计为函数", t, func() {
@@ -106,10 +100,10 @@ func TestCountAPIBindingsWeighsUnmountedCapabilities(t *testing.T) {
 		defer ctrl.Finish()
 
 		service, cba, aoa := newTestServiceWithFactory(t, ctrl)
-		cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").Return(map[string]int{}, nil)
+		cba.EXPECT().GetFunctionTotalsByOwner(gomock.Any(), "kn1", "main").Return(map[string]int{"box-api": 1}, nil)
 		aoa.EXPECT().ListBoxTools(gomock.Any(), "box-api").Return(nil, errors.New("factory down"))
 
-		_, err := service.countAPIBindings(context.Background(), "kn1", "main", map[string]int{"box-api": 1})
+		_, err := service.countAPIBindings(context.Background(), "kn1", "main")
 		So(err, ShouldNotBeNil)
 	})
 }

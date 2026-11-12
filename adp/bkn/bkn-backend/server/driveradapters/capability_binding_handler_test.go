@@ -103,16 +103,34 @@ func Test_ListCapabilities_KNReadAccess(t *testing.T) {
 		cbs := bmock.NewMockCapabilityBindingService(ctrl)
 		handler := &restHandler{kns: kns, cbs: cbs}
 
-		serve := func() *httptest.ResponseRecorder {
+		serve := func(extraQuery ...string) *httptest.ResponseRecorder {
 			engine := gin.New()
 			engine.GET("/knowledge-networks/:kn_id/capabilities", func(c *gin.Context) {
 				handler.ListCapabilities(c, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType_User})
 			})
 			w := httptest.NewRecorder()
-			engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
-				"/knowledge-networks/kn1/capabilities?branch=main", nil))
+			url := "/knowledge-networks/kn1/capabilities?branch=main"
+			if len(extraQuery) > 0 {
+				url += "&" + extraQuery[0]
+			}
+			engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
 			return w
 		}
+
+		Convey("Mounted-only filter reaches the list service", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "main").Return("Network 1", true, nil)
+			kns.EXPECT().ResolveKNReadAccess(gomock.Any(), "kn1", "main").
+				Return(interfaces.KN_READ_ACCESS_FULL, nil)
+			cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, query interfaces.CapabilityBindingsQueryParams) (*interfaces.CapabilityBindingsList, error) {
+					So(query.MountedOnly, ShouldBeTrue)
+					return &interfaces.CapabilityBindingsList{
+						Entries: []*interfaces.CapabilityBinding{}, Boxes: []*interfaces.CapabilityBoxSummary{},
+					}, nil
+				})
+
+			So(serve("mounted_only=true").Code, ShouldEqual, http.StatusOK)
+		})
 
 		Convey("Navigation-only access is passed to the list service", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "main").Return("Network 1", true, nil)

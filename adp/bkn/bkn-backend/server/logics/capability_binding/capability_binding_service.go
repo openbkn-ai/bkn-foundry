@@ -305,7 +305,10 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	// Why each capability is here, and what the model uses that is not mounted at all. Both come
 	// from one read of the branch's object types and action types, read before the metadata_type
 	// filter because the boxes of the unmounted ones are candidates for it too.
-	sources := cbs.collectProvenance(ctx, query.KNID, query.Branch)
+	var sources *provenance
+	if !query.MountedOnly {
+		sources = cbs.collectProvenance(ctx, query.KNID, query.Branch)
+	}
 
 	// metadata_type reaches SQL as a set of tool boxes. Resolving it here rather than filtering
 	// the fetched page is what keeps paging honest: the page is drawn from rows that already
@@ -319,6 +322,39 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 		// The kind belongs to a tool box, so this necessarily selects function bindings only.
 		// Saying so makes the answer the same whether or not the caller also passed type.
 		query.CapabilityType = interfaces.CAPABILITY_TYPE_FUNCTION
+	}
+
+	if query.MountedOnly {
+		// This path is a membership list. SQL pages stored bindings directly, and no model
+		// scan or backfill of reference-only tools is needed for a mount-management view.
+		total, countErr := cbs.cba.GetBindingsTotal(ctx, query)
+		if countErr != nil {
+			logger.Errorf("GetBindingsTotal in knowledge network[%s] error: %v", query.KNID, countErr)
+			span.SetStatus(codes.Error, common.SafeErrorSummary(countErr))
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(countErr.Error())
+		}
+		entries, listErr := cbs.cba.ListBindings(ctx, query)
+		if listErr != nil {
+			logger.Errorf("ListBindings in knowledge network[%s] error: %v", query.KNID, listErr)
+			span.SetStatus(codes.Error, common.SafeErrorSummary(listErr))
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(listErr.Error())
+		}
+		for _, entry := range entries {
+			kind := interfaces.CAPABILITY_SOURCE_MANUAL
+			if entry.BoundAsBox {
+				kind = interfaces.CAPABILITY_SOURCE_BOX
+			}
+			entry.Sources = []*interfaces.CapabilitySource{{Kind: kind}}
+			entry.Releasable = true
+		}
+		backfilled := cbs.backfillMetadata(ctx, query, entries, query.WithDetail)
+		span.SetStatus(codes.Ok, "")
+		return &interfaces.CapabilityBindingsList{
+			Entries: entries, TotalCount: total, Boxes: backfilled.boxes,
+			MetadataAvailable: backfilled.available, SourcesAvailable: false,
+		}, nil
 	}
 
 	// The stored rows are fetched whole and paged in memory, because the page is not made of them
@@ -368,39 +404,11 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// Capabilities the model uses but nobody mounted are in the listing, so they are in the
-	// counts too. A count that disagreed with the list it labels is worse than either number
-	// alone: the workspace would show eight rows under a badge reading five.
-	sources := cbs.collectProvenance(ctx, knID, branch)
-	stored, storedErr := cbs.cba.ListBindings(ctx, interfaces.CapabilityBindingsQueryParams{
-		KNID: knID, Branch: branch,
-		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: noPagingLimit},
-	})
-	// Unmounted function capabilities per box, so the split below weighs them by their box's kind
-	// like the mounted ones. Left out, an openapi tool the model uses would be counted as a function.
-	implicitPerBox := map[string]int{}
-	if storedErr != nil {
-		logger.Warnf("capability totals: bindings unreadable for kn_id=%s: %v", knID, storedErr)
-	} else {
-		mounted := make(map[capabilityKey]struct{}, len(stored))
-		for _, binding := range stored {
-			mounted[keyOfBinding(binding)] = struct{}{}
-		}
-		for key := range sources.byCapability {
-			if _, ok := mounted[key]; !ok {
-				totals[key.capabilityType]++
-				if key.capabilityType == interfaces.CAPABILITY_TYPE_FUNCTION {
-					implicitPerBox[key.ownerID]++
-				}
-			}
-		}
-	}
-
-	// Split the function count by the kind of box each capability belongs to. The kind is not in
-	// these rows — it belongs to the box, in the execution factory — so this costs one call per
-	// box, not one per capability, and only on the statistics path.
+	// Statistics describe direct mounts. Object and action types may reference the same tools
+	// without mounting them, so provenance must not inflate the Function, API, or MCP counts.
+	// Split Function mounts by the kind of box each one belongs to.
 	if totals[interfaces.CAPABILITY_TYPE_FUNCTION] > 0 {
-		apis, splitErr := cbs.countAPIBindings(ctx, knID, branch, implicitPerBox)
+		apis, splitErr := cbs.countAPIBindings(ctx, knID, branch)
 		if splitErr != nil {
 			// A box that cannot be read leaves its bindings counted as functions, which is the
 			// same fallback the count had before this split existed. Failing the whole
@@ -466,28 +474,19 @@ func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, bran
 	return boxIDs, nil
 }
 
-// countAPIBindings counts the function capabilities whose tool box is an openapi box: the
-// mounted ones, plus implicitPerBox — the capabilities per box that the model uses without a
-// mount, which the totals already count as functions.
+// countAPIBindings counts the mounted Function capabilities whose tool box is an openapi box.
 //
 // A box that cannot be read counts as a function rather than failing: that is the pre-split
 // behaviour, and the dangling marker on the listing is what makes a missing box visible.
 func (cbs *capabilityBindingService) countAPIBindings(ctx context.Context, knID,
-	branch string, implicitPerBox map[string]int) (int, error) {
+	branch string) (int, error) {
 	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
 	if err != nil {
 		return 0, err
 	}
 
-	counts := make(map[string]int, len(perBox)+len(implicitPerBox))
-	for boxID, count := range perBox {
-		counts[boxID] += count
-	}
-	for boxID, count := range implicitPerBox {
-		counts[boxID] += count
-	}
-	candidates := make(map[string]struct{}, len(counts))
-	for boxID := range counts {
+	candidates := make(map[string]struct{}, len(perBox))
+	for boxID := range perBox {
 		candidates[boxID] = struct{}{}
 	}
 
@@ -498,7 +497,7 @@ func (cbs *capabilityBindingService) countAPIBindings(ctx context.Context, knID,
 	apis := 0
 	for boxID, kind := range kinds {
 		if kind == interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI {
-			apis += counts[boxID]
+			apis += perBox[boxID]
 		}
 	}
 	return apis, nil

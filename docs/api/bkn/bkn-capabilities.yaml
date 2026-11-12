@@ -42,6 +42,11 @@ info:
     capability is relevant to this question". Listing does not replace retrieval: a network
     with dozens of Skills and tools needs the execution factory's search endpoints.
 
+    The public list includes model-referenced tools by default, including tools with no stored
+    binding. Set `mounted_only=true` for mount-management views: it returns only stored bindings,
+    pages them directly in the database, and does not scan object or action types. The default
+    remains unchanged for callers inspecting model dependencies.
+
     ## Scope and branch
 
     Bindings are per branch. Creating a branch copies them, deleting a branch clears them, and
@@ -174,7 +179,7 @@ info:
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities:
     get:
-      summary: List the capabilities bound to a knowledge network
+      summary: List mounted and model-referenced capabilities of a knowledge network
       parameters:
         - name: kn_id
           description: Business knowledge network ID
@@ -227,6 +232,17 @@ paths:
           description: >-
             Also fill description and status. A skill's detail is read one skill at a time, so
             this is opt-in; function detail arrives with the box response either way.
+          schema:
+            type: boolean
+            default: false
+          in: query
+        - name: mounted_only
+          description: >-
+            Return stored capability bindings only. Excludes tools referenced solely by object
+            or action types; `total_count` and pagination cover stored bindings. This mode skips
+            model provenance reads, so `sources` contains only the direct mount kind and
+            `sources_available` is false. Defaults to false to preserve the existing dependency
+            inspection response.
           schema:
             type: boolean
             default: false
@@ -599,7 +615,9 @@ components:
           items:
             $ref: '#/components/schemas/CapabilityBinding'
         total_count:
-          description: Total matching bindings, ignoring pagination
+          description: >-
+            Total matching entries, ignoring pagination. With `mounted_only=true`, counts stored
+            bindings only; the default list also counts model-referenced tools without a mount.
           type: integer
         boxes:
           description: The tool boxes behind the whole-box mounts on this page
@@ -616,7 +634,8 @@ components:
           type: boolean
         sources_available:
           description: >-
-            False when the branch's object types or action types could not be read. The mounted
+            False when `mounted_only=true` skips provenance or when the branch's object types or
+            action types could not be read. The mounted
             capabilities are still listed, but the ones only the model uses are missing and the
             `sources` on the rest are incomplete — an empty sources list would otherwise read as
             "nothing uses this", which is the opposite of unknown.
