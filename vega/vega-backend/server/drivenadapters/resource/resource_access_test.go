@@ -114,6 +114,50 @@ func TestResourceAccessCreate(t *testing.T) {
 }
 
 func TestResourceAccessGetByID(t *testing.T) {
+	t.Run("rejects invalid stored schemas instead of returning a resource", func(t *testing.T) {
+		for _, schema := range []string{
+			`[{"name":"id"`,
+			`{"name":"id","type":"integer"}`,
+			`[{"name":"id","type":"integer"},{"name":42,"type":"string"}]`,
+		} {
+			t.Run(schema, func(t *testing.T) {
+				access, mock, cleanup := newResourceAccessMock(t)
+				defer cleanup()
+				values := resourceRowValues(sampleResource())
+				values[17] = schema
+				mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+					WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+
+				got, err := access.GetByID(context.Background(), nil, "resource-1")
+
+				require.Error(t, err)
+				assert.Nil(t, got)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
+	t.Run("keeps empty stored schemas readable", func(t *testing.T) {
+		for _, schema := range []string{"", "null", "[]"} {
+			t.Run(schema, func(t *testing.T) {
+				access, mock, cleanup := newResourceAccessMock(t)
+				defer cleanup()
+				values := resourceRowValues(sampleResource())
+				values[17] = schema
+				mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
+					WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+
+				got, err := access.GetByID(context.Background(), nil, "resource-1")
+
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				assert.Equal(t, "resource-1", got.ID)
+				assert.Empty(t, got.SchemaDefinition)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
 	t.Run("uses the supplied transaction with plain SQL and preserves attributes", func(t *testing.T) {
 		access, dbMock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
@@ -270,6 +314,30 @@ func TestResourceAccessGetByIDWithTransaction(t *testing.T) {
 }
 
 func TestResourceAccessGetByIDs(t *testing.T) {
+	t.Run("rejects invalid stored schemas without returning earlier resources", func(t *testing.T) {
+		for _, schema := range []string{
+			`[{"name":"id"`,
+			`{"name":"id","type":"integer"}`,
+			`[{"name":"id","type":"integer"},{"name":42,"type":"string"}]`,
+		} {
+			t.Run(schema, func(t *testing.T) {
+				access, mock, cleanup := newResourceAccessMock(t)
+				defer cleanup()
+				values := resourceRowValues(sampleResourceWithID("resource-2"))
+				values[17] = schema
+				mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id IN (?,?)"))).
+					WithArgs("resource-1", "resource-2").WillReturnRows(resourceRows().
+					AddRow(resourceRowValues(sampleResource())...).AddRow(values...))
+
+				got, err := access.GetByIDs(context.Background(), []string{"resource-1", "resource-2"})
+
+				require.Error(t, err)
+				assert.Nil(t, got)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
 	t.Run("returns resources", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
@@ -391,6 +459,30 @@ func TestResourceAccessGetPermissionRefsByIDs(t *testing.T) {
 }
 
 func TestResourceAccessGetByCatalogID(t *testing.T) {
+	t.Run("rejects invalid stored schemas without returning earlier resources", func(t *testing.T) {
+		for _, schema := range []string{
+			`[{"name":"id"`,
+			`{"name":"id","type":"integer"}`,
+			`[{"name":"id","type":"integer"},{"name":42,"type":"string"}]`,
+		} {
+			t.Run(schema, func(t *testing.T) {
+				access, mock, cleanup := newResourceAccessMock(t)
+				defer cleanup()
+				values := resourceRowValues(sampleResourceWithID("resource-2"))
+				values[17] = schema
+				mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_catalog_id = ?"))).
+					WithArgs("catalog-1").WillReturnRows(resourceRows().
+					AddRow(resourceRowValues(sampleResource())...).AddRow(values...))
+
+				got, err := access.GetByCatalogID(context.Background(), "catalog-1")
+
+				require.Error(t, err)
+				assert.Nil(t, got)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
 	t.Run("returns resources", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
