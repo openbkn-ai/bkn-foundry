@@ -477,12 +477,13 @@ func (s *draftService) ReviseConcept(ctx context.Context, token string, projectI
 			interfaces.DraftItemEdit{Aliases: &revision.Aliases})
 		decisions = append(decisions, edited...)
 	case interfaces.CONCEPT_REVISION_SPLIT:
-		err = define(revision.Parts[0].Name, revision.Parts[0].Description)
-		// What the concept stays is judged in the same write.
-		if concept := findConcept(concepts, revision.Key); err == nil && revision.Parts[0].Verdict != concept.Verdict {
-			var judged []*interfaces.DraftDecision
-			judged, document, err = s.judgeDecisions(ctx, &draft.Items, concept, revision.Parts[0].Verdict, req.Reason)
-			decisions = append(decisions, judged...)
+		// What the concept stays is judged in the same write, before it is named, so the name the
+		// split gives it stands over the one semantic understanding gave.
+		if concept := findConcept(concepts, revision.Key); revision.Parts[0].Verdict != concept.Verdict {
+			decisions, document, err = s.judgeDecisions(ctx, &draft.Items, concept, revision.Parts[0].Verdict, req.Reason)
+		}
+		if err == nil {
+			err = define(revision.Parts[0].Name, revision.Parts[0].Description)
 		}
 		for _, part := range revision.Parts[1:] {
 			add(part, revision.Key)

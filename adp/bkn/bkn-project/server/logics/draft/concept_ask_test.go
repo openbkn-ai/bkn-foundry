@@ -293,6 +293,17 @@ func Test_ConceptAskAndRevise(t *testing.T) {
 			So(c.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_EVENT)
 		})
 
+		Convey("A split renaming and judging a concept semantic understanding named keeps the new name\n", func() {
+			write()
+			got, err := revise("split", interfaces.DraftConceptRevision{Key: "object_types/erp_material", Parts: []interfaces.DraftConceptPart{
+				{Name: "物料事件", Verdict: "event"}, {Name: "物料批次", Verdict: "object"}}})
+			So(err, ShouldBeNil)
+			c := conceptByKey(got, "object_types/erp_material")
+			So(c.Name, ShouldEqual, "物料事件")
+			So(c.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_EVENT)
+			So(findObjectType(&draft.Items, "erp_material").Name, ShouldEqual, "物料事件")
+		})
+
 		Convey("Adopting a verdict judges the concept with the reason\n", func() {
 			write()
 			got, err := revise("verdict", interfaces.DraftConceptRevision{Key: "object_types/erp_vendor", Verdict: "none"})
