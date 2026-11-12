@@ -142,6 +142,15 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 			WithErrorDetails(strings.Join(missing, ", "))
 	}
 
+	// On an existing network the tables its object types read are modeled already: drafting
+	// leaves them out rather than model them a second time. Drafting without knowing them could
+	// model a table twice, so a failed read stops it.
+	used, err := s.existingTablesOf(ctx, entry)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read existing definitions failed")
+		return nil, internalError(ctx, "Read existing definitions failed", err)
+	}
+
 	now := time.Now().UnixMilli()
 	draft := &interfaces.Draft{
 		ProjectID:  projectID,
@@ -174,7 +183,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
 	plans := draft.Items.DatasetPlans
-	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans) })
+	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans, used) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -182,14 +191,15 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string, language string,
-	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation, plans []*interfaces.DraftDatasetPlan) {
+	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation, plans []*interfaces.DraftDatasetPlan,
+	used map[string]bool) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
 	defer span.End()
 
 	result := &interfaces.Draft{ProjectID: projectID, Status: interfaces.DRAFT_STATUS_READY}
-	items, err := s.draftFromTables(ctx, projectID, catalogIDs, language, caller)
+	items, err := s.draftFromTables(ctx, projectID, catalogIDs, language, caller, used)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		result.Status, result.Error = interfaces.DRAFT_STATUS_FAILED, FailureTimeout
@@ -257,11 +267,12 @@ func (s *draftService) readCatalogs(ctx context.Context, catalogIDs []string,
 }
 
 func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string, language string,
-	caller interfaces.AccountInfo) (interfaces.DraftItems, error) {
+	caller interfaces.AccountInfo, used map[string]bool) (interfaces.DraftItems, error) {
 	tables, unreadable, err := s.readCatalogs(ctx, catalogIDs, caller)
 	if err != nil {
 		return interfaces.DraftItems{}, err
 	}
+	tables, unreadable, left := withoutExistingTables(tables, unreadable, used)
 	registered, err := s.ira.ListIDs(ctx, projectID)
 	if err != nil {
 		return interfaces.DraftItems{}, fmt.Errorf("read registered ids: %w", err)
@@ -285,6 +296,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	// query, are in items.Unreadable too.
 	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
 	items.Inputs.NamingLanguage = d.language()
+	items.Inputs.ExistingTables = left
 	items.Inputs.IDs = registryInputsOf(registered, d.recorded, d.named)
 	return items, nil
 }

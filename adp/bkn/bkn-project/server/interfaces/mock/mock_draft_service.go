@@ -325,6 +325,21 @@ func (mr *MockDraftServiceMockRecorder) GetDraft(ctx, token, projectID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDraft", reflect.TypeOf((*MockDraftService)(nil).GetDraft), ctx, token, projectID)
 }
 
+// GetExisting mocks base method.
+func (m *MockDraftService) GetExisting(ctx context.Context, token, projectID string) (*interfaces.DraftExisting, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExisting", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.DraftExisting)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExisting indicates an expected call of GetExisting.
+func (mr *MockDraftServiceMockRecorder) GetExisting(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExisting", reflect.TypeOf((*MockDraftService)(nil).GetExisting), ctx, token, projectID)
+}
+
 // GetIndex mocks base method.
 func (m *MockDraftService) GetIndex(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.ProjectIndex, error) {
 	m.ctrl.T.Helper()
