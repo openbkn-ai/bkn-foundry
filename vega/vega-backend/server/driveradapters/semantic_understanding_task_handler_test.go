@@ -360,3 +360,32 @@ func Test_SemanticUnderstandingTaskRestHandler_DeleteTasks(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 }
+
+func TestSemanticUnderstandingTaskRestHandlerApply(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+	for _, mode := range []string{"fill_empty", "force"} {
+		t.Run("applies saved result using "+mode, func(t *testing.T) {
+			engine, service := setupSemanticUnderstandingTaskHandlerTest(t)
+			service.EXPECT().Apply(gomock.Any(), "task-1", &interfaces.ApplySemanticUnderstandingTaskRequest{ApplyMode: mode}).
+				Return(&interfaces.SemanticUnderstandingTask{ID: "task-1", ApplyMode: "dry_run", Applied: true}, true, nil)
+			req := httptest.NewRequest(http.MethodPost, semanticUnderstandingTaskURL+"/task-1/apply", strings.NewReader(`{"apply_mode":"`+mode+`"}`))
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, req)
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Contains(t, response.Body.String(), `"apply_mode":"dry_run"`)
+			assert.Contains(t, response.Body.String(), `"applied":true`)
+		})
+	}
+	for _, body := range []string{`{}`, `{"apply_mode":"dry_run"}`, `{"apply_mode":"other"}`, `invalid`} {
+		t.Run("rejects invalid apply request "+body, func(t *testing.T) {
+			engine, _ := setupSemanticUnderstandingTaskHandlerTest(t)
+			req := httptest.NewRequest(http.MethodPost, semanticUnderstandingTaskURL+"/task-1/apply", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, req)
+			assert.Equal(t, http.StatusBadRequest, response.Code)
+		})
+	}
+}

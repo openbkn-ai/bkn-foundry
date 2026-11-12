@@ -152,7 +152,9 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 		_ = common.UnmarshalPreciseJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+		if err := common.UnmarshalPreciseJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
+			return nil, err
+		}
 	}
 	if indexConfig.Valid && indexConfig.String != "" {
 		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)

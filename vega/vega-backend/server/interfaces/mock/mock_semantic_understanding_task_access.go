@@ -101,18 +101,18 @@ func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) FindActiveByInputHash
 }
 
 // GetByID mocks base method.
-func (m *MockSemanticUnderstandingTaskAccess) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
+func (m *MockSemanticUnderstandingTaskAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.SemanticUnderstandingTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret := m.ctrl.Call(m, "GetByID", ctx, tx, id)
 	ret0, _ := ret[0].(*interfaces.SemanticUnderstandingTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetByID indicates an expected call of GetByID.
-func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) GetByID(ctx, tx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).GetByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).GetByID), ctx, tx, id)
 }
 
 // GetByIDs mocks base method.
@@ -249,4 +249,19 @@ func (m *MockSemanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx
 func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetApplied), ctx, tx, id, applied, applyDetailJSON)
+}
+
+// SetCompletedApplied mocks base method.
+func (m *MockSemanticUnderstandingTaskAccess) SetCompletedApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetCompletedApplied", ctx, tx, id, applied, applyDetailJSON)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetCompletedApplied indicates an expected call of SetCompletedApplied.
+func (mr *MockSemanticUnderstandingTaskAccessMockRecorder) SetCompletedApplied(ctx, tx, id, applied, applyDetailJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCompletedApplied", reflect.TypeOf((*MockSemanticUnderstandingTaskAccess)(nil).SetCompletedApplied), ctx, tx, id, applied, applyDetailJSON)
 }

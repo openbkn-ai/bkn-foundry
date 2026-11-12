@@ -75,7 +75,7 @@ type SemanticUnderstandingTask struct {
 	Confidence           float64     `json:"confidence"`
 	ConfidenceDetailJSON string      `json:"confidence_detail_json,omitempty"`
 	ApplyDetailJSON      string      `json:"apply_detail_json,omitempty"`
-	Applied              bool        `json:"applied"`
+	Applied              bool        `json:"applied"` // 手动应用成功即为 true，包括无元数据变更。
 	FailureDetail        string      `json:"failure_detail,omitempty"`
 	Creator              AccountInfo `json:"creator"`
 	CreateTime           int64       `json:"create_time"`
@@ -125,6 +125,11 @@ type CreateSemanticUnderstandingTaskRequest struct {
 	SamplePolicy        *SemanticUnderstandingSamplePolicy `json:"sample_policy,omitempty"`
 }
 
+// ApplySemanticUnderstandingTaskRequest 指定对已保存结果使用的写入策略。
+type ApplySemanticUnderstandingTaskRequest struct {
+	ApplyMode string `json:"apply_mode"`
+}
+
 // SemanticUnderstandingResourceAgentInput is the audited payload sent to the
 // resource semantic-understanding agent. It is shared by task creation and
 // worker-side result quality evaluation.
@@ -171,13 +176,14 @@ type SemanticUnderstandingResourceAgentInputResource struct {
 }
 
 type SemanticUnderstandingResourceAgentInputProperty struct {
-	Name                string `json:"name"`
-	Type                string `json:"type"`
-	OriginalName        string `json:"original_name,omitempty"`
-	OriginalType        string `json:"original_type,omitempty"`
-	OriginalDescription string `json:"original_description,omitempty"`
-	DisplayName         string `json:"display_name,omitempty"`
-	Description         string `json:"description,omitempty"`
+	Name                string         `json:"name"`
+	Type                string         `json:"type"`
+	OriginalName        string         `json:"original_name,omitempty"`
+	OriginalType        string         `json:"original_type,omitempty"`
+	OriginalDescription string         `json:"original_description,omitempty"`
+	DisplayName         string         `json:"display_name,omitempty"`
+	Description         string         `json:"description,omitempty"`
+	Attributes          map[string]any `json:"attributes,omitempty"`
 }
 
 type SemanticUnderstandingResourceAgentInputOptions struct {
@@ -261,7 +267,7 @@ type SemanticUnderstandingTaskQueryParams struct {
 }
 
 type SemanticUnderstandingApplyResult struct {
-	Applied    bool
+	Applied    bool // 本次投影是否实际修改资源，与手动应用的任务完成标记不同。
 	DetailJSON string
 }
 

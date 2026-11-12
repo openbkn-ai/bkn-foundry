@@ -8,7 +8,9 @@ info:
     target one Resource. Catalog task creation and execution are temporarily
     unavailable; existing Catalog tasks remain readable and deletable.
     The worker submits Resource tasks to bkn-agent and writes back results and
-    application status asynchronously.
+    application status asynchronously. Completed Resource dry-run tasks can
+    apply their saved result without another Agent invocation, subject to the
+    original confidence threshold and a matching schema fingerprint.
 servers:
   - url: /api/vega-backend/v1
 security:
@@ -40,7 +42,7 @@ paths:
               type: string
               enum: [pending, running, completed, failed, cancelled]
         - name: apply_mode
-          description: Application mode.
+          description: Original task creation mode. Manual application does not change this value.
           in: query
           schema:
             type: string
@@ -97,6 +99,68 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/InternalServerError" }
+  /semantic-understanding-tasks/{id}/apply:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Apply the saved result of a Resource dry-run task
+      description: |
+        Requires task_manage on the task's Catalog and modify on its Resource
+        (inherited from Catalog resource_manage), subject to built-in resource
+        restrictions. Only completed Resource tasks originally created with
+        apply_mode=dry_run are eligible. Uses the saved result without creating
+        another task or invoking the Agent. The original task mode, input,
+        result, and confidence threshold are preserved. The actual write mode
+        is recorded as apply_mode in apply_detail_json.
+
+        The result must meet the original confidence threshold. The task's
+        stored schema snapshot must match the current Resource schema using a
+        fingerprint that includes complete field membership, names, types,
+        original field names/types/comments, and attributes. Field order and
+        object key order do not affect the fingerprint; attribute arrays retain
+        their order and types. Business display metadata and operational
+        configuration are excluded. Historical tasks use the same computation;
+        missing, null, and empty-object attributes are equivalent. Nonempty
+        current attributes cannot be substituted into an old snapshot. Force
+        mode cannot bypass confidence, schema, or source identity checks.
+
+        Metadata writes and application state are committed atomically. A
+        previously applied task returns its existing state without repeating
+        writes, even if the requested mode differs. A successful manual
+        application always sets applied=true, including when no resource
+        metadata needs changing. Inspect apply_detail_json for the no-change
+        reason or skipped fields; applying another strategy requires a new
+        task. The input field is protected using
+        the same query_data rule as the single-task detail response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplySemanticUnderstandingTaskRequest" }
+      responses:
+        "200":
+          description: Existing task with its current application state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SemanticUnderstandingTask" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            Application rejected without writing metadata:
+            - VegaBackend.SemanticUnderstandingTask.NotApplicable: task is not a completed Resource dry-run with a saved result.
+            - VegaBackend.SemanticUnderstandingTask.SchemaMismatch: stored schema/source identity is invalid or does not match the current Resource.
+            - VegaBackend.SemanticUnderstandingTask.ConfidenceBelowThreshold: saved confidence does not meet the original threshold or is invalid.
+            - VegaBackend.SemanticUnderstandingTask.InvalidResult: saved output is invalid or references unknown/duplicate fields.
+          content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+        "500":
+          description: Application persistence failure (VegaBackend.SemanticUnderstandingTask.InternalError.ApplyFailed) or another internal dependency failure
+          content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
   /semantic-understanding-tasks/{id}:
     parameters:
       - name: id
@@ -144,6 +208,9 @@ components:
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     Unauthorized:
       description: OAuth token validation failed
+      content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
+    Forbidden:
+      description: Insufficient Catalog task-management or Resource modification permission
       content: { application/json: { schema: { $ref: "../_shared/errors.yaml#/components/schemas/Error" } } }
     NotFound:
       description: Resource not found
@@ -195,6 +262,14 @@ components:
             properties: { scope: { const: resource } }
           then:
             required: [resource_id]
+    ApplySemanticUnderstandingTaskRequest:
+      type: object
+      required: [apply_mode]
+      properties:
+        apply_mode:
+          type: string
+          enum: [fill_empty, force]
+          description: Required write strategy for this application. Does not change the task's original dry_run mode or confidence threshold.
     SemanticUnderstandingTask:
       type: object
       required: [id, scope, catalog_id, agent_id, input, input_hash, status, apply_mode, confidence_threshold, confidence, applied, creator, create_time]
@@ -215,19 +290,23 @@ components:
             values not_requested, available, no_rows, unavailable,
             payload_limited, and all_fields_omitted_by_policy distinguish the
             sample state from field values
-            deliberately omitted by the sampling safety policy.
-        input_hash: { type: string }
+            deliberately omitted by the sampling safety policy. New Resource
+            task inputs preserve field attributes in resource.schema_definition
+            for subsequent schema fingerprint comparison.
+        input_hash:
+          type: string
+          description: Original task-input hash for creation/deduplication; distinct from the schema fingerprint used for manual application.
         status: { type: string, enum: [pending, running, completed, failed, cancelled] }
-        apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
+        apply_mode:
+          type: string
+          enum: [dry_run, fill_empty, force]
+          description: Original task creation mode; remains dry_run after manually applying a dry-run result.
         result_json:
           type: string
           description: >-
             JSON-encoded Agent result. Resource results may include
             warning_details entries with stable code and params fields in
-            addition to legacy free-text warnings. Resource and field results may
-            carry an optional api_name (snake_case, ^[a-z][a-z0-9_]{0,39}$); it is
-            written back only when the resource or field has none yet and the value
-            is valid and unique among the fields, otherwise it is skipped.
+            addition to legacy free-text warnings.
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }
         confidence_detail_json:
@@ -236,8 +315,12 @@ components:
             JSON-encoded confidence details. Resource details may include
             warning_details; code sample_omitted_by_policy identifies a field
             whose sample value Vega deliberately excluded by policy.
-        apply_detail_json: { type: string }
-        applied: { type: boolean }
+        apply_detail_json:
+          type: string
+          description: JSON-encoded application details. Manual application includes apply_mode (fill_empty or force), actual changes, or the reason no metadata changed.
+        applied:
+          type: boolean
+          description: Whether the result has been applied. A successful manual application sets true even when no resource metadata needs changing.
         failure_detail: { type: string }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
@@ -267,7 +350,9 @@ components:
         apply_mode: { type: string, enum: [dry_run, fill_empty, force] }
         confidence_threshold: { type: number, format: double }
         confidence: { type: number, format: double }
-        applied: { type: boolean }
+        applied:
+          type: boolean
+          description: Whether the result has been applied. A successful manual application sets true even when no resource metadata needs changing.
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
         start_time: { type: integer, format: int64 }

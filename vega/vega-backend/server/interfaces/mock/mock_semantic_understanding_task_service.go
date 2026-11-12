@@ -42,6 +42,22 @@ func (m *MockSemanticUnderstandingTaskService) EXPECT() *MockSemanticUnderstandi
 	return m.recorder
 }
 
+// Apply mocks base method.
+func (m *MockSemanticUnderstandingTaskService) Apply(ctx context.Context, id string, req *interfaces.ApplySemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Apply", ctx, id, req)
+	ret0, _ := ret[0].(*interfaces.SemanticUnderstandingTask)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Apply indicates an expected call of Apply.
+func (mr *MockSemanticUnderstandingTaskServiceMockRecorder) Apply(ctx, id, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockSemanticUnderstandingTaskService)(nil).Apply), ctx, id, req)
+}
+
 // CreateCatalogTask mocks base method.
 func (m *MockSemanticUnderstandingTaskService) CreateCatalogTask(ctx context.Context, catalogID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	m.ctrl.T.Helper()

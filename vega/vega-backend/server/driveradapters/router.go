@@ -217,6 +217,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			semanticUnderstandingTasks.POST("", r.verifyJsonContentType(), r.CreateSemanticUnderstandingTaskByEx)
 			semanticUnderstandingTasks.GET("", r.ListSemanticUnderstandingTasksByEx)
 			semanticUnderstandingTasks.GET("/:id", r.GetSemanticUnderstandingTaskByEx)
+			semanticUnderstandingTasks.POST("/:id/apply", r.verifyJsonContentType(), r.ApplySemanticUnderstandingTaskByEx)
 			semanticUnderstandingTasks.DELETE("/:ids", r.DeleteSemanticUnderstandingTasksByEx)
 		}
 
@@ -327,6 +328,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			semanticUnderstandingTasks.POST("", r.verifyJsonContentType(), r.CreateSemanticUnderstandingTaskByIn)
 			semanticUnderstandingTasks.GET("", r.ListSemanticUnderstandingTasksByIn)
 			semanticUnderstandingTasks.GET("/:id", r.GetSemanticUnderstandingTaskByIn)
+			semanticUnderstandingTasks.POST("/:id/apply", r.verifyJsonContentType(), r.ApplySemanticUnderstandingTaskByIn)
 			semanticUnderstandingTasks.DELETE("/:ids", r.DeleteSemanticUnderstandingTasksByIn)
 		}
 

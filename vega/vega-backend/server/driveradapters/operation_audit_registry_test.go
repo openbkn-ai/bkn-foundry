@@ -38,6 +38,7 @@ func TestRegisteredOperationAudit(t *testing.T) {
 			{"POST", "/api/vega-backend/v1/connector-types/:type/disable", "disable", "connector_type"},
 			{"DELETE", "/api/vega-backend/in/v1/discover-tasks/:ids", "delete", "discover_task"},
 			{"POST", "/api/vega-backend/v1/semantic-understanding-tasks", "create", "semantic_understanding_task"},
+			{"POST", "/api/vega-backend/v1/semantic-understanding-tasks/:id/apply", "update", "resource"},
 			{"DELETE", "/api/vega-backend/v1/semantic-understanding-tasks/:ids", "delete", "semantic_understanding_task"},
 		} {
 			rule, ok := registeredOperationAudit(testCase.method, testCase.path, "")

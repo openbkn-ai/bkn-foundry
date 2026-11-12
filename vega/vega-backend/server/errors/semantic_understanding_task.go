@@ -7,6 +7,12 @@
 package errors
 
 const (
+	VegaBackend_SemanticUnderstandingTask_NotApplicable             = "VegaBackend.SemanticUnderstandingTask.NotApplicable"
+	VegaBackend_SemanticUnderstandingTask_SchemaMismatch            = "VegaBackend.SemanticUnderstandingTask.SchemaMismatch"
+	VegaBackend_SemanticUnderstandingTask_ConfidenceBelowThreshold  = "VegaBackend.SemanticUnderstandingTask.ConfidenceBelowThreshold"
+	VegaBackend_SemanticUnderstandingTask_InvalidResult             = "VegaBackend.SemanticUnderstandingTask.InvalidResult"
+	VegaBackend_SemanticUnderstandingTask_InternalError_ApplyFailed = "VegaBackend.SemanticUnderstandingTask.InternalError.ApplyFailed"
+
 	// 404 Not Found
 	VegaBackend_SemanticUnderstandingTask_NotFound = "VegaBackend.SemanticUnderstandingTask.NotFound"
 
@@ -20,6 +26,12 @@ const (
 )
 
 var SemanticUnderstandingTaskErrCodeList = []string{
+	VegaBackend_SemanticUnderstandingTask_NotApplicable,
+	VegaBackend_SemanticUnderstandingTask_SchemaMismatch,
+	VegaBackend_SemanticUnderstandingTask_ConfidenceBelowThreshold,
+	VegaBackend_SemanticUnderstandingTask_InvalidResult,
+	VegaBackend_SemanticUnderstandingTask_InternalError_ApplyFailed,
+
 	// 404 Not Found
 	VegaBackend_SemanticUnderstandingTask_NotFound,
 

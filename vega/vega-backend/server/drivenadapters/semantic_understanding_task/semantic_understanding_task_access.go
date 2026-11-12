@@ -204,7 +204,7 @@ func (suta *semanticUnderstandingTaskAccess) Create(ctx context.Context, task *i
 	return nil
 }
 
-func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
+func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get semantic understanding task by ID")
 	defer span.End()
 
@@ -217,7 +217,13 @@ func (suta *semanticUnderstandingTaskAccess) GetByID(ctx context.Context, id str
 		return nil, err
 	}
 
-	task, err := scanSemanticUnderstandingTask(suta.db.QueryRowContext(ctx, sqlStr, vals...))
+	var row *sql.Row
+	if tx != nil {
+		row = tx.QueryRowContext(ctx, sqlStr, vals...)
+	} else {
+		row = suta.db.QueryRowContext(ctx, sqlStr, vals...)
+	}
+	task, err := scanSemanticUnderstandingTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		span.SetStatus(codes.Ok, "Semantic understanding task not found")
 		return nil, nil //nolint:nilnil // Nil result represents an expected absence condition.
@@ -518,12 +524,14 @@ func (suta *semanticUnderstandingTaskAccess) MarkCancelled(ctx context.Context, 
 }
 
 func (suta *semanticUnderstandingTaskAccess) SetAgentTaskID(ctx context.Context, id string, agentTaskID string) (bool, error) {
-	return suta.update(ctx, nil, map[string]any{
-		"f_agent_task_id": agentTaskID,
-	}, map[string]any{
-		"f_id":     id,
-		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
-	})
+	return suta.update(ctx, nil,
+		map[string]any{
+			"f_agent_task_id": agentTaskID,
+		}, map[string]any{
+			"f_id":     id,
+			"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
+		},
+	)
 }
 
 func (suta *semanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
@@ -537,6 +545,22 @@ func (suta *semanticUnderstandingTaskAccess) SetApplied(ctx context.Context, tx 
 		"f_id":     id,
 		"f_status": interfaces.SemanticUnderstandingTaskStatusRunning,
 	})
+}
+
+// SetCompletedApplied 仅修改已完成且尚未应用的 dry-run 任务的应用状态。
+func (suta *semanticUnderstandingTaskAccess) SetCompletedApplied(ctx context.Context, tx *sql.Tx, id string, applied bool, applyDetailJSON string) (bool, error) {
+	return suta.update(ctx, tx,
+		map[string]any{
+			"f_applied":           applied,
+			"f_apply_detail_json": applyDetailJSON,
+		},
+		map[string]any{
+			"f_id":         id,
+			"f_status":     interfaces.SemanticUnderstandingTaskStatusCompleted,
+			"f_apply_mode": interfaces.SemanticUnderstandingApplyModeDryRun,
+			"f_applied":    false,
+		},
+	)
 }
 
 func (suta *semanticUnderstandingTaskAccess) update(ctx context.Context, tx *sql.Tx,

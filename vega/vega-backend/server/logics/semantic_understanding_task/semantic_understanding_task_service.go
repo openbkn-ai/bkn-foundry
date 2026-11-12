@@ -45,6 +45,7 @@ var (
 const semanticTaskWakeupBuffer = 1
 
 type semanticUnderstandingTaskService struct {
+	db         *sql.DB
 	appSetting *common.AppSetting
 	cs         interfaces.CatalogService
 	rs         interfaces.ResourceService
@@ -59,6 +60,7 @@ func NewSemanticUnderstandingTaskService(appSetting *common.AppSetting) interfac
 	sutServiceOnce.Do(func() {
 		sutService = &semanticUnderstandingTaskService{
 			appSetting: appSetting,
+			db:         logics.DB,
 			cs:         catalog.NewCatalogService(appSetting),
 			rs:         resourcelogic.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 			rds:        resource_data.NewResourceDataService(appSetting),
@@ -225,7 +227,7 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.GetByID")
 	defer span.End()
 
-	task, err := suts.suta.GetByID(ctx, id)
+	task, err := suts.suta.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get semantic understanding task failed")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -277,7 +279,7 @@ func (suts *semanticUnderstandingTaskService) InternalGetByID(ctx context.Contex
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.InternalGetByID")
 	defer span.End()
 
-	task, err := suts.suta.GetByID(ctx, id)
+	task, err := suts.suta.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get semantic understanding task failed")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
@@ -608,7 +610,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 		return fmt.Errorf("resource data service is unavailable")
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := sonic.Unmarshal([]byte(task.Input), &input); err != nil {
+	if err := common.UnmarshalPreciseJSON([]byte(task.Input), &input); err != nil {
 		return fmt.Errorf("unmarshal semantic understanding input: %w", err)
 	}
 	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
@@ -1017,6 +1019,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []inte
 			continue
 		}
 		result = append(result, interfaces.SemanticUnderstandingResourceAgentInputProperty{
+			Attributes:          property.Attributes,
 			Name:                property.Name,
 			Type:                property.Type,
 			OriginalName:        property.OriginalName,

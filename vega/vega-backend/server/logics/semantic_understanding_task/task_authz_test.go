@@ -35,7 +35,7 @@ func TestSemanticTaskReadRequiresPermission(t *testing.T) {
 	cs := mock_interfaces.NewMockCatalogService(ctrl)
 	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
-	suta.EXPECT().GetByID(gomock.Any(), "task-1").Return(resourceScopedTask(), nil)
+	suta.EXPECT().GetByID(gomock.Any(), nil, "task-1").Return(resourceScopedTask(), nil)
 	// 资源域的任务也判在它所属的目录上,与列表同一口径。
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, nil)
 
