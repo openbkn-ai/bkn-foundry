@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -15,10 +16,11 @@ import (
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/postgresql"
 	fc "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
-// TestBKNVegaLikeContract feeds BKN's outgoing condition to both Vega connectors.
+// TestBKNVegaLikeContract feeds BKN's outgoing condition to SQL and index connectors.
 func TestBKNVegaLikeContract(t *testing.T) {
 	field := &vega.Property{Name: "name", OriginalName: "name", Type: vega.DataType_String}
 	for _, tc := range []struct {
@@ -58,6 +60,22 @@ func TestBKNVegaLikeContract(t *testing.T) {
 			like, ok := node.(*sb.Like)
 			if !ok || like.Pattern.(*sb.Param).Value != tc.pattern || like.Escape == nil || *like.Escape != `\` || like.Negated != (tc.operation == "not_like") {
 				t.Fatalf("Vega SQL node = %#v", node)
+			}
+			pgNode, err := (&postgresql.PostgresqlConnector{}).ConvertFilterCondition(condition, []*vega.Property{field}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pgSQL, pgArgs, err := postgresql.ToSql(sb.Select(pgNode))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pgOperator := "LIKE"
+			if tc.operation == "not_like" {
+				pgOperator = "NOT LIKE"
+			}
+			if pgSQL != fmt.Sprintf(`SELECT ("name" %s $1 ESCAPE E'\\')`, pgOperator) ||
+				len(pgArgs) != 1 || pgArgs[0] != tc.pattern {
+				t.Fatalf("Vega PostgreSQL query = %q with args %#v, want pattern %q", pgSQL, pgArgs, tc.pattern)
 			}
 			index, err := (&opensearch.OpenSearchConnector{}).ConvertFilterCondition(condition, []*vega.Property{field})
 			if err != nil {

@@ -277,7 +277,7 @@ openbkn bkn object-type query <kn_id> <ot_id> '{
 
 `like` and `not_like` take a complete SQL LIKE pattern: `widget` matches the complete value, `%widget%` contains it, `widget%` is a prefix, and `_` matches one character. Use `\%`, `\_`, or `\\` for a literal wildcard or backslash; a trailing escape is invalid. Previously saved patterns without wildcards may have meant containment under the old BKN behavior. Review and update them explicitly; the service does not rewrite saved conditions.
 
-Roll out BKN together with a Vega version that uses complete LIKE patterns and a Studio version that supports them. An older Studio filter editor rejects unescaped `%` and previews LIKE as literal containment. New Vega with old BKN can turn a former containment condition into a full-value match; new BKN with old Vega may reject a new pattern containing `%`. Audit saved conditions and caller-supplied values before the switch, then explicitly update entries that must keep containment semantics.
+Roll out BKN together with a Vega version that uses complete LIKE patterns and a Studio version that supports them. An older Studio filter editor rejects unescaped `%` and previews LIKE as literal containment. New Vega with old BKN can turn a former containment condition into a full-value match; new BKN with old Vega may reject a new pattern containing `%`. Audit saved conditions and caller-supplied values before the switch. For each entry, record its location, original value, intended match semantics, and adjusted value; add wildcards explicitly to bare values that must keep containment semantics, then verify representative results after the switch. Record the coordinated BKN, Vega, and Studio versions and cutover time in the release plan.
 
 ### Relation Types
 
