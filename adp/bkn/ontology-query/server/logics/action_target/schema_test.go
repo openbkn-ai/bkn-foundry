@@ -108,3 +108,44 @@ func TestIdentitySchemaPreservesPrimaryKeyTypeAndDisplayNames(t *testing.T) {
 		t.Fatalf("schema=%#v", schema)
 	}
 }
+
+func TestExistingActionLikeUsesBackingResourceCollation(t *testing.T) {
+	for _, matches := range []bool{true, false} {
+		t.Run(map[bool]string{true: "source matches", false: "source rejects"}[matches], func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			objects := omock.NewMockObjectTypeService(ctrl)
+			data := map[string]any{"id": "1", "name": "Apple", interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "obj-1"}
+			object := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID: "products", PrimaryKeys: []string{"id"}, DataProperties: []cond.DataProperty{
+					{Name: "id", Type: "string"}, {Name: "name", Type: "string"},
+				},
+			}}
+			objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+					if query.ActualCondition.Operation != cond.OperationAnd {
+						t.Fatalf("identity query changed: %#v", query.ActualCondition)
+					}
+					return interfaces.Objects{Datas: []map[string]any{data}}, nil
+				})
+			objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+					if query.ActualCondition.Operation != cond.OperationAnd || len(query.ActualCondition.SubConds) != 2 ||
+						query.ActualCondition.SubConds[1].Value != "apple" {
+						t.Fatalf("LIKE condition was not sent to Vega: %#v", query.ActualCondition)
+					}
+					if matches {
+						return interfaces.Objects{Datas: []map[string]any{data}}, nil
+					}
+					return interfaces.Objects{}, nil
+				})
+			resolver := &Resolver{Objects: objects}
+			_, _, err := resolver.loadActionTarget(context.Background(),
+				&interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main"}, object,
+				map[string]any{"id": "1"},
+				&cond.CondCfg{Name: "name", Operation: cond.OperationLike, Value: "apple"}, nil)
+			if (err == nil) != matches {
+				t.Fatalf("source matches=%v, err=%v", matches, err)
+			}
+		})
+	}
+}

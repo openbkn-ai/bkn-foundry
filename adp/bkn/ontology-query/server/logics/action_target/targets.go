@@ -244,19 +244,39 @@ func (s *Resolver) loadActionTarget(ctx context.Context, req *interfaces.ActionE
 		return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target identity must resolve to exactly one accessible instance")
 	}
 	data := objects.Datas[0]
-	if err := evaluateActionTarget(ctx, data, condition, object, req.DynamicParams); err != nil {
+	resolved, err := resolveActionTargetCondition(ctx, data, condition, object, req.DynamicParams)
+	if err != nil {
 		return interfaces.ObjectSystemInfo{}, nil, err
+	}
+	if cond.ContainsLikeCondition(resolved) {
+		// The backing resource owns LIKE collation. Query it with the explicit identity
+		// and the resolved condition instead of rechecking its result in Go.
+		matchedQuery := *query
+		matchedQuery.ActualCondition = &cond.CondCfg{Operation: cond.OperationAnd,
+			SubConds: []*cond.CondCfg{query.ActualCondition, resolved}}
+		matched, err := s.Objects.GetObjectsByObjectTypeID(ctx, &matchedQuery)
+		if err != nil {
+			return interfaces.ObjectSystemInfo{}, nil, err
+		}
+		if len(matched.Datas) != 1 || matched.Incomplete {
+			return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target does not satisfy the action applicability condition")
+		}
+	} else {
+		match, err := logics.EvaluateInstanceAgainstCondition(ctx, data, resolved, object)
+		if err != nil {
+			return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, err.Error())
+		}
+		if !match {
+			return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target does not satisfy the action applicability condition")
+		}
 	}
 	return interfaces.ObjectSystemInfo{InstanceIdentity: identity, InstanceID: data[interfaces.SYSTEM_PROPERTY_INSTANCE_ID], Display: data[interfaces.SYSTEM_PROPERTY_DISPLAY]}, data, nil
 }
 
 func evaluateActionTarget(ctx context.Context, data map[string]any, condition *cond.CondCfg, object *interfaces.ObjectType, dynamic map[string]any) error {
-	if err := validateTargetCondition(condition, object); err != nil {
-		return actionTargetError(ctx, err.Error())
-	}
-	resolved, err := logics.ResolveActionConditionValues(condition, data, dynamic)
+	resolved, err := resolveActionTargetCondition(ctx, data, condition, object, dynamic)
 	if err != nil {
-		return actionTargetError(ctx, err.Error())
+		return err
 	}
 	match, err := logics.EvaluateInstanceAgainstCondition(ctx, data, resolved, object)
 	if err != nil {
@@ -266,6 +286,17 @@ func evaluateActionTarget(ctx context.Context, data map[string]any, condition *c
 		return actionTargetError(ctx, "target does not satisfy the action applicability condition")
 	}
 	return nil
+}
+
+func resolveActionTargetCondition(ctx context.Context, data map[string]any, condition *cond.CondCfg, object *interfaces.ObjectType, dynamic map[string]any) (*cond.CondCfg, error) {
+	if err := validateTargetCondition(condition, object); err != nil {
+		return nil, actionTargetError(ctx, err.Error())
+	}
+	resolved, err := logics.ResolveActionConditionValues(condition, data, dynamic)
+	if err != nil {
+		return nil, actionTargetError(ctx, err.Error())
+	}
+	return resolved, nil
 }
 
 // targetProperties asks the existing property-access layer for full access to

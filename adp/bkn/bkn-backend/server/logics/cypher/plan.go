@@ -338,9 +338,12 @@ type PlanMembership struct {
 
 func (PlanMembership) planPredicate() {}
 
-// PlanStringMatch is STARTS WITH, ENDS WITH or CONTAINS against a resolved
-// string. The value is kept as written; turning it into a LIKE pattern is the
-// generator's job, next to the rest of the escaping.
+// LikePattern marks a stored filter condition whose value is already a complete
+// SQL LIKE pattern. It is not a Cypher operator and is never parsed from text.
+const LikePattern StringMatchOperator = "LIKE PATTERN"
+
+// PlanStringMatch is a Cypher string match or a stored complete LIKE pattern.
+// The value is kept as written; generation handles the two meanings separately.
 type PlanStringMatch struct {
 	Table        int
 	Column       string

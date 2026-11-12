@@ -35,6 +35,9 @@ func NewNotLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Dat
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
+	if err := common.ValidateSQLLikePattern(val); err != nil {
+		return nil, fmt.Errorf("condition [not_like]: %w", err)
+	}
 
 	return &NotLikeCond{
 		mCfg:             cfg,
@@ -44,40 +47,43 @@ func NewNotLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Dat
 }
 
 func (cond *NotLikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	// Replace wildcards in like.
-	v := common.ReplaceLikeWildcards(cond.mValue)
-	v = fmt.Sprintf("%q", v)
+	pattern, err := common.SQLLikeToWildcard(cond.mValue)
+	if err != nil {
+		return "", err
+	}
+	v := fmt.Sprintf("%q", pattern)
 
 	dslStr := fmt.Sprintf(`
 					{
 						"bool": {
+						"must": [{"exists": {"field": "%s"}}],
 							"must_not": [
 								{
-									"regexp": {
+								"wildcard": {
 										"%s": %v
 									}
 								}
 							]
 						}
-					}`, cond.mFilterFieldName, v)
+					}`, cond.mFilterFieldName, cond.mFilterFieldName, v)
 
 	return dslStr, nil
 }
 
 func (cond *NotLikeCond) Convert2SQL(ctx context.Context) (string, error) {
-	v := cond.mCfg.Value
-	vStr, ok := v.(string)
-	if ok {
-		v = Special.Replace(fmt.Sprintf("%v", vStr))
-	}
-
-	vStr = fmt.Sprintf("%v", v)
-	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s'`, cond.mFilterFieldName, "%"+vStr+"%")
+	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s' ESCAPE '!'`, cond.mFilterFieldName, escapeSQLLikeLiteral(cond.mValue))
 
 	return sqlStr, nil
 }
 
 func rewriteNotLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
+	value, ok := cfg.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
+	}
+	if err := common.ValidateSQLLikePattern(value); err != nil {
+		return nil, fmt.Errorf("property '%s': %w", cfg.Name, err)
+	}
 
 	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {

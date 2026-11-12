@@ -1815,6 +1815,10 @@ func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 		// Use the relation type source and target object sets to match relations and return matched relations.
 		matchedRelations, err := kns.matchRelationsForPair(ctx, query, sourceObjects, targetObjects, edge)
 		if err != nil {
+			if rules, ok := relationType.MappingRules.(*interfaces.FilteredCrossJoinMapping); ok &&
+				(cond.ContainsLikeCondition(rules.SourceCondition) || cond.ContainsLikeCondition(rules.TargetCondition)) {
+				return nil, nil, err
+			}
 			logger.Warnf("Relation matching failed for relation type [%s]", relationType.RTID)
 			continue
 		}
@@ -1848,7 +1852,7 @@ func (kns *knowledgeNetworkService) matchRelationsForPair(ctx context.Context,
 		return kns.matchIndirectRelations(ctx, query, sourceObjects, targetObjects, edge)
 
 	case *interfaces.FilteredCrossJoinMapping:
-		return kns.matchFilteredCrossJoinRelations(ctx, sourceObjects, targetObjects, edge)
+		return kns.matchFilteredCrossJoinRelations(ctx, query, sourceObjects, targetObjects, edge)
 	}
 
 	return []interfaces.Relation{}, nil

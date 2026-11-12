@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -183,11 +184,11 @@ func fakeFilter(condition map[string]any, row map[string]any) (bool, error) {
 		}
 		return found == (operation == "in"), nil
 	case "like", "not_like":
-		literal, err := fakeLikeLiteral(operand.(string))
+		matched, err := fakeLikePattern(fmt.Sprint(value), operand.(string))
 		if err != nil {
 			return false, err
 		}
-		return strings.Contains(fmt.Sprint(value), literal) == (operation == "like"), nil
+		return matched == (operation == "like"), nil
 	case "prefix", "not_prefix":
 		return strings.HasPrefix(fmt.Sprint(value), operand.(string)) == (operation == "prefix"), nil
 	default:
@@ -195,25 +196,31 @@ func fakeFilter(condition map[string]any, row map[string]any) (bool, error) {
 	}
 }
 
-// fakeLikeLiteral reads a like value the way vega-backend does: a backslash
-// escapes the next character and a bare % is refused.
-func fakeLikeLiteral(value string) (string, error) {
-	var literal strings.Builder
+// fakeLikePattern models Vega's complete SQL LIKE contract independently of the plan evaluator.
+func fakeLikePattern(value, pattern string) (bool, error) {
+	var expression strings.Builder
+	expression.WriteString("(?s)^")
 	escaped := false
-	for _, r := range value {
+	for _, r := range pattern {
 		switch {
 		case escaped:
-			literal.WriteRune(r)
+			expression.WriteString(regexp.QuoteMeta(string(r)))
 			escaped = false
 		case r == '\\':
 			escaped = true
 		case r == '%':
-			return "", fmt.Errorf("like does not support the wildcard %%")
+			expression.WriteString(".*")
+		case r == '_':
+			expression.WriteByte('.')
 		default:
-			literal.WriteRune(r)
+			expression.WriteString(regexp.QuoteMeta(string(r)))
 		}
 	}
-	return literal.String(), nil
+	if escaped {
+		return false, fmt.Errorf("incomplete LIKE escape")
+	}
+	expression.WriteByte('$')
+	return regexp.MatchString(expression.String(), value)
 }
 
 func reflectList(value any) []any {
@@ -575,7 +582,7 @@ func TestPushFilter(t *testing.T) {
 		{name: "starts with", predicate: PlanStringMatch{Column: "f_name", Operator: StartsWith, Value: "Al"},
 			want: fieldCondition("f_name", "prefix", "Al")},
 		{name: "negated contains", predicate: PlanNegation{Operand: PlanStringMatch{Column: "f_name", Operator: Contains, Value: "l"}},
-			want: fieldCondition("f_name", "not_like", "l")},
+			want: fieldCondition("f_name", "not_like", "%l%")},
 		{name: "ends with stays in memory", predicate: PlanStringMatch{Column: "f_name", Operator: EndsWith, Value: "e"}, refused: true},
 		{name: "xor stays in memory", predicate: PlanLogical{Operator: "XOR", Operands: []PlanPredicate{east, big}}, refused: true},
 		{name: "column comparison stays in memory", predicate: PlanColumnComparison{Operator: "="}, refused: true},
@@ -899,9 +906,7 @@ func TestBindJoinColumnsFallBackToTheModelWhenAllNull(t *testing.T) {
 	}
 }
 
-// #2203 review: CONTAINS is pushed as like, whose value vega-backend reads with
-// backslash escapes and a bare % refused, so the executor has to escape both
-// to keep the literal match the SQL path makes.
+// CONTAINS must be escaped as literal text before adding LIKE containment wildcards.
 func TestBindJoinContainsMatchesLiterally(t *testing.T) {
 	data := bindJoinData()
 	data["res_customer"] = append(data["res_customer"],
@@ -923,8 +928,56 @@ func TestBindJoinContainsMatchesLiterally(t *testing.T) {
 		}
 	}
 	pushed, _ := pushFilter(PlanStringMatch{Column: "f", Operator: Contains, Value: `50%\x`})
-	if got := pushed.condition["value"]; got != `50\%\\x` {
+	if got := pushed.condition["value"]; got != `%50\%\\x%` {
 		t.Fatalf("like value = %q", got)
+	}
+}
+
+func TestLikePushdownKeepsCypherTextSeparateFromStoredPatterns(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		predicate PlanPredicate
+		operation string
+		value     string
+	}{
+		{"contains", PlanStringMatch{Column: "name", Operator: Contains, Value: "苹果"}, "like", "%苹果%"},
+		{"literal metacharacters", PlanStringMatch{Column: "name", Operator: Contains, Value: `50%_off`}, "like", `%50\%\_off%`},
+		{"literal backslash", PlanStringMatch{Column: "name", Operator: Contains, Value: `a\b`}, "like", `%a\\b%`},
+		{"quotes and index metacharacters", PlanStringMatch{Column: "name", Operator: Contains, Value: `it's *?[ok]`}, "like", `%it's *?[ok]%`},
+		{"empty contains", PlanStringMatch{Column: "name", Operator: Contains, Value: ""}, "like", "%%"},
+		{"negated contains", PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: Contains, Value: "苹果"}}, "not_like", "%苹果%"},
+		{"stored exact pattern", PlanStringMatch{Column: "name", Operator: LikePattern, Value: "苹果"}, "like", "苹果"},
+		{"stored containment pattern", PlanStringMatch{Column: "name", Operator: LikePattern, Value: "%苹果%"}, "like", "%苹果%"},
+		{"negated stored pattern", PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: LikePattern, Value: "苹果"}}, "not_like", "苹果"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pushed, ok := pushFilter(tc.predicate)
+			if !ok || pushed.condition["operation"] != tc.operation || pushed.condition["value"] != tc.value {
+				t.Fatalf("pushFilter = %+v, %v; want %s %q", pushed, ok, tc.operation, tc.value)
+			}
+		})
+	}
+}
+
+func TestStoredLikePatternLocalEvaluationAndNullNegation(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		pattern string
+		want    bool
+	}{
+		{"苹果", "苹果", true}, {"红苹果", "苹果", false},
+		{"红苹果", "%苹果%", true}, {"红苹果", "_苹果", true},
+		{"苹果", "_苹果", false}, {"50%_off", `50\%\_off`, true},
+		{"a\\b", `a\\b`, true}, {"苹果汁", "%苹果", false},
+	} {
+		if got := matchesLikePattern(tc.value, tc.pattern); got != tc.want {
+			t.Errorf("matchesLikePattern(%q, %q) = %v, want %v", tc.value, tc.pattern, got, tc.want)
+		}
+	}
+	predicate := PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: LikePattern, Value: "%苹果%"}}
+	result, err := evaluatePredicate(predicate, scope{row: binding{{"name": nil}}})
+	if err != nil || result != truthUnknown {
+		t.Fatalf("not_like(NULL) = %v, %v; want unknown", result, err)
 	}
 }
 

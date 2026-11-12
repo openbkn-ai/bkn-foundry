@@ -33,24 +33,28 @@ func NewNotLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Vie
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
-	literal, err := ParseLikeValue(OperationNotLike, val)
-	if err != nil {
+	if err := ValidateLikePattern(OperationNotLike, val); err != nil {
 		return nil, err
 	}
 
 	return &NotLikeCond{
 		mCfg:             cfg,
-		mValue:           literal,
+		mValue:           val,
 		mFilterFieldName: getFilterFieldName(cfg.Field, fieldsMap, false),
 	}, nil
 }
 
 func (cond *NotLikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error) {
-	v := fmt.Sprintf("%q", LikeContainsPattern(cond.mValue))
+	pattern, err := SQLLikeToWildcard(OperationNotLike, cond.mValue)
+	if err != nil {
+		return "", err
+	}
+	v := fmt.Sprintf("%q", pattern)
 
 	dslStr := fmt.Sprintf(`
 					{
 						"bool": {
+							"must": [{"exists": {"field": "%s"}}],
 							"must_not": [
 								{
 									"wildcard": {
@@ -59,13 +63,13 @@ func (cond *NotLikeCond) Convert(ctx context.Context, vectorizer func(ctx contex
 								}
 							]
 						}
-					}`, cond.mFilterFieldName, v)
+					}`, cond.mFilterFieldName, cond.mFilterFieldName, v)
 
 	return dslStr, nil
 }
 
 func (cond *NotLikeCond) Convert2SQL(ctx context.Context) (string, error) {
-	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s'`, cond.mFilterFieldName, "%"+Special.Replace(cond.mValue)+"%")
+	sqlStr := fmt.Sprintf(`"%s" NOT LIKE '%s' ESCAPE '!'`, cond.mFilterFieldName, escapeSQLLikeLiteral(cond.mValue))
 
 	return sqlStr, nil
 }
@@ -78,7 +82,7 @@ func convertNotLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, e
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
-	if _, err := ParseLikeValue(OperationNotLike, val); err != nil {
+	if err := ValidateLikePattern(OperationNotLike, val); err != nil {
 		return nil, fmt.Errorf("property '%s': %w", cfg.Field, err)
 	}
 

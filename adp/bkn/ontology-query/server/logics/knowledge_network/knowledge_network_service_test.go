@@ -31,6 +31,30 @@ type knowledgeNetworkProxyResolverStub struct {
 	err      error
 }
 
+func TestFilteredCrossJoinLikeUsesVegaResults(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	service := &knowledgeNetworkService{ots: objects}
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "products", PrimaryKeys: []string{"id"}}}
+	input := []interfaces.LevelObject{
+		{ObjectID: "id-1", ObjectUK: map[string]any{"id": "1"}, ObjectData: map[string]any{"name": "Apple"}, ObjectType: objectType},
+		{ObjectID: "id-2", ObjectUK: map[string]any{"id": "2"}, ObjectData: map[string]any{"name": "banana"}, ObjectType: objectType},
+	}
+	objects.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), 2).DoAndReturn(
+		func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType, limit int) (interfaces.Objects, error) {
+			if query.KNID != "kn" || query.ObjectTypeID != "products" || !query.IgnoreLocalIndex || query.ActualCondition.Operation != cond.OperationAnd ||
+				len(query.ActualCondition.SubConds) != 2 || query.ActualCondition.SubConds[1].Value != "apple" {
+				t.Fatalf("wrong Vega query: %#v", query)
+			}
+			return interfaces.Objects{Datas: []map[string]any{{interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "id-1"}}}, nil
+		})
+	filtered, err := service.filterLevelObjectsByCondition(context.Background(), "kn", "main", true, input,
+		&cond.CondCfg{Name: "name", Operation: cond.OperationLike, Value: "apple"})
+	if err != nil || len(filtered) != 1 || filtered[0].ObjectID != "id-1" {
+		t.Fatalf("filtered = %#v, err = %v", filtered, err)
+	}
+}
+
 func (s *knowledgeNetworkProxyResolverStub) Resolve(ctx context.Context,
 	binding interfaces.TrustedProxyBinding) (*interfaces.TrustedProxyContext, error) {
 	s.bindings = append(s.bindings, binding)

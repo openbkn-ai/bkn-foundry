@@ -153,7 +153,7 @@ func TestLikeCond_Convert(t *testing.T) {
 			So(dsl, ShouldNotBeEmpty)
 			So(dsl, ShouldContainSubstring, "wildcard")
 			So(dsl, ShouldContainSubstring, "field1")
-			So(dsl, ShouldContainSubstring, "*test*")
+			So(dsl, ShouldContainSubstring, `"field1": "test"`)
 		})
 	})
 }
@@ -184,7 +184,7 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 			So(sql, ShouldNotBeEmpty)
 			So(sql, ShouldContainSubstring, "field1")
 			So(sql, ShouldContainSubstring, "LIKE")
-			So(sql, ShouldContainSubstring, "test")
+			So(sql, ShouldEqual, `"field1" LIKE 'test' ESCAPE '!'`)
 		})
 
 		Convey("escaped wildcards stay literal in the SQL pattern", func() {
@@ -201,12 +201,10 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 
 			sql, err := likeCond.Convert2SQL(ctx)
 			So(err, ShouldBeNil)
-			// The outer % pair comes from the contains semantics; the % and _ inside the value
-			// are escaped into literals
-			So(sql, ShouldEqual, `"field1" LIKE '%test\'\%\_%'`)
+			So(sql, ShouldEqual, `"field1" LIKE 'test''!%!_' ESCAPE '!'`)
 		})
 
-		Convey("unescaped SQL wildcards are rejected", func() {
+		Convey("unescaped SQL wildcards keep their pattern meaning", func() {
 			cfg := &CondCfg{
 				Operation: OperationLike,
 				Field:     "field1",
@@ -214,60 +212,54 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 				ValueFrom: ValueFrom_Const,
 				Value:     "%test%",
 			}
-			_, err := NewLikeCond(ctx, cfg, fieldsMap)
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "literal substring")
+			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
+			So(err, ShouldBeNil)
+			sql, err := cond.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, `"field1" LIKE '%test%' ESCAPE '!'`)
+		})
+
+		Convey("a literal SQL Server bracket remains literal", func() {
+			cfg := &CondCfg{Operation: OperationLike, Field: "field1", NameField: fieldsMap["field1"],
+				ValueFrom: ValueFrom_Const, Value: "a[b"}
+			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
+			So(err, ShouldBeNil)
+			sql, err := cond.Convert2SQL(ctx)
+			So(err, ShouldBeNil)
+			So(sql, ShouldEqual, `"field1" LIKE 'a![b' ESCAPE '!'`)
 		})
 	})
 }
 
-func TestParseLikeValue(t *testing.T) {
-	Convey("Test ParseLikeValue", t, func() {
-		Convey("plain substring passes through", func() {
-			literal, err := ParseLikeValue(OperationLike, "Indirect")
-			So(err, ShouldBeNil)
-			So(literal, ShouldEqual, "Indirect")
-		})
-
-		Convey("cjk substring passes through", func() {
-			literal, err := ParseLikeValue(OperationLike, "吹塑风管")
-			So(err, ShouldBeNil)
-			So(literal, ShouldEqual, "吹塑风管")
-		})
-
-		// _ was literal on every path before this change, so rejecting it is collateral damage:
-		// search terms containing an underscore are common
-		Convey("bare underscore stays a literal", func() {
-			literal, err := ParseLikeValue(OperationLike, "object_type")
-			So(err, ShouldBeNil)
-			So(literal, ShouldEqual, "object_type")
-		})
-
-		Convey("escaped wildcards become literals", func() {
-			literal, err := ParseLikeValue(OperationLike, `50\%`)
-			So(err, ShouldBeNil)
-			So(literal, ShouldEqual, "50%")
-
-			literal, err = ParseLikeValue(OperationLike, `a\_b`)
-			So(err, ShouldBeNil)
-			So(literal, ShouldEqual, "a_b")
-		})
-
-		Convey("unescaped wildcards are rejected with a usable message", func() {
-			_, err := ParseLikeValue(OperationLike, "%Indirect%")
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "literal substring")
-			So(err.Error(), ShouldContainSubstring, "[regex]")
-
-			_, err = ParseLikeValue(OperationNotLike, "b%")
-			So(err, ShouldNotBeNil)
-		})
-	})
+func TestSQLLikePatternContract(t *testing.T) {
+	for _, pattern := range []string{"foo", "%foo%", "foo%", "_foo", `50\%`, `a\_b`, `a\\b`, "", "吹塑风管"} {
+		if err := ValidateLikePattern(OperationLike, pattern); err != nil {
+			t.Errorf("valid pattern %q: %v", pattern, err)
+		}
+	}
+	if err := ValidateLikePattern(OperationNotLike, `foo\`); err == nil {
+		t.Fatal("dangling escape was accepted")
+	}
+	for pattern, want := range map[string]string{
+		"foo": "foo", "%foo%": "*foo*", "foo%": "foo*", "_foo": "?foo",
+		`50\%`: "50%", `a\_b`: "a_b", `a\\b`: `a\\b`, `a*b?`: `a\*b\?`,
+	} {
+		got, err := SQLLikeToWildcard(OperationLike, pattern)
+		if err != nil || got != want {
+			t.Errorf("SQLLikeToWildcard(%q) = %q, %v; want %q", pattern, got, err, want)
+		}
+	}
+	for pattern, want := range map[string]string{
+		"foo": "foo", "%foo%": "%foo%", "_foo": "_foo",
+		`50\%`: "50!%", `a\_b`: "a!_b", `a\\b`: `a\b`, "[a]!": "![a]!!",
+	} {
+		if got := SQLLikeToBangPattern(pattern); got != want {
+			t.Errorf("SQLLikeToBangPattern(%q) = %q, want %q", pattern, got, want)
+		}
+	}
 }
 
-// query_object_instance takes the dataset filter path, which never builds a LikeCond, so the
-// contract check has to live in the converter too — otherwise "%foo%" travels all the way to
-// vega before anything stops it.
+// Dataset filters bypass LikeCond, so validation also belongs in the converter.
 func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
 	Convey("Test convertLikeCondToDatasetFilterCondition", t, func() {
 		Convey("passes the raw value through so vega can parse the escapes", func() {
@@ -281,14 +273,22 @@ func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
 			So(got["value"], ShouldEqual, `50\%`)
 		})
 
-		Convey("rejects SQL wildcards and names the property", func() {
-			_, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
+		Convey("accepts a complete pattern without adding wildcards", func() {
+			got, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
 				Field:     "title",
 				ValueFrom: ValueFrom_Const, Value: "%Indirect%",
 			})
+			So(err, ShouldBeNil)
+			So(got["value"], ShouldEqual, "%Indirect%")
+		})
+
+		Convey("rejects a dangling escape and names the property", func() {
+			_, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
+				Field: "title", ValueFrom: ValueFrom_Const, Value: `foo\`,
+			})
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "property 'title'")
-			So(err.Error(), ShouldContainSubstring, "literal substring")
+			So(err.Error(), ShouldContainSubstring, "incomplete escape")
 		})
 	})
 }
