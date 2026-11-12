@@ -284,6 +284,10 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 	}
 	language := draftLanguage(draft)
 	for _, ot := range draft.Items.ObjectTypes {
+		// What the network already has is compared as published: the draft does not change it.
+		if ot.Existing {
+			continue
+		}
 		id := ot.Table.ResourceID
 		if read.missing[id] {
 			changes.MissingTables = append(changes.MissingTables, interfaces.ProjectStatusAffected{
@@ -303,7 +307,7 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 	}
 	for _, rt := range draft.Items.RelationTypes {
 		// One not adopted waits for a person already; drafting the changes left one so.
-		if rt.LinkTable == nil || !rt.Adopted {
+		if rt.LinkTable == nil || !rt.Adopted || rt.Existing {
 			continue
 		}
 		if read.missing[rt.LinkTable.ResourceID] {
@@ -355,7 +359,7 @@ func withPublished(changes *interfaces.SourceChanges, draft *interfaces.Draft, p
 	inDraft := map[string]bool{}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		for _, ot := range draft.Items.ObjectTypes {
-			inDraft[ot.ID] = true
+			inDraft[ot.ID] = !ot.Existing
 		}
 	}
 	for i := range changes.ObjectTypes {

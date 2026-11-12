@@ -31,11 +31,23 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 		}
 	}
 	for _, rt := range items.RelationTypes {
-		if rt.Adopted && !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)) {
+		// What the network already has waits for no one here: it is not written.
+		if rt.Adopted && !rt.Existing && !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)) {
 			pending["unadopted_ends"] = append(pending["unadopted_ends"], rt.ID)
 		}
 	}
 	return pending
+}
+
+// newRelationAdopted tells whether the draft adopts a relation type of its own, such as one a person
+// made between object types the network already has.
+func newRelationAdopted(items *interfaces.DraftItems) bool {
+	for _, rt := range items.RelationTypes {
+		if rt.Adopted && !rt.Existing {
+			return true
+		}
+	}
+	return false
 }
 
 // ConfirmDraft commits the adopted items of a ready draft to the project branch.
@@ -80,13 +92,14 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_PartialNotAccepted).
 			WithErrorDetails(unreadableIDs(&draft.Items))
 	}
+	// What the network already has is not this draft's to confirm: only what the draft adds counts.
 	adopted := 0
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot.Adopted {
+		if ot.Adopted && !ot.Existing {
 			adopted++
 		}
 	}
-	if adopted == 0 {
+	if adopted == 0 && !newRelationAdopted(&draft.Items) {
 		span.SetStatus(codes.Error, "Nothing adopted")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NothingAdopted)
 	}

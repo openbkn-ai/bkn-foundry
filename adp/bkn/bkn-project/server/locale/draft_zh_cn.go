@@ -25,6 +25,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.EndpointNotAdopted":          "对象类未采用 请先采用关系类两端的对象类，再采用该关系类。",
 		"BknProject.Draft.ItemNotFound":                "草稿项不存在 草稿中没有该项。",
 		"BknProject.Draft.ProjectArchived":             "项目已归档 请先取消归档，再修改草稿。",
+		"BknProject.Draft.ExistingItem":                "网络已有的内容 网络已有的内容请到知识网络中修改。",
 		"BknProject.Draft.NotReady":                    "草稿未就绪 只有起草完成的草稿才能修改。",
 		"BknProject.Draft.Stale":                       "草稿已被修改 加载之后草稿已被他人修改，请重新加载后再试。",
 		"BknProject.Draft.HasDecisions":                "草稿已有决定 重新起草会丢弃草稿上已做的决定和文档候选，确认丢弃后才能重新起草。",

@@ -31,6 +31,8 @@ type draftItem struct {
 	name        *string
 	description *string
 	adopted     *bool
+	// existing is an item the network already has, which the draft does not change.
+	existing bool
 }
 
 func findItem(items *interfaces.DraftItems, kind string, id string) (draftItem, bool) {
@@ -38,23 +40,29 @@ func findItem(items *interfaces.DraftItems, kind string, id string) (draftItem, 
 	case interfaces.DRAFT_KIND_OBJECT_TYPES:
 		for _, o := range items.ObjectTypes {
 			if o.ID == id {
-				return draftItem{kind, id, &o.Name, &o.Description, &o.Adopted}, true
+				return draftItem{kind, id, &o.Name, &o.Description, &o.Adopted, o.Existing}, true
 			}
 		}
 	case interfaces.DRAFT_KIND_RELATION_TYPES:
 		for _, r := range items.RelationTypes {
 			if r.ID == id {
-				return draftItem{kind, id, &r.Name, &r.Description, &r.Adopted}, true
+				return draftItem{kind, id, &r.Name, &r.Description, &r.Adopted, r.Existing}, true
 			}
 		}
 	case interfaces.DRAFT_KIND_VALUE_TYPES:
 		for _, v := range items.ValueTypes {
 			if v.ID == id {
-				return draftItem{kind, id, &v.Name, &v.Description, &v.Adopted}, true
+				return draftItem{kind, id, &v.Name, &v.Description, &v.Adopted, false}, true
 			}
 		}
 	}
 	return draftItem{}, false
+}
+
+// existingItem refuses a change to what the network already has: it is changed in the knowledge
+// network, and the draft never writes it.
+func existingItem(ctx context.Context) error {
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_ExistingItem)
 }
 
 func objectTypeAdopted(items *interfaces.DraftItems, id string) bool {
@@ -144,6 +152,9 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	item, ok := findItem(items, kind, id)
 	if !ok {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if item.existing {
+		return nil, existingItem(ctx)
 	}
 	if edit.Adopted != nil && *edit.Adopted && kind == interfaces.DRAFT_KIND_RELATION_TYPES {
 		for _, relation := range items.RelationTypes {

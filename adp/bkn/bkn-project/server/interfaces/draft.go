@@ -350,6 +350,9 @@ type DraftObjectType struct {
 	IncrementalKey string `json:"incremental_key,omitempty"`
 	// AddedByCatalog is the catalog whose adding drafted the object type, absent for one the draft was made with.
 	AddedByCatalog string `json:"added_by_catalog,omitempty"`
+	// Existing marks an object type the project's network already has: read from the project
+	// branch, adopted, never edited in the draft and never written by confirming it.
+	Existing bool `json:"existing,omitempty"`
 }
 
 type DraftProperty struct {
@@ -421,6 +424,8 @@ type DraftRelationType struct {
 	ProposedBecause string `json:"proposed_because,omitempty"`
 	// AddedByCatalog is the catalog whose adding drafted the relation type, absent for one the draft was made with.
 	AddedByCatalog string `json:"added_by_catalog,omitempty"`
+	// Existing marks a relation type the project's network already has, as for an object type.
+	Existing bool `json:"existing,omitempty"`
 }
 
 type DraftFieldMapping struct {

@@ -45,7 +45,8 @@ func markOntologyChanges(spec *interfaces.RequirementSpec, draft *interfaces.Dra
 	}
 	for _, ot := range draft.Items.ObjectTypes {
 		ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
-		if ot.Adopted && !needed[ref] {
+		// What the network already has is not this project's to cover.
+		if ot.Adopted && !ot.Existing && !needed[ref] {
 			uncovered = append(uncovered, interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name})
 		}
 	}

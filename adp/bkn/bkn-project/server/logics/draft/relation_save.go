@@ -323,6 +323,10 @@ func (s *draftService) SaveRelationType(ctx context.Context, token string, proje
 		span.SetStatus(codes.Error, "Relation type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if rt.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
+	}
 	if rt.Document != nil && save.Aliases != nil && len(cleanAliases(*save.Aliases)) > 0 {
 		return nil, aliasError(ctx, rt.Name, "", aliasOnDocument, "")
 	}
@@ -388,6 +392,10 @@ func (s *draftService) DeleteRelationType(ctx context.Context, token string, pro
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
 	rt := draft.Items.RelationTypes[at]
+	if rt.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
+	}
 	if rt.Origin != interfaces.DRAFT_ORIGIN_MANUAL {
 		// Drafting would draft it again: it is left out instead.
 		span.SetStatus(codes.Error, "Not made by a person")

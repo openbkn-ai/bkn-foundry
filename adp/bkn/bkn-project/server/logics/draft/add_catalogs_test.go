@@ -186,8 +186,11 @@ func Test_MergeDrafted(t *testing.T) {
 			So(err, ShouldEqual, errNotCounted)
 			_, _, _, err = c.keyTupleStats(ctx, members, []string{"member_id", "member_name"})
 			So(err, ShouldEqual, errNotCounted)
-			_, _, _, _, err = c.joinStats(ctx, members, "member_id", visitsTable(), "visit_id")
+			_, _, _, _, err = c.joinStats(ctx, members, "member_id", membersTable(), "member_id")
 			So(err, ShouldEqual, errNotCounted)
+			// A join from the draft's table to a table added is counted, so the relation can be adopted.
+			_, _, _, _, err = c.joinStats(ctx, members, "member_id", visitsTable(), "visit_id")
+			So(err, ShouldBeNil)
 			// A table added is counted.
 			_, _, _, err = c.keyStats(ctx, visitsTable(), "visit_id")
 			So(err, ShouldBeNil)

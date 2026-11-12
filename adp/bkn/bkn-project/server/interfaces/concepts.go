@@ -84,6 +84,9 @@ const (
 	CONCEPT_SOURCE_TABLE       = "table"
 	CONCEPT_SOURCE_DOCUMENT    = "document"
 	CONCEPT_SOURCE_REQUIREMENT = "requirement"
+	// CONCEPT_SOURCE_NETWORK is the project's knowledge network: an object or relation type it
+	// already has.
+	CONCEPT_SOURCE_NETWORK = "network"
 )
 
 // Why drafting suggested what a concept drafted from a table is: from the table alone, or from the
@@ -93,6 +96,8 @@ const (
 	CONCEPT_BECAUSE_UNDERSTOOD = "table_understood"
 	// CONCEPT_BECAUSE_AI is a concept a person added from Ask AI's revisions.
 	CONCEPT_BECAUSE_AI = "ai"
+	// CONCEPT_BECAUSE_NETWORK is a concept the network already has as an object or relation type.
+	CONCEPT_BECAUSE_NETWORK = "network"
 )
 
 // DraftConcepts lists a project's concepts: those of the draft's items, each with the

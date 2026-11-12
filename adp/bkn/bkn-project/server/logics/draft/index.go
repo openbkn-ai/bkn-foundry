@@ -81,7 +81,8 @@ func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftIte
 	account interfaces.AccountInfo) (*interfaces.ProjectIndex, map[string]*interfaces.VegaTable, error) {
 	var ids, catalogIDs []string
 	for _, ot := range items.ObjectTypes {
-		if ot.Adopted {
+		// The network's own object types are indexed as the network has them, not by the project.
+		if ot.Adopted && !ot.Existing {
 			ids = append(ids, ot.Table.ResourceID)
 			if !slices.Contains(catalogIDs, ot.Table.CatalogID) {
 				catalogIDs = append(catalogIDs, ot.Table.CatalogID)
@@ -124,7 +125,7 @@ func indexReadiness(items *interfaces.DraftItems, tables map[string]*interfaces.
 		ObjectTypes: []interfaces.ProjectIndexItem{}, Counts: map[string]int{}, TasksVisible: tasksVisible,
 	}
 	for _, ot := range items.ObjectTypes {
-		if !ot.Adopted {
+		if !ot.Adopted || ot.Existing {
 			continue
 		}
 		item := interfaces.ProjectIndexItem{ID: ot.ID, Name: ot.Name, Table: ot.Table, UpdateField: updateField(ot)}

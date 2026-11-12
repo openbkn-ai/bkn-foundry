@@ -205,7 +205,7 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 	// Last, an update field to choose: a local index refreshes by one, and a time property is the
 	// likely one. Nothing to choose from, nothing is asked.
 	for _, ot := range objectTypes {
-		if !ot.Adopted || ot.IncrementalKey != "" {
+		if !ot.Adopted || ot.Existing || ot.IncrementalKey != "" {
 			continue
 		}
 		set := option(interfaces.ACTION_SET_INCREMENTAL_KEY, http.MethodPatch,

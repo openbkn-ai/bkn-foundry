@@ -55,6 +55,9 @@ type drafter struct {
 	recorded   []*interfaces.RegisteredID
 	// named are the keys of the items this draft named from names that are not ASCII.
 	named map[interfaces.IDKey]bool
+	// taken are ids, by kind, items the draft holds without drafting them have, such as those the
+	// network already has: no item drafted takes one.
+	taken map[string]map[string]bool
 	// namingLanguage is the project's: the language items are named in.
 	namingLanguage string
 }

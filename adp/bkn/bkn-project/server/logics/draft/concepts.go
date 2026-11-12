@@ -247,6 +247,8 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 		order = append(order, c.Key)
 	}
 	evidenceObjects := map[string]bool{}
+	// existing are the concepts of what the network already has: in the model as the network has it.
+	existing := map[string]bool{}
 	for _, ot := range items.ObjectTypes {
 		if isEvidence(ot.Document) {
 			evidenceObjects[ot.ID] = true
@@ -255,14 +257,24 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 		c := interfaces.DraftConcept{Key: itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID), Name: ot.Name,
 			Description: ot.Description, Aliases: slices.Clone(ot.Aliases), Suggested: interfaces.CONCEPT_VERDICT_OBJECT,
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Adopted: ot.Adopted}}
-		if ot.Document == nil {
+		switch {
+		case ot.Existing:
+			// Named as the network names it, from the network and the table it reads.
+			c.SuggestedBecause = interfaces.CONCEPT_BECAUSE_NETWORK
+			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_NETWORK, ID: ot.ID, Name: ot.Name}}
+			if ot.Table.ResourceID != "" {
+				c.Sources = append(c.Sources, interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_TABLE,
+					ID: ot.Table.ResourceID, Name: ot.Table.Name})
+			}
+			existing[c.Key] = true
+		case ot.Document == nil:
 			c.SuggestedBecause = interfaces.CONCEPT_BECAUSE_TABLE
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: ot.Table.ResourceID, Name: ot.Table.Name}}
 			if table := tables[ot.Table.ResourceID]; table != nil && !understandConcept(&c, ot, table, language) {
 				result.NotUnderstood++
 			}
-		} else {
+		default:
 			documentConcept(&c, ot.Document)
 		}
 		add(c)
@@ -275,6 +287,10 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 			Description: rt.Description, Aliases: slices.Clone(rt.Aliases), Suggested: interfaces.CONCEPT_VERDICT_RELATION, SuggestedBecause: rt.Origin,
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Adopted: rt.Adopted}}
 		switch {
+		case rt.Existing:
+			c.SuggestedBecause = interfaces.CONCEPT_BECAUSE_NETWORK
+			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_NETWORK, ID: rt.ID, Name: rt.Name}}
+			existing[c.Key] = true
 		case rt.Document != nil:
 			documentConcept(&c, rt.Document)
 		case rt.LinkTable != nil:
@@ -405,6 +421,9 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 		}
 		c := byKey[key]
 		switch {
+		case existing[key]:
+			// No one judges it here: it is in the model as the network has it.
+			c.Verdict, c.State = c.Suggested, interfaces.CONCEPT_STATE_IN_MODEL
 		case c.Item != nil:
 			judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
 		case judgedHere(key):
@@ -504,7 +523,8 @@ func (s *draftService) conceptTables(ctx context.Context, draft *interfaces.Draf
 	}
 	ids := []string{}
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot.Document == nil && ot.Table.ResourceID != "" && !slices.Contains(ids, ot.Table.ResourceID) {
+		// What the network already has is named as the network names it.
+		if ot.Document == nil && !ot.Existing && ot.Table.ResourceID != "" && !slices.Contains(ids, ot.Table.ResourceID) {
 			ids = append(ids, ot.Table.ResourceID)
 		}
 	}
@@ -552,6 +572,19 @@ func (s *draftService) GetConcepts(ctx context.Context, token string, projectID 
 }
 
 // findConcept is the concept of the key that stands on its own, not merged into another.
+// conceptItemExisting tells whether a concept's item is one the network already has.
+func conceptItemExisting(items *interfaces.DraftItems, item *interfaces.DraftConceptItem) bool {
+	switch item.Kind {
+	case interfaces.DRAFT_KIND_OBJECT_TYPES:
+		ot := findObjectType(items, item.ID)
+		return ot != nil && ot.Existing
+	case interfaces.DRAFT_KIND_RELATION_TYPES:
+		rt := findRelationType(items, item.ID)
+		return rt != nil && rt.Existing
+	}
+	return false
+}
+
 func findConcept(concepts *interfaces.DraftConcepts, key string) *interfaces.DraftConcept {
 	for i := range concepts.Concepts {
 		if concepts.Concepts[i].Key == key {
@@ -683,6 +716,10 @@ func (s *draftService) MergeConcept(ctx context.Context, token string, projectID
 		if from == nil || into == nil || req.Key == req.Into {
 			span.SetStatus(codes.Error, "Concept not found")
 			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+		}
+		if from.Item != nil && conceptItemExisting(&draft.Items, from.Item) {
+			span.SetStatus(codes.Error, "Existing item")
+			return nil, existingItem(ctx)
 		}
 		if len(from.Merged) > 0 {
 			span.SetStatus(codes.Error, "Concept holds merged concepts")

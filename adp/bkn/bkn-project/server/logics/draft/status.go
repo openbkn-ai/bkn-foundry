@@ -165,14 +165,14 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 	}
 	bound := []boundTable{}
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot.Adopted && ot.Table.ResourceID != "" {
+		if ot.Adopted && !ot.Existing && ot.Table.ResourceID != "" {
 			bound = append(bound, boundTable{resourceID: ot.Table.ResourceID, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Table: ot.Table.Name,
 			}})
 		}
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		if rt.Adopted && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
+		if rt.Adopted && !rt.Existing && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
 			bound = append(bound, boundTable{resourceID: rt.LinkTable.ResourceID, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Table: rt.LinkTable.Name,
 			}})
@@ -668,13 +668,15 @@ func itemDecisions(draft *interfaces.Draft) int {
 	return n
 }
 
+// anyObjectTypeAdopted tells whether the draft adopts anything of its own to confirm; what the
+// network already has is not.
 func anyObjectTypeAdopted(items *interfaces.DraftItems) bool {
 	for _, ot := range items.ObjectTypes {
-		if ot.Adopted {
+		if ot.Adopted && !ot.Existing {
 			return true
 		}
 	}
-	return false
+	return newRelationAdopted(items)
 }
 
 // withRequirement counts, when a draft can be confirmed, the unresolved conflicts of the project's

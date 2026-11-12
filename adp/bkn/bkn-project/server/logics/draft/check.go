@@ -134,6 +134,10 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 			continue
 		}
 		objectTypes[ot.ID] = ot
+		// What the network already has is not written: only a relation drafted to it is checked.
+		if ot.Existing {
+			continue
+		}
 		checked := checkObjectType{
 			ID: ot.ID, Table: ot.Table, KeyFields: []string{}, Properties: []checkProperty{},
 			KnowledgeBaseBuild: ot.Document != nil && preparedCheckDataset(items, ot.Table, ot.ID, ""),
@@ -151,7 +155,7 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 	}
 	for _, rt := range items.RelationTypes {
 		source, target := objectTypes[rt.Source], objectTypes[rt.Target]
-		if !rt.Adopted || source == nil || target == nil {
+		if !rt.Adopted || rt.Existing || source == nil || target == nil {
 			continue
 		}
 		checked := checkRelationType{ID: rt.ID}
