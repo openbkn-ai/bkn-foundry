@@ -193,8 +193,23 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 		span.SetStatus(codes.Error, "Get live network failed")
 		return nil, internalError(ctx, "Get live network failed", err)
 	}
-	view := &interfaces.LogicNeedsView{NetworkID: network, Released: released,
-		Live: released || s.runsVersion(ctx, token, network), Reason: reason, Needs: []*interfaces.LogicNeedView{}}
+	running := !released && s.runsVersion(ctx, token, network)
+	view := &interfaces.LogicNeedsView{NetworkID: network, Released: released, Live: released || running,
+		Reason: reason, Needs: []*interfaces.LogicNeedView{}, NetworkItems: []*interfaces.LogicNetworkItem{}}
+	fromNetwork, err := s.startedOnNetwork(ctx, entry.KNID, released, running)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get first release failed")
+		return nil, internalError(ctx, "Get first release failed", err)
+	}
+	reader := s.liveReader(ctx, token, network)
+	// What the network had before the project is listed even before there are needs.
+	if fromNetwork {
+		var needs []*interfaces.RequirementLogicNeed
+		if ok {
+			needs = req.Spec.LogicNeeds
+		}
+		view.NetworkItems, view.NetworkItemsReason = reader.networkItems(needs)
+	}
 	// A project without a specification has no needs yet; that is no error.
 	if !ok {
 		span.SetStatus(codes.Ok, "")
@@ -207,7 +222,6 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 	if err != nil || !found {
 		draft = nil
 	}
-	reader := s.liveReader(ctx, token, network)
 	for _, n := range req.Spec.LogicNeeds {
 		v := &interfaces.LogicNeedView{RequirementLogicNeed: n, LiveObjectTypeIDs: []string{},
 			Unconnected: unconnectedOf(n, draft)}
