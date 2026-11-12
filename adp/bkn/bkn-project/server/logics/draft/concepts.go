@@ -181,7 +181,9 @@ func understandConcept(c *interfaces.DraftConcept, ot *interfaces.DraftObjectTyp
 	language string) bool {
 	physical := physicalName(table)
 	c.Sources[0].Name = physical
-	if givenName(table) == "" {
+	// Unnamed, a table keeps the name discovery gave it: its physical name, with its schema before
+	// vega 0.2.1.
+	if given := givenName(table); given == "" || given == physical {
 		return false
 	}
 	if ot.Name == physical {
@@ -596,33 +598,10 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 			WithErrorDetails(map[string]any{"reason": "requirement_concept"})
 	}
 
-	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_CONCEPTS, ItemID: req.Key,
-		Action: interfaces.DRAFT_DECISION_JUDGE, Before: concept.Verdict, After: req.Verdict, Reason: req.Reason}}
-	var document *interfaces.DraftDocumentModel
-	if item := concept.Item; item != nil {
-		adopt := adoptsAs(item.Kind, req.Verdict)
-		edit := interfaces.DraftItemEdit{Adopted: &adopt}
-		// A reason goes with leaving the item out, as on the model; the judgment keeps it either way.
-		if !adopt {
-			edit.Reason = req.Reason
-		}
-		decisions = append(decisions, understoodName(ctx, &draft.Items, concept)...)
-		edited, err := applyEdit(ctx, &draft.Items, item.Kind, item.ID, edit)
-		if _, waits := blockerOf(err); err != nil && !(adopt && waits) {
-			span.SetStatus(codes.Error, "Edit refused")
-			return nil, err
-		}
-		decisions = append(decisions, edited...)
-		if err == nil && adopt && item.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
-			decisions = append(decisions, regateRelations(s.setting, &draft.Items, item.ID)...)
-		}
-		decisions = append(decisions, followEvidence(&draft.Items)...)
-		switch item.Kind {
-		case interfaces.DRAFT_KIND_OBJECT_TYPES:
-			document = findObjectType(&draft.Items, item.ID).Document
-		case interfaces.DRAFT_KIND_RELATION_TYPES:
-			document = findRelationType(&draft.Items, item.ID).Document
-		}
+	decisions, document, err := s.judgeDecisions(ctx, &draft.Items, concept, req.Verdict, req.Reason)
+	if err != nil {
+		span.SetStatus(codes.Error, "Edit refused")
+		return nil, err
 	}
 	if err := s.writeConceptDecisions(ctx, draft, decisions, caller, document); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
@@ -630,6 +609,46 @@ func (s *draftService) JudgeConcept(ctx context.Context, token string, projectID
 	}
 	span.SetStatus(codes.Ok, "")
 	return s.readConcepts(ctx, projectID, draft, caller)
+}
+
+// judgeDecisions records what a concept is, and adopts its draft item or leaves it out
+// accordingly, with the evidence items following; it gives the decisions and the item's document.
+// An item that cannot be adopted yet keeps the judgment and waits.
+func (s *draftService) judgeDecisions(ctx context.Context, items *interfaces.DraftItems,
+	concept *interfaces.DraftConcept, verdict string, reason string) ([]*interfaces.DraftDecision,
+	*interfaces.DraftDocumentModel, error) {
+	decisions := []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_CONCEPTS, ItemID: concept.Key,
+		Action: interfaces.DRAFT_DECISION_JUDGE, Before: concept.Verdict, After: verdict, Reason: reason}}
+	var document *interfaces.DraftDocumentModel
+	item := concept.Item
+	if item == nil {
+		return decisions, nil, nil
+	}
+	adopt := adoptsAs(item.Kind, verdict)
+	edit := interfaces.DraftItemEdit{Adopted: &adopt}
+	// A reason goes with leaving the item out, as on the model; the judgment keeps it either way.
+	if !adopt {
+		edit.Reason = reason
+	} else {
+		// Into the model, the object type takes the name semantic understanding gave its table.
+		decisions = append(decisions, understoodName(ctx, items, concept)...)
+	}
+	edited, err := applyEdit(ctx, items, item.Kind, item.ID, edit)
+	if _, waits := blockerOf(err); err != nil && !(adopt && waits) {
+		return nil, nil, err
+	}
+	decisions = append(decisions, edited...)
+	if err == nil && adopt && item.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		decisions = append(decisions, regateRelations(s.setting, items, item.ID)...)
+	}
+	decisions = append(decisions, followEvidence(items)...)
+	switch item.Kind {
+	case interfaces.DRAFT_KIND_OBJECT_TYPES:
+		document = findObjectType(items, item.ID).Document
+	case interfaces.DRAFT_KIND_RELATION_TYPES:
+		document = findRelationType(items, item.ID).Document
+	}
+	return decisions, document, nil
 }
 
 // MergeConcept merges a concept into another, or takes it out again when Into is empty. Only the

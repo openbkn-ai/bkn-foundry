@@ -65,6 +65,14 @@ func Test_UnderstoodConcepts(t *testing.T) {
 			So(concepts.NotUnderstood, ShouldEqual, 1)
 		})
 
+		Convey("A table discovered by vega 0.2.1 or later keeps its own name until understood\n", func() {
+			tables := understoodTables()
+			tables["r_vendor"].Name = "erp_vendor"
+			got := conceptsWith(ctx, "p1", draft, nil, false, tables)
+			So(conceptByKey(got, "object_types/erp_vendor").AI, ShouldBeFalse)
+			So(got.NotUnderstood, ShouldEqual, 1)
+		})
+
 		Convey("A name a person gave the object type stands\n", func() {
 			draft.Items.ObjectTypes[4].Name = "Material"
 			c := conceptByKey(conceptsWith(ctx, "p1", draft, nil, false, understoodTables()), "object_types/erp_material")
@@ -260,6 +268,12 @@ func Test_ConceptAskAndRevise(t *testing.T) {
 			So(added.Sources[0].Name, ShouldEqual, "erp_material")
 			So(added.State, ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
 
+			Convey("and adopting it again makes no second set\n", func() {
+				_, err := revise("split", interfaces.DraftConceptRevision{Key: "object_types/erp_material", Parts: []interfaces.DraftConceptPart{
+					{Name: "物料", Verdict: "object"}, {Name: "物料批次", Verdict: "object"}}})
+				So(err, ShouldNotBeNil)
+			})
+
 			Convey("and the added concept is judged as one of the documents is\n", func() {
 				write()
 				judged, err := svc.JudgeConcept(ctx, token, "p1", interfaces.DraftConceptJudge{UpdateTime: draft.UpdateTime,
@@ -267,6 +281,16 @@ func Test_ConceptAskAndRevise(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(conceptByKey(judged, added.Key).State, ShouldEqual, interfaces.CONCEPT_STATE_JUDGED)
 			})
+		})
+
+		Convey("A split judges what the concept stays in the same write\n", func() {
+			write()
+			got, err := revise("split", interfaces.DraftConceptRevision{Key: "object_types/erp_vendor", Parts: []interfaces.DraftConceptPart{
+				{Name: "供应商事件", Verdict: "event"}, {Name: "供应商", Verdict: "object"}}})
+			So(err, ShouldBeNil)
+			c := conceptByKey(got, "object_types/erp_vendor")
+			So(c.Name, ShouldEqual, "供应商事件")
+			So(c.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_EVENT)
 		})
 
 		Convey("Adopting a verdict judges the concept with the reason\n", func() {

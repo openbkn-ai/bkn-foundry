@@ -313,6 +313,12 @@ func checkConceptRevision(ctx context.Context, items *interfaces.DraftItems, con
 			if seen[normalized(name)] {
 				return nil, askDroppedRepeated
 			}
+			// The other parts are new concepts: a split adopted already made them.
+			for _, c := range concepts.Concepts {
+				if i > 0 && normalized(c.Name) == normalized(name) {
+					return nil, askDroppedRepeated
+				}
+			}
 			seen[normalized(name)] = true
 			revision.Parts = append(revision.Parts, interfaces.DraftConceptPart{Name: name,
 				Description: description, Verdict: part.Verdict})
@@ -472,6 +478,12 @@ func (s *draftService) ReviseConcept(ctx context.Context, token string, projectI
 		decisions = append(decisions, edited...)
 	case interfaces.CONCEPT_REVISION_SPLIT:
 		err = define(revision.Parts[0].Name, revision.Parts[0].Description)
+		// What the concept stays is judged in the same write.
+		if concept := findConcept(concepts, revision.Key); err == nil && revision.Parts[0].Verdict != concept.Verdict {
+			var judged []*interfaces.DraftDecision
+			judged, document, err = s.judgeDecisions(ctx, &draft.Items, concept, revision.Parts[0].Verdict, req.Reason)
+			decisions = append(decisions, judged...)
+		}
 		for _, part := range revision.Parts[1:] {
 			add(part, revision.Key)
 		}
