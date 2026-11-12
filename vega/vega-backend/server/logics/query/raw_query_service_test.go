@@ -70,6 +70,62 @@ func expectRawQueryResources(mockRS *vmock.MockResourceService,
 func TestRawQueryServiceExecute(t *testing.T) {
 	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB} {
 		t.Run(connectorType+" actual connector", func(t *testing.T) {
+			for _, phase := range []string{"open", "count", "rows"} {
+				for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+					t.Run("UNION collation "+phase+" "+string(mode)+" returns 400 and releases resources", func(t *testing.T) {
+						svc, rs, cs, cf := mysqlRawServices(t)
+						resource := builderTestResource()
+						resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{
+							Name: "label", OriginalName: "label", OriginalType: "VARCHAR(32)", Type: interfaces.DataType_String,
+						})
+						mysqlRawMetadata(rs, cs, resource, true, connectorType)
+						mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+						cause := &mysqldriver.MySQLError{Number: 1271, Message: "private UNION collations and source columns"}
+						statement := "SELECT * FROM (SELECT `label` FROM `sales.eu`.`order.items` UNION SELECT `label` FROM `sales.eu`.`order.items`) AS `_union_result`"
+						if phase == "count" {
+							statement = "SELECT COUNT(*) AS `_raw_query_total_count` FROM (" + statement + ") AS `_raw_query_total`"
+						} else if mode == interfaces.PagingModeSingle {
+							statement += " LIMIT 1"
+						}
+						if phase == "rows" {
+							failedRow := 0
+							if mode == interfaces.PagingModeCursor {
+								failedRow = 2 // 首页读取一行并预读一行，续页遇到源错误。
+							}
+							mocks[0].ExpectQuery(statement).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+								sqlmock.NewColumn("label").OfType("VARCHAR", ""),
+							).AddRow("first").AddRow("pending").AddRow("failed").RowError(failedRow, cause)).RowsWillBeClosed()
+						} else {
+							mocks[0].ExpectQuery(statement).WithoutArgs().WillReturnError(cause)
+						}
+						mocks[0].ExpectClose()
+						result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+							QueryFormat: interfaces.QueryFormatSQL,
+							Query:       "SELECT label FROM {{orders}} UNION SELECT label FROM {{orders}}",
+							NeedTotal:   phase == "count", Paging: interfaces.PagingRequest{Mode: mode, Limit: 1},
+						})
+						if phase == "rows" && mode == interfaces.PagingModeCursor {
+							require.NoError(t, err)
+							require.NotNil(t, result.Paging.NextCursor)
+							assert.Equal(t, []map[string]any{{"label": "first"}}, result.Entries)
+							token := *result.Paging.NextCursor
+							session := rawQueryCursorSessions.sessions[token]
+							mysqlRawMetadata(rs, cs, resource, true, connectorType)
+							rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+							result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+							assert.Error(t, session.SQLRows.Scan(new(any)))
+						}
+						assert.Nil(t, result)
+						assertHTTPError(t, err, http.StatusBadRequest)
+						var httpErr *httperrors.HTTPError
+						require.ErrorAs(t, err, &httpErr)
+						assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+						assert.Equal(t, "invalid source query parameter", httpErr.ErrorDetails)
+						assert.NotContains(t, err.Error(), "private")
+						assert.Empty(t, rawQueryCursorSessions.sessions)
+					})
+				}
+			}
 			for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
 				t.Run(string(mode)+" preserves binary bytes and text through JSON encoding", func(t *testing.T) {
 					svc, rs, cs, cf := mysqlRawServices(t)
@@ -346,6 +402,96 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("UNION walks all branches and binds repeated resource instances once", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		orders := builderTestResource()
+		archive := builderTestResource()
+		archive.ID, archive.SourceIdentifier, archive.UpdateTime = "archive", "`archive`", 19
+		expectRawQueryResources(rs, []string{"orders", "archive"}, orders, archive)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(orders, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "archive").Return(archive, nil)
+
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT a.id FROM {{orders}} a UNION ALL SELECT b.id FROM {{archive}} b UNION SELECT c.id FROM {{orders}} c"})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"orders", "archive"}, prepared.resourceIDs)
+		assert.Equal(t, map[string]int64{"orders": 11, "archive": 19}, prepared.resourceVersions)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 3)
+		assert.Equal(t, []string{"orders", "archive", "orders"}, []string{tables[0].ResourceID, tables[1].ResourceID, tables[2].ResourceID})
+		assert.Equal(t, []string{"a", "b", "c"}, []string{tables[0].Alias, tables[1].Alias, tables[2].Alias})
+		assert.NotSame(t, tables[0], tables[2])
+		assert.Equal(t, orders.SourceIdentifier, tables[0].SourceIdentifier)
+		assert.Equal(t, archive.SourceIdentifier, tables[1].SourceIdentifier)
+		assert.Equal(t, orders.SourceIdentifier, tables[2].SourceIdentifier)
+		assert.Equal(t, tables[0].ColumnOriginalTypes, tables[2].ColumnOriginalTypes)
+	})
+	t.Run("UNION later branch permission denial stops before metadata and connector calls", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "archive", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{archive}}"})
+
+		assert.Nil(t, prepared)
+		assert.ErrorIs(t, err, denial)
+	})
+	for _, failure := range []string{"different Catalog", "disabled", "missing"} {
+		t.Run("UNION rejects later branch "+failure+" before connector creation", func(t *testing.T) {
+			svc, rs, _, _ := mysqlRawServices(t)
+			orders := builderTestResource()
+			archive := builderTestResource()
+			archive.ID = "archive"
+			resources := []*interfaces.Resource{orders, archive}
+			status := http.StatusConflict
+			switch failure {
+			case "different Catalog":
+				archive.CatalogID, status = "other-catalog", http.StatusNotImplemented
+			case "disabled":
+				archive.Enabled = false
+			case "missing":
+				resources, status = resources[:1], http.StatusNotFound
+			}
+			expectRawQueryResources(rs, []string{"orders", "archive"}, resources...)
+
+			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+				Query: "SELECT id FROM {{orders}} UNION SELECT id FROM {{archive}}"})
+
+			assert.Nil(t, prepared)
+			assertHTTPError(t, err, status)
+		})
+	}
+	for _, language := range []struct {
+		name   string
+		locale i18n.Language
+		detail string
+	}{
+		{"English", i18n.AmericanEnglish, "Cross-catalog queries are not supported."},
+		{"Chinese", i18n.SimplifiedChinese, "暂不支持跨 Catalog 查询。"},
+	} {
+		t.Run("UNION cross-Catalog rejection uses query-wide "+language.name+" diagnostics", func(t *testing.T) {
+			svc, rs, _, _ := mysqlRawServices(t)
+			orders, archive := builderTestResource(), builderTestResource()
+			archive.ID, archive.CatalogID = "archive", "other-catalog"
+			expectRawQueryResources(rs, []string{"orders", "archive"}, orders, archive)
+
+			prepared, err := svc.prepareSQLQuery(i18n.WithLanguage(compileTestContext(), language.locale), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+				Query: "SELECT id FROM {{orders}} UNION SELECT id FROM {{archive}}"})
+
+			assert.Nil(t, prepared)
+			assertHTTPError(t, err, http.StatusNotImplemented)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.ErrorCode)
+			require.NoError(t, httpErr.Render())
+			assert.Equal(t, language.detail, httpErr.Description)
+			assert.Equal(t, language.detail, httpErr.ErrorDetails)
+		})
+	}
 	t.Run("money projections preserve implicit physical table qualifiers", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
@@ -591,6 +737,19 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Nil(t, prepared)
 		assertHTTPError(t, err, http.StatusBadRequest)
 	})
+}
+
+func TestSQLBuilderTables(t *testing.T) {
+	first := &sb.Table{ResourceID: "orders", Alias: "a"}
+	repeated := &sb.Table{ResourceID: "orders", Alias: "b"}
+	archive := &sb.Table{ResourceID: "archive"}
+	joined := &sb.Table{ResourceID: "customers"}
+	query := sb.UnionQuery(
+		sb.Select(&sb.Star{}).From(&sb.JoinedTable{From: first, Joins: []sb.Join{{Source: joined}}}),
+		sb.Select(&sb.Star{}).FromSelect(sb.UnionQuery(sb.Select(&sb.Star{}).From(archive), sb.Select(&sb.Star{}).From(repeated), true), "nested"), false)
+
+	assert.Equal(t, []*sb.Table{first, joined, archive, repeated}, sqlBuilderTables(query))
+	assert.Nil(t, sqlBuilderTables(&sb.Literal{Value: "not a source"}))
 }
 
 func TestQueryExecutionContext(t *testing.T) {
@@ -1261,8 +1420,8 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 			language i18n.Language
 			detail   string
 		}{
-			{name: "English", language: i18n.AmericanEnglish, detail: "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."},
-			{name: "Chinese", language: i18n.SimplifiedChinese, detail: "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"},
+			{name: "English", language: i18n.AmericanEnglish, detail: "Cross-catalog queries are not supported."},
+			{name: "Chinese", language: i18n.SimplifiedChinese, detail: "暂不支持跨 Catalog 查询。"},
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
@@ -1375,6 +1534,16 @@ func mysqlRawMetadata(rs *vmock.MockResourceService, cs *vmock.MockCatalogServic
 	if individual {
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(resource, nil)
 	}
+}
+
+func unionRawMetadata(rs *vmock.MockResourceService, cs *vmock.MockCatalogService, resources ...*interfaces.Resource) {
+	ids := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		ids = append(ids, resource.ID)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+	}
+	expectRawQueryResources(rs, ids, resources...)
+	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true, UpdateTime: 7}, nil)
 }
 
 // nativeSQLConnectorMocks 仅替换数据库打开边界，服务、解析器和连接器均执行生产实现。
@@ -1492,6 +1661,133 @@ func mysqlRawCursorRows(t *testing.T, cf *vmock.MockConnectorFactory, statement 
 }
 
 func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
+	t.Run("UNION ALL counts the logical result and pages only the compound root", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		orders, archive := builderTestResource(), builderTestResource()
+		archive.ID, archive.SourceIdentifier = "archive", "`archive`"
+		unionRawMetadata(rs, cs, orders, archive)
+		base := "SELECT * FROM (SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 2) AS `_union_left` UNION ALL SELECT * FROM (SELECT `id` FROM `archive` LIMIT 3) AS `_union_right`) AS `_union_result` ORDER BY `id` ASC"
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+" LIMIT 4 OFFSET 1) AS `_raw_query_total`", nil,
+			[]map[string]any{{rawQueryTotalCountColumn: int64(4)}}, nil)
+		mysqlRawRead(t, cf, base+" LIMIT 2 OFFSET 2", nil, []map[string]any{{"id": 3}, {"id": 3}}, nil)
+
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query:     "(SELECT id FROM {{orders}} ORDER BY id LIMIT 2) UNION ALL (SELECT id FROM {{archive}} LIMIT 3) ORDER BY id LIMIT 4 OFFSET 1",
+			NeedTotal: true, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1}})
+
+		require.NoError(t, err)
+		require.NotNil(t, result.TotalCount)
+		assert.EqualValues(t, 4, *result.TotalCount)
+		assert.Equal(t, []string{"orders", "archive"}, result.ResourceIDs)
+		assert.Equal(t, []map[string]any{{"id": 3}, {"id": 3}}, result.Entries)
+		assert.Nil(t, result.Paging.NextCursor)
+	})
+	t.Run("UNION reuses one resource authorization and renders duplicate elimination", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		mysqlRawRead(t, cf, "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result` LIMIT 2", nil,
+			[]map[string]any{{"id": 1}}, nil)
+
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT id FROM {{orders}} UNION DISTINCT SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Limit: 2}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+		assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
+	})
+	for _, window := range []struct {
+		name, suffix, expected string
+		offset                 int
+	}{
+		{"zero logical limit", " LIMIT 0", " LIMIT 0", 0},
+		{"API offset beyond logical limit", " LIMIT 3 OFFSET 1", " LIMIT 0 OFFSET 5", 4},
+	} {
+		t.Run("UNION "+window.name+" preserves the empty compound window", func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			mysqlRawMetadata(rs, cs, builderTestResource(), true)
+			base := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION ALL SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result`"
+			mysqlRawRead(t, cf, base+window.expected, nil, []map[string]any{}, nil)
+
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+				Query:  "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{orders}}" + window.suffix,
+				Paging: interfaces.PagingRequest{Limit: 2, Offset: window.offset}})
+
+			require.NoError(t, err)
+			assert.Empty(t, result.Entries)
+			assert.Nil(t, result.Paging.NextCursor)
+		})
+	}
+	t.Run("UNION cursor retains one Rows over all branches and counts once", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		orders, archive := builderTestResource(), builderTestResource()
+		archive.ID, archive.SourceIdentifier, archive.UpdateTime = "archive", "`archive`", 19
+		unionRawMetadata(rs, cs, orders, archive)
+		statement := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION ALL SELECT `id` FROM `archive`) AS `_union_result` ORDER BY `id` ASC LIMIT 4 OFFSET 1"
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+statement+") AS `_raw_query_total`", nil,
+			[]map[string]any{{rawQueryTotalCountColumn: int64(4)}}, nil)
+		openedContexts := mysqlRawCursorRows(t, cf, statement,
+			sqlmock.NewRows([]string{"id"}).AddRow(2).AddRow(2).AddRow(3).AddRow(4), nil)
+
+		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query:     "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{archive}} ORDER BY id LIMIT 4 OFFSET 1",
+			NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(2)}, {"id": int64(2)}}, first.Entries)
+		require.NotNil(t, first.Paging.NextCursor)
+		token := *first.Paging.NextCursor
+		session := rawQueryCursorSessions.sessions[token]
+		assert.Equal(t, map[string]int64{"orders": 11, "archive": 19}, session.SQLResourceVersions)
+		retainedRows := session.SQLRows
+		unionRawMetadata(rs, cs, orders, archive)
+		second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": int64(3)}, {"id": int64(4)}}, second.Entries)
+		assert.Nil(t, second.Paging.NextCursor)
+		require.NotNil(t, second.TotalCount)
+		assert.EqualValues(t, 4, *second.TotalCount)
+		assert.Same(t, retainedRows, session.SQLRows)
+		assert.EqualValues(t, 4, *session.SQLQuery.LimitPart)
+		assert.EqualValues(t, 1, session.SQLQuery.OffsetPart)
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+		assert.ErrorIs(t, (<-openedContexts).Err(), context.Canceled)
+	})
+	t.Run("UNION explicit cursor close cancels and releases the complete result", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), true)
+		statement := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION ALL SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result`"
+		openedContexts := mysqlRawCursorRows(t, cf, statement, sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3), nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+		require.NoError(t, err)
+		require.NotNil(t, result.Paging.NextCursor)
+		token := *result.Paging.NextCursor
+		session := rawQueryCursorSessions.sessions[token]
+
+		require.NoError(t, CloseCursorSession(compileTestContext(), "caller", token))
+
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+		assert.ErrorIs(t, (<-openedContexts).Err(), context.Canceled)
+		assert.Error(t, session.SQLRows.Scan(new(any)))
+	})
+	for _, cause := range []string{"column_count", "type_mismatch"} {
+		t.Run("UNION source "+cause+" failure is sanitized and releases initial cursor", func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			mysqlRawMetadata(rs, cs, builderTestResource(), true)
+			statement := "SELECT * FROM (SELECT * FROM `sales.eu`.`order.items` UNION SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result`"
+			mysqlRawCursorRows(t, cf, statement, nil,
+				interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterReason(cause), errors.New("private source schema and column details")))
+
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+				Query: "SELECT * FROM {{orders}} UNION SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+
+			assert.Nil(t, result)
+			assertHTTPError(t, err, http.StatusBadRequest)
+			assert.NotContains(t, err.Error(), "private source schema")
+			assert.Empty(t, rawQueryCursorSessions.sessions)
+		})
+	}
 	t.Run("single page and total preserve logical limit and constants", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		mysqlRawMetadata(rs, cs, builderTestResource(), true)
@@ -1617,6 +1913,57 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 }
 
 func TestRawQueryServiceValidateSQLBuilderCursor(t *testing.T) {
+	for _, change := range []string{"permission", "resource version", "source identifier", "disabled", "missing", "Catalog"} {
+		t.Run("UNION later branch "+change+" invalidates and releases retained Rows", func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			orders, archive := builderTestResource(), builderTestResource()
+			archive.ID, archive.SourceIdentifier, archive.UpdateTime = "archive", "`archive`", 19
+			unionRawMetadata(rs, cs, orders, archive)
+			statement := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION ALL SELECT `id` FROM `archive`) AS `_union_result`"
+			openedContexts := mysqlRawCursorRows(t, cf, statement, sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3), nil)
+			first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+				Query: "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{archive}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+			require.NoError(t, err)
+			require.NotNil(t, first.Paging.NextCursor)
+			token := *first.Paging.NextCursor
+			session := rawQueryCursorSessions.sessions[token]
+			opened := <-openedContexts
+			status := http.StatusConflict
+			switch change {
+			case "permission":
+				status = http.StatusForbidden
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), "archive", interfaces.OPERATION_TYPE_QUERY_DATA).
+					Return(httperrors.NewHTTPError(compileTestContext(), status, httperrors.PublicError_Forbidden))
+			case "missing":
+				status = http.StatusNotFound
+				expectRawQueryResources(rs, []string{"orders", "archive"}, orders)
+			case "disabled":
+				archive.Enabled = false
+				expectRawQueryResources(rs, []string{"orders", "archive"}, orders, archive)
+			case "Catalog":
+				status = http.StatusNotImplemented
+				archive.CatalogID = "other-catalog"
+				expectRawQueryResources(rs, []string{"orders", "archive"}, orders, archive)
+			default:
+				if change == "resource version" {
+					archive.UpdateTime++
+				} else {
+					archive.SourceIdentifier = "`replacement_archive`"
+				}
+				unionRawMetadata(rs, cs, orders, archive)
+			}
+
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+
+			assert.Nil(t, result)
+			assertHTTPError(t, err, status)
+			assert.Equal(t, 2, session.PageOffset)
+			assert.Empty(t, rawQueryCursorSessions.sessions)
+			assert.ErrorIs(t, opened.Err(), context.Canceled)
+			assert.Error(t, session.SQLRows.Scan(new(any)))
+		})
+	}
 	for _, change := range []string{"resource version", "source identifier", "catalog version", "connector type", "permission"} {
 		t.Run(change, func(t *testing.T) {
 			svc, rs, cs, cf := mysqlRawServices(t)

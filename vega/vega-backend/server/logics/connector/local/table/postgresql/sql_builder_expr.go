@@ -163,8 +163,9 @@ func (b *pgSQLBuffer) node(node sb.SqlNode) {
 	start := len(b.tokens)
 	computed := true
 	switch node.(type) {
-	case *sb.Column, *sb.Param, *sb.Literal, *sb.Star, *sb.Alias, *sb.Table,
-		*sb.Subquery, *sb.SelectBuilder, *sb.Join, *sb.JoinedTable, *sb.Order:
+	case *sb.Column, *sb.Param, *sb.Literal, *sb.Star,
+		*sb.Alias, *sb.Table, *sb.Subquery, *sb.Union,
+		*sb.SelectBuilder, *sb.Join, *sb.JoinedTable, *sb.Order:
 		computed = false
 	}
 	b.writeNode(node)
@@ -275,6 +276,8 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 		b.node(n.Query)
 		b.write(") AS ")
 		b.identifier(n.Alias)
+	case *sb.Union:
+		b.union(n)
 	case *sb.Join:
 		b.join(*n)
 	case *sb.JoinedTable:
@@ -456,6 +459,52 @@ func usesMoneyProjection(table *sb.Table) bool {
 		}
 	}
 	return false
+}
+
+// union 使用同一参数缓冲区，分支仍分别进入独立 SELECT 作用域。
+func (b *pgSQLBuffer) union(union *sb.Union) {
+	if union == nil || union.Left == nil || union.Right == nil {
+		b.fail("UNION requires two queries")
+		return
+	}
+	b.write("(")
+	b.unionBody(union)
+	b.write(") AS ")
+	b.identifier(union.Alias)
+}
+
+// unionBody 展开无额外子句的左结合包装，不改变右分支或局部查询边界。
+func (b *pgSQLBuffer) unionBody(union *sb.Union) {
+	if b.err != nil {
+		return
+	}
+	if union == nil || union.Left == nil || union.Right == nil {
+		b.fail("UNION requires two queries")
+		return
+	}
+	if union.Alias == "" || !utf8.ValidString(union.Alias) || strings.ContainsRune(union.Alias, '\x00') {
+		b.fail("identifier is empty or invalid")
+		return
+	}
+	if left := sb.UnionSource(union.Left); left != nil {
+		b.unionBody(left)
+	} else {
+		b.unionBranch(union.Left, "_union_left")
+	}
+	b.write(" UNION ")
+	if union.All {
+		b.write("ALL ")
+	}
+	b.unionBranch(union.Right, "_union_right")
+}
+
+// unionBranch 通过派生表限定分支自己的 ORDER BY、LIMIT 和 OFFSET。
+func (b *pgSQLBuffer) unionBranch(query *sb.SelectBuilder, alias string) {
+	if len(query.OrderByPart) > 0 || query.LimitPart != nil || query.OffsetPart != 0 {
+		b.node(sb.Select(&sb.Star{}).FromSelect(query, alias))
+		return
+	}
+	b.node(query)
 }
 
 // selectQuery 保留当前 SELECT 的子句边界，HAVING 别名不会泄漏到嵌套查询。

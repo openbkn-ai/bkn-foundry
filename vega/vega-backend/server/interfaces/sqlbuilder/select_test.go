@@ -53,3 +53,26 @@ func TestSelectBuilderFromSelect(t *testing.T) {
 	assert.Equal(t, uint64(2), *source.Query.LimitPart)
 	assert.Nil(t, outer.LimitPart)
 }
+
+func TestUnionSource(t *testing.T) {
+	left := Select(&Column{Name: "id"}).From(&Table{ResourceID: "a"})
+	right := Select(&Column{Name: "id"}).From(&Table{ResourceID: "b"})
+	query := UnionQuery(left, right, true)
+	assert.Same(t, query.FromPart, UnionSource(query))
+	for _, changed := range []*SelectBuilder{
+		nil,
+		left,
+		UnionQuery(left, right, true).Columns(&Column{Name: "extra"}),
+		Select(&Star{Qualifier: "q"}).From(query.FromPart),
+		UnionQuery(left, right, true).Where(&Param{Value: true}),
+		UnionQuery(left, right, true).GroupBy(&Column{Name: "id"}),
+		UnionQuery(left, right, true).Having(&Param{Value: true}),
+		UnionQuery(left, right, true).Distinct(),
+		UnionQuery(left, right, true).OrderBy(Order{Position: 1}),
+		UnionQuery(left, right, true).Limit(0),
+		UnionQuery(left, right, true).Offset(1),
+		UnionQuery(left, right, true).CrossJoin(&Table{ResourceID: "c"}),
+	} {
+		assert.Nil(t, UnionSource(changed))
+	}
+}

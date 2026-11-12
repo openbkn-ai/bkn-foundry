@@ -17,6 +17,146 @@ import (
 )
 
 func TestParseSQL(t *testing.T) {
+	t.Run("ALL remains an identifier outside UNION quantifiers", func(t *testing.T) {
+		for _, test := range []struct {
+			input string
+			want  string
+		}{
+			{"SELECT all FROM {{a}}", "SELECT `all` FROM `A`"},
+			{"SELECT id AS all FROM {{a}}", "SELECT `id` AS `all` FROM `A`"},
+			{"SELECT id all FROM {{a}}", "SELECT `id` AS `all` FROM `A`"},
+			{"SELECT all.all FROM {{a}} AS all WHERE all.all > 0 ORDER BY all.all", "SELECT `all`.`all` FROM `A` AS `all` WHERE (`all`.`all` > 0) ORDER BY `all`.`all` ASC"},
+			{"SELECT ALL.* FROM {{a}} ALL", "SELECT `ALL`.* FROM `A` AS `ALL`"},
+			{"SELECT all AS aLl FROM {{a}} ORDER BY aLl", "SELECT `all` AS `aLl` FROM `A` ORDER BY `aLl` ASC"},
+		} {
+			t.Run(test.input, func(t *testing.T) {
+				query, err := ParseSQL(test.input)
+				require.NoError(t, err)
+				query.FromPart.(*sb.Table).SourceIdentifier = "`A`"
+				text, args, err := mysql.ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, test.want, text)
+				assert.Empty(t, args)
+			})
+		}
+		for _, operator := range []string{"UNION", "UNION ALL", "UNION DISTINCT"} {
+			t.Run(operator, func(t *testing.T) {
+				query, err := ParseSQL("SELECT all.all AS all FROM {{a}} all " + operator + " SELECT all FROM {{b}} ORDER BY all")
+				require.NoError(t, err)
+				union := query.FromPart.(*sb.Union)
+				assert.Equal(t, operator == "UNION ALL", union.All)
+				union.Left.FromPart.(*sb.Table).SourceIdentifier = "`A`"
+				union.Right.FromPart.(*sb.Table).SourceIdentifier = "`B`"
+				text, args, err := mysql.ToSql(query)
+				require.NoError(t, err)
+				renderedOperator := "UNION"
+				if union.All {
+					renderedOperator = "UNION ALL"
+				}
+				assert.Equal(t, "SELECT * FROM (SELECT `all`.`all` AS `all` FROM `A` AS `all` "+renderedOperator+" SELECT `all` FROM `B`) AS `_union_result` ORDER BY `all` ASC", text)
+				assert.Empty(t, args)
+			})
+		}
+	})
+	t.Run("union keeps branch and whole query limits separate", func(t *testing.T) {
+		query, err := ParseSQL("(SELECT id AS n FROM {{current}} ORDER BY id LIMIT 2) UNION ALL SELECT id FROM {{archive}} ORDER BY n DESC LIMIT 5 OFFSET 1")
+		require.NoError(t, err)
+		union, ok := query.FromPart.(*sb.Union)
+		require.True(t, ok)
+		assert.True(t, union.All)
+		assert.Equal(t, "current", union.Left.FromPart.(*sb.Table).ResourceID)
+		assert.Equal(t, "archive", union.Right.FromPart.(*sb.Table).ResourceID)
+		assert.EqualValues(t, 2, *union.Left.LimitPart)
+		assert.Len(t, union.Left.OrderByPart, 1)
+		assert.Nil(t, union.Right.LimitPart)
+		assert.EqualValues(t, 5, *query.LimitPart)
+		assert.EqualValues(t, 1, query.OffsetPart)
+		assert.Equal(t, &sb.Column{Name: "n"}, query.OrderByPart[0].Expr)
+		assert.True(t, query.OrderByPart[0].Descending)
+	})
+	t.Run("mixed union operators associate left and parentheses preserve right subtree", func(t *testing.T) {
+		query, err := ParseSQL("SELECT id FROM {{a}} UNION ALL SELECT id FROM {{b}} UNION DISTINCT (SELECT id FROM {{c}} UNION ALL SELECT id FROM {{d}})")
+		require.NoError(t, err)
+		root := query.FromPart.(*sb.Union)
+		assert.False(t, root.All)
+		assert.True(t, root.Left.FromPart.(*sb.Union).All)
+		assert.True(t, root.Right.FromPart.(*sb.Union).All)
+	})
+	t.Run("union in FROM supports joins and grouping in its branches", func(t *testing.T) {
+		query, err := ParseSQL("SELECT u.n FROM (SELECT a.id AS n FROM {{a}} a JOIN {{b}} b ON a.id=b.id UNION SELECT MAX(id) AS n FROM {{c}} GROUP BY kind) u")
+		require.NoError(t, err)
+		source := query.FromPart.(*sb.Subquery)
+		assert.Equal(t, "u", source.Alias)
+		union := source.Query.FromPart.(*sb.Union)
+		assert.Len(t, union.Left.JoinsPart, 1)
+		assert.Len(t, union.Right.GroupByPart, 1)
+	})
+	t.Run("outer limit does not overwrite parenthesized query limit", func(t *testing.T) {
+		query, err := ParseSQL("(SELECT id FROM {{a}} LIMIT 2) LIMIT 5")
+		require.NoError(t, err)
+		assert.EqualValues(t, 5, *query.LimitPart)
+		assert.EqualValues(t, 2, *query.FromPart.(*sb.Subquery).Query.LimitPart)
+	})
+	t.Run("wildcard widths remain source validated including joined subqueries", func(t *testing.T) {
+		for _, input := range []string{
+			"SELECT * FROM {{a}} UNION ALL SELECT id, kind FROM {{b}}",
+			"SELECT * FROM (SELECT id FROM {{a}}) a JOIN (SELECT kind FROM {{b}}) b ON a.id=b.kind UNION SELECT id, kind FROM {{c}}",
+			"SELECT a.* FROM {{a}} a UNION SELECT id FROM {{b}}",
+		} {
+			query, err := ParseSQL(input)
+			require.NoError(t, err, input)
+			assert.IsType(t, &sb.Union{}, query.FromPart)
+		}
+	})
+	t.Run("union chains obey the structural depth budget", func(t *testing.T) {
+		query, err := ParseSQL("SELECT id FROM {{a}}" + strings.Repeat(" UNION ALL SELECT id FROM {{a}}", maxDepth+1))
+		assert.Nil(t, query)
+		var failure *ParseError
+		require.ErrorAs(t, err, &failure)
+		assert.Equal(t, CodeLimit, failure.Code)
+	})
+	t.Run("compound ordering only addresses result columns or positions", func(t *testing.T) {
+		for _, suffix := range []string{"n", "1 DESC"} {
+			query, err := ParseSQL("SELECT id AS n FROM {{a}} UNION ALL SELECT id FROM {{b}} ORDER BY " + suffix)
+			require.NoError(t, err)
+			assert.Len(t, query.OrderByPart, 1)
+		}
+		for _, input := range []string{
+			"SELECT id FROM {{a}} UNION SELECT id FROM {{b}} ORDER BY SUM(id)",
+			"SELECT id FROM {{a}} UNION SELECT id FROM {{b}} ORDER BY a.id",
+			"SELECT id FROM {{a}} UNION SELECT id FROM {{b}} ORDER BY _union_result.id",
+			"(SELECT id FROM {{a}} UNION SELECT id FROM {{b}} LIMIT 3) ORDER BY id+1",
+		} {
+			query, err := ParseSQL(input)
+			assert.Nil(t, query, input)
+			var failure *ParseError
+			require.ErrorAs(t, err, &failure, input)
+			assert.Equal(t, CodeUnsupported, failure.Code, input)
+		}
+		query, err := ParseSQL("SELECT u.id FROM (SELECT id FROM {{a}} UNION SELECT id FROM {{b}}) u ORDER BY u.id+1")
+		require.NoError(t, err)
+		assert.IsType(t, &sb.Arithmetic{}, query.OrderByPart[0].Expr)
+	})
+	t.Run("union validates explicit widths and rejects unopened syntax in every branch", func(t *testing.T) {
+		for _, input := range []string{
+			"SELECT id FROM {{a}} UNION SELECT id, kind FROM {{b}}",
+			"SELECT id FROM {{a}} UNION ALL",
+			"SELECT id FROM {{a}} UNION ALL ALL SELECT id FROM {{b}}",
+			"SELECT id FROM {{a}} ORDER BY id UNION SELECT id FROM {{b}}",
+			"SELECT id FROM {{a}} UNION SELECT id FROM hidden_table",
+			"SELECT id FROM {{a}} UNION SELECT SLEEP(1) FROM {{b}}",
+			"SELECT id FROM {{a}} UNION SELECT id FROM {{b}}; DELETE FROM {{b}}",
+			"SELECT id FROM {{a}} INTERSECT SELECT id FROM {{b}}",
+			"SELECT id FROM {{a}} EXCEPT SELECT id FROM {{b}}",
+		} {
+			query, err := ParseSQL(input)
+			assert.Nil(t, query, input)
+			var failure *ParseError
+			require.ErrorAs(t, err, &failure, input)
+			assert.Positive(t, failure.Line)
+			assert.Positive(t, failure.Column)
+		}
+	})
 	t.Run("Cypher OPTIONAL MATCH SQL parses without rewriting its join scope", func(t *testing.T) {
 		input := "SELECT t0.`f_uid` AS `a.employee_uid`, t1.`f_uid` AS `b.project_uid` FROM {{res_employee}} t0 " +
 			"LEFT JOIN ({{res_member}} t2 JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
@@ -94,7 +234,7 @@ func TestParseSQL(t *testing.T) {
 		assert.Equal(t, "x", query.ColumnsPart[0].(*sb.Star).Qualifier)
 	})
 	t.Run("malformed or unopened syntax never returns a partial builder", func(t *testing.T) {
-		for _, sql := range []string{"", "SELECT id FROM ordinary_table", "SELECT id FROM {{x}}; SELECT id FROM {{x}}", "DELETE FROM {{x}}", "SELECT id FROM {{X}}", "SELECT id FROM {{x}} UNION SELECT id FROM {{x}}", "SELECT id FROM {{x}}; trailing", "SELECT /*+ hint */ id FROM {{x}}", "SELECT /*! hidden */ id FROM {{x}}", "SELECT 'unclosed FROM {{x}}", "SELECT id FROM {{x}} WHERE id IN ()", "SELECT id FROM {{x}} LIMIT 1.0", "SELECT id FROM {{x}} LIMIT 18446744073709551616", "SELECT id FROM {{x}} WHERE id LIKE 'x' ESCAPE ''", "SELECT id FROM {{x}} WHERE id LIKE 'x' ESCAPE 'ab'", "SELECT CAST(id AS DECIMAL(1e2)) FROM {{x}}", "SELECT id FROM {{" + strings.Repeat("a", 41) + "}}", string([]byte{0xff})} {
+		for _, sql := range []string{"", "SELECT id FROM ordinary_table", "SELECT id FROM {{x}}; SELECT id FROM {{x}}", "DELETE FROM {{x}}", "SELECT id FROM {{X}}", "SELECT id FROM {{x}}; trailing", "SELECT /*+ hint */ id FROM {{x}}", "SELECT /*! hidden */ id FROM {{x}}", "SELECT 'unclosed FROM {{x}}", "SELECT id FROM {{x}} WHERE id IN ()", "SELECT id FROM {{x}} LIMIT 1.0", "SELECT id FROM {{x}} LIMIT 18446744073709551616", "SELECT id FROM {{x}} WHERE id LIKE 'x' ESCAPE ''", "SELECT id FROM {{x}} WHERE id LIKE 'x' ESCAPE 'ab'", "SELECT CAST(id AS DECIMAL(1e2)) FROM {{x}}", "SELECT id FROM {{" + strings.Repeat("a", 41) + "}}", string([]byte{0xff})} {
 			t.Run(sql, func(t *testing.T) {
 				query, err := ParseSQL(sql)
 				require.Error(t, err)

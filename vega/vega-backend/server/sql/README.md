@@ -42,6 +42,26 @@ Oracle 仅内联不超过 STANDARD 4000 字节上限的 ASCII 字符串。非 AS
 SQL 来源支持带括号的 JOIN 组，例如 `a LEFT JOIN (b JOIN c ON ...) ON ...`。
 Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑定组内全部来源；不会展开成多个外连接而改变 NULL 扩展语义。
 
+## UNION 查询
+
+支持 `UNION`、`UNION DISTINCT` 和 `UNION ALL`，包括多分支混合、括号及 FROM 子查询。
+混合链按左结合构树，显式括号保留结合方式；`UNION DISTINCT` 归一为去重 UNION。
+`sqlbuilder.Union` 以左右两个 SelectBuilder 表达集合来源；`UnionQuery` 创建其上的 SELECT，
+整体排序、LIMIT/OFFSET 和 API 分页继续复用普通 SELECT 路径，不改写分支内部子句。
+带分支局部 ORDER BY/LIMIT 的操作数必须加括号，生成器通过派生表保留它的作用范围。
+无额外子句的左侧集合包装可直接输出为左结合 UNION 链，避免平坦输入产生深层派生表；
+右侧括号及分支自己的投影、过滤、排序和分页边界始终保留。
+
+结果按列位置组合，列名来自首分支。Parser 只拒绝确定的显式列数不匹配；物理星号的实际列数、
+类型兼容性和去重比较遵循源端规则，不从 Schema 猜测星号展开，也不增加统一隐式 CAST。
+整体 ORDER BY 仅接受无来源限定的结果列或正整数位置，不能访问分支表别名或使用表达式；
+表达式排序可通过显式外层 SELECT 表达。
+所有分支递归参与资源绑定、权限、状态、同 Catalog 检查和游标依赖复核。
+COUNT 统计完整逻辑结果（包含去重及逻辑 LIMIT），API 分页在其后生效。
+INTERSECT/EXCEPT、跨 Catalog 查询与逻辑视图来源不随本功能开放。
+
+跨仓实现与兼容顺序见[正式设计](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/vega/design/issue-3093-sql-union-design.md)。
+
 ## 公共函数与连接器的边界
 
 - 输入采用 MySQL 风格语法，函数集合由 Vega 显式定义，不限于 MySQL 已有的函数。

@@ -20,14 +20,20 @@ info:
     | Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |
     | 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |
 
-    **SQL 查询能力**：执行单条顶层 `SELECT`，所有物理表通过受权限保护的
+    **SQL 查询能力**：执行单条只读查询（`SELECT` 或 `UNION` 组合），所有物理表通过受权限保护的
     `{{resource_id}}` 占位符解析；DSL 的索引同样由 Resource 推导。支持同一 Catalog 内的
     `JOIN`（含括号连接组）、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
     （`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。
 
     SQL 输入统一使用 MySQL SELECT 子集，通过 Go Parser → Builder 支持显式子查询、
-    JOIN（含括号连接组）、DISTINCT、分组、排序和 LIMIT/OFFSET，
+    JOIN（含括号连接组）、UNION / UNION ALL、DISTINCT、分组、排序和 LIMIT/OFFSET，
     并由 Resource/Catalog 对应的目标连接器生成源端 SQL 及绑定参数。
+
+    UNION 分支须属于同一物理 Catalog，按列位置组合；结果列名取首分支，类型兼容性遵循源端规则。
+    UNION（包括显式 UNION DISTINCT）去重，UNION ALL 保留重复行；混合链按左结合处理，括号保留分组。
+    整体 ORDER BY 引用组合结果的字段或位置，不引用分支表别名；分支自己的 ORDER BY/LIMIT 须放在括号内。
+    组合查询也可作为 FROM 子查询；API 分页在组合结果上执行，need_total 统计去重及逻辑 LIMIT 后、API 分页前的行数。
+    不支持 INTERSECT、EXCEPT 或跨 Catalog 组合，也不因此开放逻辑视图来源。
 
     MariaDB/MySQL、PostgreSQL、HANA、Doris、Oracle 和 SQL Server 使用明确的只读内置函数名单，涵盖常用聚合、数值、
     字符串和日期函数，并在访问连接器前校验参数数量及 DISTINCT / * 的组合。
@@ -121,9 +127,12 @@ paths:
         SQL Server 使用命名参数与原生 TOP、OFFSET/FETCH 分页，SQL Builder 通道要求数据库兼容级别至少为 110。
         投影名称必须唯一；多表 JOIN 可使用限定通配符或显式列别名。
 
-        **SQL 查询能力**：单条顶层 `SELECT`，支持同一 Catalog 内的 `JOIN`（含括号连接组）、`WHERE`、
+        **SQL 查询能力**：单条只读 SELECT 或 UNION 查询，支持同一 Catalog 内的 `JOIN`（含括号连接组）、`WHERE`、
         `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数；子查询及内置函数的具体能力
         由公共 Parser 和目标连接器共同决定。
+
+        UNION / UNION ALL 按位置组合各分支，使用首分支列名；整体排序及分页作用于组合结果。
+        分支局部排序与 LIMIT 使用括号限定；UNION DISTINCT 与 UNION 同义。全部分支必须通过资源权限与同 Catalog 校验。
 
         **PostgreSQL money 来源的字段范围**：资源 schema 含 `money` 列时，来源会按已探查字段投影，
         并将 money 转换为 numeric；`SELECT *`、限定通配符和显式字段引用均只能访问资源
@@ -145,6 +154,31 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RawQueryRequest"
+            examples:
+              unionAll:
+                summary: 合并当前与归档数据，整体排序分页并获取总数
+                value:
+                  query_format: sql
+                  query: >-
+                    SELECT customer_id, amount FROM {{current_orders}}
+                    UNION ALL
+                    SELECT customer_id, amount FROM {{archived_orders}}
+                    ORDER BY customer_id LIMIT 100
+                  need_total: true
+                  paging:
+                    mode: single
+                    limit: 20
+              unionDistinct:
+                summary: 分支局部 LIMIT 与组合结果去重
+                value:
+                  query_format: sql
+                  query: >-
+                    (SELECT customer_id FROM {{current_orders}} ORDER BY customer_id LIMIT 50)
+                    UNION SELECT customer_id FROM {{archived_orders}}
+                    ORDER BY customer_id
+                  paging:
+                    mode: cursor
+                    limit: 20
       responses:
         "200":
           description: 查询成功
@@ -266,8 +300,8 @@ components:
           oneOf:
             - type: string
               description: |
-                SQL 字符串。执行单条顶层 `SELECT`，支持同一 Catalog 内的 JOIN（含括号连接组）、WHERE、
-                GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。子查询及内置函数的具体能力
+                SQL 字符串。执行单条 SELECT 或 UNION / UNION ALL 查询，支持同一 Catalog 内的 JOIN（含括号连接组）、WHERE、
+                GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。UNION 使用首分支列名；子查询及内置函数的具体能力
                 由公共 Parser 和目标连接器共同决定。
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）

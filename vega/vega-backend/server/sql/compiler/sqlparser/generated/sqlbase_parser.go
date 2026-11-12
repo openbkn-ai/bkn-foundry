@@ -32,184 +32,197 @@ var SqlBaseParserStaticData struct {
 func sqlbaseParserInit() {
 	staticData := &SqlBaseParserStaticData
 	staticData.LiteralNames = []string{
-		"", "'SELECT'", "'DISTINCT'", "'FROM'", "'WHERE'", "'GROUP'", "'BY'",
-		"'HAVING'", "'ORDER'", "'LIMIT'", "'OFFSET'", "'AS'", "'INNER'", "'LEFT'",
-		"'RIGHT'", "'OUTER'", "'JOIN'", "'CROSS'", "'ON'", "'ASC'", "'DESC'",
-		"'OR'", "'AND'", "'NOT'", "'IS'", "'NULL'", "'BETWEEN'", "'IN'", "'LIKE'",
-		"'ESCAPE'", "'CAST'", "'CASE'", "'WHEN'", "'THEN'", "'ELSE'", "'END'",
-		"'TRUE'", "'FALSE'", "'CURRENT_TIMESTAMP'", "", "", "'('", "')'", "','",
-		"'.'", "';'", "'='", "", "'<='", "'>='", "'<'", "'>'", "'+'", "'-'",
-		"'*'", "'/'", "'%'",
+		"", "'SELECT'", "'UNION'", "'ALL'", "'DISTINCT'", "'FROM'", "'WHERE'",
+		"'GROUP'", "'BY'", "'HAVING'", "'ORDER'", "'LIMIT'", "'OFFSET'", "'AS'",
+		"'INNER'", "'LEFT'", "'RIGHT'", "'OUTER'", "'JOIN'", "'CROSS'", "'ON'",
+		"'ASC'", "'DESC'", "'OR'", "'AND'", "'NOT'", "'IS'", "'NULL'", "'BETWEEN'",
+		"'IN'", "'LIKE'", "'ESCAPE'", "'CAST'", "'CASE'", "'WHEN'", "'THEN'",
+		"'ELSE'", "'END'", "'TRUE'", "'FALSE'", "'CURRENT_TIMESTAMP'", "", "",
+		"'('", "')'", "','", "'.'", "';'", "'='", "", "'<='", "'>='", "'<'",
+		"'>'", "'+'", "'-'", "'*'", "'/'", "'%'",
 	}
 	staticData.SymbolicNames = []string{
-		"", "SELECT", "DISTINCT", "FROM", "WHERE", "GROUP", "BY", "HAVING",
-		"ORDER", "LIMIT", "OFFSET", "AS", "INNER", "LEFT", "RIGHT", "OUTER",
-		"JOIN", "CROSS", "ON", "ASC", "DESC", "OR", "AND", "NOT", "IS", "NULL",
-		"BETWEEN", "IN", "LIKE", "ESCAPE", "CAST", "CASE", "WHEN", "THEN", "ELSE",
-		"END", "TRUE", "FALSE", "CURRENT_TIMESTAMP", "UNSUPPORTED", "RESOURCE",
-		"LPAREN", "RPAREN", "COMMA", "DOT", "SEMICOLON", "EQ", "NEQ", "LTE",
-		"GTE", "LT", "GT", "PLUS", "MINUS", "STAR", "SLASH", "PERCENT", "NUMBER",
-		"STRING", "QUOTED_IDENTIFIER", "IDENTIFIER", "FORBIDDEN_COMMENT", "BLOCK_COMMENT",
-		"LINE_COMMENT", "WS",
+		"", "SELECT", "UNION", "ALL", "DISTINCT", "FROM", "WHERE", "GROUP",
+		"BY", "HAVING", "ORDER", "LIMIT", "OFFSET", "AS", "INNER", "LEFT", "RIGHT",
+		"OUTER", "JOIN", "CROSS", "ON", "ASC", "DESC", "OR", "AND", "NOT", "IS",
+		"NULL", "BETWEEN", "IN", "LIKE", "ESCAPE", "CAST", "CASE", "WHEN", "THEN",
+		"ELSE", "END", "TRUE", "FALSE", "CURRENT_TIMESTAMP", "UNSUPPORTED",
+		"RESOURCE", "LPAREN", "RPAREN", "COMMA", "DOT", "SEMICOLON", "EQ", "NEQ",
+		"LTE", "GTE", "LT", "GT", "PLUS", "MINUS", "STAR", "SLASH", "PERCENT",
+		"NUMBER", "STRING", "QUOTED_IDENTIFIER", "IDENTIFIER", "FORBIDDEN_COMMENT",
+		"BLOCK_COMMENT", "LINE_COMMENT", "WS",
 	}
 	staticData.RuleNames = []string{
-		"statement", "selectQuery", "selectItem", "relation", "relationPrimary",
-		"joinPart", "sortItem", "limitClause", "expressionList", "expression",
-		"orExpression", "andExpression", "notExpression", "predicate", "additiveExpression",
-		"multiplicativeExpression", "unaryExpression", "primaryExpression",
-		"functionCall", "typeName", "literal", "identifier",
+		"statement", "queryExpression", "queryTerm", "unionOperator", "selectQuery",
+		"selectItem", "relation", "relationPrimary", "joinPart", "sortItem",
+		"limitClause", "expressionList", "expression", "orExpression", "andExpression",
+		"notExpression", "predicate", "additiveExpression", "multiplicativeExpression",
+		"unaryExpression", "primaryExpression", "functionCall", "typeName",
+		"literal", "identifier",
 	}
 	staticData.PredictionContextCache = antlr.NewPredictionContextCache()
 	staticData.serializedATN = []int32{
-		4, 1, 64, 325, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7,
+		4, 1, 66, 351, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7,
 		4, 2, 5, 7, 5, 2, 6, 7, 6, 2, 7, 7, 7, 2, 8, 7, 8, 2, 9, 7, 9, 2, 10, 7,
 		10, 2, 11, 7, 11, 2, 12, 7, 12, 2, 13, 7, 13, 2, 14, 7, 14, 2, 15, 7, 15,
 		2, 16, 7, 16, 2, 17, 7, 17, 2, 18, 7, 18, 2, 19, 7, 19, 2, 20, 7, 20, 2,
-		21, 7, 21, 1, 0, 1, 0, 3, 0, 47, 8, 0, 1, 0, 1, 0, 1, 1, 1, 1, 3, 1, 53,
-		8, 1, 1, 1, 1, 1, 1, 1, 5, 1, 58, 8, 1, 10, 1, 12, 1, 61, 9, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 3, 1, 67, 8, 1, 1, 1, 1, 1, 1, 1, 3, 1, 72, 8, 1, 1, 1,
-		1, 1, 3, 1, 76, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 83, 8, 1, 10,
-		1, 12, 1, 86, 9, 1, 3, 1, 88, 8, 1, 1, 1, 3, 1, 91, 8, 1, 1, 2, 1, 2, 1,
-		2, 3, 2, 96, 8, 2, 1, 2, 1, 2, 1, 2, 3, 2, 101, 8, 2, 1, 2, 3, 2, 104,
-		8, 2, 3, 2, 106, 8, 2, 1, 3, 1, 3, 5, 3, 110, 8, 3, 10, 3, 12, 3, 113,
-		9, 3, 1, 4, 1, 4, 3, 4, 117, 8, 4, 1, 4, 3, 4, 120, 8, 4, 1, 4, 1, 4, 1,
-		4, 1, 4, 3, 4, 126, 8, 4, 1, 4, 1, 4, 1, 4, 1, 4, 1, 4, 1, 4, 3, 4, 134,
-		8, 4, 1, 5, 1, 5, 1, 5, 3, 5, 139, 8, 5, 1, 5, 1, 5, 3, 5, 143, 8, 5, 3,
-		5, 145, 8, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 1, 5, 3, 5, 155,
-		8, 5, 1, 6, 1, 6, 3, 6, 159, 8, 6, 1, 7, 1, 7, 1, 7, 1, 7, 1, 7, 1, 7,
-		3, 7, 167, 8, 7, 1, 8, 1, 8, 1, 8, 5, 8, 172, 8, 8, 10, 8, 12, 8, 175,
-		9, 8, 1, 9, 1, 9, 1, 10, 1, 10, 1, 10, 5, 10, 182, 8, 10, 10, 10, 12, 10,
-		185, 9, 10, 1, 11, 1, 11, 1, 11, 5, 11, 190, 8, 11, 10, 11, 12, 11, 193,
-		9, 11, 1, 12, 1, 12, 1, 12, 3, 12, 198, 8, 12, 1, 13, 1, 13, 1, 13, 1,
-		13, 1, 13, 3, 13, 205, 8, 13, 1, 13, 1, 13, 3, 13, 209, 8, 13, 1, 13, 1,
-		13, 1, 13, 1, 13, 1, 13, 1, 13, 3, 13, 217, 8, 13, 1, 13, 1, 13, 1, 13,
-		1, 13, 1, 13, 1, 13, 3, 13, 225, 8, 13, 1, 13, 1, 13, 1, 13, 1, 13, 3,
-		13, 231, 8, 13, 3, 13, 233, 8, 13, 1, 14, 1, 14, 1, 14, 5, 14, 238, 8,
-		14, 10, 14, 12, 14, 241, 9, 14, 1, 15, 1, 15, 1, 15, 5, 15, 246, 8, 15,
-		10, 15, 12, 15, 249, 9, 15, 1, 16, 1, 16, 1, 16, 3, 16, 254, 8, 16, 1,
-		17, 1, 17, 1, 17, 1, 17, 3, 17, 260, 8, 17, 1, 17, 1, 17, 1, 17, 1, 17,
-		3, 17, 266, 8, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1,
-		17, 1, 17, 3, 17, 277, 8, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 4, 17,
-		284, 8, 17, 11, 17, 12, 17, 285, 1, 17, 1, 17, 3, 17, 290, 8, 17, 1, 17,
-		1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 3, 17, 298, 8, 17, 1, 18, 1, 18, 1,
-		18, 3, 18, 303, 8, 18, 1, 18, 1, 18, 3, 18, 307, 8, 18, 1, 18, 1, 18, 1,
-		19, 1, 19, 1, 19, 1, 19, 1, 19, 3, 19, 316, 8, 19, 1, 19, 3, 19, 319, 8,
-		19, 1, 20, 1, 20, 1, 21, 1, 21, 1, 21, 0, 0, 22, 0, 2, 4, 6, 8, 10, 12,
-		14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 0, 6, 1, 0,
-		19, 20, 1, 0, 46, 51, 1, 0, 52, 53, 1, 0, 54, 56, 3, 0, 25, 25, 36, 37,
-		57, 58, 1, 0, 59, 60, 363, 0, 44, 1, 0, 0, 0, 2, 50, 1, 0, 0, 0, 4, 105,
-		1, 0, 0, 0, 6, 107, 1, 0, 0, 0, 8, 133, 1, 0, 0, 0, 10, 154, 1, 0, 0, 0,
-		12, 156, 1, 0, 0, 0, 14, 160, 1, 0, 0, 0, 16, 168, 1, 0, 0, 0, 18, 176,
-		1, 0, 0, 0, 20, 178, 1, 0, 0, 0, 22, 186, 1, 0, 0, 0, 24, 197, 1, 0, 0,
-		0, 26, 199, 1, 0, 0, 0, 28, 234, 1, 0, 0, 0, 30, 242, 1, 0, 0, 0, 32, 253,
-		1, 0, 0, 0, 34, 297, 1, 0, 0, 0, 36, 299, 1, 0, 0, 0, 38, 310, 1, 0, 0,
-		0, 40, 320, 1, 0, 0, 0, 42, 322, 1, 0, 0, 0, 44, 46, 3, 2, 1, 0, 45, 47,
-		5, 45, 0, 0, 46, 45, 1, 0, 0, 0, 46, 47, 1, 0, 0, 0, 47, 48, 1, 0, 0, 0,
-		48, 49, 5, 0, 0, 1, 49, 1, 1, 0, 0, 0, 50, 52, 5, 1, 0, 0, 51, 53, 5, 2,
-		0, 0, 52, 51, 1, 0, 0, 0, 52, 53, 1, 0, 0, 0, 53, 54, 1, 0, 0, 0, 54, 59,
-		3, 4, 2, 0, 55, 56, 5, 43, 0, 0, 56, 58, 3, 4, 2, 0, 57, 55, 1, 0, 0, 0,
-		58, 61, 1, 0, 0, 0, 59, 57, 1, 0, 0, 0, 59, 60, 1, 0, 0, 0, 60, 62, 1,
-		0, 0, 0, 61, 59, 1, 0, 0, 0, 62, 63, 5, 3, 0, 0, 63, 66, 3, 6, 3, 0, 64,
-		65, 5, 4, 0, 0, 65, 67, 3, 18, 9, 0, 66, 64, 1, 0, 0, 0, 66, 67, 1, 0,
-		0, 0, 67, 71, 1, 0, 0, 0, 68, 69, 5, 5, 0, 0, 69, 70, 5, 6, 0, 0, 70, 72,
-		3, 16, 8, 0, 71, 68, 1, 0, 0, 0, 71, 72, 1, 0, 0, 0, 72, 75, 1, 0, 0, 0,
-		73, 74, 5, 7, 0, 0, 74, 76, 3, 18, 9, 0, 75, 73, 1, 0, 0, 0, 75, 76, 1,
-		0, 0, 0, 76, 87, 1, 0, 0, 0, 77, 78, 5, 8, 0, 0, 78, 79, 5, 6, 0, 0, 79,
-		84, 3, 12, 6, 0, 80, 81, 5, 43, 0, 0, 81, 83, 3, 12, 6, 0, 82, 80, 1, 0,
-		0, 0, 83, 86, 1, 0, 0, 0, 84, 82, 1, 0, 0, 0, 84, 85, 1, 0, 0, 0, 85, 88,
-		1, 0, 0, 0, 86, 84, 1, 0, 0, 0, 87, 77, 1, 0, 0, 0, 87, 88, 1, 0, 0, 0,
-		88, 90, 1, 0, 0, 0, 89, 91, 3, 14, 7, 0, 90, 89, 1, 0, 0, 0, 90, 91, 1,
-		0, 0, 0, 91, 3, 1, 0, 0, 0, 92, 93, 3, 42, 21, 0, 93, 94, 5, 44, 0, 0,
-		94, 96, 1, 0, 0, 0, 95, 92, 1, 0, 0, 0, 95, 96, 1, 0, 0, 0, 96, 97, 1,
-		0, 0, 0, 97, 106, 5, 54, 0, 0, 98, 103, 3, 18, 9, 0, 99, 101, 5, 11, 0,
-		0, 100, 99, 1, 0, 0, 0, 100, 101, 1, 0, 0, 0, 101, 102, 1, 0, 0, 0, 102,
-		104, 3, 42, 21, 0, 103, 100, 1, 0, 0, 0, 103, 104, 1, 0, 0, 0, 104, 106,
-		1, 0, 0, 0, 105, 95, 1, 0, 0, 0, 105, 98, 1, 0, 0, 0, 106, 5, 1, 0, 0,
-		0, 107, 111, 3, 8, 4, 0, 108, 110, 3, 10, 5, 0, 109, 108, 1, 0, 0, 0, 110,
-		113, 1, 0, 0, 0, 111, 109, 1, 0, 0, 0, 111, 112, 1, 0, 0, 0, 112, 7, 1,
-		0, 0, 0, 113, 111, 1, 0, 0, 0, 114, 119, 5, 40, 0, 0, 115, 117, 5, 11,
-		0, 0, 116, 115, 1, 0, 0, 0, 116, 117, 1, 0, 0, 0, 117, 118, 1, 0, 0, 0,
-		118, 120, 3, 42, 21, 0, 119, 116, 1, 0, 0, 0, 119, 120, 1, 0, 0, 0, 120,
-		134, 1, 0, 0, 0, 121, 122, 5, 41, 0, 0, 122, 123, 3, 2, 1, 0, 123, 125,
-		5, 42, 0, 0, 124, 126, 5, 11, 0, 0, 125, 124, 1, 0, 0, 0, 125, 126, 1,
-		0, 0, 0, 126, 127, 1, 0, 0, 0, 127, 128, 3, 42, 21, 0, 128, 134, 1, 0,
-		0, 0, 129, 130, 5, 41, 0, 0, 130, 131, 3, 6, 3, 0, 131, 132, 5, 42, 0,
-		0, 132, 134, 1, 0, 0, 0, 133, 114, 1, 0, 0, 0, 133, 121, 1, 0, 0, 0, 133,
-		129, 1, 0, 0, 0, 134, 9, 1, 0, 0, 0, 135, 145, 5, 12, 0, 0, 136, 138, 5,
-		13, 0, 0, 137, 139, 5, 15, 0, 0, 138, 137, 1, 0, 0, 0, 138, 139, 1, 0,
-		0, 0, 139, 145, 1, 0, 0, 0, 140, 142, 5, 14, 0, 0, 141, 143, 5, 15, 0,
-		0, 142, 141, 1, 0, 0, 0, 142, 143, 1, 0, 0, 0, 143, 145, 1, 0, 0, 0, 144,
-		135, 1, 0, 0, 0, 144, 136, 1, 0, 0, 0, 144, 140, 1, 0, 0, 0, 144, 145,
-		1, 0, 0, 0, 145, 146, 1, 0, 0, 0, 146, 147, 5, 16, 0, 0, 147, 148, 3, 8,
-		4, 0, 148, 149, 5, 18, 0, 0, 149, 150, 3, 18, 9, 0, 150, 155, 1, 0, 0,
-		0, 151, 152, 5, 17, 0, 0, 152, 153, 5, 16, 0, 0, 153, 155, 3, 8, 4, 0,
-		154, 144, 1, 0, 0, 0, 154, 151, 1, 0, 0, 0, 155, 11, 1, 0, 0, 0, 156, 158,
-		3, 18, 9, 0, 157, 159, 7, 0, 0, 0, 158, 157, 1, 0, 0, 0, 158, 159, 1, 0,
-		0, 0, 159, 13, 1, 0, 0, 0, 160, 161, 5, 9, 0, 0, 161, 166, 5, 57, 0, 0,
-		162, 163, 5, 10, 0, 0, 163, 167, 5, 57, 0, 0, 164, 165, 5, 43, 0, 0, 165,
-		167, 5, 57, 0, 0, 166, 162, 1, 0, 0, 0, 166, 164, 1, 0, 0, 0, 166, 167,
-		1, 0, 0, 0, 167, 15, 1, 0, 0, 0, 168, 173, 3, 18, 9, 0, 169, 170, 5, 43,
-		0, 0, 170, 172, 3, 18, 9, 0, 171, 169, 1, 0, 0, 0, 172, 175, 1, 0, 0, 0,
-		173, 171, 1, 0, 0, 0, 173, 174, 1, 0, 0, 0, 174, 17, 1, 0, 0, 0, 175, 173,
-		1, 0, 0, 0, 176, 177, 3, 20, 10, 0, 177, 19, 1, 0, 0, 0, 178, 183, 3, 22,
-		11, 0, 179, 180, 5, 21, 0, 0, 180, 182, 3, 22, 11, 0, 181, 179, 1, 0, 0,
-		0, 182, 185, 1, 0, 0, 0, 183, 181, 1, 0, 0, 0, 183, 184, 1, 0, 0, 0, 184,
-		21, 1, 0, 0, 0, 185, 183, 1, 0, 0, 0, 186, 191, 3, 24, 12, 0, 187, 188,
-		5, 22, 0, 0, 188, 190, 3, 24, 12, 0, 189, 187, 1, 0, 0, 0, 190, 193, 1,
-		0, 0, 0, 191, 189, 1, 0, 0, 0, 191, 192, 1, 0, 0, 0, 192, 23, 1, 0, 0,
-		0, 193, 191, 1, 0, 0, 0, 194, 195, 5, 23, 0, 0, 195, 198, 3, 24, 12, 0,
-		196, 198, 3, 26, 13, 0, 197, 194, 1, 0, 0, 0, 197, 196, 1, 0, 0, 0, 198,
-		25, 1, 0, 0, 0, 199, 232, 3, 28, 14, 0, 200, 201, 7, 1, 0, 0, 201, 233,
-		3, 28, 14, 0, 202, 204, 5, 24, 0, 0, 203, 205, 5, 23, 0, 0, 204, 203, 1,
-		0, 0, 0, 204, 205, 1, 0, 0, 0, 205, 206, 1, 0, 0, 0, 206, 233, 5, 25, 0,
-		0, 207, 209, 5, 23, 0, 0, 208, 207, 1, 0, 0, 0, 208, 209, 1, 0, 0, 0, 209,
-		210, 1, 0, 0, 0, 210, 211, 5, 26, 0, 0, 211, 212, 3, 28, 14, 0, 212, 213,
-		5, 22, 0, 0, 213, 214, 3, 28, 14, 0, 214, 233, 1, 0, 0, 0, 215, 217, 5,
-		23, 0, 0, 216, 215, 1, 0, 0, 0, 216, 217, 1, 0, 0, 0, 217, 218, 1, 0, 0,
-		0, 218, 219, 5, 27, 0, 0, 219, 220, 5, 41, 0, 0, 220, 221, 3, 16, 8, 0,
-		221, 222, 5, 42, 0, 0, 222, 233, 1, 0, 0, 0, 223, 225, 5, 23, 0, 0, 224,
-		223, 1, 0, 0, 0, 224, 225, 1, 0, 0, 0, 225, 226, 1, 0, 0, 0, 226, 227,
-		5, 28, 0, 0, 227, 230, 3, 28, 14, 0, 228, 229, 5, 29, 0, 0, 229, 231, 5,
-		58, 0, 0, 230, 228, 1, 0, 0, 0, 230, 231, 1, 0, 0, 0, 231, 233, 1, 0, 0,
-		0, 232, 200, 1, 0, 0, 0, 232, 202, 1, 0, 0, 0, 232, 208, 1, 0, 0, 0, 232,
-		216, 1, 0, 0, 0, 232, 224, 1, 0, 0, 0, 232, 233, 1, 0, 0, 0, 233, 27, 1,
-		0, 0, 0, 234, 239, 3, 30, 15, 0, 235, 236, 7, 2, 0, 0, 236, 238, 3, 30,
-		15, 0, 237, 235, 1, 0, 0, 0, 238, 241, 1, 0, 0, 0, 239, 237, 1, 0, 0, 0,
-		239, 240, 1, 0, 0, 0, 240, 29, 1, 0, 0, 0, 241, 239, 1, 0, 0, 0, 242, 247,
-		3, 32, 16, 0, 243, 244, 7, 3, 0, 0, 244, 246, 3, 32, 16, 0, 245, 243, 1,
-		0, 0, 0, 246, 249, 1, 0, 0, 0, 247, 245, 1, 0, 0, 0, 247, 248, 1, 0, 0,
-		0, 248, 31, 1, 0, 0, 0, 249, 247, 1, 0, 0, 0, 250, 251, 7, 2, 0, 0, 251,
-		254, 3, 32, 16, 0, 252, 254, 3, 34, 17, 0, 253, 250, 1, 0, 0, 0, 253, 252,
-		1, 0, 0, 0, 254, 33, 1, 0, 0, 0, 255, 298, 3, 40, 20, 0, 256, 259, 3, 42,
-		21, 0, 257, 258, 5, 44, 0, 0, 258, 260, 3, 42, 21, 0, 259, 257, 1, 0, 0,
-		0, 259, 260, 1, 0, 0, 0, 260, 298, 1, 0, 0, 0, 261, 298, 3, 36, 18, 0,
-		262, 265, 5, 38, 0, 0, 263, 264, 5, 41, 0, 0, 264, 266, 5, 42, 0, 0, 265,
-		263, 1, 0, 0, 0, 265, 266, 1, 0, 0, 0, 266, 298, 1, 0, 0, 0, 267, 268,
-		5, 30, 0, 0, 268, 269, 5, 41, 0, 0, 269, 270, 3, 18, 9, 0, 270, 271, 5,
-		11, 0, 0, 271, 272, 3, 38, 19, 0, 272, 273, 5, 42, 0, 0, 273, 298, 1, 0,
-		0, 0, 274, 276, 5, 31, 0, 0, 275, 277, 3, 18, 9, 0, 276, 275, 1, 0, 0,
-		0, 276, 277, 1, 0, 0, 0, 277, 283, 1, 0, 0, 0, 278, 279, 5, 32, 0, 0, 279,
-		280, 3, 18, 9, 0, 280, 281, 5, 33, 0, 0, 281, 282, 3, 18, 9, 0, 282, 284,
-		1, 0, 0, 0, 283, 278, 1, 0, 0, 0, 284, 285, 1, 0, 0, 0, 285, 283, 1, 0,
-		0, 0, 285, 286, 1, 0, 0, 0, 286, 289, 1, 0, 0, 0, 287, 288, 5, 34, 0, 0,
-		288, 290, 3, 18, 9, 0, 289, 287, 1, 0, 0, 0, 289, 290, 1, 0, 0, 0, 290,
-		291, 1, 0, 0, 0, 291, 292, 5, 35, 0, 0, 292, 298, 1, 0, 0, 0, 293, 294,
-		5, 41, 0, 0, 294, 295, 3, 18, 9, 0, 295, 296, 5, 42, 0, 0, 296, 298, 1,
-		0, 0, 0, 297, 255, 1, 0, 0, 0, 297, 256, 1, 0, 0, 0, 297, 261, 1, 0, 0,
-		0, 297, 262, 1, 0, 0, 0, 297, 267, 1, 0, 0, 0, 297, 274, 1, 0, 0, 0, 297,
-		293, 1, 0, 0, 0, 298, 35, 1, 0, 0, 0, 299, 300, 3, 42, 21, 0, 300, 302,
-		5, 41, 0, 0, 301, 303, 5, 2, 0, 0, 302, 301, 1, 0, 0, 0, 302, 303, 1, 0,
-		0, 0, 303, 306, 1, 0, 0, 0, 304, 307, 5, 54, 0, 0, 305, 307, 3, 16, 8,
-		0, 306, 304, 1, 0, 0, 0, 306, 305, 1, 0, 0, 0, 306, 307, 1, 0, 0, 0, 307,
-		308, 1, 0, 0, 0, 308, 309, 5, 42, 0, 0, 309, 37, 1, 0, 0, 0, 310, 318,
-		3, 42, 21, 0, 311, 312, 5, 41, 0, 0, 312, 315, 5, 57, 0, 0, 313, 314, 5,
-		43, 0, 0, 314, 316, 5, 57, 0, 0, 315, 313, 1, 0, 0, 0, 315, 316, 1, 0,
-		0, 0, 316, 317, 1, 0, 0, 0, 317, 319, 5, 42, 0, 0, 318, 311, 1, 0, 0, 0,
-		318, 319, 1, 0, 0, 0, 319, 39, 1, 0, 0, 0, 320, 321, 7, 4, 0, 0, 321, 41,
-		1, 0, 0, 0, 322, 323, 7, 5, 0, 0, 323, 43, 1, 0, 0, 0, 47, 46, 52, 59,
-		66, 71, 75, 84, 87, 90, 95, 100, 103, 105, 111, 116, 119, 125, 133, 138,
-		142, 144, 154, 158, 166, 173, 183, 191, 197, 204, 208, 216, 224, 230, 232,
-		239, 247, 253, 259, 265, 276, 285, 289, 297, 302, 306, 315, 318,
+		21, 7, 21, 2, 22, 7, 22, 2, 23, 7, 23, 2, 24, 7, 24, 1, 0, 1, 0, 3, 0,
+		53, 8, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 61, 8, 1, 10, 1, 12,
+		1, 64, 9, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5, 1, 71, 8, 1, 10, 1, 12, 1,
+		74, 9, 1, 3, 1, 76, 8, 1, 1, 1, 3, 1, 79, 8, 1, 1, 2, 1, 2, 1, 2, 1, 2,
+		1, 2, 3, 2, 86, 8, 2, 1, 3, 1, 3, 3, 3, 90, 8, 3, 1, 4, 1, 4, 3, 4, 94,
+		8, 4, 1, 4, 1, 4, 1, 4, 5, 4, 99, 8, 4, 10, 4, 12, 4, 102, 9, 4, 1, 4,
+		1, 4, 1, 4, 1, 4, 3, 4, 108, 8, 4, 1, 4, 1, 4, 1, 4, 3, 4, 113, 8, 4, 1,
+		4, 1, 4, 3, 4, 117, 8, 4, 1, 5, 1, 5, 1, 5, 3, 5, 122, 8, 5, 1, 5, 1, 5,
+		1, 5, 3, 5, 127, 8, 5, 1, 5, 3, 5, 130, 8, 5, 3, 5, 132, 8, 5, 1, 6, 1,
+		6, 5, 6, 136, 8, 6, 10, 6, 12, 6, 139, 9, 6, 1, 7, 1, 7, 3, 7, 143, 8,
+		7, 1, 7, 3, 7, 146, 8, 7, 1, 7, 1, 7, 1, 7, 1, 7, 3, 7, 152, 8, 7, 1, 7,
+		1, 7, 1, 7, 1, 7, 1, 7, 1, 7, 3, 7, 160, 8, 7, 1, 8, 1, 8, 1, 8, 3, 8,
+		165, 8, 8, 1, 8, 1, 8, 3, 8, 169, 8, 8, 3, 8, 171, 8, 8, 1, 8, 1, 8, 1,
+		8, 1, 8, 1, 8, 1, 8, 1, 8, 1, 8, 3, 8, 181, 8, 8, 1, 9, 1, 9, 3, 9, 185,
+		8, 9, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 1, 10, 3, 10, 193, 8, 10, 1, 11,
+		1, 11, 1, 11, 5, 11, 198, 8, 11, 10, 11, 12, 11, 201, 9, 11, 1, 12, 1,
+		12, 1, 13, 1, 13, 1, 13, 5, 13, 208, 8, 13, 10, 13, 12, 13, 211, 9, 13,
+		1, 14, 1, 14, 1, 14, 5, 14, 216, 8, 14, 10, 14, 12, 14, 219, 9, 14, 1,
+		15, 1, 15, 1, 15, 3, 15, 224, 8, 15, 1, 16, 1, 16, 1, 16, 1, 16, 1, 16,
+		3, 16, 231, 8, 16, 1, 16, 1, 16, 3, 16, 235, 8, 16, 1, 16, 1, 16, 1, 16,
+		1, 16, 1, 16, 1, 16, 3, 16, 243, 8, 16, 1, 16, 1, 16, 1, 16, 1, 16, 1,
+		16, 1, 16, 3, 16, 251, 8, 16, 1, 16, 1, 16, 1, 16, 1, 16, 3, 16, 257, 8,
+		16, 3, 16, 259, 8, 16, 1, 17, 1, 17, 1, 17, 5, 17, 264, 8, 17, 10, 17,
+		12, 17, 267, 9, 17, 1, 18, 1, 18, 1, 18, 5, 18, 272, 8, 18, 10, 18, 12,
+		18, 275, 9, 18, 1, 19, 1, 19, 1, 19, 3, 19, 280, 8, 19, 1, 20, 1, 20, 1,
+		20, 1, 20, 3, 20, 286, 8, 20, 1, 20, 1, 20, 1, 20, 1, 20, 3, 20, 292, 8,
+		20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 3, 20,
+		303, 8, 20, 1, 20, 1, 20, 1, 20, 1, 20, 1, 20, 4, 20, 310, 8, 20, 11, 20,
+		12, 20, 311, 1, 20, 1, 20, 3, 20, 316, 8, 20, 1, 20, 1, 20, 1, 20, 1, 20,
+		1, 20, 1, 20, 3, 20, 324, 8, 20, 1, 21, 1, 21, 1, 21, 3, 21, 329, 8, 21,
+		1, 21, 1, 21, 3, 21, 333, 8, 21, 1, 21, 1, 21, 1, 22, 1, 22, 1, 22, 1,
+		22, 1, 22, 3, 22, 342, 8, 22, 1, 22, 3, 22, 345, 8, 22, 1, 23, 1, 23, 1,
+		24, 1, 24, 1, 24, 0, 0, 25, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22,
+		24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 0, 7, 1, 0, 3, 4, 1,
+		0, 21, 22, 1, 0, 48, 53, 1, 0, 54, 55, 1, 0, 56, 58, 3, 0, 27, 27, 38,
+		39, 59, 60, 2, 0, 3, 3, 61, 62, 389, 0, 50, 1, 0, 0, 0, 2, 56, 1, 0, 0,
+		0, 4, 85, 1, 0, 0, 0, 6, 87, 1, 0, 0, 0, 8, 91, 1, 0, 0, 0, 10, 131, 1,
+		0, 0, 0, 12, 133, 1, 0, 0, 0, 14, 159, 1, 0, 0, 0, 16, 180, 1, 0, 0, 0,
+		18, 182, 1, 0, 0, 0, 20, 186, 1, 0, 0, 0, 22, 194, 1, 0, 0, 0, 24, 202,
+		1, 0, 0, 0, 26, 204, 1, 0, 0, 0, 28, 212, 1, 0, 0, 0, 30, 223, 1, 0, 0,
+		0, 32, 225, 1, 0, 0, 0, 34, 260, 1, 0, 0, 0, 36, 268, 1, 0, 0, 0, 38, 279,
+		1, 0, 0, 0, 40, 323, 1, 0, 0, 0, 42, 325, 1, 0, 0, 0, 44, 336, 1, 0, 0,
+		0, 46, 346, 1, 0, 0, 0, 48, 348, 1, 0, 0, 0, 50, 52, 3, 2, 1, 0, 51, 53,
+		5, 47, 0, 0, 52, 51, 1, 0, 0, 0, 52, 53, 1, 0, 0, 0, 53, 54, 1, 0, 0, 0,
+		54, 55, 5, 0, 0, 1, 55, 1, 1, 0, 0, 0, 56, 62, 3, 4, 2, 0, 57, 58, 3, 6,
+		3, 0, 58, 59, 3, 4, 2, 0, 59, 61, 1, 0, 0, 0, 60, 57, 1, 0, 0, 0, 61, 64,
+		1, 0, 0, 0, 62, 60, 1, 0, 0, 0, 62, 63, 1, 0, 0, 0, 63, 75, 1, 0, 0, 0,
+		64, 62, 1, 0, 0, 0, 65, 66, 5, 10, 0, 0, 66, 67, 5, 8, 0, 0, 67, 72, 3,
+		18, 9, 0, 68, 69, 5, 45, 0, 0, 69, 71, 3, 18, 9, 0, 70, 68, 1, 0, 0, 0,
+		71, 74, 1, 0, 0, 0, 72, 70, 1, 0, 0, 0, 72, 73, 1, 0, 0, 0, 73, 76, 1,
+		0, 0, 0, 74, 72, 1, 0, 0, 0, 75, 65, 1, 0, 0, 0, 75, 76, 1, 0, 0, 0, 76,
+		78, 1, 0, 0, 0, 77, 79, 3, 20, 10, 0, 78, 77, 1, 0, 0, 0, 78, 79, 1, 0,
+		0, 0, 79, 3, 1, 0, 0, 0, 80, 86, 3, 8, 4, 0, 81, 82, 5, 43, 0, 0, 82, 83,
+		3, 2, 1, 0, 83, 84, 5, 44, 0, 0, 84, 86, 1, 0, 0, 0, 85, 80, 1, 0, 0, 0,
+		85, 81, 1, 0, 0, 0, 86, 5, 1, 0, 0, 0, 87, 89, 5, 2, 0, 0, 88, 90, 7, 0,
+		0, 0, 89, 88, 1, 0, 0, 0, 89, 90, 1, 0, 0, 0, 90, 7, 1, 0, 0, 0, 91, 93,
+		5, 1, 0, 0, 92, 94, 5, 4, 0, 0, 93, 92, 1, 0, 0, 0, 93, 94, 1, 0, 0, 0,
+		94, 95, 1, 0, 0, 0, 95, 100, 3, 10, 5, 0, 96, 97, 5, 45, 0, 0, 97, 99,
+		3, 10, 5, 0, 98, 96, 1, 0, 0, 0, 99, 102, 1, 0, 0, 0, 100, 98, 1, 0, 0,
+		0, 100, 101, 1, 0, 0, 0, 101, 103, 1, 0, 0, 0, 102, 100, 1, 0, 0, 0, 103,
+		104, 5, 5, 0, 0, 104, 107, 3, 12, 6, 0, 105, 106, 5, 6, 0, 0, 106, 108,
+		3, 24, 12, 0, 107, 105, 1, 0, 0, 0, 107, 108, 1, 0, 0, 0, 108, 112, 1,
+		0, 0, 0, 109, 110, 5, 7, 0, 0, 110, 111, 5, 8, 0, 0, 111, 113, 3, 22, 11,
+		0, 112, 109, 1, 0, 0, 0, 112, 113, 1, 0, 0, 0, 113, 116, 1, 0, 0, 0, 114,
+		115, 5, 9, 0, 0, 115, 117, 3, 24, 12, 0, 116, 114, 1, 0, 0, 0, 116, 117,
+		1, 0, 0, 0, 117, 9, 1, 0, 0, 0, 118, 119, 3, 48, 24, 0, 119, 120, 5, 46,
+		0, 0, 120, 122, 1, 0, 0, 0, 121, 118, 1, 0, 0, 0, 121, 122, 1, 0, 0, 0,
+		122, 123, 1, 0, 0, 0, 123, 132, 5, 56, 0, 0, 124, 129, 3, 24, 12, 0, 125,
+		127, 5, 13, 0, 0, 126, 125, 1, 0, 0, 0, 126, 127, 1, 0, 0, 0, 127, 128,
+		1, 0, 0, 0, 128, 130, 3, 48, 24, 0, 129, 126, 1, 0, 0, 0, 129, 130, 1,
+		0, 0, 0, 130, 132, 1, 0, 0, 0, 131, 121, 1, 0, 0, 0, 131, 124, 1, 0, 0,
+		0, 132, 11, 1, 0, 0, 0, 133, 137, 3, 14, 7, 0, 134, 136, 3, 16, 8, 0, 135,
+		134, 1, 0, 0, 0, 136, 139, 1, 0, 0, 0, 137, 135, 1, 0, 0, 0, 137, 138,
+		1, 0, 0, 0, 138, 13, 1, 0, 0, 0, 139, 137, 1, 0, 0, 0, 140, 145, 5, 42,
+		0, 0, 141, 143, 5, 13, 0, 0, 142, 141, 1, 0, 0, 0, 142, 143, 1, 0, 0, 0,
+		143, 144, 1, 0, 0, 0, 144, 146, 3, 48, 24, 0, 145, 142, 1, 0, 0, 0, 145,
+		146, 1, 0, 0, 0, 146, 160, 1, 0, 0, 0, 147, 148, 5, 43, 0, 0, 148, 149,
+		3, 2, 1, 0, 149, 151, 5, 44, 0, 0, 150, 152, 5, 13, 0, 0, 151, 150, 1,
+		0, 0, 0, 151, 152, 1, 0, 0, 0, 152, 153, 1, 0, 0, 0, 153, 154, 3, 48, 24,
+		0, 154, 160, 1, 0, 0, 0, 155, 156, 5, 43, 0, 0, 156, 157, 3, 12, 6, 0,
+		157, 158, 5, 44, 0, 0, 158, 160, 1, 0, 0, 0, 159, 140, 1, 0, 0, 0, 159,
+		147, 1, 0, 0, 0, 159, 155, 1, 0, 0, 0, 160, 15, 1, 0, 0, 0, 161, 171, 5,
+		14, 0, 0, 162, 164, 5, 15, 0, 0, 163, 165, 5, 17, 0, 0, 164, 163, 1, 0,
+		0, 0, 164, 165, 1, 0, 0, 0, 165, 171, 1, 0, 0, 0, 166, 168, 5, 16, 0, 0,
+		167, 169, 5, 17, 0, 0, 168, 167, 1, 0, 0, 0, 168, 169, 1, 0, 0, 0, 169,
+		171, 1, 0, 0, 0, 170, 161, 1, 0, 0, 0, 170, 162, 1, 0, 0, 0, 170, 166,
+		1, 0, 0, 0, 170, 171, 1, 0, 0, 0, 171, 172, 1, 0, 0, 0, 172, 173, 5, 18,
+		0, 0, 173, 174, 3, 14, 7, 0, 174, 175, 5, 20, 0, 0, 175, 176, 3, 24, 12,
+		0, 176, 181, 1, 0, 0, 0, 177, 178, 5, 19, 0, 0, 178, 179, 5, 18, 0, 0,
+		179, 181, 3, 14, 7, 0, 180, 170, 1, 0, 0, 0, 180, 177, 1, 0, 0, 0, 181,
+		17, 1, 0, 0, 0, 182, 184, 3, 24, 12, 0, 183, 185, 7, 1, 0, 0, 184, 183,
+		1, 0, 0, 0, 184, 185, 1, 0, 0, 0, 185, 19, 1, 0, 0, 0, 186, 187, 5, 11,
+		0, 0, 187, 192, 5, 59, 0, 0, 188, 189, 5, 12, 0, 0, 189, 193, 5, 59, 0,
+		0, 190, 191, 5, 45, 0, 0, 191, 193, 5, 59, 0, 0, 192, 188, 1, 0, 0, 0,
+		192, 190, 1, 0, 0, 0, 192, 193, 1, 0, 0, 0, 193, 21, 1, 0, 0, 0, 194, 199,
+		3, 24, 12, 0, 195, 196, 5, 45, 0, 0, 196, 198, 3, 24, 12, 0, 197, 195,
+		1, 0, 0, 0, 198, 201, 1, 0, 0, 0, 199, 197, 1, 0, 0, 0, 199, 200, 1, 0,
+		0, 0, 200, 23, 1, 0, 0, 0, 201, 199, 1, 0, 0, 0, 202, 203, 3, 26, 13, 0,
+		203, 25, 1, 0, 0, 0, 204, 209, 3, 28, 14, 0, 205, 206, 5, 23, 0, 0, 206,
+		208, 3, 28, 14, 0, 207, 205, 1, 0, 0, 0, 208, 211, 1, 0, 0, 0, 209, 207,
+		1, 0, 0, 0, 209, 210, 1, 0, 0, 0, 210, 27, 1, 0, 0, 0, 211, 209, 1, 0,
+		0, 0, 212, 217, 3, 30, 15, 0, 213, 214, 5, 24, 0, 0, 214, 216, 3, 30, 15,
+		0, 215, 213, 1, 0, 0, 0, 216, 219, 1, 0, 0, 0, 217, 215, 1, 0, 0, 0, 217,
+		218, 1, 0, 0, 0, 218, 29, 1, 0, 0, 0, 219, 217, 1, 0, 0, 0, 220, 221, 5,
+		25, 0, 0, 221, 224, 3, 30, 15, 0, 222, 224, 3, 32, 16, 0, 223, 220, 1,
+		0, 0, 0, 223, 222, 1, 0, 0, 0, 224, 31, 1, 0, 0, 0, 225, 258, 3, 34, 17,
+		0, 226, 227, 7, 2, 0, 0, 227, 259, 3, 34, 17, 0, 228, 230, 5, 26, 0, 0,
+		229, 231, 5, 25, 0, 0, 230, 229, 1, 0, 0, 0, 230, 231, 1, 0, 0, 0, 231,
+		232, 1, 0, 0, 0, 232, 259, 5, 27, 0, 0, 233, 235, 5, 25, 0, 0, 234, 233,
+		1, 0, 0, 0, 234, 235, 1, 0, 0, 0, 235, 236, 1, 0, 0, 0, 236, 237, 5, 28,
+		0, 0, 237, 238, 3, 34, 17, 0, 238, 239, 5, 24, 0, 0, 239, 240, 3, 34, 17,
+		0, 240, 259, 1, 0, 0, 0, 241, 243, 5, 25, 0, 0, 242, 241, 1, 0, 0, 0, 242,
+		243, 1, 0, 0, 0, 243, 244, 1, 0, 0, 0, 244, 245, 5, 29, 0, 0, 245, 246,
+		5, 43, 0, 0, 246, 247, 3, 22, 11, 0, 247, 248, 5, 44, 0, 0, 248, 259, 1,
+		0, 0, 0, 249, 251, 5, 25, 0, 0, 250, 249, 1, 0, 0, 0, 250, 251, 1, 0, 0,
+		0, 251, 252, 1, 0, 0, 0, 252, 253, 5, 30, 0, 0, 253, 256, 3, 34, 17, 0,
+		254, 255, 5, 31, 0, 0, 255, 257, 5, 60, 0, 0, 256, 254, 1, 0, 0, 0, 256,
+		257, 1, 0, 0, 0, 257, 259, 1, 0, 0, 0, 258, 226, 1, 0, 0, 0, 258, 228,
+		1, 0, 0, 0, 258, 234, 1, 0, 0, 0, 258, 242, 1, 0, 0, 0, 258, 250, 1, 0,
+		0, 0, 258, 259, 1, 0, 0, 0, 259, 33, 1, 0, 0, 0, 260, 265, 3, 36, 18, 0,
+		261, 262, 7, 3, 0, 0, 262, 264, 3, 36, 18, 0, 263, 261, 1, 0, 0, 0, 264,
+		267, 1, 0, 0, 0, 265, 263, 1, 0, 0, 0, 265, 266, 1, 0, 0, 0, 266, 35, 1,
+		0, 0, 0, 267, 265, 1, 0, 0, 0, 268, 273, 3, 38, 19, 0, 269, 270, 7, 4,
+		0, 0, 270, 272, 3, 38, 19, 0, 271, 269, 1, 0, 0, 0, 272, 275, 1, 0, 0,
+		0, 273, 271, 1, 0, 0, 0, 273, 274, 1, 0, 0, 0, 274, 37, 1, 0, 0, 0, 275,
+		273, 1, 0, 0, 0, 276, 277, 7, 3, 0, 0, 277, 280, 3, 38, 19, 0, 278, 280,
+		3, 40, 20, 0, 279, 276, 1, 0, 0, 0, 279, 278, 1, 0, 0, 0, 280, 39, 1, 0,
+		0, 0, 281, 324, 3, 46, 23, 0, 282, 285, 3, 48, 24, 0, 283, 284, 5, 46,
+		0, 0, 284, 286, 3, 48, 24, 0, 285, 283, 1, 0, 0, 0, 285, 286, 1, 0, 0,
+		0, 286, 324, 1, 0, 0, 0, 287, 324, 3, 42, 21, 0, 288, 291, 5, 40, 0, 0,
+		289, 290, 5, 43, 0, 0, 290, 292, 5, 44, 0, 0, 291, 289, 1, 0, 0, 0, 291,
+		292, 1, 0, 0, 0, 292, 324, 1, 0, 0, 0, 293, 294, 5, 32, 0, 0, 294, 295,
+		5, 43, 0, 0, 295, 296, 3, 24, 12, 0, 296, 297, 5, 13, 0, 0, 297, 298, 3,
+		44, 22, 0, 298, 299, 5, 44, 0, 0, 299, 324, 1, 0, 0, 0, 300, 302, 5, 33,
+		0, 0, 301, 303, 3, 24, 12, 0, 302, 301, 1, 0, 0, 0, 302, 303, 1, 0, 0,
+		0, 303, 309, 1, 0, 0, 0, 304, 305, 5, 34, 0, 0, 305, 306, 3, 24, 12, 0,
+		306, 307, 5, 35, 0, 0, 307, 308, 3, 24, 12, 0, 308, 310, 1, 0, 0, 0, 309,
+		304, 1, 0, 0, 0, 310, 311, 1, 0, 0, 0, 311, 309, 1, 0, 0, 0, 311, 312,
+		1, 0, 0, 0, 312, 315, 1, 0, 0, 0, 313, 314, 5, 36, 0, 0, 314, 316, 3, 24,
+		12, 0, 315, 313, 1, 0, 0, 0, 315, 316, 1, 0, 0, 0, 316, 317, 1, 0, 0, 0,
+		317, 318, 5, 37, 0, 0, 318, 324, 1, 0, 0, 0, 319, 320, 5, 43, 0, 0, 320,
+		321, 3, 24, 12, 0, 321, 322, 5, 44, 0, 0, 322, 324, 1, 0, 0, 0, 323, 281,
+		1, 0, 0, 0, 323, 282, 1, 0, 0, 0, 323, 287, 1, 0, 0, 0, 323, 288, 1, 0,
+		0, 0, 323, 293, 1, 0, 0, 0, 323, 300, 1, 0, 0, 0, 323, 319, 1, 0, 0, 0,
+		324, 41, 1, 0, 0, 0, 325, 326, 3, 48, 24, 0, 326, 328, 5, 43, 0, 0, 327,
+		329, 5, 4, 0, 0, 328, 327, 1, 0, 0, 0, 328, 329, 1, 0, 0, 0, 329, 332,
+		1, 0, 0, 0, 330, 333, 5, 56, 0, 0, 331, 333, 3, 22, 11, 0, 332, 330, 1,
+		0, 0, 0, 332, 331, 1, 0, 0, 0, 332, 333, 1, 0, 0, 0, 333, 334, 1, 0, 0,
+		0, 334, 335, 5, 44, 0, 0, 335, 43, 1, 0, 0, 0, 336, 344, 3, 48, 24, 0,
+		337, 338, 5, 43, 0, 0, 338, 341, 5, 59, 0, 0, 339, 340, 5, 45, 0, 0, 340,
+		342, 5, 59, 0, 0, 341, 339, 1, 0, 0, 0, 341, 342, 1, 0, 0, 0, 342, 343,
+		1, 0, 0, 0, 343, 345, 5, 44, 0, 0, 344, 337, 1, 0, 0, 0, 344, 345, 1, 0,
+		0, 0, 345, 45, 1, 0, 0, 0, 346, 347, 7, 5, 0, 0, 347, 47, 1, 0, 0, 0, 348,
+		349, 7, 6, 0, 0, 349, 49, 1, 0, 0, 0, 50, 52, 62, 72, 75, 78, 85, 89, 93,
+		100, 107, 112, 116, 121, 126, 129, 131, 137, 142, 145, 151, 159, 164, 168,
+		170, 180, 184, 192, 199, 209, 217, 223, 230, 234, 242, 250, 256, 258, 265,
+		273, 279, 285, 291, 302, 311, 315, 323, 328, 332, 341, 344,
 	}
 	deserializer := antlr.NewATNDeserializer(nil)
 	staticData.atn = deserializer.Deserialize(staticData.serializedATN)
@@ -249,95 +262,100 @@ func NewSqlBaseParser(input antlr.TokenStream) *SqlBaseParser {
 const (
 	SqlBaseParserEOF               = antlr.TokenEOF
 	SqlBaseParserSELECT            = 1
-	SqlBaseParserDISTINCT          = 2
-	SqlBaseParserFROM              = 3
-	SqlBaseParserWHERE             = 4
-	SqlBaseParserGROUP             = 5
-	SqlBaseParserBY                = 6
-	SqlBaseParserHAVING            = 7
-	SqlBaseParserORDER             = 8
-	SqlBaseParserLIMIT             = 9
-	SqlBaseParserOFFSET            = 10
-	SqlBaseParserAS                = 11
-	SqlBaseParserINNER             = 12
-	SqlBaseParserLEFT              = 13
-	SqlBaseParserRIGHT             = 14
-	SqlBaseParserOUTER             = 15
-	SqlBaseParserJOIN              = 16
-	SqlBaseParserCROSS             = 17
-	SqlBaseParserON                = 18
-	SqlBaseParserASC               = 19
-	SqlBaseParserDESC              = 20
-	SqlBaseParserOR                = 21
-	SqlBaseParserAND               = 22
-	SqlBaseParserNOT               = 23
-	SqlBaseParserIS                = 24
-	SqlBaseParserNULL              = 25
-	SqlBaseParserBETWEEN           = 26
-	SqlBaseParserIN                = 27
-	SqlBaseParserLIKE              = 28
-	SqlBaseParserESCAPE            = 29
-	SqlBaseParserCAST              = 30
-	SqlBaseParserCASE              = 31
-	SqlBaseParserWHEN              = 32
-	SqlBaseParserTHEN              = 33
-	SqlBaseParserELSE              = 34
-	SqlBaseParserEND               = 35
-	SqlBaseParserTRUE              = 36
-	SqlBaseParserFALSE             = 37
-	SqlBaseParserCURRENT_TIMESTAMP = 38
-	SqlBaseParserUNSUPPORTED       = 39
-	SqlBaseParserRESOURCE          = 40
-	SqlBaseParserLPAREN            = 41
-	SqlBaseParserRPAREN            = 42
-	SqlBaseParserCOMMA             = 43
-	SqlBaseParserDOT               = 44
-	SqlBaseParserSEMICOLON         = 45
-	SqlBaseParserEQ                = 46
-	SqlBaseParserNEQ               = 47
-	SqlBaseParserLTE               = 48
-	SqlBaseParserGTE               = 49
-	SqlBaseParserLT                = 50
-	SqlBaseParserGT                = 51
-	SqlBaseParserPLUS              = 52
-	SqlBaseParserMINUS             = 53
-	SqlBaseParserSTAR              = 54
-	SqlBaseParserSLASH             = 55
-	SqlBaseParserPERCENT           = 56
-	SqlBaseParserNUMBER            = 57
-	SqlBaseParserSTRING            = 58
-	SqlBaseParserQUOTED_IDENTIFIER = 59
-	SqlBaseParserIDENTIFIER        = 60
-	SqlBaseParserFORBIDDEN_COMMENT = 61
-	SqlBaseParserBLOCK_COMMENT     = 62
-	SqlBaseParserLINE_COMMENT      = 63
-	SqlBaseParserWS                = 64
+	SqlBaseParserUNION             = 2
+	SqlBaseParserALL               = 3
+	SqlBaseParserDISTINCT          = 4
+	SqlBaseParserFROM              = 5
+	SqlBaseParserWHERE             = 6
+	SqlBaseParserGROUP             = 7
+	SqlBaseParserBY                = 8
+	SqlBaseParserHAVING            = 9
+	SqlBaseParserORDER             = 10
+	SqlBaseParserLIMIT             = 11
+	SqlBaseParserOFFSET            = 12
+	SqlBaseParserAS                = 13
+	SqlBaseParserINNER             = 14
+	SqlBaseParserLEFT              = 15
+	SqlBaseParserRIGHT             = 16
+	SqlBaseParserOUTER             = 17
+	SqlBaseParserJOIN              = 18
+	SqlBaseParserCROSS             = 19
+	SqlBaseParserON                = 20
+	SqlBaseParserASC               = 21
+	SqlBaseParserDESC              = 22
+	SqlBaseParserOR                = 23
+	SqlBaseParserAND               = 24
+	SqlBaseParserNOT               = 25
+	SqlBaseParserIS                = 26
+	SqlBaseParserNULL              = 27
+	SqlBaseParserBETWEEN           = 28
+	SqlBaseParserIN                = 29
+	SqlBaseParserLIKE              = 30
+	SqlBaseParserESCAPE            = 31
+	SqlBaseParserCAST              = 32
+	SqlBaseParserCASE              = 33
+	SqlBaseParserWHEN              = 34
+	SqlBaseParserTHEN              = 35
+	SqlBaseParserELSE              = 36
+	SqlBaseParserEND               = 37
+	SqlBaseParserTRUE              = 38
+	SqlBaseParserFALSE             = 39
+	SqlBaseParserCURRENT_TIMESTAMP = 40
+	SqlBaseParserUNSUPPORTED       = 41
+	SqlBaseParserRESOURCE          = 42
+	SqlBaseParserLPAREN            = 43
+	SqlBaseParserRPAREN            = 44
+	SqlBaseParserCOMMA             = 45
+	SqlBaseParserDOT               = 46
+	SqlBaseParserSEMICOLON         = 47
+	SqlBaseParserEQ                = 48
+	SqlBaseParserNEQ               = 49
+	SqlBaseParserLTE               = 50
+	SqlBaseParserGTE               = 51
+	SqlBaseParserLT                = 52
+	SqlBaseParserGT                = 53
+	SqlBaseParserPLUS              = 54
+	SqlBaseParserMINUS             = 55
+	SqlBaseParserSTAR              = 56
+	SqlBaseParserSLASH             = 57
+	SqlBaseParserPERCENT           = 58
+	SqlBaseParserNUMBER            = 59
+	SqlBaseParserSTRING            = 60
+	SqlBaseParserQUOTED_IDENTIFIER = 61
+	SqlBaseParserIDENTIFIER        = 62
+	SqlBaseParserFORBIDDEN_COMMENT = 63
+	SqlBaseParserBLOCK_COMMENT     = 64
+	SqlBaseParserLINE_COMMENT      = 65
+	SqlBaseParserWS                = 66
 )
 
 // SqlBaseParser rules.
 const (
 	SqlBaseParserRULE_statement                = 0
-	SqlBaseParserRULE_selectQuery              = 1
-	SqlBaseParserRULE_selectItem               = 2
-	SqlBaseParserRULE_relation                 = 3
-	SqlBaseParserRULE_relationPrimary          = 4
-	SqlBaseParserRULE_joinPart                 = 5
-	SqlBaseParserRULE_sortItem                 = 6
-	SqlBaseParserRULE_limitClause              = 7
-	SqlBaseParserRULE_expressionList           = 8
-	SqlBaseParserRULE_expression               = 9
-	SqlBaseParserRULE_orExpression             = 10
-	SqlBaseParserRULE_andExpression            = 11
-	SqlBaseParserRULE_notExpression            = 12
-	SqlBaseParserRULE_predicate                = 13
-	SqlBaseParserRULE_additiveExpression       = 14
-	SqlBaseParserRULE_multiplicativeExpression = 15
-	SqlBaseParserRULE_unaryExpression          = 16
-	SqlBaseParserRULE_primaryExpression        = 17
-	SqlBaseParserRULE_functionCall             = 18
-	SqlBaseParserRULE_typeName                 = 19
-	SqlBaseParserRULE_literal                  = 20
-	SqlBaseParserRULE_identifier               = 21
+	SqlBaseParserRULE_queryExpression          = 1
+	SqlBaseParserRULE_queryTerm                = 2
+	SqlBaseParserRULE_unionOperator            = 3
+	SqlBaseParserRULE_selectQuery              = 4
+	SqlBaseParserRULE_selectItem               = 5
+	SqlBaseParserRULE_relation                 = 6
+	SqlBaseParserRULE_relationPrimary          = 7
+	SqlBaseParserRULE_joinPart                 = 8
+	SqlBaseParserRULE_sortItem                 = 9
+	SqlBaseParserRULE_limitClause              = 10
+	SqlBaseParserRULE_expressionList           = 11
+	SqlBaseParserRULE_expression               = 12
+	SqlBaseParserRULE_orExpression             = 13
+	SqlBaseParserRULE_andExpression            = 14
+	SqlBaseParserRULE_notExpression            = 15
+	SqlBaseParserRULE_predicate                = 16
+	SqlBaseParserRULE_additiveExpression       = 17
+	SqlBaseParserRULE_multiplicativeExpression = 18
+	SqlBaseParserRULE_unaryExpression          = 19
+	SqlBaseParserRULE_primaryExpression        = 20
+	SqlBaseParserRULE_functionCall             = 21
+	SqlBaseParserRULE_typeName                 = 22
+	SqlBaseParserRULE_literal                  = 23
+	SqlBaseParserRULE_identifier               = 24
 )
 
 // IStatementContext is an interface to support dynamic dispatch.
@@ -348,7 +366,7 @@ type IStatementContext interface {
 	GetParser() antlr.Parser
 
 	// Getter signatures
-	SelectQuery() ISelectQueryContext
+	QueryExpression() IQueryExpressionContext
 	EOF() antlr.TerminalNode
 	SEMICOLON() antlr.TerminalNode
 
@@ -388,10 +406,10 @@ func NewStatementContext(parser antlr.Parser, parent antlr.ParserRuleContext, in
 
 func (s *StatementContext) GetParser() antlr.Parser { return s.parser }
 
-func (s *StatementContext) SelectQuery() ISelectQueryContext {
+func (s *StatementContext) QueryExpression() IQueryExpressionContext {
 	var t antlr.RuleContext
 	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(ISelectQueryContext); ok {
+		if _, ok := ctx.(IQueryExpressionContext); ok {
 			t = ctx.(antlr.RuleContext)
 			break
 		}
@@ -401,7 +419,7 @@ func (s *StatementContext) SelectQuery() ISelectQueryContext {
 		return nil
 	}
 
-	return t.(ISelectQueryContext)
+	return t.(IQueryExpressionContext)
 }
 
 func (s *StatementContext) EOF() antlr.TerminalNode {
@@ -437,10 +455,10 @@ func (p *SqlBaseParser) Statement() (localctx IStatementContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(44)
-		p.SelectQuery()
+		p.SetState(50)
+		p.QueryExpression()
 	}
-	p.SetState(46)
+	p.SetState(52)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -449,7 +467,7 @@ func (p *SqlBaseParser) Statement() (localctx IStatementContext) {
 
 	if _la == SqlBaseParserSEMICOLON {
 		{
-			p.SetState(45)
+			p.SetState(51)
 			p.Match(SqlBaseParserSEMICOLON)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -459,12 +477,653 @@ func (p *SqlBaseParser) Statement() (localctx IStatementContext) {
 
 	}
 	{
-		p.SetState(48)
+		p.SetState(54)
 		p.Match(SqlBaseParserEOF)
 		if p.HasError() {
 			// Recognition error - abort rule
 			goto errorExit
 		}
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IQueryExpressionContext is an interface to support dynamic dispatch.
+type IQueryExpressionContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	AllQueryTerm() []IQueryTermContext
+	QueryTerm(i int) IQueryTermContext
+	AllUnionOperator() []IUnionOperatorContext
+	UnionOperator(i int) IUnionOperatorContext
+	ORDER() antlr.TerminalNode
+	BY() antlr.TerminalNode
+	AllSortItem() []ISortItemContext
+	SortItem(i int) ISortItemContext
+	LimitClause() ILimitClauseContext
+	AllCOMMA() []antlr.TerminalNode
+	COMMA(i int) antlr.TerminalNode
+
+	// IsQueryExpressionContext differentiates from other interfaces.
+	IsQueryExpressionContext()
+}
+
+type QueryExpressionContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyQueryExpressionContext() *QueryExpressionContext {
+	var p = new(QueryExpressionContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_queryExpression
+	return p
+}
+
+func InitEmptyQueryExpressionContext(p *QueryExpressionContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_queryExpression
+}
+
+func (*QueryExpressionContext) IsQueryExpressionContext() {}
+
+func NewQueryExpressionContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *QueryExpressionContext {
+	var p = new(QueryExpressionContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SqlBaseParserRULE_queryExpression
+
+	return p
+}
+
+func (s *QueryExpressionContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *QueryExpressionContext) AllQueryTerm() []IQueryTermContext {
+	children := s.GetChildren()
+	len := 0
+	for _, ctx := range children {
+		if _, ok := ctx.(IQueryTermContext); ok {
+			len++
+		}
+	}
+
+	tst := make([]IQueryTermContext, len)
+	i := 0
+	for _, ctx := range children {
+		if t, ok := ctx.(IQueryTermContext); ok {
+			tst[i] = t.(IQueryTermContext)
+			i++
+		}
+	}
+
+	return tst
+}
+
+func (s *QueryExpressionContext) QueryTerm(i int) IQueryTermContext {
+	var t antlr.RuleContext
+	j := 0
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IQueryTermContext); ok {
+			if j == i {
+				t = ctx.(antlr.RuleContext)
+				break
+			}
+			j++
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IQueryTermContext)
+}
+
+func (s *QueryExpressionContext) AllUnionOperator() []IUnionOperatorContext {
+	children := s.GetChildren()
+	len := 0
+	for _, ctx := range children {
+		if _, ok := ctx.(IUnionOperatorContext); ok {
+			len++
+		}
+	}
+
+	tst := make([]IUnionOperatorContext, len)
+	i := 0
+	for _, ctx := range children {
+		if t, ok := ctx.(IUnionOperatorContext); ok {
+			tst[i] = t.(IUnionOperatorContext)
+			i++
+		}
+	}
+
+	return tst
+}
+
+func (s *QueryExpressionContext) UnionOperator(i int) IUnionOperatorContext {
+	var t antlr.RuleContext
+	j := 0
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IUnionOperatorContext); ok {
+			if j == i {
+				t = ctx.(antlr.RuleContext)
+				break
+			}
+			j++
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IUnionOperatorContext)
+}
+
+func (s *QueryExpressionContext) ORDER() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserORDER, 0)
+}
+
+func (s *QueryExpressionContext) BY() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserBY, 0)
+}
+
+func (s *QueryExpressionContext) AllSortItem() []ISortItemContext {
+	children := s.GetChildren()
+	len := 0
+	for _, ctx := range children {
+		if _, ok := ctx.(ISortItemContext); ok {
+			len++
+		}
+	}
+
+	tst := make([]ISortItemContext, len)
+	i := 0
+	for _, ctx := range children {
+		if t, ok := ctx.(ISortItemContext); ok {
+			tst[i] = t.(ISortItemContext)
+			i++
+		}
+	}
+
+	return tst
+}
+
+func (s *QueryExpressionContext) SortItem(i int) ISortItemContext {
+	var t antlr.RuleContext
+	j := 0
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ISortItemContext); ok {
+			if j == i {
+				t = ctx.(antlr.RuleContext)
+				break
+			}
+			j++
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ISortItemContext)
+}
+
+func (s *QueryExpressionContext) LimitClause() ILimitClauseContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ILimitClauseContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ILimitClauseContext)
+}
+
+func (s *QueryExpressionContext) AllCOMMA() []antlr.TerminalNode {
+	return s.GetTokens(SqlBaseParserCOMMA)
+}
+
+func (s *QueryExpressionContext) COMMA(i int) antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserCOMMA, i)
+}
+
+func (s *QueryExpressionContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *QueryExpressionContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *QueryExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SqlBaseVisitor:
+		return t.VisitQueryExpression(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SqlBaseParser) QueryExpression() (localctx IQueryExpressionContext) {
+	localctx = NewQueryExpressionContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 2, SqlBaseParserRULE_queryExpression)
+	var _la int
+
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(56)
+		p.QueryTerm()
+	}
+	p.SetState(62)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+	_la = p.GetTokenStream().LA(1)
+
+	for _la == SqlBaseParserUNION {
+		{
+			p.SetState(57)
+			p.UnionOperator()
+		}
+		{
+			p.SetState(58)
+			p.QueryTerm()
+		}
+
+		p.SetState(64)
+		p.GetErrorHandler().Sync(p)
+		if p.HasError() {
+			goto errorExit
+		}
+		_la = p.GetTokenStream().LA(1)
+	}
+	p.SetState(75)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+	_la = p.GetTokenStream().LA(1)
+
+	if _la == SqlBaseParserORDER {
+		{
+			p.SetState(65)
+			p.Match(SqlBaseParserORDER)
+			if p.HasError() {
+				// Recognition error - abort rule
+				goto errorExit
+			}
+		}
+		{
+			p.SetState(66)
+			p.Match(SqlBaseParserBY)
+			if p.HasError() {
+				// Recognition error - abort rule
+				goto errorExit
+			}
+		}
+		{
+			p.SetState(67)
+			p.SortItem()
+		}
+		p.SetState(72)
+		p.GetErrorHandler().Sync(p)
+		if p.HasError() {
+			goto errorExit
+		}
+		_la = p.GetTokenStream().LA(1)
+
+		for _la == SqlBaseParserCOMMA {
+			{
+				p.SetState(68)
+				p.Match(SqlBaseParserCOMMA)
+				if p.HasError() {
+					// Recognition error - abort rule
+					goto errorExit
+				}
+			}
+			{
+				p.SetState(69)
+				p.SortItem()
+			}
+
+			p.SetState(74)
+			p.GetErrorHandler().Sync(p)
+			if p.HasError() {
+				goto errorExit
+			}
+			_la = p.GetTokenStream().LA(1)
+		}
+
+	}
+	p.SetState(78)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+	_la = p.GetTokenStream().LA(1)
+
+	if _la == SqlBaseParserLIMIT {
+		{
+			p.SetState(77)
+			p.LimitClause()
+		}
+
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IQueryTermContext is an interface to support dynamic dispatch.
+type IQueryTermContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	SelectQuery() ISelectQueryContext
+	LPAREN() antlr.TerminalNode
+	QueryExpression() IQueryExpressionContext
+	RPAREN() antlr.TerminalNode
+
+	// IsQueryTermContext differentiates from other interfaces.
+	IsQueryTermContext()
+}
+
+type QueryTermContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyQueryTermContext() *QueryTermContext {
+	var p = new(QueryTermContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_queryTerm
+	return p
+}
+
+func InitEmptyQueryTermContext(p *QueryTermContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_queryTerm
+}
+
+func (*QueryTermContext) IsQueryTermContext() {}
+
+func NewQueryTermContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *QueryTermContext {
+	var p = new(QueryTermContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SqlBaseParserRULE_queryTerm
+
+	return p
+}
+
+func (s *QueryTermContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *QueryTermContext) SelectQuery() ISelectQueryContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ISelectQueryContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ISelectQueryContext)
+}
+
+func (s *QueryTermContext) LPAREN() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserLPAREN, 0)
+}
+
+func (s *QueryTermContext) QueryExpression() IQueryExpressionContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IQueryExpressionContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IQueryExpressionContext)
+}
+
+func (s *QueryTermContext) RPAREN() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserRPAREN, 0)
+}
+
+func (s *QueryTermContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *QueryTermContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *QueryTermContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SqlBaseVisitor:
+		return t.VisitQueryTerm(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SqlBaseParser) QueryTerm() (localctx IQueryTermContext) {
+	localctx = NewQueryTermContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 4, SqlBaseParserRULE_queryTerm)
+	p.SetState(85)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+
+	switch p.GetTokenStream().LA(1) {
+	case SqlBaseParserSELECT:
+		p.EnterOuterAlt(localctx, 1)
+		{
+			p.SetState(80)
+			p.SelectQuery()
+		}
+
+	case SqlBaseParserLPAREN:
+		p.EnterOuterAlt(localctx, 2)
+		{
+			p.SetState(81)
+			p.Match(SqlBaseParserLPAREN)
+			if p.HasError() {
+				// Recognition error - abort rule
+				goto errorExit
+			}
+		}
+		{
+			p.SetState(82)
+			p.QueryExpression()
+		}
+		{
+			p.SetState(83)
+			p.Match(SqlBaseParserRPAREN)
+			if p.HasError() {
+				// Recognition error - abort rule
+				goto errorExit
+			}
+		}
+
+	default:
+		p.SetError(antlr.NewNoViableAltException(p, nil, nil, nil, nil, nil))
+		goto errorExit
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IUnionOperatorContext is an interface to support dynamic dispatch.
+type IUnionOperatorContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	UNION() antlr.TerminalNode
+	ALL() antlr.TerminalNode
+	DISTINCT() antlr.TerminalNode
+
+	// IsUnionOperatorContext differentiates from other interfaces.
+	IsUnionOperatorContext()
+}
+
+type UnionOperatorContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyUnionOperatorContext() *UnionOperatorContext {
+	var p = new(UnionOperatorContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_unionOperator
+	return p
+}
+
+func InitEmptyUnionOperatorContext(p *UnionOperatorContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SqlBaseParserRULE_unionOperator
+}
+
+func (*UnionOperatorContext) IsUnionOperatorContext() {}
+
+func NewUnionOperatorContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *UnionOperatorContext {
+	var p = new(UnionOperatorContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SqlBaseParserRULE_unionOperator
+
+	return p
+}
+
+func (s *UnionOperatorContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *UnionOperatorContext) UNION() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserUNION, 0)
+}
+
+func (s *UnionOperatorContext) ALL() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserALL, 0)
+}
+
+func (s *UnionOperatorContext) DISTINCT() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserDISTINCT, 0)
+}
+
+func (s *UnionOperatorContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *UnionOperatorContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *UnionOperatorContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SqlBaseVisitor:
+		return t.VisitUnionOperator(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SqlBaseParser) UnionOperator() (localctx IUnionOperatorContext) {
+	localctx = NewUnionOperatorContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 6, SqlBaseParserRULE_unionOperator)
+	var _la int
+
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(87)
+		p.Match(SqlBaseParserUNION)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	p.SetState(89)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+	_la = p.GetTokenStream().LA(1)
+
+	if _la == SqlBaseParserALL || _la == SqlBaseParserDISTINCT {
+		{
+			p.SetState(88)
+			_la = p.GetTokenStream().LA(1)
+
+			if !(_la == SqlBaseParserALL || _la == SqlBaseParserDISTINCT) {
+				p.GetErrorHandler().RecoverInline(p)
+			} else {
+				p.GetErrorHandler().ReportMatch(p)
+				p.Consume()
+			}
+		}
+
 	}
 
 errorExit:
@@ -500,14 +1159,9 @@ type ISelectQueryContext interface {
 	AllExpression() []IExpressionContext
 	Expression(i int) IExpressionContext
 	GROUP() antlr.TerminalNode
-	AllBY() []antlr.TerminalNode
-	BY(i int) antlr.TerminalNode
+	BY() antlr.TerminalNode
 	ExpressionList() IExpressionListContext
 	HAVING() antlr.TerminalNode
-	ORDER() antlr.TerminalNode
-	AllSortItem() []ISortItemContext
-	SortItem(i int) ISortItemContext
-	LimitClause() ILimitClauseContext
 
 	// IsSelectQueryContext differentiates from other interfaces.
 	IsSelectQueryContext()
@@ -671,12 +1325,8 @@ func (s *SelectQueryContext) GROUP() antlr.TerminalNode {
 	return s.GetToken(SqlBaseParserGROUP, 0)
 }
 
-func (s *SelectQueryContext) AllBY() []antlr.TerminalNode {
-	return s.GetTokens(SqlBaseParserBY)
-}
-
-func (s *SelectQueryContext) BY(i int) antlr.TerminalNode {
-	return s.GetToken(SqlBaseParserBY, i)
+func (s *SelectQueryContext) BY() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserBY, 0)
 }
 
 func (s *SelectQueryContext) ExpressionList() IExpressionListContext {
@@ -699,67 +1349,6 @@ func (s *SelectQueryContext) HAVING() antlr.TerminalNode {
 	return s.GetToken(SqlBaseParserHAVING, 0)
 }
 
-func (s *SelectQueryContext) ORDER() antlr.TerminalNode {
-	return s.GetToken(SqlBaseParserORDER, 0)
-}
-
-func (s *SelectQueryContext) AllSortItem() []ISortItemContext {
-	children := s.GetChildren()
-	len := 0
-	for _, ctx := range children {
-		if _, ok := ctx.(ISortItemContext); ok {
-			len++
-		}
-	}
-
-	tst := make([]ISortItemContext, len)
-	i := 0
-	for _, ctx := range children {
-		if t, ok := ctx.(ISortItemContext); ok {
-			tst[i] = t.(ISortItemContext)
-			i++
-		}
-	}
-
-	return tst
-}
-
-func (s *SelectQueryContext) SortItem(i int) ISortItemContext {
-	var t antlr.RuleContext
-	j := 0
-	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(ISortItemContext); ok {
-			if j == i {
-				t = ctx.(antlr.RuleContext)
-				break
-			}
-			j++
-		}
-	}
-
-	if t == nil {
-		return nil
-	}
-
-	return t.(ISortItemContext)
-}
-
-func (s *SelectQueryContext) LimitClause() ILimitClauseContext {
-	var t antlr.RuleContext
-	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(ILimitClauseContext); ok {
-			t = ctx.(antlr.RuleContext)
-			break
-		}
-	}
-
-	if t == nil {
-		return nil
-	}
-
-	return t.(ILimitClauseContext)
-}
-
 func (s *SelectQueryContext) GetRuleContext() antlr.RuleContext {
 	return s
 }
@@ -780,19 +1369,19 @@ func (s *SelectQueryContext) Accept(visitor antlr.ParseTreeVisitor) interface{} 
 
 func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 	localctx = NewSelectQueryContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 2, SqlBaseParserRULE_selectQuery)
+	p.EnterRule(localctx, 8, SqlBaseParserRULE_selectQuery)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(50)
+		p.SetState(91)
 		p.Match(SqlBaseParserSELECT)
 		if p.HasError() {
 			// Recognition error - abort rule
 			goto errorExit
 		}
 	}
-	p.SetState(52)
+	p.SetState(93)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -801,7 +1390,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	if _la == SqlBaseParserDISTINCT {
 		{
-			p.SetState(51)
+			p.SetState(92)
 			p.Match(SqlBaseParserDISTINCT)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -811,10 +1400,10 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	}
 	{
-		p.SetState(54)
+		p.SetState(95)
 		p.SelectItem()
 	}
-	p.SetState(59)
+	p.SetState(100)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -823,7 +1412,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	for _la == SqlBaseParserCOMMA {
 		{
-			p.SetState(55)
+			p.SetState(96)
 			p.Match(SqlBaseParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -831,11 +1420,11 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 			}
 		}
 		{
-			p.SetState(56)
+			p.SetState(97)
 			p.SelectItem()
 		}
 
-		p.SetState(61)
+		p.SetState(102)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -843,7 +1432,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 		_la = p.GetTokenStream().LA(1)
 	}
 	{
-		p.SetState(62)
+		p.SetState(103)
 		p.Match(SqlBaseParserFROM)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -851,10 +1440,10 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 		}
 	}
 	{
-		p.SetState(63)
+		p.SetState(104)
 		p.Relation()
 	}
-	p.SetState(66)
+	p.SetState(107)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -863,7 +1452,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	if _la == SqlBaseParserWHERE {
 		{
-			p.SetState(64)
+			p.SetState(105)
 			p.Match(SqlBaseParserWHERE)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -871,12 +1460,12 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 			}
 		}
 		{
-			p.SetState(65)
+			p.SetState(106)
 			p.Expression()
 		}
 
 	}
-	p.SetState(71)
+	p.SetState(112)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -885,7 +1474,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	if _la == SqlBaseParserGROUP {
 		{
-			p.SetState(68)
+			p.SetState(109)
 			p.Match(SqlBaseParserGROUP)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -893,7 +1482,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 			}
 		}
 		{
-			p.SetState(69)
+			p.SetState(110)
 			p.Match(SqlBaseParserBY)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -901,12 +1490,12 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 			}
 		}
 		{
-			p.SetState(70)
+			p.SetState(111)
 			p.ExpressionList()
 		}
 
 	}
-	p.SetState(75)
+	p.SetState(116)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -915,7 +1504,7 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 
 	if _la == SqlBaseParserHAVING {
 		{
-			p.SetState(73)
+			p.SetState(114)
 			p.Match(SqlBaseParserHAVING)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -923,80 +1512,8 @@ func (p *SqlBaseParser) SelectQuery() (localctx ISelectQueryContext) {
 			}
 		}
 		{
-			p.SetState(74)
+			p.SetState(115)
 			p.Expression()
-		}
-
-	}
-	p.SetState(87)
-	p.GetErrorHandler().Sync(p)
-	if p.HasError() {
-		goto errorExit
-	}
-	_la = p.GetTokenStream().LA(1)
-
-	if _la == SqlBaseParserORDER {
-		{
-			p.SetState(77)
-			p.Match(SqlBaseParserORDER)
-			if p.HasError() {
-				// Recognition error - abort rule
-				goto errorExit
-			}
-		}
-		{
-			p.SetState(78)
-			p.Match(SqlBaseParserBY)
-			if p.HasError() {
-				// Recognition error - abort rule
-				goto errorExit
-			}
-		}
-		{
-			p.SetState(79)
-			p.SortItem()
-		}
-		p.SetState(84)
-		p.GetErrorHandler().Sync(p)
-		if p.HasError() {
-			goto errorExit
-		}
-		_la = p.GetTokenStream().LA(1)
-
-		for _la == SqlBaseParserCOMMA {
-			{
-				p.SetState(80)
-				p.Match(SqlBaseParserCOMMA)
-				if p.HasError() {
-					// Recognition error - abort rule
-					goto errorExit
-				}
-			}
-			{
-				p.SetState(81)
-				p.SortItem()
-			}
-
-			p.SetState(86)
-			p.GetErrorHandler().Sync(p)
-			if p.HasError() {
-				goto errorExit
-			}
-			_la = p.GetTokenStream().LA(1)
-		}
-
-	}
-	p.SetState(90)
-	p.GetErrorHandler().Sync(p)
-	if p.HasError() {
-		goto errorExit
-	}
-	_la = p.GetTokenStream().LA(1)
-
-	if _la == SqlBaseParserLIMIT {
-		{
-			p.SetState(89)
-			p.LimitClause()
 		}
 
 	}
@@ -1128,32 +1645,32 @@ func (s *SelectItemContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) SelectItem() (localctx ISelectItemContext) {
 	localctx = NewSelectItemContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 4, SqlBaseParserRULE_selectItem)
+	p.EnterRule(localctx, 10, SqlBaseParserRULE_selectItem)
 	var _la int
 
-	p.SetState(105)
+	p.SetState(131)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
 	}
 
-	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 12, p.GetParserRuleContext()) {
+	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 15, p.GetParserRuleContext()) {
 	case 1:
 		p.EnterOuterAlt(localctx, 1)
-		p.SetState(95)
+		p.SetState(121)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
 		}
 		_la = p.GetTokenStream().LA(1)
 
-		if _la == SqlBaseParserQUOTED_IDENTIFIER || _la == SqlBaseParserIDENTIFIER {
+		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&6917529027641081864) != 0 {
 			{
-				p.SetState(92)
+				p.SetState(118)
 				p.Identifier()
 			}
 			{
-				p.SetState(93)
+				p.SetState(119)
 				p.Match(SqlBaseParserDOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -1163,7 +1680,7 @@ func (p *SqlBaseParser) SelectItem() (localctx ISelectItemContext) {
 
 		}
 		{
-			p.SetState(97)
+			p.SetState(123)
 			p.Match(SqlBaseParserSTAR)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1174,18 +1691,18 @@ func (p *SqlBaseParser) SelectItem() (localctx ISelectItemContext) {
 	case 2:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(98)
+			p.SetState(124)
 			p.Expression()
 		}
-		p.SetState(103)
+		p.SetState(129)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
 		}
 		_la = p.GetTokenStream().LA(1)
 
-		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&1729382256910272512) != 0 {
-			p.SetState(100)
+		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&6917529027641090056) != 0 {
+			p.SetState(126)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -1194,7 +1711,7 @@ func (p *SqlBaseParser) SelectItem() (localctx ISelectItemContext) {
 
 			if _la == SqlBaseParserAS {
 				{
-					p.SetState(99)
+					p.SetState(125)
 					p.Match(SqlBaseParserAS)
 					if p.HasError() {
 						// Recognition error - abort rule
@@ -1204,7 +1721,7 @@ func (p *SqlBaseParser) SelectItem() (localctx ISelectItemContext) {
 
 			}
 			{
-				p.SetState(102)
+				p.SetState(128)
 				p.Identifier()
 			}
 
@@ -1352,28 +1869,28 @@ func (s *RelationContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) Relation() (localctx IRelationContext) {
 	localctx = NewRelationContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 6, SqlBaseParserRULE_relation)
+	p.EnterRule(localctx, 12, SqlBaseParserRULE_relation)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(107)
+		p.SetState(133)
 		p.RelationPrimary()
 	}
-	p.SetState(111)
+	p.SetState(137)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
 	}
 	_la = p.GetTokenStream().LA(1)
 
-	for (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&225280) != 0 {
+	for (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&901120) != 0 {
 		{
-			p.SetState(108)
+			p.SetState(134)
 			p.JoinPart()
 		}
 
-		p.SetState(113)
+		p.SetState(139)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1406,7 +1923,7 @@ type IRelationPrimaryContext interface {
 	Identifier() IIdentifierContext
 	AS() antlr.TerminalNode
 	LPAREN() antlr.TerminalNode
-	SelectQuery() ISelectQueryContext
+	QueryExpression() IQueryExpressionContext
 	RPAREN() antlr.TerminalNode
 	Relation() IRelationContext
 
@@ -1474,10 +1991,10 @@ func (s *RelationPrimaryContext) LPAREN() antlr.TerminalNode {
 	return s.GetToken(SqlBaseParserLPAREN, 0)
 }
 
-func (s *RelationPrimaryContext) SelectQuery() ISelectQueryContext {
+func (s *RelationPrimaryContext) QueryExpression() IQueryExpressionContext {
 	var t antlr.RuleContext
 	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(ISelectQueryContext); ok {
+		if _, ok := ctx.(IQueryExpressionContext); ok {
 			t = ctx.(antlr.RuleContext)
 			break
 		}
@@ -1487,7 +2004,7 @@ func (s *RelationPrimaryContext) SelectQuery() ISelectQueryContext {
 		return nil
 	}
 
-	return t.(ISelectQueryContext)
+	return t.(IQueryExpressionContext)
 }
 
 func (s *RelationPrimaryContext) RPAREN() antlr.TerminalNode {
@@ -1530,35 +2047,35 @@ func (s *RelationPrimaryContext) Accept(visitor antlr.ParseTreeVisitor) interfac
 
 func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 	localctx = NewRelationPrimaryContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 8, SqlBaseParserRULE_relationPrimary)
+	p.EnterRule(localctx, 14, SqlBaseParserRULE_relationPrimary)
 	var _la int
 
-	p.SetState(133)
+	p.SetState(159)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
 	}
 
-	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 17, p.GetParserRuleContext()) {
+	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 20, p.GetParserRuleContext()) {
 	case 1:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(114)
+			p.SetState(140)
 			p.Match(SqlBaseParserRESOURCE)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(119)
+		p.SetState(145)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
 		}
 		_la = p.GetTokenStream().LA(1)
 
-		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&1729382256910272512) != 0 {
-			p.SetState(116)
+		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&6917529027641090056) != 0 {
+			p.SetState(142)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -1567,7 +2084,7 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 
 			if _la == SqlBaseParserAS {
 				{
-					p.SetState(115)
+					p.SetState(141)
 					p.Match(SqlBaseParserAS)
 					if p.HasError() {
 						// Recognition error - abort rule
@@ -1577,7 +2094,7 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 
 			}
 			{
-				p.SetState(118)
+				p.SetState(144)
 				p.Identifier()
 			}
 
@@ -1586,7 +2103,7 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 	case 2:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(121)
+			p.SetState(147)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1594,18 +2111,18 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 			}
 		}
 		{
-			p.SetState(122)
-			p.SelectQuery()
+			p.SetState(148)
+			p.QueryExpression()
 		}
 		{
-			p.SetState(123)
+			p.SetState(149)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(125)
+		p.SetState(151)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1614,7 +2131,7 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 
 		if _la == SqlBaseParserAS {
 			{
-				p.SetState(124)
+				p.SetState(150)
 				p.Match(SqlBaseParserAS)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -1624,14 +2141,14 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 
 		}
 		{
-			p.SetState(127)
+			p.SetState(153)
 			p.Identifier()
 		}
 
 	case 3:
 		p.EnterOuterAlt(localctx, 3)
 		{
-			p.SetState(129)
+			p.SetState(155)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1639,11 +2156,11 @@ func (p *SqlBaseParser) RelationPrimary() (localctx IRelationPrimaryContext) {
 			}
 		}
 		{
-			p.SetState(130)
+			p.SetState(156)
 			p.Relation()
 		}
 		{
-			p.SetState(131)
+			p.SetState(157)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1802,10 +2319,10 @@ func (s *JoinPartContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 	localctx = NewJoinPartContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 10, SqlBaseParserRULE_joinPart)
+	p.EnterRule(localctx, 16, SqlBaseParserRULE_joinPart)
 	var _la int
 
-	p.SetState(154)
+	p.SetState(180)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -1814,7 +2331,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 	switch p.GetTokenStream().LA(1) {
 	case SqlBaseParserINNER, SqlBaseParserLEFT, SqlBaseParserRIGHT, SqlBaseParserJOIN:
 		p.EnterOuterAlt(localctx, 1)
-		p.SetState(144)
+		p.SetState(170)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1822,7 +2339,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 		switch p.GetTokenStream().LA(1) {
 		case SqlBaseParserINNER:
 			{
-				p.SetState(135)
+				p.SetState(161)
 				p.Match(SqlBaseParserINNER)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -1832,14 +2349,14 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 
 		case SqlBaseParserLEFT:
 			{
-				p.SetState(136)
+				p.SetState(162)
 				p.Match(SqlBaseParserLEFT)
 				if p.HasError() {
 					// Recognition error - abort rule
 					goto errorExit
 				}
 			}
-			p.SetState(138)
+			p.SetState(164)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -1848,7 +2365,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 
 			if _la == SqlBaseParserOUTER {
 				{
-					p.SetState(137)
+					p.SetState(163)
 					p.Match(SqlBaseParserOUTER)
 					if p.HasError() {
 						// Recognition error - abort rule
@@ -1860,14 +2377,14 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 
 		case SqlBaseParserRIGHT:
 			{
-				p.SetState(140)
+				p.SetState(166)
 				p.Match(SqlBaseParserRIGHT)
 				if p.HasError() {
 					// Recognition error - abort rule
 					goto errorExit
 				}
 			}
-			p.SetState(142)
+			p.SetState(168)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -1876,7 +2393,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 
 			if _la == SqlBaseParserOUTER {
 				{
-					p.SetState(141)
+					p.SetState(167)
 					p.Match(SqlBaseParserOUTER)
 					if p.HasError() {
 						// Recognition error - abort rule
@@ -1891,7 +2408,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 		default:
 		}
 		{
-			p.SetState(146)
+			p.SetState(172)
 			p.Match(SqlBaseParserJOIN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1899,11 +2416,11 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 			}
 		}
 		{
-			p.SetState(147)
+			p.SetState(173)
 			p.RelationPrimary()
 		}
 		{
-			p.SetState(148)
+			p.SetState(174)
 			p.Match(SqlBaseParserON)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1911,14 +2428,14 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 			}
 		}
 		{
-			p.SetState(149)
+			p.SetState(175)
 			p.Expression()
 		}
 
 	case SqlBaseParserCROSS:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(151)
+			p.SetState(177)
 			p.Match(SqlBaseParserCROSS)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1926,7 +2443,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 			}
 		}
 		{
-			p.SetState(152)
+			p.SetState(178)
 			p.Match(SqlBaseParserJOIN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1934,7 +2451,7 @@ func (p *SqlBaseParser) JoinPart() (localctx IJoinPartContext) {
 			}
 		}
 		{
-			p.SetState(153)
+			p.SetState(179)
 			p.RelationPrimary()
 		}
 
@@ -2048,15 +2565,15 @@ func (s *SortItemContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) SortItem() (localctx ISortItemContext) {
 	localctx = NewSortItemContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 12, SqlBaseParserRULE_sortItem)
+	p.EnterRule(localctx, 18, SqlBaseParserRULE_sortItem)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(156)
+		p.SetState(182)
 		p.Expression()
 	}
-	p.SetState(158)
+	p.SetState(184)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2065,7 +2582,7 @@ func (p *SqlBaseParser) SortItem() (localctx ISortItemContext) {
 
 	if _la == SqlBaseParserASC || _la == SqlBaseParserDESC {
 		{
-			p.SetState(157)
+			p.SetState(183)
 			_la = p.GetTokenStream().LA(1)
 
 			if !(_la == SqlBaseParserASC || _la == SqlBaseParserDESC) {
@@ -2181,10 +2698,10 @@ func (s *LimitClauseContext) Accept(visitor antlr.ParseTreeVisitor) interface{} 
 
 func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 	localctx = NewLimitClauseContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 14, SqlBaseParserRULE_limitClause)
+	p.EnterRule(localctx, 20, SqlBaseParserRULE_limitClause)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(160)
+		p.SetState(186)
 		p.Match(SqlBaseParserLIMIT)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -2192,14 +2709,14 @@ func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 		}
 	}
 	{
-		p.SetState(161)
+		p.SetState(187)
 		p.Match(SqlBaseParserNUMBER)
 		if p.HasError() {
 			// Recognition error - abort rule
 			goto errorExit
 		}
 	}
-	p.SetState(166)
+	p.SetState(192)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2207,7 +2724,7 @@ func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 	switch p.GetTokenStream().LA(1) {
 	case SqlBaseParserOFFSET:
 		{
-			p.SetState(162)
+			p.SetState(188)
 			p.Match(SqlBaseParserOFFSET)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2215,7 +2732,7 @@ func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 			}
 		}
 		{
-			p.SetState(163)
+			p.SetState(189)
 			p.Match(SqlBaseParserNUMBER)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2225,7 +2742,7 @@ func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 
 	case SqlBaseParserCOMMA:
 		{
-			p.SetState(164)
+			p.SetState(190)
 			p.Match(SqlBaseParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2233,7 +2750,7 @@ func (p *SqlBaseParser) LimitClause() (localctx ILimitClauseContext) {
 			}
 		}
 		{
-			p.SetState(165)
+			p.SetState(191)
 			p.Match(SqlBaseParserNUMBER)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2377,15 +2894,15 @@ func (s *ExpressionListContext) Accept(visitor antlr.ParseTreeVisitor) interface
 
 func (p *SqlBaseParser) ExpressionList() (localctx IExpressionListContext) {
 	localctx = NewExpressionListContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 16, SqlBaseParserRULE_expressionList)
+	p.EnterRule(localctx, 22, SqlBaseParserRULE_expressionList)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(168)
+		p.SetState(194)
 		p.Expression()
 	}
-	p.SetState(173)
+	p.SetState(199)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2394,7 +2911,7 @@ func (p *SqlBaseParser) ExpressionList() (localctx IExpressionListContext) {
 
 	for _la == SqlBaseParserCOMMA {
 		{
-			p.SetState(169)
+			p.SetState(195)
 			p.Match(SqlBaseParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2402,11 +2919,11 @@ func (p *SqlBaseParser) ExpressionList() (localctx IExpressionListContext) {
 			}
 		}
 		{
-			p.SetState(170)
+			p.SetState(196)
 			p.Expression()
 		}
 
-		p.SetState(175)
+		p.SetState(201)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2509,10 +3026,10 @@ func (s *ExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) Expression() (localctx IExpressionContext) {
 	localctx = NewExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 18, SqlBaseParserRULE_expression)
+	p.EnterRule(localctx, 24, SqlBaseParserRULE_expression)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(176)
+		p.SetState(202)
 		p.OrExpression()
 	}
 
@@ -2647,15 +3164,15 @@ func (s *OrExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interface{}
 
 func (p *SqlBaseParser) OrExpression() (localctx IOrExpressionContext) {
 	localctx = NewOrExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 20, SqlBaseParserRULE_orExpression)
+	p.EnterRule(localctx, 26, SqlBaseParserRULE_orExpression)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(178)
+		p.SetState(204)
 		p.AndExpression()
 	}
-	p.SetState(183)
+	p.SetState(209)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2664,7 +3181,7 @@ func (p *SqlBaseParser) OrExpression() (localctx IOrExpressionContext) {
 
 	for _la == SqlBaseParserOR {
 		{
-			p.SetState(179)
+			p.SetState(205)
 			p.Match(SqlBaseParserOR)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2672,11 +3189,11 @@ func (p *SqlBaseParser) OrExpression() (localctx IOrExpressionContext) {
 			}
 		}
 		{
-			p.SetState(180)
+			p.SetState(206)
 			p.AndExpression()
 		}
 
-		p.SetState(185)
+		p.SetState(211)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2815,15 +3332,15 @@ func (s *AndExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interface{
 
 func (p *SqlBaseParser) AndExpression() (localctx IAndExpressionContext) {
 	localctx = NewAndExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 22, SqlBaseParserRULE_andExpression)
+	p.EnterRule(localctx, 28, SqlBaseParserRULE_andExpression)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(186)
+		p.SetState(212)
 		p.NotExpression()
 	}
-	p.SetState(191)
+	p.SetState(217)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2832,7 +3349,7 @@ func (p *SqlBaseParser) AndExpression() (localctx IAndExpressionContext) {
 
 	for _la == SqlBaseParserAND {
 		{
-			p.SetState(187)
+			p.SetState(213)
 			p.Match(SqlBaseParserAND)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2840,11 +3357,11 @@ func (p *SqlBaseParser) AndExpression() (localctx IAndExpressionContext) {
 			}
 		}
 		{
-			p.SetState(188)
+			p.SetState(214)
 			p.NotExpression()
 		}
 
-		p.SetState(193)
+		p.SetState(219)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2969,8 +3486,8 @@ func (s *NotExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interface{
 
 func (p *SqlBaseParser) NotExpression() (localctx INotExpressionContext) {
 	localctx = NewNotExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 24, SqlBaseParserRULE_notExpression)
-	p.SetState(197)
+	p.EnterRule(localctx, 30, SqlBaseParserRULE_notExpression)
+	p.SetState(223)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2980,7 +3497,7 @@ func (p *SqlBaseParser) NotExpression() (localctx INotExpressionContext) {
 	case SqlBaseParserNOT:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(194)
+			p.SetState(220)
 			p.Match(SqlBaseParserNOT)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2988,14 +3505,14 @@ func (p *SqlBaseParser) NotExpression() (localctx INotExpressionContext) {
 			}
 		}
 		{
-			p.SetState(195)
+			p.SetState(221)
 			p.NotExpression()
 		}
 
-	case SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserPLUS, SqlBaseParserMINUS, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
+	case SqlBaseParserALL, SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserPLUS, SqlBaseParserMINUS, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(196)
+			p.SetState(222)
 			p.Predicate()
 		}
 
@@ -3227,23 +3744,23 @@ func (s *PredicateContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 	localctx = NewPredicateContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 26, SqlBaseParserRULE_predicate)
+	p.EnterRule(localctx, 32, SqlBaseParserRULE_predicate)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(199)
+		p.SetState(225)
 		p.AdditiveExpression()
 	}
-	p.SetState(232)
+	p.SetState(258)
 	p.GetErrorHandler().Sync(p)
 
-	if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 33, p.GetParserRuleContext()) == 1 {
+	if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 36, p.GetParserRuleContext()) == 1 {
 		{
-			p.SetState(200)
+			p.SetState(226)
 			_la = p.GetTokenStream().LA(1)
 
-			if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&4433230883192832) != 0) {
+			if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&17732923532771328) != 0) {
 				p.GetErrorHandler().RecoverInline(p)
 			} else {
 				p.GetErrorHandler().ReportMatch(p)
@@ -3251,22 +3768,22 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(201)
+			p.SetState(227)
 			p.AdditiveExpression()
 		}
 
 	} else if p.HasError() { // JIM
 		goto errorExit
-	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 33, p.GetParserRuleContext()) == 2 {
+	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 36, p.GetParserRuleContext()) == 2 {
 		{
-			p.SetState(202)
+			p.SetState(228)
 			p.Match(SqlBaseParserIS)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(204)
+		p.SetState(230)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3275,7 +3792,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		if _la == SqlBaseParserNOT {
 			{
-				p.SetState(203)
+				p.SetState(229)
 				p.Match(SqlBaseParserNOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3285,7 +3802,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		}
 		{
-			p.SetState(206)
+			p.SetState(232)
 			p.Match(SqlBaseParserNULL)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3295,8 +3812,8 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 	} else if p.HasError() { // JIM
 		goto errorExit
-	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 33, p.GetParserRuleContext()) == 3 {
-		p.SetState(208)
+	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 36, p.GetParserRuleContext()) == 3 {
+		p.SetState(234)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3305,7 +3822,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		if _la == SqlBaseParserNOT {
 			{
-				p.SetState(207)
+				p.SetState(233)
 				p.Match(SqlBaseParserNOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3315,7 +3832,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		}
 		{
-			p.SetState(210)
+			p.SetState(236)
 			p.Match(SqlBaseParserBETWEEN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3323,11 +3840,11 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(211)
+			p.SetState(237)
 			p.AdditiveExpression()
 		}
 		{
-			p.SetState(212)
+			p.SetState(238)
 			p.Match(SqlBaseParserAND)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3335,14 +3852,14 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(213)
+			p.SetState(239)
 			p.AdditiveExpression()
 		}
 
 	} else if p.HasError() { // JIM
 		goto errorExit
-	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 33, p.GetParserRuleContext()) == 4 {
-		p.SetState(216)
+	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 36, p.GetParserRuleContext()) == 4 {
+		p.SetState(242)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3351,7 +3868,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		if _la == SqlBaseParserNOT {
 			{
-				p.SetState(215)
+				p.SetState(241)
 				p.Match(SqlBaseParserNOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3361,7 +3878,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		}
 		{
-			p.SetState(218)
+			p.SetState(244)
 			p.Match(SqlBaseParserIN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3369,7 +3886,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(219)
+			p.SetState(245)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3377,11 +3894,11 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(220)
+			p.SetState(246)
 			p.ExpressionList()
 		}
 		{
-			p.SetState(221)
+			p.SetState(247)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3391,8 +3908,8 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 	} else if p.HasError() { // JIM
 		goto errorExit
-	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 33, p.GetParserRuleContext()) == 5 {
-		p.SetState(224)
+	} else if p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 36, p.GetParserRuleContext()) == 5 {
+		p.SetState(250)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3401,7 +3918,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		if _la == SqlBaseParserNOT {
 			{
-				p.SetState(223)
+				p.SetState(249)
 				p.Match(SqlBaseParserNOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3411,7 +3928,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		}
 		{
-			p.SetState(226)
+			p.SetState(252)
 			p.Match(SqlBaseParserLIKE)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -3419,10 +3936,10 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 			}
 		}
 		{
-			p.SetState(227)
+			p.SetState(253)
 			p.AdditiveExpression()
 		}
-		p.SetState(230)
+		p.SetState(256)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3431,7 +3948,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 
 		if _la == SqlBaseParserESCAPE {
 			{
-				p.SetState(228)
+				p.SetState(254)
 				p.Match(SqlBaseParserESCAPE)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3439,7 +3956,7 @@ func (p *SqlBaseParser) Predicate() (localctx IPredicateContext) {
 				}
 			}
 			{
-				p.SetState(229)
+				p.SetState(255)
 				p.Match(SqlBaseParserSTRING)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -3594,15 +4111,15 @@ func (s *AdditiveExpressionContext) Accept(visitor antlr.ParseTreeVisitor) inter
 
 func (p *SqlBaseParser) AdditiveExpression() (localctx IAdditiveExpressionContext) {
 	localctx = NewAdditiveExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 28, SqlBaseParserRULE_additiveExpression)
+	p.EnterRule(localctx, 34, SqlBaseParserRULE_additiveExpression)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(234)
+		p.SetState(260)
 		p.MultiplicativeExpression()
 	}
-	p.SetState(239)
+	p.SetState(265)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -3611,7 +4128,7 @@ func (p *SqlBaseParser) AdditiveExpression() (localctx IAdditiveExpressionContex
 
 	for _la == SqlBaseParserPLUS || _la == SqlBaseParserMINUS {
 		{
-			p.SetState(235)
+			p.SetState(261)
 			_la = p.GetTokenStream().LA(1)
 
 			if !(_la == SqlBaseParserPLUS || _la == SqlBaseParserMINUS) {
@@ -3622,11 +4139,11 @@ func (p *SqlBaseParser) AdditiveExpression() (localctx IAdditiveExpressionContex
 			}
 		}
 		{
-			p.SetState(236)
+			p.SetState(262)
 			p.MultiplicativeExpression()
 		}
 
-		p.SetState(241)
+		p.SetState(267)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3785,27 +4302,27 @@ func (s *MultiplicativeExpressionContext) Accept(visitor antlr.ParseTreeVisitor)
 
 func (p *SqlBaseParser) MultiplicativeExpression() (localctx IMultiplicativeExpressionContext) {
 	localctx = NewMultiplicativeExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 30, SqlBaseParserRULE_multiplicativeExpression)
+	p.EnterRule(localctx, 36, SqlBaseParserRULE_multiplicativeExpression)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(242)
+		p.SetState(268)
 		p.UnaryExpression()
 	}
-	p.SetState(247)
+	p.SetState(273)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
 	}
 	_la = p.GetTokenStream().LA(1)
 
-	for (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&126100789566373888) != 0 {
+	for (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&504403158265495552) != 0 {
 		{
-			p.SetState(243)
+			p.SetState(269)
 			_la = p.GetTokenStream().LA(1)
 
-			if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&126100789566373888) != 0) {
+			if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&504403158265495552) != 0) {
 				p.GetErrorHandler().RecoverInline(p)
 			} else {
 				p.GetErrorHandler().ReportMatch(p)
@@ -3813,11 +4330,11 @@ func (p *SqlBaseParser) MultiplicativeExpression() (localctx IMultiplicativeExpr
 			}
 		}
 		{
-			p.SetState(244)
+			p.SetState(270)
 			p.UnaryExpression()
 		}
 
-		p.SetState(249)
+		p.SetState(275)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -3947,10 +4464,10 @@ func (s *UnaryExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interfac
 
 func (p *SqlBaseParser) UnaryExpression() (localctx IUnaryExpressionContext) {
 	localctx = NewUnaryExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 32, SqlBaseParserRULE_unaryExpression)
+	p.EnterRule(localctx, 38, SqlBaseParserRULE_unaryExpression)
 	var _la int
 
-	p.SetState(253)
+	p.SetState(279)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -3960,7 +4477,7 @@ func (p *SqlBaseParser) UnaryExpression() (localctx IUnaryExpressionContext) {
 	case SqlBaseParserPLUS, SqlBaseParserMINUS:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(250)
+			p.SetState(276)
 			_la = p.GetTokenStream().LA(1)
 
 			if !(_la == SqlBaseParserPLUS || _la == SqlBaseParserMINUS) {
@@ -3971,14 +4488,14 @@ func (p *SqlBaseParser) UnaryExpression() (localctx IUnaryExpressionContext) {
 			}
 		}
 		{
-			p.SetState(251)
+			p.SetState(277)
 			p.UnaryExpression()
 		}
 
-	case SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
+	case SqlBaseParserALL, SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(252)
+			p.SetState(278)
 			p.PrimaryExpression()
 		}
 
@@ -4267,30 +4784,30 @@ func (s *PrimaryExpressionContext) Accept(visitor antlr.ParseTreeVisitor) interf
 
 func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext) {
 	localctx = NewPrimaryExpressionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 34, SqlBaseParserRULE_primaryExpression)
+	p.EnterRule(localctx, 40, SqlBaseParserRULE_primaryExpression)
 	var _la int
 
-	p.SetState(297)
+	p.SetState(323)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
 	}
 
-	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 42, p.GetParserRuleContext()) {
+	switch p.GetInterpreter().AdaptivePredict(p.BaseParser, p.GetTokenStream(), 45, p.GetParserRuleContext()) {
 	case 1:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(255)
+			p.SetState(281)
 			p.Literal()
 		}
 
 	case 2:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(256)
+			p.SetState(282)
 			p.Identifier()
 		}
-		p.SetState(259)
+		p.SetState(285)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -4299,7 +4816,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 
 		if _la == SqlBaseParserDOT {
 			{
-				p.SetState(257)
+				p.SetState(283)
 				p.Match(SqlBaseParserDOT)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4307,7 +4824,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 				}
 			}
 			{
-				p.SetState(258)
+				p.SetState(284)
 				p.Identifier()
 			}
 
@@ -4316,21 +4833,21 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 	case 3:
 		p.EnterOuterAlt(localctx, 3)
 		{
-			p.SetState(261)
+			p.SetState(287)
 			p.FunctionCall()
 		}
 
 	case 4:
 		p.EnterOuterAlt(localctx, 4)
 		{
-			p.SetState(262)
+			p.SetState(288)
 			p.Match(SqlBaseParserCURRENT_TIMESTAMP)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(265)
+		p.SetState(291)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -4339,7 +4856,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 
 		if _la == SqlBaseParserLPAREN {
 			{
-				p.SetState(263)
+				p.SetState(289)
 				p.Match(SqlBaseParserLPAREN)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4347,7 +4864,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 				}
 			}
 			{
-				p.SetState(264)
+				p.SetState(290)
 				p.Match(SqlBaseParserRPAREN)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4360,7 +4877,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 	case 5:
 		p.EnterOuterAlt(localctx, 5)
 		{
-			p.SetState(267)
+			p.SetState(293)
 			p.Match(SqlBaseParserCAST)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4368,7 +4885,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 			}
 		}
 		{
-			p.SetState(268)
+			p.SetState(294)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4376,11 +4893,11 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 			}
 		}
 		{
-			p.SetState(269)
+			p.SetState(295)
 			p.Expression()
 		}
 		{
-			p.SetState(270)
+			p.SetState(296)
 			p.Match(SqlBaseParserAS)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4388,11 +4905,11 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 			}
 		}
 		{
-			p.SetState(271)
+			p.SetState(297)
 			p.TypeName()
 		}
 		{
-			p.SetState(272)
+			p.SetState(298)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4403,28 +4920,28 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 	case 6:
 		p.EnterOuterAlt(localctx, 6)
 		{
-			p.SetState(274)
+			p.SetState(300)
 			p.Match(SqlBaseParserCASE)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(276)
+		p.SetState(302)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
 		}
 		_la = p.GetTokenStream().LA(1)
 
-		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&2175241303342710784) != 0 {
+		if (int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&8700965213370843144) != 0 {
 			{
-				p.SetState(275)
+				p.SetState(301)
 				p.Expression()
 			}
 
 		}
-		p.SetState(283)
+		p.SetState(309)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -4433,7 +4950,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 
 		for ok := true; ok; ok = _la == SqlBaseParserWHEN {
 			{
-				p.SetState(278)
+				p.SetState(304)
 				p.Match(SqlBaseParserWHEN)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4441,11 +4958,11 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 				}
 			}
 			{
-				p.SetState(279)
+				p.SetState(305)
 				p.Expression()
 			}
 			{
-				p.SetState(280)
+				p.SetState(306)
 				p.Match(SqlBaseParserTHEN)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4453,18 +4970,18 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 				}
 			}
 			{
-				p.SetState(281)
+				p.SetState(307)
 				p.Expression()
 			}
 
-			p.SetState(285)
+			p.SetState(311)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
 			}
 			_la = p.GetTokenStream().LA(1)
 		}
-		p.SetState(289)
+		p.SetState(315)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -4473,7 +4990,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 
 		if _la == SqlBaseParserELSE {
 			{
-				p.SetState(287)
+				p.SetState(313)
 				p.Match(SqlBaseParserELSE)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4481,13 +4998,13 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 				}
 			}
 			{
-				p.SetState(288)
+				p.SetState(314)
 				p.Expression()
 			}
 
 		}
 		{
-			p.SetState(291)
+			p.SetState(317)
 			p.Match(SqlBaseParserEND)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4498,7 +5015,7 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 	case 7:
 		p.EnterOuterAlt(localctx, 7)
 		{
-			p.SetState(293)
+			p.SetState(319)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4506,11 +5023,11 @@ func (p *SqlBaseParser) PrimaryExpression() (localctx IPrimaryExpressionContext)
 			}
 		}
 		{
-			p.SetState(294)
+			p.SetState(320)
 			p.Expression()
 		}
 		{
-			p.SetState(295)
+			p.SetState(321)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4654,23 +5171,23 @@ func (s *FunctionCallContext) Accept(visitor antlr.ParseTreeVisitor) interface{}
 
 func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 	localctx = NewFunctionCallContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 36, SqlBaseParserRULE_functionCall)
+	p.EnterRule(localctx, 42, SqlBaseParserRULE_functionCall)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(299)
+		p.SetState(325)
 		p.Identifier()
 	}
 	{
-		p.SetState(300)
+		p.SetState(326)
 		p.Match(SqlBaseParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
 			goto errorExit
 		}
 	}
-	p.SetState(302)
+	p.SetState(328)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -4679,7 +5196,7 @@ func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 
 	if _la == SqlBaseParserDISTINCT {
 		{
-			p.SetState(301)
+			p.SetState(327)
 			p.Match(SqlBaseParserDISTINCT)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4688,7 +5205,7 @@ func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 		}
 
 	}
-	p.SetState(306)
+	p.SetState(332)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -4696,7 +5213,7 @@ func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 	switch p.GetTokenStream().LA(1) {
 	case SqlBaseParserSTAR:
 		{
-			p.SetState(304)
+			p.SetState(330)
 			p.Match(SqlBaseParserSTAR)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4704,9 +5221,9 @@ func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 			}
 		}
 
-	case SqlBaseParserNOT, SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserPLUS, SqlBaseParserMINUS, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
+	case SqlBaseParserALL, SqlBaseParserNOT, SqlBaseParserNULL, SqlBaseParserCAST, SqlBaseParserCASE, SqlBaseParserTRUE, SqlBaseParserFALSE, SqlBaseParserCURRENT_TIMESTAMP, SqlBaseParserLPAREN, SqlBaseParserPLUS, SqlBaseParserMINUS, SqlBaseParserNUMBER, SqlBaseParserSTRING, SqlBaseParserQUOTED_IDENTIFIER, SqlBaseParserIDENTIFIER:
 		{
-			p.SetState(305)
+			p.SetState(331)
 			p.ExpressionList()
 		}
 
@@ -4715,7 +5232,7 @@ func (p *SqlBaseParser) FunctionCall() (localctx IFunctionCallContext) {
 	default:
 	}
 	{
-		p.SetState(308)
+		p.SetState(334)
 		p.Match(SqlBaseParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -4843,15 +5360,15 @@ func (s *TypeNameContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 	localctx = NewTypeNameContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 38, SqlBaseParserRULE_typeName)
+	p.EnterRule(localctx, 44, SqlBaseParserRULE_typeName)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(310)
+		p.SetState(336)
 		p.Identifier()
 	}
-	p.SetState(318)
+	p.SetState(344)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -4860,7 +5377,7 @@ func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 
 	if _la == SqlBaseParserLPAREN {
 		{
-			p.SetState(311)
+			p.SetState(337)
 			p.Match(SqlBaseParserLPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -4868,14 +5385,14 @@ func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 			}
 		}
 		{
-			p.SetState(312)
+			p.SetState(338)
 			p.Match(SqlBaseParserNUMBER)
 			if p.HasError() {
 				// Recognition error - abort rule
 				goto errorExit
 			}
 		}
-		p.SetState(315)
+		p.SetState(341)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -4884,7 +5401,7 @@ func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 
 		if _la == SqlBaseParserCOMMA {
 			{
-				p.SetState(313)
+				p.SetState(339)
 				p.Match(SqlBaseParserCOMMA)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4892,7 +5409,7 @@ func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 				}
 			}
 			{
-				p.SetState(314)
+				p.SetState(340)
 				p.Match(SqlBaseParserNUMBER)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -4902,7 +5419,7 @@ func (p *SqlBaseParser) TypeName() (localctx ITypeNameContext) {
 
 		}
 		{
-			p.SetState(317)
+			p.SetState(343)
 			p.Match(SqlBaseParserRPAREN)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -5015,15 +5532,15 @@ func (s *LiteralContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) Literal() (localctx ILiteralContext) {
 	localctx = NewLiteralContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 40, SqlBaseParserRULE_literal)
+	p.EnterRule(localctx, 46, SqlBaseParserRULE_literal)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(320)
+		p.SetState(346)
 		_la = p.GetTokenStream().LA(1)
 
-		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&432345770419552256) != 0) {
+		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&1729383081678209024) != 0) {
 			p.GetErrorHandler().RecoverInline(p)
 		} else {
 			p.GetErrorHandler().ReportMatch(p)
@@ -5054,6 +5571,7 @@ type IIdentifierContext interface {
 	// Getter signatures
 	IDENTIFIER() antlr.TerminalNode
 	QUOTED_IDENTIFIER() antlr.TerminalNode
+	ALL() antlr.TerminalNode
 
 	// IsIdentifierContext differentiates from other interfaces.
 	IsIdentifierContext()
@@ -5099,6 +5617,10 @@ func (s *IdentifierContext) QUOTED_IDENTIFIER() antlr.TerminalNode {
 	return s.GetToken(SqlBaseParserQUOTED_IDENTIFIER, 0)
 }
 
+func (s *IdentifierContext) ALL() antlr.TerminalNode {
+	return s.GetToken(SqlBaseParserALL, 0)
+}
+
 func (s *IdentifierContext) GetRuleContext() antlr.RuleContext {
 	return s
 }
@@ -5119,15 +5641,15 @@ func (s *IdentifierContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SqlBaseParser) Identifier() (localctx IIdentifierContext) {
 	localctx = NewIdentifierContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 42, SqlBaseParserRULE_identifier)
+	p.EnterRule(localctx, 48, SqlBaseParserRULE_identifier)
 	var _la int
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(322)
+		p.SetState(348)
 		_la = p.GetTokenStream().LA(1)
 
-		if !(_la == SqlBaseParserQUOTED_IDENTIFIER || _la == SqlBaseParserIDENTIFIER) {
+		if !((int64(_la) & ^0x3f) == 0 && ((int64(1)<<_la)&6917529027641081864) != 0) {
 			p.GetErrorHandler().RecoverInline(p)
 		} else {
 			p.GetErrorHandler().ReportMatch(p)

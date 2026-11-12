@@ -718,13 +718,13 @@ func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
 		assert.Equal(t, int64(1), *result.TotalCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
-	for _, code := range []string{"42703", "42803", "42883", "22P02", "22003", "22021", "08006"} {
+	for _, code := range []string{"42601", "42703", "42803", "42804", "42883", "22P02", "22003", "22021", "08006"} {
 		t.Run(code, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer func() { _ = db.Close() }()
 			connector := &PostgresqlConnector{db: db, connected: true}
-			cause := &pq.Error{Code: pqerror.Code(code)}
+			cause := &pq.Error{Code: pqerror.Code(code), Message: "private source SQL and values"}
 			mock.ExpectQuery("SELECT").WillReturnError(cause)
 			result, err := connector.ExecuteSQLBuilder(context.Background(), sb.Select(&sb.Star{}))
 			assert.Nil(t, result)
@@ -740,6 +740,9 @@ func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
 					want = interfaces.SourceQueryInvalidParameterUnknownColumn
 				}
 				assert.Equal(t, want, invalid.Reason)
+				detail, ok := interfaces.RequestSideQueryError(err)
+				assert.True(t, ok)
+				assert.NotContains(t, detail, "private")
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
