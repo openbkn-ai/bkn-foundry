@@ -1051,13 +1051,15 @@ func sqlBuilderQueryInvalid(ctx context.Context, detail string) error {
 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).WithErrorDetails(detail)
 }
 
-// sqlBuilderTables 按来源出现顺序遍历 ParseSQL 产出的表，包含括号 JOIN 组和子查询。
+// sqlBuilderTables 按来源出现顺序遍历 ParseSQL 产出的表，包含集合查询分支、括号 JOIN 组和子查询。
 func sqlBuilderTables(node sb.SqlNode) []*sb.Table {
 	switch n := node.(type) {
 	case *sb.Table:
 		return []*sb.Table{n}
 	case *sb.Subquery:
 		return sqlBuilderTables(n.Query)
+	case *sb.Union:
+		return append(sqlBuilderTables(n.Left), sqlBuilderTables(n.Right)...)
 	case *sb.JoinedTable:
 		tables := sqlBuilderTables(n.From)
 		for _, join := range n.Joins {

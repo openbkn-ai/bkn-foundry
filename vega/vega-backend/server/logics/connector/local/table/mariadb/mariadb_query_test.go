@@ -740,7 +740,7 @@ func TestMariaDBConvertValue(t *testing.T) {
 }
 
 func TestMariadbQueryError(t *testing.T) {
-	for _, code := range []uint16{1052, 1054, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1241, 1582, 1583, 1584, 3065} {
+	for _, code := range []uint16{1052, 1054, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1222, 1241, 1271, 1473, 1582, 1583, 1584, 3028, 3029, 3065} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			cause := &mysql.MySQLError{Number: code, Message: "private source SQL and values"}
 			err := mariadbQueryError(fmt.Errorf("query failed: %w", cause))
@@ -753,6 +753,7 @@ func TestMariadbQueryError(t *testing.T) {
 			if code == 1054 {
 				assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, failure.Reason)
 			} else {
+				assert.Equal(t, interfaces.SourceQueryInvalidParameterInvalidQuery, failure.Reason)
 				assert.Equal(t, "invalid source query parameter", detail)
 			}
 		})
@@ -818,6 +819,82 @@ func TestMariaDBConnectorBuildTypedSelectBuilder(t *testing.T) {
 }
 
 func TestToSql(t *testing.T) {
+	t.Run("union relations preserve quantifiers values and whole query paging", func(t *testing.T) {
+		for _, all := range []bool{false, true} {
+			t.Run(fmt.Sprintf("all=%t", all), func(t *testing.T) {
+				amount := json.Number("12.30")
+				payload := []byte{0, 255}
+				left := sb.Select(&sb.Alias{Expr: &sb.Param{Value: amount}, Name: "amount"}, &sb.Alias{Expr: &sb.Param{Value: payload}, Name: "payload"}, &sb.Alias{Expr: &sb.Param{}, Name: "optional"}).From(&sb.Table{SourceIdentifier: "`current`"})
+				right := sb.Select(&sb.Alias{Expr: &sb.Param{Value: amount}, Name: "other_amount"}, &sb.Alias{Expr: &sb.Param{Value: payload}, Name: "other_payload"}, &sb.Alias{Expr: &sb.Param{}, Name: "other_optional"}).From(&sb.Table{SourceIdentifier: "`archive`"})
+				query := sb.UnionQuery(left, right, all).OrderBy(sb.Order{Expr: &sb.Column{Name: "amount"}, Descending: true}).Limit(3).Offset(1)
+				before, err := json.Marshal(query)
+				require.NoError(t, err)
+				statement, args, err := ToSql(query)
+				require.NoError(t, err)
+				operator := " UNION "
+				if all {
+					operator = " UNION ALL "
+				}
+				assert.Equal(t, "SELECT * FROM (SELECT CAST(? AS DECIMAL(4,2)) AS `amount`, ? AS `payload`, ? AS `optional` FROM `current`"+operator+"SELECT CAST(? AS DECIMAL(4,2)) AS `other_amount`, ? AS `other_payload`, ? AS `other_optional` FROM `archive`) AS `_union_result` ORDER BY `amount` DESC LIMIT 3 OFFSET 1", statement)
+				assert.Equal(t, []any{amount, payload, nil, amount, payload, nil}, args)
+				after, err := json.Marshal(query)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(before), string(after))
+			})
+		}
+	})
+	t.Run("union branch limits and nested mixed operators retain boundaries", func(t *testing.T) {
+		left := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`a`"}).OrderBy(sb.Order{Expr: &sb.Column{Name: "id"}}).Limit(2).Offset(1)
+		right := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`b`"}).Limit(0)
+		inner := sb.UnionQuery(left, right, true)
+		query := sb.UnionQuery(inner, sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`c`"}), false).Limit(4)
+		statement, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM (SELECT * FROM (SELECT `id` FROM `a` ORDER BY `id` ASC LIMIT 2 OFFSET 1) AS `_union_left` UNION ALL SELECT * FROM (SELECT `id` FROM `b` LIMIT 0) AS `_union_right` UNION SELECT `id` FROM `c`) AS `_union_result` LIMIT 4", statement)
+		assert.Empty(t, args)
+		count := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).FromSelect(query, "total")
+		statement, _, err = ToSql(count)
+		require.NoError(t, err)
+		assert.Contains(t, statement, "SELECT COUNT(*) FROM (SELECT * FROM (")
+		assert.True(t, strings.HasSuffix(statement, "LIMIT 4) AS `total`"))
+		assert.Equal(t, uint64(2), *left.LimitPart)
+		assert.Equal(t, uint64(0), *right.LimitPart)
+	})
+	t.Run("flat union chains do not create deeply nested derived tables", func(t *testing.T) {
+		query := sb.Select(&sb.Alias{Expr: &sb.Param{Value: 0}, Name: "id"}).From(&sb.Table{SourceIdentifier: "`a`"})
+		wantArgs := []any{0}
+		for i := 1; i < 100; i++ {
+			query = sb.UnionQuery(query, sb.Select(&sb.Alias{Expr: &sb.Param{Value: i}, Name: "id"}).From(&sb.Table{SourceIdentifier: "`a`"}), true)
+			wantArgs = append(wantArgs, i)
+		}
+		statement, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, 99, strings.Count(statement, " UNION ALL "))
+		assert.Equal(t, 1, strings.Count(statement, " AS `_union_result`"))
+		assert.True(t, strings.HasPrefix(statement, "SELECT * FROM (SELECT ? AS `id` FROM `a` UNION ALL SELECT ? AS `id` FROM `a`"))
+		assert.Equal(t, wantArgs, args)
+	})
+	t.Run("right nested unions and filtered left results retain their boundaries", func(t *testing.T) {
+		left := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`a`"})
+		right := sb.UnionQuery(sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`b`"}), sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`c`"}), true)
+		statement, _, err := ToSql(sb.UnionQuery(left, right, false))
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT * FROM (SELECT `id` FROM `a` UNION SELECT * FROM (SELECT `id` FROM `b` UNION ALL SELECT `id` FROM `c`) AS `_union_result`) AS `_union_result`", statement)
+		filtered := sb.UnionQuery(left, right, true).Where(&sb.Gt{Left: &sb.Column{Name: "id"}, Right: &sb.Param{Value: 10}})
+		statement, args, err := ToSql(sb.UnionQuery(filtered, left, false))
+		require.NoError(t, err)
+		assert.Contains(t, statement, ") AS `_union_result` WHERE (`id` > ?) UNION SELECT `id` FROM `a`")
+		assert.Equal(t, []any{10}, args)
+	})
+	t.Run("invalid union relations never return partial SQL", func(t *testing.T) {
+		valid := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`a`"})
+		for _, source := range []*sb.Union{nil, {Right: valid, Alias: "u"}, {Left: valid, Alias: "u"}, {Left: valid, Right: valid}, {Left: valid, Right: valid, Alias: "bad\x00alias"}, {Left: valid, Right: sb.Select(), Alias: "u"}} {
+			statement, args, err := ToSql(sb.Select(&sb.Star{}).From(source))
+			require.Error(t, err)
+			assert.Empty(t, statement)
+			assert.Nil(t, args)
+		}
+	})
 	t.Run("standalone boolean grouping and ordering retain constant semantics", func(t *testing.T) {
 		for _, value := range []string{"TRUE", "FALSE"} {
 			query, err := compiler.ParseSQL("SELECT COUNT(*) AS n FROM {{r}} GROUP BY " + value + " ORDER BY " + value)

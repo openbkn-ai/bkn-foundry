@@ -84,8 +84,9 @@ func mariadbQueryError(err error) error {
 		switch driverErr.Number {
 		case 1054: // ER_BAD_FIELD_ERROR
 			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
-		case 1052, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1241, 1582, 1583, 1584, 3065:
-			// 歧义/重复列、语法、分组、函数参数和 DISTINCT 排序错误；不将连接或资源失效归为输入错误。
+		case 1052, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221,
+			1222, 1241, 1271, 1473, 1582, 1583, 1584, 3028, 3029, 3065:
+			// 歧义/重复列、语法、分组、集合列数/嵌套/字符排序规则、函数参数和排序错误；不将连接或资源失效归为输入错误。
 			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterInvalidQuery, err)
 		}
 	}
@@ -416,6 +417,10 @@ func render(node sb.SqlNode) (string, []any, error) {
 		if n != nil {
 			return subquerySql(*n)
 		}
+	case *sb.Union:
+		if n != nil {
+			return unionSql(*n)
+		}
 	case *sb.Join:
 		if n != nil {
 			return joinSql(*n)
@@ -638,6 +643,55 @@ func subquerySql(s sb.Subquery) (string, []any, error) {
 	b.writePart(s.Query)
 	b.writeString(") AS " + alias)
 	return b.result()
+}
+
+// unionSql 保留集合运算的分支边界；整体排序与分页由外层 SELECT 表达。
+func unionSql(union sb.Union) (string, []any, error) {
+	if union.Left == nil || union.Right == nil {
+		return "", nil, fmt.Errorf("UNION requires two queries")
+	}
+	alias, err := quoteIdentifier(union.Alias)
+	if err != nil {
+		return "", nil, err
+	}
+	b := sqlBuffer{}
+	b.writeByte('(')
+	b.writeUnionBody(&union)
+	b.writeString(") AS " + alias)
+	return b.result()
+}
+
+// writeUnionBody 展开无额外子句的左结合包装，不改变右分支或局部查询边界。
+func (b *sqlBuffer) writeUnionBody(union *sb.Union) {
+	if b.err != nil {
+		return
+	}
+	if union == nil || union.Left == nil || union.Right == nil {
+		b.err = fmt.Errorf("UNION requires two queries")
+		return
+	}
+	if _, err := quoteIdentifier(union.Alias); err != nil {
+		b.err = err
+		return
+	}
+	if left := sb.UnionSource(union.Left); left != nil {
+		b.writeUnionBody(left)
+	} else {
+		b.writePart(unionBranch(union.Left, "_union_left"))
+	}
+	b.writeString(" UNION ")
+	if union.All {
+		b.writeString("ALL ")
+	}
+	b.writePart(unionBranch(union.Right, "_union_right"))
+}
+
+// unionBranch 通过派生表限定分支自己的 ORDER BY、LIMIT 和 OFFSET。
+func unionBranch(query *sb.SelectBuilder, alias string) *sb.SelectBuilder {
+	if len(query.OrderByPart) > 0 || query.LimitPart != nil || query.OffsetPart != 0 {
+		return sb.Select(&sb.Star{}).FromSelect(query, alias)
+	}
+	return query
 }
 
 func joinSql(j sb.Join) (string, []any, error) {

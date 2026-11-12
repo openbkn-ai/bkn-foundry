@@ -10,6 +10,15 @@ type SqlBaseVisitor interface {
 	// Visit a parse tree produced by SqlBaseParser#statement.
 	VisitStatement(ctx *StatementContext) interface{}
 
+	// Visit a parse tree produced by SqlBaseParser#queryExpression.
+	VisitQueryExpression(ctx *QueryExpressionContext) interface{}
+
+	// Visit a parse tree produced by SqlBaseParser#queryTerm.
+	VisitQueryTerm(ctx *QueryTermContext) interface{}
+
+	// Visit a parse tree produced by SqlBaseParser#unionOperator.
+	VisitUnionOperator(ctx *UnionOperatorContext) interface{}
+
 	// Visit a parse tree produced by SqlBaseParser#selectQuery.
 	VisitSelectQuery(ctx *SelectQueryContext) interface{}
 

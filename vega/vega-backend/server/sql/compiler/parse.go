@@ -51,7 +51,7 @@ type budgetLexer struct {
 	count  int
 }
 
-// ParseSQL 严格消费一条 SELECT，直接返回尚未绑定资源和类型的新 Builder。
+// ParseSQL 严格消费一条 SELECT 或 UNION 查询，返回尚未绑定资源和类型的新 Builder。
 // 数字保留为 json.Number，不经过 float64；标识符和字符串仅解码一次。
 // 此处检查开放函数及调用形式；源表类型规则和物理目标能力由执行阶段检查。
 func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
@@ -111,7 +111,7 @@ func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 		return nil, errors.err
 	}
 	b := treeBuilder{depths: make(map[sqlbuilder.SqlNode]int)}
-	query := b.query(statement.SelectQuery())
+	query := b.query(statement.QueryExpression())
 	if b.err != nil {
 		return nil, b.err
 	}

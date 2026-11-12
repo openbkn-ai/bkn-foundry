@@ -11,6 +11,18 @@ func (v *BaseSqlBaseVisitor) VisitStatement(ctx *StatementContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSqlBaseVisitor) VisitQueryExpression(ctx *QueryExpressionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSqlBaseVisitor) VisitQueryTerm(ctx *QueryTermContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSqlBaseVisitor) VisitUnionOperator(ctx *UnionOperatorContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSqlBaseVisitor) VisitSelectQuery(ctx *SelectQueryContext) interface{} {
 	return v.VisitChildren(ctx)
 }

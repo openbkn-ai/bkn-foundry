@@ -25,7 +25,112 @@ type treeBuilder struct {
 	depths map[sb.SqlNode]int
 }
 
-func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
+func (b *treeBuilder) query(ctx g.IQueryExpressionContext) *sb.SelectBuilder {
+	terms := ctx.AllQueryTerm()
+	query := b.queryTerm(terms[0])
+	for i, operator := range ctx.AllUnionOperator() {
+		right := b.queryTerm(terms[i+1])
+		if b.err != nil {
+			return nil
+		}
+		leftWidth, leftKnown := projectionWidth(query)
+		rightWidth, rightKnown := projectionWidth(right)
+		if leftKnown && rightKnown && leftWidth != rightWidth {
+			b.fail(CodeSyntax, operator, "UNION branches must have the same number of columns")
+			return nil
+		}
+		left := query
+		query = sb.UnionQuery(left, right, operator.ALL() != nil)
+		b.node(ctx, query, left, right)
+	}
+	if b.err != nil {
+		return nil
+	}
+	// 括号中的 LIMIT/排序是内层语义；外层子句不得直接覆盖。
+	if len(ctx.AllUnionOperator()) == 0 && (len(ctx.AllSortItem()) > 0 || ctx.LimitClause() != nil) &&
+		(len(query.OrderByPart) > 0 || query.LimitPart != nil || query.OffsetPart != 0) {
+		inner := query
+		query = sb.Select(&sb.Star{}).FromSelect(inner, "_query_result")
+		b.node(ctx, query, inner)
+	}
+	for _, order := range ctx.AllSortItem() {
+		item := sb.Order{Expr: b.expr(order.Expression()), Descending: order.DESC() != nil}
+		if param, ok := item.Expr.(*sb.Literal); ok {
+			if number, ok := param.Value.(json.Number); ok && !strings.ContainsAny(string(number), ".eE") {
+				position, err := strconv.ParseUint(string(number), 10, 64)
+				if err != nil || position == 0 {
+					b.fail(CodeSyntax, order, "ORDER BY position must be a positive integer")
+				}
+				item.Position, item.Expr = position, nil
+			}
+		}
+		if compoundQuery(ctx) && item.Position == 0 {
+			column, ok := item.Expr.(*sb.Column)
+			if !ok || column.Qualifier != "" {
+				b.fail(CodeUnsupported, order, "UNION ORDER BY requires an unqualified result column or position")
+			}
+		}
+		query.OrderBy(item)
+	}
+	if limit := ctx.LimitClause(); limit != nil {
+		first := b.unsigned(limit.NUMBER(0).GetSymbol())
+		query.Limit(first)
+		if len(limit.AllNUMBER()) == 2 {
+			second := b.unsigned(limit.NUMBER(1).GetSymbol())
+			if limit.COMMA() != nil {
+				query.Offset(first).Limit(second)
+			} else {
+				query.Offset(second)
+			}
+		}
+	}
+	return query
+}
+
+// compoundQuery 不穿透显式 SELECT 的作用域，只识别当前查询及其括号。
+func compoundQuery(ctx g.IQueryExpressionContext) bool {
+	for {
+		if len(ctx.AllUnionOperator()) > 0 {
+			return true
+		}
+		nested := ctx.QueryTerm(0).QueryExpression()
+		if nested == nil {
+			return false
+		}
+		ctx = nested
+	}
+}
+
+func (b *treeBuilder) queryTerm(ctx g.IQueryTermContext) *sb.SelectBuilder {
+	if query := ctx.QueryExpression(); query != nil {
+		return b.query(query)
+	}
+	return b.selectQuery(ctx.SelectQuery())
+}
+
+// projectionWidth 仅比较确定的投影宽度；物理星号及类型兼容性交由源端校验。
+func projectionWidth(query *sb.SelectBuilder) (int, bool) {
+	for _, column := range query.ColumnsPart {
+		if star, ok := column.(*sb.Star); ok {
+			if len(query.ColumnsPart) == 1 && len(query.JoinsPart) == 0 {
+				switch source := query.FromPart.(type) {
+				case *sb.Union:
+					if star.Qualifier == "" || star.Qualifier == source.Alias {
+						return projectionWidth(source.Left)
+					}
+				case *sb.Subquery:
+					if star.Qualifier == "" || star.Qualifier == source.Alias {
+						return projectionWidth(source.Query)
+					}
+				}
+			}
+			return 0, false
+		}
+	}
+	return len(query.ColumnsPart), true
+}
+
+func (b *treeBuilder) selectQuery(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 	query := sb.Select().From(b.source(ctx.Relation().RelationPrimary()))
 	if ctx.DISTINCT() != nil {
 		query.Distinct()
@@ -60,31 +165,7 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 	if ctx.HAVING() != nil {
 		query.Having(b.expr(ctx.Expression(index)))
 	}
-	for _, order := range ctx.AllSortItem() {
-		item := sb.Order{Expr: b.expr(order.Expression()), Descending: order.DESC() != nil}
-		if param, ok := item.Expr.(*sb.Literal); ok {
-			if number, ok := param.Value.(json.Number); ok && !strings.ContainsAny(string(number), ".eE") {
-				position, err := strconv.ParseUint(string(number), 10, 64)
-				if err != nil || position == 0 {
-					b.fail(CodeSyntax, order, "ORDER BY position must be a positive integer")
-				}
-				item.Position, item.Expr = position, nil
-			}
-		}
-		query.OrderBy(item)
-	}
-	if limit := ctx.LimitClause(); limit != nil {
-		first := b.unsigned(limit.NUMBER(0).GetSymbol())
-		query.Limit(first)
-		if len(limit.AllNUMBER()) == 2 {
-			second := b.unsigned(limit.NUMBER(1).GetSymbol())
-			if limit.COMMA() != nil {
-				query.Offset(first).Limit(second)
-			} else {
-				query.Offset(second)
-			}
-		}
-	}
+	b.node(ctx, query)
 	return query
 }
 
@@ -125,7 +206,10 @@ func (b *treeBuilder) source(ctx g.IRelationPrimaryContext) sb.SqlNode {
 		}
 		return &sb.JoinedTable{From: from, Joins: joins}
 	}
-	return &sb.Subquery{Query: b.query(ctx.SelectQuery()), Alias: alias}
+	return &sb.Subquery{
+		Query: b.query(ctx.QueryExpression()),
+		Alias: alias,
+	}
 }
 
 func (b *treeBuilder) expr(ctx g.IExpressionContext) sb.SqlNode {

@@ -17,6 +17,96 @@ import (
 
 // TestToSql 检查 PG 目标生成的标识符、绑定编号、类型、子句及拒绝边界。
 func TestToSql(t *testing.T) {
+	t.Run("union relations preserve quantifiers values and whole query paging", func(t *testing.T) {
+		for _, all := range []bool{false, true} {
+			left := sb.Select(&sb.Alias{Expr: &sb.Param{Value: json.Number("12.30")}, Name: "amount"}, &sb.Alias{Expr: &sb.Param{Value: []byte{0, 255}}, Name: "payload"}, &sb.Alias{Expr: &sb.Param{}, Name: "optional"}).From(&sb.Table{SourceIdentifier: `"current"`})
+			right := sb.Select(&sb.Alias{Expr: &sb.Param{Value: json.Number("45.60")}, Name: "other_amount"}, &sb.Alias{Expr: &sb.Param{Value: []byte{}}, Name: "other_payload"}, &sb.Alias{Expr: &sb.Param{}, Name: "other_optional"}).From(&sb.Table{SourceIdentifier: `"archive"`})
+			query := sb.UnionQuery(left, right, all).OrderBy(sb.Order{Expr: &sb.Column{Name: "amount"}, Descending: true}).Limit(3).Offset(1)
+			before, err := json.Marshal(query)
+			require.NoError(t, err)
+			statement, args, err := ToSql(query)
+			require.NoError(t, err)
+			operator := " UNION "
+			if all {
+				operator = " UNION ALL "
+			}
+			assert.Equal(t, `SELECT * FROM (SELECT CAST($1 AS NUMERIC) AS "amount", $2 AS "payload", $3 AS "optional" FROM "current"`+operator+`SELECT CAST($4 AS NUMERIC) AS "other_amount", $5 AS "other_payload", $6 AS "other_optional" FROM "archive") AS "_union_result" ORDER BY "amount" DESC NULLS LAST LIMIT 3 OFFSET 1`, statement)
+			assert.Equal(t, []any{"12.30", []byte{0, 255}, nil, "45.60", []byte{}, nil}, args)
+			after, err := json.Marshal(query)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(before), string(after))
+		}
+	})
+	t.Run("union branch limits and nested mixed operators retain boundaries", func(t *testing.T) {
+		left := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`}).OrderBy(sb.Order{Expr: &sb.Column{Name: "id"}}).Limit(2).Offset(1)
+		right := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"b"`}).Limit(0)
+		inner := sb.UnionQuery(left, right, true)
+		query := sb.UnionQuery(inner, sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"c"`}), false).Limit(4)
+		statement, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM (SELECT * FROM (SELECT "id" FROM "a" ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1) AS "_union_left" UNION ALL SELECT * FROM (SELECT "id" FROM "b" LIMIT 0) AS "_union_right" UNION SELECT "id" FROM "c") AS "_union_result" LIMIT 4`, statement)
+		assert.Empty(t, args)
+		count := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).FromSelect(query, "total")
+		statement, _, err = ToSql(count)
+		require.NoError(t, err)
+		assert.Contains(t, statement, `SELECT COUNT(*) FROM (SELECT * FROM (`)
+		assert.True(t, strings.HasSuffix(statement, `LIMIT 4) AS "total"`))
+		assert.Equal(t, uint64(2), *left.LimitPart)
+		assert.Equal(t, uint64(0), *right.LimitPart)
+	})
+	t.Run("flat union chains do not create deeply nested derived tables", func(t *testing.T) {
+		query := sb.Select(&sb.Alias{Expr: &sb.Param{Value: 0}, Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`})
+		wantArgs := []any{0}
+		for i := 1; i < 100; i++ {
+			query = sb.UnionQuery(query, sb.Select(&sb.Alias{Expr: &sb.Param{Value: i}, Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`}), true)
+			wantArgs = append(wantArgs, i)
+		}
+		statement, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, 99, strings.Count(statement, " UNION ALL "))
+		assert.Equal(t, 1, strings.Count(statement, ` AS "_union_result"`))
+		assert.True(t, strings.HasPrefix(statement, `SELECT * FROM (SELECT CAST($1 AS BIGINT) AS "id" FROM "a" UNION ALL SELECT CAST($2 AS BIGINT) AS "id" FROM "a"`))
+		assert.Equal(t, wantArgs, args)
+	})
+	t.Run("right nested unions and filtered left results retain their boundaries", func(t *testing.T) {
+		left := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`})
+		right := sb.UnionQuery(sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"b"`}), sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"c"`}), true)
+		statement, _, err := ToSql(sb.UnionQuery(left, right, false))
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM (SELECT "id" FROM "a" UNION SELECT * FROM (SELECT "id" FROM "b" UNION ALL SELECT "id" FROM "c") AS "_union_result") AS "_union_result"`, statement)
+		filtered := sb.UnionQuery(left, right, true).Where(&sb.Gt{Left: &sb.Column{Name: "id"}, Right: &sb.Param{Value: 10}})
+		statement, args, err := ToSql(sb.UnionQuery(filtered, left, false))
+		require.NoError(t, err)
+		assert.Contains(t, statement, `) AS "_union_result" WHERE ("id" > CAST($1 AS BIGINT)) UNION SELECT "id" FROM "a"`)
+		assert.Equal(t, []any{10}, args)
+	})
+	t.Run("union branches isolate grouping expression bindings and having aliases", func(t *testing.T) {
+		leftKey := &sb.Arithmetic{Left: &sb.Column{Name: "id"}, Op: sb.Add, Right: &sb.Param{Value: 5}}
+		rightKey := &sb.Arithmetic{Left: &sb.Column{Name: "id"}, Op: sb.Add, Right: &sb.Param{Value: 5}}
+		left := sb.Select(&sb.Alias{Expr: leftKey, Name: "key"}).From(&sb.Table{SourceIdentifier: `"a"`}).GroupBy(leftKey).Having(&sb.Gt{Left: &sb.Column{Name: "key"}, Right: &sb.Param{Value: 0}})
+		right := sb.Select(&sb.Alias{Expr: rightKey, Name: "key"}).From(&sb.Table{SourceIdentifier: `"b"`}).GroupBy(rightKey).Having(&sb.Gt{Left: &sb.Column{Name: "key"}, Right: &sb.Param{Value: 0}})
+		statement, args, err := ToSql(sb.UnionQuery(left, right, true))
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM (SELECT ("id" + CAST($1 AS BIGINT)) AS "key" FROM "a" GROUP BY ("id" + CAST($1 AS BIGINT)) HAVING (("id" + CAST($1 AS BIGINT)) > CAST($2 AS BIGINT)) UNION ALL SELECT ("id" + CAST($3 AS BIGINT)) AS "key" FROM "b" GROUP BY ("id" + CAST($3 AS BIGINT)) HAVING (("id" + CAST($3 AS BIGINT)) > CAST($4 AS BIGINT))) AS "_union_result"`, statement)
+		assert.Equal(t, []any{5, 0, 5, 0}, args)
+	})
+	t.Run("union money sources retain lossless field projection", func(t *testing.T) {
+		left := sb.Select(&sb.Column{Name: "amount"}).From(&sb.Table{SourceIdentifier: `"payments"`, SourceName: "payments", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}})
+		right := sb.Select(&sb.Column{Name: "amount"}).From(&sb.Table{SourceIdentifier: `"refunds"`, SourceName: "refunds", ColumnNames: []string{"amount"}, ColumnOriginalTypes: map[string]string{"amount": "money"}})
+		statement, args, err := ToSql(sb.UnionQuery(left, right, true))
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM (SELECT "amount" FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "payments") AS "payments" UNION ALL SELECT "amount" FROM (SELECT CAST("amount" AS NUMERIC) AS "amount" FROM "refunds") AS "refunds") AS "_union_result"`, statement)
+		assert.Empty(t, args)
+	})
+	t.Run("invalid union relations never return partial SQL", func(t *testing.T) {
+		valid := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`})
+		for _, source := range []*sb.Union{nil, {Right: valid, Alias: "u"}, {Left: valid, Alias: "u"}, {Left: valid, Right: valid}, {Left: valid, Right: valid, Alias: "bad\x00alias"}, {Left: valid, Right: sb.Select(), Alias: "u"}} {
+			statement, args, err := ToSql(sb.Select(&sb.Star{}).From(source))
+			require.Error(t, err)
+			assert.Empty(t, statement)
+			assert.Nil(t, args)
+		}
+	})
 	t.Run("lossless source casts retain fractions without changing explicit DECIMAL defaults", func(t *testing.T) {
 		for _, tc := range []struct {
 			kind   sb.CastType

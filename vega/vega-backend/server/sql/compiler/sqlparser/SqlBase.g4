@@ -6,12 +6,20 @@ grammar SqlBase;
 
 options { caseInsensitive = true; }
 
-statement: selectQuery SEMICOLON? EOF;
+statement: queryExpression SEMICOLON? EOF;
+
+queryExpression
+    : queryTerm (unionOperator queryTerm)*
+      (ORDER BY sortItem (COMMA sortItem)*)? limitClause?
+    ;
+
+queryTerm: selectQuery | LPAREN queryExpression RPAREN;
+
+unionOperator: UNION (ALL | DISTINCT)?;
 
 selectQuery
     : SELECT DISTINCT? selectItem (COMMA selectItem)* FROM relation
       (WHERE expression)? (GROUP BY expressionList)? (HAVING expression)?
-      (ORDER BY sortItem (COMMA sortItem)*)? limitClause?
     ;
 
 selectItem: (identifier DOT)? STAR | expression (AS? identifier)?;
@@ -19,7 +27,7 @@ selectItem: (identifier DOT)? STAR | expression (AS? identifier)?;
 relation: relationPrimary joinPart*;
 
 relationPrimary: RESOURCE (AS? identifier)?
-               | LPAREN selectQuery RPAREN AS? identifier
+               | LPAREN queryExpression RPAREN AS? identifier
                | LPAREN relation RPAREN;
 
 joinPart: ((INNER | LEFT OUTER? | RIGHT OUTER?)? JOIN relationPrimary ON expression)
@@ -73,6 +81,8 @@ literal: NUMBER | STRING | NULL | TRUE | FALSE;
 identifier: IDENTIFIER | QUOTED_IDENTIFIER;
 
 SELECT: 'SELECT';
+UNION: 'UNION';
+ALL: 'ALL';
 DISTINCT: 'DISTINCT';
 FROM: 'FROM';
 WHERE: 'WHERE';
@@ -112,7 +122,7 @@ FALSE: 'FALSE';
 CURRENT_TIMESTAMP: 'CURRENT_TIMESTAMP';
 
 // 已识别但未开放的语法，不能作为普通名称放行。
-UNSUPPORTED: 'WITH' | 'UNION' | 'INTERSECT' | 'EXCEPT' | 'OVER' | 'WINDOW'
+UNSUPPORTED: 'WITH' | 'INTERSECT' | 'EXCEPT' | 'OVER' | 'WINDOW'
     | 'FULL' | 'NATURAL' | 'USING' | 'LATERAL' | 'FOR' | 'LOCK' | 'INTO'
     | 'INSERT' | 'UPDATE' | 'DELETE' | 'CREATE' | 'DROP' | 'ALTER' | 'SET'
     | 'EXISTS' | 'ROLLUP' | 'CUBE' | 'FETCH' | 'SQL_CALC_FOUND_ROWS';

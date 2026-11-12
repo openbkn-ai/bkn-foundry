@@ -67,6 +67,15 @@ type Subquery struct {
 	Alias string
 }
 
+// Union 是两个查询按位置组合的来源；All=false 表示去重的 UNION。
+// 每个分支保留自己的排序和 LIMIT，外层 SelectBuilder 承载整体排序与分页。
+// Alias 只属于本次来源实例，不改变首分支提供的结果列名。
+type Union struct {
+	Left, Right *SelectBuilder
+	All         bool
+	Alias       string
+}
+
 type JoinKind string
 
 // Join 是连接子句；Source 为 Table、Subquery 或 JoinedTable。
@@ -98,6 +107,27 @@ type Order struct {
 
 func Select(columns ...SqlNode) *SelectBuilder {
 	return (&SelectBuilder{}).Columns(columns...)
+}
+
+// UnionQuery 新建集合结果上的 SELECT，不修改或复制分支。
+func UnionQuery(left, right *SelectBuilder, all bool) *SelectBuilder {
+	return Select(&Star{}).From(&Union{Left: left, Right: right, All: all, Alias: "_union_result"})
+}
+
+// UnionSource 识别不改变集合结果的包装，供生成器展开左结合链。
+// 仅左操作数可直接展开；右操作数及任何过滤、投影、排序或分页边界须保留。
+func UnionSource(query *SelectBuilder) *Union {
+	if query == nil || len(query.ColumnsPart) != 1 || len(query.JoinsPart) > 0 ||
+		len(query.WherePart) > 0 || len(query.GroupByPart) > 0 || len(query.HavingPart) > 0 ||
+		query.DistinctPart || len(query.OrderByPart) > 0 || query.LimitPart != nil || query.OffsetPart != 0 {
+		return nil
+	}
+	star, ok := query.ColumnsPart[0].(*Star)
+	if !ok || star == nil || star.Qualifier != "" {
+		return nil
+	}
+	union, _ := query.FromPart.(*Union)
+	return union
 }
 
 func (q *SelectBuilder) Columns(columns ...SqlNode) *SelectBuilder {
@@ -193,6 +223,8 @@ func (*SelectBuilder) sqlNode() {}
 func (*Table) sqlNode() {}
 
 func (*Subquery) sqlNode() {}
+
+func (*Union) sqlNode() {}
 
 func (*Join) sqlNode() {}
 
