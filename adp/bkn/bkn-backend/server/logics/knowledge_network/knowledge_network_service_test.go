@@ -60,6 +60,7 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	ots := bmock.NewMockObjectTypeService(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, ps: ps}
 	ctx := context.Background()
 
@@ -158,6 +159,7 @@ func TestListOverviewGraphScopesConceptGroupCountsBeforeApplyingLimits(t *testin
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	cga := bmock.NewMockConceptGroupAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, cga: cga, ps: ps}
 
 	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
@@ -237,6 +239,7 @@ func TestListOverviewGraphDoesNotTruncateCompleteConceptGroupAtEdgeLimit(t *test
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	cga := bmock.NewMockConceptGroupAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, cga: cga, ps: ps}
 
 	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
@@ -321,6 +324,7 @@ func TestResolveOverviewObjectScopeFiltersWildcardCandidates(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{ota: ota, ps: ps}
 	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
@@ -354,6 +358,7 @@ func TestListOverviewGraphDoesNotRepeatAnEmptyCursorPage(t *testing.T) {
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ota: ota, rta: rta, ps: ps}
 	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
 		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, UpdateTime: 1234}, nil)
@@ -531,6 +536,7 @@ func TestEnrichExportObjectReferencesReusesLoadedObjectsAndFetchesMissingOnes(t 
 func TestFinalizeExportConceptGroupsReusesAuthorizedExportResources(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	permissions := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(permissions)
 	service := &knowledgeNetworkService{ps: permissions}
 	visibleObjectID := interfaces.KNChildResourceID("kn-1", "ot-visible")
 	hiddenObjectID := interfaces.KNChildResourceID("kn-1", "ot-hidden")
@@ -576,6 +582,7 @@ func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -899,6 +906,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 
 		service := &knowledgeNetworkService{
@@ -1160,6 +1168,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 
 		service := &knowledgeNetworkService{
@@ -1338,6 +1347,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		service := &knowledgeNetworkService{kna: kna, ps: ps}
 		parameter := interfaces.KNsQueryParams{
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: 10},
@@ -1400,6 +1410,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		service := &knowledgeNetworkService{kna: kna, ps: ps}
 		parameter := interfaces.KNsQueryParams{
 			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: 10},
@@ -1437,6 +1448,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		service := &knowledgeNetworkService{kna: kna, ps: ps, rta: rta}
 		childCandidates := []interfaces.KNChildResourceCandidate{{
@@ -1497,6 +1509,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		service := &knowledgeNetworkService{kna: kna, ps: ps}
 		kn := &interfaces.KN{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, NavigationOnly: true}
 		candidates := []interfaces.KNChildResourceCandidate{
@@ -1541,6 +1554,7 @@ func Test_knowledgeNetworkService_ResolveKNReadAccess(t *testing.T) {
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		service := &knowledgeNetworkService{kna: kna, ps: ps}
 		knID := "kn1"
 		branch := interfaces.MAIN_BRANCH
@@ -1811,6 +1825,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 		}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1908,6 +1923,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 				IfNameModify: true,
 			}
 			ps2 := bmock.NewMockPermissionService(mockCtrl)
+			filterAllChildren(ps2)
 
 			service := &knowledgeNetworkService{
 				appSetting: appSetting,
@@ -1937,6 +1953,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 				IfNameModify: true,
 			}
 			ps2 := bmock.NewMockPermissionService(mockCtrl)
+			filterAllChildren(ps2)
 
 			service := &knowledgeNetworkService{
 				appSetting: appSetting,
@@ -1969,6 +1986,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		rts := bmock.NewMockRelationTypeService(mockCtrl)
@@ -2330,6 +2348,7 @@ func Test_knowledgeNetworkService_DeleteKN_AllBranches(t *testing.T) {
 
 			kna := bmock.NewMockKNAccess(mockCtrl)
 			ps := bmock.NewMockPermissionService(mockCtrl)
+			filterAllChildren(ps)
 			vbs := bmock.NewMockVegaBackendService(mockCtrl)
 			ots := bmock.NewMockObjectTypeService(mockCtrl)
 			rts := bmock.NewMockRelationTypeService(mockCtrl)
@@ -2396,6 +2415,7 @@ func TestCleanupKNChildAuthorizationFollowsDependencyOrder(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
+	filterAllChildren(ps)
 	service := &knowledgeNetworkService{kna: kna, ps: ps}
 
 	kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1"}, interfaces.MAIN_BRANCH).
@@ -2429,6 +2449,7 @@ func Test_knowledgeNetworkService_ListKnSrcs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
@@ -2617,6 +2638,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 
 		service := &knowledgeNetworkService{
@@ -2825,6 +2847,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 		}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
+		filterAllChildren(ps)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -3628,5 +3651,100 @@ func Test_updateKNFailure(t *testing.T) {
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed)
 		}
+	})
+}
+
+// filterAllChildren answers the caller's child grant scope as one bkn-safe cannot list, so a test
+// keeps checking every child candidate through the per-resource filter.
+func filterAllChildren(ps *bmock.MockPermissionService) {
+	ps.EXPECT().ListAccessibleResourcesWithAnyOperation(gomock.Any(), gomock.Any()).
+		Return(interfaces.PermissionResourceScope{RequiresCandidateFilter: true}, nil).AnyTimes()
+}
+
+func Test_knowledgeNetworkService_ListKNsNarrowsChildrenByGrants(t *testing.T) {
+	Convey("Listing networks asks about only the children the caller was granted", t, func() {
+		ctx := context.Background()
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kna := bmock.NewMockKNAccess(mockCtrl)
+		ps := bmock.NewMockPermissionService(mockCtrl)
+		service := &knowledgeNetworkService{kna: kna, ps: ps}
+		parameter := interfaces.KNsQueryParams{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: 10},
+			Branch:                    interfaces.MAIN_BRANCH,
+		}
+		candidateQuery := parameter
+		candidateQuery.OnlyIDs = true
+		candidateQuery.Limit = -1
+		childCandidates := []interfaces.KNChildResourceCandidate{
+			{KNID: "kn1", ResourceID: "ot1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE},
+			{KNID: "kn1", ResourceID: "ot2", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE},
+			{KNID: "kn2", ResourceID: "ot3", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE},
+		}
+		granted := interfaces.KNChildResourceID("kn1", "ot2")
+		listAndHideNetworks := func() {
+			kna.EXPECT().ListKNs(gomock.Any(), candidateQuery).Return([]*interfaces.KN{{KNID: "kn1"}, {KNID: "kn2"}}, nil)
+			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1", "kn2"},
+				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(map[string]interfaces.PermissionResourceOps{}, nil)
+			kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1", "kn2"}, interfaces.MAIN_BRANCH).
+				Return(childCandidates, nil)
+		}
+
+		Convey("a grant on one child filters that child alone and opens its network\n", func() {
+			listAndHideNetworks()
+			ps.EXPECT().ListAccessibleResourcesWithAnyOperation(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE).
+				Return(interfaces.PermissionResourceScope{ResourceIDs: []string{granted, "other/ot9"}}, nil)
+			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				[]string{granted}, []string(nil)).
+				Return(map[string]interfaces.PermissionResourceOps{
+					granted: {ResourceID: granted, Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+				}, nil)
+			detailQuery := parameter
+			detailQuery.CandidateIDs = []string{"kn1"}
+			detailQuery.Offset = 0
+			detailQuery.Limit = 1
+			kna.EXPECT().ListKNs(gomock.Any(), detailQuery).Return([]*interfaces.KN{{KNID: "kn1", KNName: "Network 1",
+				Branch: interfaces.MAIN_BRANCH}}, nil)
+
+			kns, total, err := service.ListKNs(ctx, parameter)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 1)
+			So(kns, ShouldHaveLength, 1)
+			So(kns[0].NavigationOnly, ShouldBeTrue)
+		})
+
+		Convey("no grant on any child asks bkn-safe nothing per child and lists nothing\n", func() {
+			listAndHideNetworks()
+			ps.EXPECT().ListAccessibleResourcesWithAnyOperation(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE).
+				Return(interfaces.PermissionResourceScope{}, nil)
+
+			kns, total, err := service.ListKNs(ctx, parameter)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 0)
+			So(kns, ShouldBeEmpty)
+		})
+
+		Convey("a type-wide grant still checks every child\n", func() {
+			listAndHideNetworks()
+			ps.EXPECT().ListAccessibleResourcesWithAnyOperation(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE).
+				Return(interfaces.PermissionResourceScope{Unrestricted: true}, nil)
+			all := []string{interfaces.KNChildResourceID("kn1", "ot1"), granted, interfaces.KNChildResourceID("kn2", "ot3")}
+			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				all, []string(nil)).Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+			_, total, err := service.ListKNs(ctx, parameter)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 0)
+		})
+
+		Convey("a scope bkn-safe cannot answer fails the list rather than widening it\n", func() {
+			listAndHideNetworks()
+			ps.EXPECT().ListAccessibleResourcesWithAnyOperation(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE).
+				Return(interfaces.PermissionResourceScope{}, errors.New("safe down"))
+
+			_, _, err := service.ListKNs(ctx, parameter)
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
