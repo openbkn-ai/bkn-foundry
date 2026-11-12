@@ -40,6 +40,9 @@ type requirementService struct {
 	// bba reads the implementations kinetic needs link to, in the live network rla's releases name.
 	bba interfaces.BknBackendAccess
 	rla interfaces.ReleaseAccess
+	// kva tells whether the network runs a version, as one a project started from does before
+	// the project's first release.
+	kva interfaces.KNVersionAccess
 	// now, newID, run and sleep are replaced in tests: run drafts in the background, sleep waits
 	// between reads of the Agent's task.
 	now   func() int64
@@ -58,6 +61,7 @@ func NewRequirementService() interfaces.RequirementService {
 			ba:    logics.BAA,
 			bba:   logics.BBA,
 			rla:   logics.RA,
+			kva:   logics.KVA,
 			now:   func() int64 { return time.Now().UnixMilli() },
 			newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 			run:   func(fn func()) { go fn() },
