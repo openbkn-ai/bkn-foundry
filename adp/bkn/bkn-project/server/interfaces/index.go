@@ -49,6 +49,10 @@ type ProjectIndexItem struct {
 	Task *ProjectIndexTask `json:"task,omitempty"`
 	// Build is what the last confirmation did to build the table's index.
 	Build *ProjectIndexBuild `json:"build,omitempty"`
+	// BuiltTime is when the table's index was last built, in milliseconds: the finish time of its
+	// latest completed build in vega-backend, whoever started it. 0 when unknown, as when the caller
+	// may not list the catalog's build tasks.
+	BuiltTime int64 `json:"built_time,omitempty"`
 }
 
 type ProjectIndexBuild struct {

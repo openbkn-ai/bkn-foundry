@@ -51,6 +51,7 @@ func (s *draftService) GetExistingIndex(ctx context.Context, token string, proje
 		}
 	}
 	index := indexReadiness(items, tables, tasks, visible)
+	s.attachBuiltTimes(ctx, index, caller)
 	// Shown only: how the network refreshes them is not the project's to choose.
 	for i := range index.ObjectTypes {
 		index.ObjectTypes[i].FullRebuildOnly = false

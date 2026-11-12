@@ -53,6 +53,7 @@ func Test_GetExistingIndex(t *testing.T) {
 				Index: interfaces.VegaTableIndex{LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx"},
 			}}, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), gomock.Any(), "c1").Return(nil, true, nil)
+			va.EXPECT().ListLastBuilds(gomock.Any(), gomock.Any(), "c1").Return(map[string]int64{"t_regions": 42}, true, nil)
 
 			got, err := svc.GetExistingIndex(ctx, token, "p1", caller)
 			So(err, ShouldBeNil)
@@ -60,6 +61,7 @@ func Test_GetExistingIndex(t *testing.T) {
 			So(got.ObjectTypes[0].ID, ShouldEqual, "regions")
 			So(got.ObjectTypes[0].Table, ShouldResemble, interfaces.DraftTable{ResourceID: "t_regions", Name: "regions", CatalogID: "c1"})
 			So(got.ObjectTypes[0].State, ShouldEqual, interfaces.INDEX_STATE_READY)
+			So(got.ObjectTypes[0].BuiltTime, ShouldEqual, 42)
 			So(got.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_READY: 1})
 		})
 

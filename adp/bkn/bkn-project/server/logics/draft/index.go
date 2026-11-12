@@ -48,6 +48,7 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 	if c := draft.Items.Confirmation; c != nil && c.Commit != "" {
 		s.attachBuilds(ctx, index, projectID, c.Commit)
 	}
+	s.attachBuiltTimes(ctx, index, caller)
 	span.SetStatus(codes.Ok, "")
 	return index, nil
 }
