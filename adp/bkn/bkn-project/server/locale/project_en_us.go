@@ -20,7 +20,7 @@ var projectEnUS = i18n.I18nMessages{
 		"BknProject.Project.VersioningRequired":            "Versioning Needed. This network does not keep versions yet. Once turned on, every edit anyone makes to it in the workspace takes effect only when published, and its current content becomes version 1. Confirm to create the project.",
 		"BknProject.Project.VersioningForbidden":           "Cannot Turn On Versioning. You cannot modify this network; ask its creator or an administrator to turn versioning on, then create the project.",
 		"BknProject.Project.CatalogMissing":                "Data Catalog Deleted. A selected data catalog no longer exists; choose another one.",
-		"BknProject.Project.BknBackendRequestFailed":       "bkn-backend Request Failed. bkn-backend refused the request; error_details holds its reply.",
+		"BknProject.Project.BknBackendRequestFailed":       "Knowledge Network Service Failed. The knowledge network service refused or could not complete the request; contact your administrator if it keeps happening.",
 		"BknProject.Project.InternalError":                 "Internal Error. Please contact the administrator.",
 		"BknProject.Requirement.InvalidRequestBody":        "Invalid Request Body. The request body must be valid JSON.",
 		"BknProject.Requirement.MissingUpdateTime":         "Update Time Missing. Send the update_time read with the requirement specification; reload it and try again.",
