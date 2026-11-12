@@ -333,7 +333,10 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 		return nil, err
 	}
 	project := entry.Project
-	byID := documentsByID(docs)
+	// The network's background is read and cited beside the documents; it neither starts a run
+	// nor counts toward their size, nor makes the specification stale.
+	cited := s.withBackground(ctx, token, entry, docs)
+	byID := documentsByID(cited)
 	p := &partRun{
 		kind: interfaces.REQUIREMENT_RUN_CONCEPTS, projectID: projectID, run: run, caller: caller,
 		format: conceptsResponseFormat(), newOut: func() any { return &conceptsOutput{} },
@@ -341,7 +344,7 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	// Tables are clues: they are listed in the background, as the caller.
 	p.prepareMessage = func(ctx context.Context) (string, error) {
 		tables, _ := s.listTables(ctx, project, caller)
-		return buildConceptsMessage(project.NamingLanguage, docs, tables, draft, spec)
+		return buildConceptsMessage(project.NamingLanguage, cited, tables, draft, spec)
 	}
 	var types map[string]string
 	p.check = func(ctx context.Context, out any) {

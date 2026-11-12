@@ -1027,8 +1027,10 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 	}
 	project := entry.Project
+	// Scenarios may cite the network's background too; it is read now, with the caller's token.
+	cited := s.withBackground(ctx, token, entry, docs)
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, docs, caller) })
+	s.run(func() { s.draft(runCtx, req, project, docs, cited, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -1064,9 +1066,10 @@ func (s *requirementService) listTables(ctx context.Context, project *interfaces
 }
 
 // draft runs the Agent and records the checked specification, or why drafting failed.
-// What drafting started from stays when it fails.
+// What drafting started from stays when it fails. The Agent reads and cites cited, the documents
+// and the network's background; the run records the documents as its inputs.
 func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
-	docs []*interfaces.RequirementDocument, caller interfaces.AccountInfo) {
+	docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument, caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
 		done.Status, done.Error, done.Spec, done.Inputs, done.UpdateTime = status, failure, *spec, inputs, s.now()
@@ -1088,7 +1091,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		fail(failureInterrupted, fmt.Errorf("read draft: %v", err))
 		return
 	}
-	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, docs, tables, draft, &base, &base)
+	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -1104,7 +1107,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	}
 
 	spec := cloneSpec(&base)
-	buildSpec(answer.(*draftOutput), documentsByID(docs), draft, spec)
+	buildSpec(answer.(*draftOutput), documentsByID(cited), draft, spec)
 	for _, q := range spec.Questions {
 		if q.DraftTime == 0 {
 			q.DraftTime = req.CreateTime

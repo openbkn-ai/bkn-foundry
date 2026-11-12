@@ -34,6 +34,11 @@ const (
 	REQUIREMENT_DOC_OTHER    = "other"
 )
 
+// REQUIREMENT_NETWORK_DOCUMENT_ID is the id of the network's own background, read only: its
+// description and the SKILL.md at the root of the project's branch. It is not stored with the
+// uploaded documents; runs read it beside them so their citations can name it.
+const REQUIREMENT_NETWORK_DOCUMENT_ID = "network"
+
 // IsRequirementDocType tells whether docType is a requirement document type.
 func IsRequirementDocType(docType string) bool {
 	switch docType {

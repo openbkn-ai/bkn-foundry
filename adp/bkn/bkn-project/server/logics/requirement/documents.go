@@ -235,9 +235,20 @@ func (s *requirementService) GetDocument(ctx context.Context, token string, proj
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetRequirementDocument")
 	defer span.End()
 
-	if _, err := s.ps.GetProject(ctx, token, projectID); err != nil {
+	entry, err := s.ps.GetProject(ctx, token, projectID)
+	if err != nil {
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
+	}
+	// The network's own background is read where it is kept, not stored with the uploads.
+	if documentID == interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID {
+		doc, err := s.getNetworkDocument(ctx, token, entry)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get network background failed")
+			return nil, err
+		}
+		span.SetStatus(codes.Ok, "")
+		return doc, nil
 	}
 	doc, ok, err := s.ra.GetDocument(ctx, projectID, documentID)
 	if err != nil {
