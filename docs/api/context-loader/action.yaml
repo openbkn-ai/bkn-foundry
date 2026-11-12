@@ -51,8 +51,12 @@ paths:
         符合 Function Call 规范的底层工具定义。工具名和说明仍取自执行资源，调用方
         应使用 `action_type` 判断业务意图，使用 `_dynamic_tools.parameters` 填写参数。
 
-        不传 `_instance_identities` 时召回的是行动类级别的定义；传了则返回已就该批
-        实例实例化过的参数。
+        本接口必须指定 `at_id`，不能仅凭对象实例标识发现候选行动类。旧版行动查询
+        在未指定实例时曾按适用条件扫描对象；当前版本不扫描，返回定义与执行参数 schema。
+        若要列出适用于某个实例的全部行动类，需要另行提供候选行动发现能力。
+
+        不传 `_instance_identities`、`relation_target` 或 `object_input` 等目标参数时，
+        返回行动类级别的定义；传入明确目标后，返回针对该目标实例化的参数。
 
         工具声明了输出契约时，还会带上 `output_schema`——执行结果的形状，供 Agent 把
         `get_action_execution` 拿到的 `result` 复述成自然语言。

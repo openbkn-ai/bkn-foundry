@@ -1,8 +1,11 @@
 openapi: 3.0.2
 info:
-  title: 行动召回接口
+  title: 行动类定义与执行参数查询接口
   version: 1.0.0
-  description: 按行动类 ID 查询对象、关系或独立工具行动的业务语义与可执行参数。可选传入明确目标进行预览。
+  description: |
+    必须指定知识网络 ID 和行动类 ID，查询该行动类的业务语义与执行参数；可选传入明确目标进行预览。
+    接口沿用 get_action_info 名称，但不能只凭对象实例标识发现关联的行动类。
+    旧版行动查询在未指定实例时曾按条件扫描对象；当前版本不扫描，只返回行动类级别定义。
 
 servers:
   - url: http://agent-retrieval:30779
@@ -16,7 +19,10 @@ paths:
   /api/agent-retrieval/in/v1/kn/get_action_info:
     post:
       summary: get_action_info
-      description: 返回行动类业务信息 action_type 及底层执行工具定义 _dynamic_tools；不传目标时返回行动类级别定义，不按条件扫描实例。
+      description: |
+        给定 kn_id 和 at_id，返回指定行动类的业务信息 action_type 及底层执行工具定义 _dynamic_tools。
+        明确传入目标身份时可预览该目标的参数；不传目标时返回行动类级别定义，不按适用条件扫描实例。
+        本接口不负责从对象实例发现候选行动类；旧文档中的“根据对象实例标识召回关联行动”不能作为这一能力的契约。
       operationId: getActionInfo
       tags:
         - action-recall
@@ -54,6 +60,11 @@ paths:
             schema:
               $ref: '#/components/schemas/ActionRecallRequest'
             examples:
+              definition_example:
+                summary: 查询行动类定义和执行参数
+                value:
+                  kn_id: kn_medical
+                  at_id: generate_treatment_plan
               multi_instance_example:
                 summary: 多对象实例示例
                 value:

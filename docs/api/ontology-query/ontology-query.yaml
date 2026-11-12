@@ -776,6 +776,7 @@ paths:
       `kn_id`、`at_id` 取自路径，`branch`、`include_type_info`、`exclude_system_properties` 取自查询参数。
 
       不传目标身份时返回行动类级别的定义与 `execution_schema`，不按适用条件扫描实例。
+      这与旧版未传实例时按行动条件扫描对象的行为不同；调用方不能依赖旧版的隐式目标发现。
       对已有实例预览时显式传 `_instance_identities`；关系操作传一对 `relation_target`；
       创建对象可传 `object_input`。`include_type_info=true` 时还返回行动类的业务定义。
     post:
