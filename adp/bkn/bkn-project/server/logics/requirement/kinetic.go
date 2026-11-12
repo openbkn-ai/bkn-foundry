@@ -79,6 +79,8 @@ type kineticMessage struct {
 	Concepts      []messageConcept      `json:"concepts"`
 	Rules         []messageRule         `json:"rules"`
 	Kept          messageKeptNeeds      `json:"kept"`
+	// NetworkItemsOmitted counts the network's items past maxMessageNetworkItems, not in kept.
+	NetworkItemsOmitted int `json:"network_items_omitted,omitempty"`
 }
 
 type messageKeptNeeds struct {
@@ -96,7 +98,13 @@ func buildKineticMessage(language string, docs []*interfaces.RequirementDocument
 		n.ID = keptPrefix + n.ID
 		msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, n)
 	}
-	msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, messageNetworkItemsOf(items)...)
+	model := map[string]bool{}
+	for _, ot := range msg.ObjectTypes {
+		model[ot.ID] = true
+	}
+	networkItems, omitted := messageNetworkItemsOf(items, model)
+	msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, networkItems...)
+	msg.NetworkItemsOmitted = omitted
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return "", err

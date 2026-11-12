@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,11 @@ import (
 // networkItemPrefix starts the id a network item is given by in the kinetic analysis: it goes as
 // a kept need, which the Agent never repeats.
 const networkItemPrefix = keptPrefix + "network-"
+
+// maxMessageNetworkItems bounds the network's items given to the kinetic analysis: a large network
+// may have many. Those on the model's object types go first; the server still checks every
+// proposal against all of them.
+const maxMessageNetworkItems = 200
 
 // releasesPage is how many releases are read at a time looking for a lineage's first.
 const releasesPage = 100
@@ -137,10 +143,20 @@ func networkNeedKind(linkType string) string {
 }
 
 // messageNetworkItemsOf gives the network's items to the kinetic analysis as kept needs, by
-// networkItemPrefix and their place: the Agent builds on them and never repeats them.
-func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem) []messageLogicNeed {
+// networkItemPrefix and their place: the Agent builds on them and never repeats them. At most
+// maxMessageNetworkItems go, those on an object type of model first; it counts those left out.
+func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem, model map[string]bool) ([]messageLogicNeed, int) {
+	order := make([]int, 0, len(items))
+	for pass := range 2 {
+		for i, item := range items {
+			if model[item.OwnerObjectTypeID] == (pass == 0) {
+				order = append(order, i)
+			}
+		}
+	}
 	out := []messageLogicNeed{}
-	for i, item := range items {
+	for _, i := range order[:min(len(order), maxMessageNetworkItems)] {
+		item := items[i]
 		n := messageLogicNeed{ID: networkItemPrefix + strconv.Itoa(i+1), Kind: networkNeedKind(item.Type),
 			Name: item.Name, Definition: item.Description}
 		if item.OwnerObjectTypeID != "" {
@@ -148,23 +164,40 @@ func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem) []messageLogicN
 		}
 		out = append(out, n)
 	}
-	return out
+	return out, len(items) - len(out)
 }
 
-// coveringItem is the network's item a need of kind named name is covered by: one of the kind of
-// implementation the need links to and of the same name. An API need is left to a person, as only
-// a function bound from an OpenAPI description implements it.
-func coveringItem(items []*interfaces.LogicNetworkItem, kind string, name string) *interfaces.LogicNetworkItem {
+// coveringItems are the network's items a need of kind named name is covered by: those of the kind
+// of implementation the need links to and of the same name. An API need is left to a person, as
+// only a function bound from an OpenAPI description implements it.
+func coveringItems(items []*interfaces.LogicNetworkItem, kind string, name string) []*interfaces.LogicNetworkItem {
 	linkType := interfaces.LogicLinkTypeOf(kind)
 	if linkType == "" || kind == interfaces.LOGIC_NEED_API || squeezed(name) == "" {
 		return nil
 	}
+	var out []*interfaces.LogicNetworkItem
 	for _, item := range items {
 		if item.Type == linkType && squeezed(item.Name) == squeezed(name) {
-			return item
+			out = append(out, item)
 		}
 	}
-	return nil
+	return out
+}
+
+// coveringItem is the one item covering need: the only one of its name, or of those the only one
+// on an object type of the need. Items of the same name in several toolboxes or on several object
+// types are left to a person.
+func coveringItem(items []*interfaces.LogicNetworkItem, need *interfaces.RequirementLogicNeed) *interfaces.LogicNetworkItem {
+	named := coveringItems(items, need.Kind, need.Name)
+	if len(named) > 1 {
+		named = slices.DeleteFunc(named, func(item *interfaces.LogicNetworkItem) bool {
+			return !slices.Contains(need.ObjectTypeIDs, item.OwnerObjectTypeID)
+		})
+	}
+	if len(named) != 1 {
+		return nil
+	}
+	return named[0]
 }
 
 // uncovered leaves out of proposed the needs the network's items already cover: one the Agent
@@ -179,7 +212,7 @@ func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) 
 		id := strings.TrimSpace(p.ID)
 		switch {
 		case strings.HasPrefix(id, networkItemPrefix):
-		case !strings.HasPrefix(id, keptPrefix) && coveringItem(items, p.Kind, p.Name) != nil:
+		case !strings.HasPrefix(id, keptPrefix) && len(coveringItems(items, p.Kind, p.Name)) > 0:
 		default:
 			out = append(out, p)
 		}
@@ -195,7 +228,7 @@ func linkCovered(spec *interfaces.RequirementSpec, items []*interfaces.LogicNetw
 		if n.Link != nil || n.Edited {
 			continue
 		}
-		if item := coveringItem(items, n.Kind, n.Name); item != nil {
+		if item := coveringItem(items, n); item != nil {
 			n.Link = &interfaces.RequirementLogicLink{Type: item.Type, ID: item.ID, BoxID: item.BoxID, By: caller, At: now}
 		}
 	}

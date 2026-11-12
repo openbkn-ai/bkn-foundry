@@ -436,10 +436,12 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 				So(msg.Kept.LogicNeeds, ShouldResemble, []messageLogicNeed{
 					{ID: "kept-n1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "hold-order"},
 					{ID: "kept-n2", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
+					// Those on the model's object types first.
 					{ID: "kept-network-1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"}},
-					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 					{ID: "kept-network-3", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", ObjectTypeIDs: []string{"sales_order"}},
+					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 				})
+				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
 				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
 			})
 
