@@ -133,8 +133,11 @@ type ReleasePreview struct {
 	// empty before the first one.
 	LiveNetworkID string `json:"live_network_id"`
 	BaseVersion   string `json:"base_version"`
-	MainCommit    string `json:"main_commit"`
-	BranchCommit  string `json:"branch_commit"`
+	// RunningVersion is the version the network runs, 0 when it has none: a network a project
+	// started from may run one before the lineage's first release.
+	RunningVersion int    `json:"running_version"`
+	MainCommit     string `json:"main_commit"`
+	BranchCommit   string `json:"branch_commit"`
 	// Changes says how the branch's definitions differ from main's.
 	Changes PathDiff `json:"changes"`
 	// Capabilities is what the release would do with each toolbox and Skill the definitions use;

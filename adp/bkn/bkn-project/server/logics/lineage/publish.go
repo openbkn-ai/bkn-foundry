@@ -488,6 +488,7 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 		return nil, err
 	}
 	checked.versioning = versioning
+	preview.RunningVersion = versioning.RunningVersion
 	if !versioning.Enabled && refuse(httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_NotVersioned).
 		WithErrorDetails(map[string]any{"network_id": lineageID})) {
 		return checked, nil
