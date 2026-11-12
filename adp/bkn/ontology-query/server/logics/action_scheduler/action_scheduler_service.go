@@ -377,16 +377,6 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	// A Function-backed action reads BKN as the caller who started it.
 	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerCredential)
 	traceOutcome := "handed_off"
-	if s.functionTrace == nil && callerCredential.ConversationID != "" && callerCredential.InteractionID != "" &&
-		callerCredential.ParentOperationID != "" {
-		// The HTTP request is gone by the time the worker invokes a Function.
-		// Restore only the managed identifiers captured at the authenticated boundary.
-		ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
-			ConversationID: callerCredential.ConversationID,
-			InteractionID:  callerCredential.InteractionID,
-			OperationID:    callerCredential.ParentOperationID,
-		})
-	}
 	if execution.Proxy == nil && strings.HasPrefix(execution.ProxyModelVersion, interfaces.CallerIdentityModelPrefix) {
 		// Started on the draft or a history version: the tool runs as the caller who started it.
 		ctx = interfaces.WithCallerIdentityExecution(ctx)
@@ -394,6 +384,21 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		ctx = interfaces.WithTrustedProxyContext(ctx, proxyContext)
 	} else {
 		logger.Errorf("Execution %s has an invalid proxy snapshot: %v", execution.ID, err)
+	}
+	if s.functionTrace == nil {
+		if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
+			proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction {
+			// An asynchronous Function cannot reuse the caller's Interaction after
+			// its HTTP request ends. Without Trace Core, run without managed IDs.
+			ctx = withoutManagedActionTrace(ctx)
+		} else if callerCredential.ConversationID != "" && callerCredential.InteractionID != "" &&
+			callerCredential.ParentOperationID != "" {
+			ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+				ConversationID: callerCredential.ConversationID,
+				InteractionID:  callerCredential.InteractionID,
+				OperationID:    callerCredential.ParentOperationID,
+			})
+		}
 	}
 	logger.Infof("Starting async execution: %s, mode: %s, target instances: %d",
 		execution.ID, execution.ExecutionMode, len(req.Instances))

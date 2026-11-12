@@ -195,6 +195,265 @@ func TestManagedActionFunctionRejectsTraceRegistrationFailure(t *testing.T) {
 	finish("failed")
 }
 
+func TestManagedActionFunctionRunsWhenTraceCaptureDisabled(t *testing.T) {
+	ensureCalls := 0
+	finishCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
+			_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
+		case strings.HasSuffix(r.URL.Path, "/interactions"):
+			_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
+		case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			ensureCalls++
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"error":{"code":"capture_disabled"}}`))
+		case strings.HasSuffix(r.URL.Path, "/finish"):
+			finishCalls++
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+	ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+		ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+	}, interfaces.CallerRuntimeCredential{Authorization: "Bearer token", ApplicationPrincipalID: "app-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ordinal := range 2 {
+		result, err := client.Run(withActionInvocation(ctx, ordinal), "function-1", func(runCtx context.Context) (any, error) {
+			traceContext, _ := common.GetTraceContextFromCtx(runCtx)
+			if traceContext.ConversationID != "" || traceContext.InteractionID != "" || traceContext.OperationID != "" {
+				t.Errorf("unregistered managed Trace context reached Function: %#v", traceContext)
+			}
+			caller, ok := interfaces.CallerRuntimeCredentialFromContext(runCtx)
+			if !ok || caller.Authorization != "Bearer token" || caller.ApplicationPrincipalID != "app-1" ||
+				caller.ConversationID != "" || caller.InteractionID != "" || caller.ParentOperationID != "" {
+				t.Errorf("Function received incorrect untraced credential: %#v", caller)
+			}
+			return "ok", nil
+		})
+		if err != nil || result != "ok" {
+			t.Fatalf("Function execution %d: result=%#v err=%v", ordinal, result, err)
+		}
+	}
+	finish("handed_off")
+	if ensureCalls != 1 || finishCalls != 1 {
+		t.Fatalf("Trace Core requests: ensure=%d finish=%d", ensureCalls, finishCalls)
+	}
+}
+
+func TestManagedActionFunctionRunsWhenTraceCoreUnavailable(t *testing.T) {
+	for _, stage := range []string{"origin", "conversation", "interaction", "operation"} {
+		t.Run(stage, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				failed := (stage == "origin" && strings.HasSuffix(r.URL.Path, "/operations/op_original")) ||
+					(stage == "conversation" && strings.HasSuffix(r.URL.Path, "/conversations:ensure-current")) ||
+					(stage == "interaction" && strings.HasSuffix(r.URL.Path, "/interactions")) ||
+					(stage == "operation" && strings.HasSuffix(r.URL.Path, "/operations:ensure"))
+				if failed {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					_, _ = w.Write([]byte(`{"error":{"code":"trace_core_unavailable"}}`))
+					return
+				}
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/operations/op_original"):
+					_, _ = w.Write([]byte(`{"conversation_id":"conv_original","interaction_id":"int_original"}`))
+				case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
+					_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
+				case strings.HasSuffix(r.URL.Path, "/interactions"):
+					_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
+				case strings.HasSuffix(r.URL.Path, "/finish"):
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+			ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+				ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+			}, interfaces.CallerRuntimeCredential{
+				Authorization: "Bearer token", ApplicationPrincipalID: "app-1",
+				ConversationID: "conv_original", InteractionID: "int_original", ParentOperationID: "op_original",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.Run(withActionInvocation(ctx, 0), "function-1", func(runCtx context.Context) (any, error) {
+				traceContext, _ := common.GetTraceContextFromCtx(runCtx)
+				caller, ok := interfaces.CallerRuntimeCredentialFromContext(runCtx)
+				if traceContext.ConversationID != "" || traceContext.InteractionID != "" || traceContext.OperationID != "" ||
+					!ok || caller.Authorization != "Bearer token" || caller.ConversationID != "" ||
+					caller.InteractionID != "" || caller.ParentOperationID != "" {
+					t.Errorf("unregistered Trace identity reached Function: trace=%#v caller=%#v", traceContext, caller)
+				}
+				return "business result", nil
+			})
+			if err != nil || result != "business result" {
+				t.Fatalf("business Function was blocked: result=%#v err=%v", result, err)
+			}
+			finish("handed_off")
+		})
+	}
+}
+
+func TestManagedActionFunctionRunsWhenTraceCoreConnectionFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	address := server.URL
+	server.Close()
+	client := &actionTraceClient{baseURL: address, http: server.Client()}
+	ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+		ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+	}, interfaces.CallerRuntimeCredential{Authorization: "Bearer token", ApplicationPrincipalID: "app-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.Run(ctx, "function-1", func(context.Context) (any, error) {
+		return "business result", nil
+	})
+	if err != nil || result != "business result" {
+		t.Fatalf("business Function was blocked: result=%#v err=%v", result, err)
+	}
+	finish("handed_off")
+}
+
+func TestManagedActionFunctionRunsWhenTraceCoreReturnsIncompleteSession(t *testing.T) {
+	for _, stage := range []string{"conversation", "interaction", "operation"} {
+		t.Run(stage, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
+					if stage == "conversation" {
+						_, _ = w.Write([]byte(`{}`))
+					} else {
+						_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
+					}
+				case strings.HasSuffix(r.URL.Path, "/interactions"):
+					if stage == "interaction" {
+						_, _ = w.Write([]byte(`{"interaction_id":"int_action"}`))
+					} else {
+						_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
+					}
+				case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+					_, _ = w.Write([]byte(`{"execute":true}`))
+				case strings.HasSuffix(r.URL.Path, "/finish"):
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+			ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+				ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+			}, interfaces.CallerRuntimeCredential{Authorization: "Bearer token", ApplicationPrincipalID: "app-1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.Run(ctx, "function-1", func(runCtx context.Context) (any, error) {
+				traceContext, _ := common.GetTraceContextFromCtx(runCtx)
+				if traceContext.ConversationID != "" || traceContext.InteractionID != "" || traceContext.OperationID != "" {
+					t.Errorf("incomplete Trace identity reached Function: %#v", traceContext)
+				}
+				return "ok", nil
+			})
+			if err != nil || result != "ok" {
+				t.Fatalf("business Function was blocked: result=%#v err=%v", result, err)
+			}
+			finish("handed_off")
+		})
+	}
+}
+
+func TestManagedActionFunctionDoesNotBypassTraceIdentityRefusal(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/operations/op_original") {
+			t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":"permission_denied"}}`))
+	}))
+	defer server.Close()
+	client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+	_, _, err := client.Open(context.Background(), &interfaces.ActionExecution{
+		ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+	}, interfaces.CallerRuntimeCredential{
+		Authorization: "Bearer token", ApplicationPrincipalID: "app-1",
+		ConversationID: "conv_original", InteractionID: "int_original", ParentOperationID: "op_original",
+	})
+	if err == nil || !strings.Contains(err.Error(), "permission_denied") {
+		t.Fatalf("Trace identity refusal was bypassed: %v", err)
+	}
+}
+
+func TestFunctionActionCompletesWhenTraceCoreIsUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	address := server.URL
+	server.Close()
+	for _, test := range []struct {
+		name  string
+		trace managedFunctionTrace
+	}{
+		{name: "service unavailable", trace: &actionTraceClient{baseURL: address, http: server.Client()}},
+		{name: "service not configured"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			controller := gomock.NewController(t)
+			logs := omock.NewMockActionLogsService(controller)
+			access := omock.NewMockAgentOperatorAccess(controller)
+			execution, actionType, req := aggregatedOnceFixture(t, "exec-trace-outage")
+			useFunctionTarget(t, execution, actionType)
+			service := &actionSchedulerService{
+				logsService: logs, aoAccess: access, permissions: &actionPermissionStub{}, functionTrace: test.trace,
+			}
+			var stored []interfaces.ObjectExecutionResult
+			var outcome *interfaces.ExecutionOutcome
+			logs.EXPECT().AppendResults(gomock.Any(), execution.KNID, execution.ID, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _ string, _ int, results []interfaces.ObjectExecutionResult) error {
+					stored = append(stored, results...)
+					return nil
+				})
+			logs.EXPECT().MarkExecutionRunning(gomock.Any(), execution.KNID, execution.ID).Return(nil)
+			logs.EXPECT().GetExecutionStatus(gomock.Any(), execution.KNID, execution.ID).
+				Return(interfaces.ExecutionStatusRunning, nil).AnyTimes()
+			logs.EXPECT().FinishExecution(gomock.Any(), execution.KNID, execution.ID, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _ string, value *interfaces.ExecutionOutcome) error {
+					outcome = value
+					return nil
+				})
+			access.EXPECT().ExecuteToolAsProxy(gomock.Any(), actionType.ActionSource.BoxID,
+				actionType.ActionSource.ToolID, gomock.Any()).DoAndReturn(
+				func(ctx context.Context, _, _ string, _ interfaces.ToolExecutionRequest) (any, error) {
+					caller, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
+					if !ok || caller.Authorization != "Bearer token" || caller.ConversationID != "" ||
+						caller.InteractionID != "" || caller.ParentOperationID != "" {
+						t.Errorf("Function lost caller or retained unregistered Trace identity: %#v", caller)
+					}
+					return map[string]any{"exit_code": 0, "result": "ok"}, nil
+				})
+			service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{
+				Authorization: "Bearer token", ApplicationPrincipalID: "app-1",
+				ConversationID: "conv_original", InteractionID: "int_original", ParentOperationID: "op_original",
+			})
+			if outcome == nil || outcome.Status != interfaces.ExecutionStatusCompleted || outcome.SuccessCount != 1 ||
+				len(stored) != 1 || stored[0].Status != interfaces.ObjectStatusSuccess {
+				t.Fatalf("Trace outage failed business execution: outcome=%#v results=%#v", outcome, stored)
+			}
+		})
+	}
+}
+
 func TestManagedActionFunctionRunsWithoutOriginInteraction(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

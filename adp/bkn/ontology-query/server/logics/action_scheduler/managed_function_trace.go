@@ -40,13 +40,24 @@ type actionTraceClient struct {
 }
 
 type actionTraceSession struct {
-	client         *actionTraceClient
-	execution      *interfaces.ActionExecution
-	credential     interfaces.CallerRuntimeCredential
-	conversationID string
-	interactionID  string
-	leaseToken     string
-	leaseEpoch     uint64
+	client           *actionTraceClient
+	execution        *interfaces.ActionExecution
+	credential       interfaces.CallerRuntimeCredential
+	conversationID   string
+	interactionID    string
+	leaseToken       string
+	leaseEpoch       uint64
+	traceUnavailable bool
+}
+
+type actionTraceAPIError struct {
+	path       string
+	statusCode int
+	code       string
+}
+
+func (e *actionTraceAPIError) Error() string {
+	return fmt.Sprintf("Trace Core rejected %s with status %d, code %s", e.path, e.statusCode, e.code)
 }
 
 type actionTraceSessionKey struct{}
@@ -71,11 +82,12 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 	credential interfaces.CallerRuntimeCredential) (context.Context, func(string), error) {
 	noop := func(string) {}
 	if credential.Authorization == "" || credential.ApplicationPrincipalID == "" {
-		return ctx, noop, nil
+		return withoutManagedActionTrace(ctx), noop, nil
 	}
 	if execution == nil || execution.Executor.ID == "" {
 		return ctx, noop, errors.New("managed action Function requires an authenticated executor")
 	}
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, credential)
 	session := &actionTraceSession{client: c, execution: execution, credential: credential}
 	if credential.ConversationID != "" || credential.InteractionID != "" || credential.ParentOperationID != "" {
 		if credential.ConversationID == "" || credential.InteractionID == "" || credential.ParentOperationID == "" {
@@ -87,6 +99,10 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 		}
 		if err := c.request(ctx, session, http.MethodGet,
 			"/operations/"+url.PathEscape(credential.ParentOperationID), nil, &origin); err != nil {
+			if actionTraceMayDegrade(ctx, err) {
+				logActionTraceDegraded(execution.ID, "verify origin operation", err)
+				return withoutManagedActionTrace(ctx), noop, nil
+			}
 			return ctx, noop, fmt.Errorf("verify origin managed operation: %w", err)
 		}
 		if origin.ConversationID != credential.ConversationID || origin.InteractionID != credential.InteractionID {
@@ -102,10 +118,15 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 		"idempotency_key":           conversationKey,
 		"one_shot":                  true,
 	}, &conversation); err != nil {
+		if actionTraceMayDegrade(ctx, err) {
+			logActionTraceDegraded(execution.ID, "create conversation", err)
+			return withoutManagedActionTrace(ctx), noop, nil
+		}
 		return ctx, noop, fmt.Errorf("create managed action conversation: %w", err)
 	}
 	if conversation.ID == "" {
-		return ctx, noop, errors.New("managed action conversation has no ID")
+		logActionTraceDegraded(execution.ID, "create conversation", errors.New("Trace Core returned no conversation ID"))
+		return withoutManagedActionTrace(ctx), noop, nil
 	}
 	session.conversationID = conversation.ID
 	var interaction struct {
@@ -118,10 +139,15 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 			"idempotency_key": conversationKey,
 			"lease_seconds":   360,
 		}, &interaction); err != nil {
+		if actionTraceMayDegrade(ctx, err) {
+			logActionTraceDegraded(execution.ID, "start interaction", err)
+			return withoutManagedActionTrace(ctx), noop, nil
+		}
 		return ctx, noop, fmt.Errorf("start managed action interaction: %w", err)
 	}
 	if interaction.ID == "" || interaction.LeaseToken == "" || interaction.LeaseEpoch == 0 {
-		return ctx, noop, errors.New("managed action interaction has no usable lease")
+		logActionTraceDegraded(execution.ID, "start interaction", errors.New("Trace Core returned no usable interaction lease"))
+		return withoutManagedActionTrace(ctx), noop, nil
 	}
 	session.interactionID = interaction.ID
 	session.leaseToken = interaction.LeaseToken
@@ -162,6 +188,9 @@ func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 	if !ok || session == nil {
 		return run(ctx)
 	}
+	if session.traceUnavailable {
+		return run(withoutManagedActionTrace(ctx))
+	}
 	ordinal, _ := ctx.Value(actionInvocationKey{}).(int)
 	operationKey := fmt.Sprintf("action-function:%s:%d", session.execution.ID, ordinal)
 	input := map[string]any{
@@ -192,10 +221,22 @@ func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 			"lease_token": session.leaseToken, "lease_epoch": session.leaseEpoch,
 		}, &ensured)
 	if err != nil {
+		if actionTraceMayDegrade(ctx, err) {
+			session.traceUnavailable = true
+			if !isActionTraceCaptureDisabled(err) {
+				logActionTraceDegraded(session.execution.ID, "register Function operation", err)
+			}
+			return run(withoutManagedActionTrace(ctx))
+		}
 		return nil, fmt.Errorf("register managed action Function: %w", err)
 	}
-	if !ensured.Execute || ensured.Operation.ID == "" || ensured.Receipt.ID == "" {
+	if !ensured.Execute {
 		return nil, errors.New("managed action Function operation is not executable")
+	}
+	if ensured.Operation.ID == "" || ensured.Receipt.ID == "" {
+		session.traceUnavailable = true
+		logActionTraceDegraded(session.execution.ID, "register Function operation", errors.New("Trace Core returned no usable operation receipt"))
+		return run(withoutManagedActionTrace(ctx))
 	}
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	traceContext.OperationID = ensured.Operation.ID
@@ -232,6 +273,54 @@ func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 		logger.Warnf("Failed to finish managed action Function operation %s: %v", ensured.Operation.ID, finishErr)
 	}
 	return result, runErr
+}
+
+// Observation failures may remove Trace identity, but a cancelled execution or
+// a semantic refusal from Core must not silently become a business invocation.
+func actionTraceMayDegrade(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	var apiErr *actionTraceAPIError
+	if errors.As(err, &apiErr) {
+		if apiErr.code == "capture_disabled" {
+			return true
+		}
+		switch apiErr.code {
+		case "permission_denied", "resource_not_disclosed", "lease_invalid", "lease_conflict",
+			"terminal_conflict", "attempt_conflict", "operation_required", "business_ref_invalid":
+			return false
+		}
+		return apiErr.statusCode >= http.StatusInternalServerError
+	}
+	return !errors.Is(err, context.Canceled)
+}
+
+func isActionTraceCaptureDisabled(err error) bool {
+	var apiErr *actionTraceAPIError
+	return errors.As(err, &apiErr) && apiErr.code == "capture_disabled"
+}
+
+func logActionTraceDegraded(executionID, stage string, err error) {
+	logger.Warnf("Action %s continues without Trace after %s: %v", executionID, stage, err)
+}
+
+func withoutManagedActionTrace(ctx context.Context) context.Context {
+	traceContext, _ := common.GetTraceContextFromCtx(ctx)
+	traceContext.ConversationID = ""
+	traceContext.InteractionID = ""
+	traceContext.OperationID = ""
+	traceContext.CausationEventID = ""
+	traceContext.ClaimID = ""
+	ctx = common.SetTraceContextToCtx(ctx, traceContext)
+	credential, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
+	if ok {
+		credential.ConversationID = ""
+		credential.InteractionID = ""
+		credential.ParentOperationID = ""
+		ctx = interfaces.WithCallerRuntimeCredential(ctx, credential)
+	}
+	return ctx
 }
 
 func tracePayload(value any) map[string]any {
@@ -286,7 +375,7 @@ func (c *actionTraceClient) request(ctx context.Context, session *actionTraceSes
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&failure)
-		return fmt.Errorf("Trace Core rejected %s with status %d, code %s", path, response.StatusCode, failure.Error.Code)
+		return &actionTraceAPIError{path: path, statusCode: response.StatusCode, code: failure.Error.Code}
 	}
 	if target != nil {
 		if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(target); err != nil {
