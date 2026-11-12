@@ -366,7 +366,7 @@ func Test_ProjectStatus(t *testing.T) {
 
 			Convey("The owner may then review rolling it back\n", func() {
 				s := status(project(), confirmed(), passed, owner, fresh)
-				withRelease(s, project(), release, nil, owner)
+				withRelease(s, project(), release, nil, "1.0.0", owner)
 
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
 				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply", KNVersion: 3})
@@ -378,14 +378,14 @@ func Test_ProjectStatus(t *testing.T) {
 
 				other := interfaces.AccountInfo{ID: "u9", Type: "user"}
 				s = status(project(), confirmed(), passed, other, fresh)
-				withRelease(s, project(), release, nil, other)
+				withRelease(s, project(), release, nil, "1.0.0", other)
 				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK).Allowed, ShouldBeFalse)
 				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 			})
 
 			Convey("Rolled back, it says which version runs and offers publishing again, not rolling back\n", func() {
 				s := status(project(), confirmed(), passed, owner, fresh)
-				withRelease(s, project(), release, &interfaces.KNVersion{Version: 2, Label: "v1.0.0"}, owner)
+				withRelease(s, project(), release, &interfaces.KNVersion{Version: 2, Label: "v1.0.0"}, "1.0.0", owner)
 
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
 				So(s.Release, ShouldResemble, &interfaces.ProjectStatusRelease{Version: "1.1.0", NetworkID: "supply", KNVersion: 3,
@@ -399,7 +399,7 @@ func Test_ProjectStatus(t *testing.T) {
 
 			Convey("Running the release's own version, it stays published with rolling back offered\n", func() {
 				s := status(project(), confirmed(), passed, owner, fresh)
-				withRelease(s, project(), release, &interfaces.KNVersion{Version: 3, Label: "v1.1.0"}, owner)
+				withRelease(s, project(), release, &interfaces.KNVersion{Version: 3, Label: "v1.1.0"}, "1.0.0", owner)
 
 				So(s.Release.RolledBack, ShouldBeFalse)
 				So(action(s, interfaces.ACTION_REVIEW_ROLLBACK), ShouldNotBeNil)
@@ -408,7 +408,7 @@ func Test_ProjectStatus(t *testing.T) {
 
 			Convey("A partial check published is published, its blocker settled\n", func() {
 				s := status(project(), confirmed(), checkOf("c1", interfaces.CHECK_STATUS_PARTIAL), owner, fresh)
-				withRelease(s, project(), release, nil, owner)
+				withRelease(s, project(), release, nil, "1.0.0", owner)
 
 				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_PUBLISHED)
 				So(s.Blockers, ShouldBeEmpty)
@@ -424,7 +424,7 @@ func Test_ProjectStatus(t *testing.T) {
 					{&interfaces.Release{ProjectID: "p1", Version: "2.3.9", CreateTime: 99}, "2.3.10"},
 				} {
 					s := status(project(), confirmed(), passed, owner, fresh)
-					withRelease(s, project(), c.latest, nil, owner)
+					withRelease(s, project(), c.latest, nil, "1.0.0", owner)
 
 					So(*action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldResemble, interfaces.ProjectStatusNextAction{
 						Action: interfaces.ACTION_REVIEW_RELEASE, Method: "GET",
@@ -449,7 +449,7 @@ func Test_ProjectStatus(t *testing.T) {
 				} {
 					s := status(project(), c.draft, passed, owner, fresh)
 					stage := s.Stage
-					withRelease(s, project(), c.release, nil, owner)
+					withRelease(s, project(), c.release, nil, "1.0.0", owner)
 
 					So(s.Stage, ShouldEqual, stage)
 					So(s.Release, ShouldBeNil)

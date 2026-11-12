@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
@@ -175,6 +176,48 @@ func Test_LineageService_PreviewRelease(t *testing.T) {
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
 			So(code, ShouldEqual, perrors.BknProject_Release_NotVersioned)
+		})
+	})
+}
+
+func Test_LineageService_PreviewRelease_ExistingNetwork(t *testing.T) {
+	Convey("Test lineageService PreviewRelease for a project started from a network already running a version\n", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
+		ra := pmock.NewMockReleaseAccess(mockCtrl)
+		svc := &lineageService{gs: realGS, kva: kva, ra: ra}
+		ctx := context.Background()
+		const branch = "project/p1"
+
+		// The lineage starts from the running version, as creating a project on the network does.
+		id := newLineageID()
+		running := definitions("A part.", "A supplier.")
+		running["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+		kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_RUNNING).Return(running, nil)
+		_, err := svc.CreateLineage(ctx, token, id, author)
+		So(err, ShouldBeNil)
+		_, err = svc.CreateBranch(ctx, id, branch, "")
+		So(err, ShouldBeNil)
+		// Confirming the project's draft adds only what the project models.
+		_, err = svc.AddDefinitions(ctx, id, branch, map[string][]byte{
+			"object_types/customer.bkn": objectType("customer", "Customer", "A customer."),
+		}, nil, "confirm", author)
+		So(err, ShouldBeNil)
+
+		Convey("Only what the project added is a change; what the running version has is not new\n", func() {
+			expectChecks(kva, ra, id, "1.1.0", versioningAt(1, 7, false), nil, nil)
+
+			preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.1.0")
+
+			So(err, ShouldBeNil)
+			So(preview.Refusals, ShouldBeEmpty)
+			So(preview.Changes.Added, ShouldResemble, []string{"object_types/customer.bkn"})
+			So(preview.Changes.Changed, ShouldBeEmpty)
+			So(preview.Changes.Removed, ShouldBeEmpty)
+			So(preview.BaseVersion, ShouldBeEmpty)
+			So(preview.RunningVersion, ShouldEqual, 1)
 		})
 	})
 }

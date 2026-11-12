@@ -163,6 +163,12 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		Questions:    releaseQuestions(questions, branchFiles, mainFiles, preview.Changes),
 		Capabilities: preview.Capabilities,
 	}
+	// Before the lineage's first release, a network a project started from may run a version
+	// already: the release goes on from it.
+	if preview.BaseVersion == "" && preview.RunningVersion > 0 {
+		review.Release.RunningVersion = preview.RunningVersion
+		review.Release.RunningLabel = s.versionLabel(ctx, token, entry.KNID, preview.RunningVersion)
+	}
 	var drift, behind *interfaces.ReleaseRefusal
 	for i, r := range preview.Refusals {
 		switch r.Code {
@@ -554,4 +560,17 @@ func sortItems(items []interfaces.ReleaseItem) {
 		}
 		return items[i].ID < items[j].ID
 	})
+}
+
+// versionLabel is the label of the network's version, empty when it has none or it cannot be read:
+// the version is then named by its number.
+func (s *projectReleaseService) versionLabel(ctx context.Context, token string, knID string, version int) string {
+	if s.kva == nil {
+		return ""
+	}
+	v, err := s.kva.GetVersion(ctx, token, knID, version)
+	if err != nil || v == nil {
+		return ""
+	}
+	return v.Label
 }
