@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/accountname"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters/httpx"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +57,7 @@ type restHandler struct {
 	drs        interfaces.DraftService
 	prs        interfaces.ProjectReleaseService
 	rqs        interfaces.RequirementService
+	ana        interfaces.AccountNameAccess
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -69,6 +72,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		drs:        draft.NewDraftService(appSetting),
 		prs:        release.NewProjectReleaseService(appSetting),
 		rqs:        requirement.NewRequirementService(),
+		ana:        accountname.NewAccountNameAccess(),
 	}
 }
 

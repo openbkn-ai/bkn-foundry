@@ -257,6 +257,7 @@ func (r *restHandler) ListProjectVersions(c *gin.Context, visitor hydra.Visitor)
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.namePublishers(ctx, versions)
 	rest.ReplyOK(c, http.StatusOK, versions)
 }
 
