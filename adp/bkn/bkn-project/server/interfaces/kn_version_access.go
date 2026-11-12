@@ -18,6 +18,10 @@ const (
 	KN_VERSION_RUNNING = "running"
 )
 
+// KN_DRAFT_BRANCH is the branch a write names to stay in the draft of a versioned network; a
+// write that names no branch is published at once.
+const KN_DRAFT_BRANCH = "draft"
+
 // bkn-backend error codes of the version API that bkn-project answers on its own.
 const (
 	KN_VERSION_ERROR_PREFIX                  = "BknBackend.KNVersion."

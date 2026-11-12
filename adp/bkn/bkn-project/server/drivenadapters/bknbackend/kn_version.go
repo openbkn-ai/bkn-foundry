@@ -172,8 +172,10 @@ func (bba *bknBackendAccess) GetVersion(ctx context.Context, token string, knID 
 	return out, nil
 }
 
-// ReplaceDraft calls POST /bkns?import_mode=replace&expected_draft_revision=N[&overwrite_changes=true]
-// with the files as a tar; the network id in network.bkn names the target. The reply's
+// ReplaceDraft calls POST /bkns?branch=draft&import_mode=replace&expected_draft_revision=N[&overwrite_changes=true]
+// with the files as a tar; the network id in network.bkn names the target. branch=draft keeps the
+// import in the draft: bkn-backend publishes a write to a versioned network that does not name the
+// draft at once, and the owner publishes only after the regression. The reply's
 // X-Kn-Draft-Revision is the draft revision the import made, read from the reply itself, since a
 // read afterwards could see a later write.
 func (bba *bknBackendAccess) ReplaceDraft(ctx context.Context, token string, files map[string][]byte,
@@ -181,7 +183,7 @@ func (bba *bknBackendAccess) ReplaceDraft(ctx context.Context, token string, fil
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ReplaceDraft")
 	defer span.End()
 
-	query := url.Values{"import_mode": {replaceImportMode}, "expected_draft_revision": {strconv.FormatInt(req.ExpectedDraftRevision, 10)}}
+	query := url.Values{"branch": {interfaces.KN_DRAFT_BRANCH}, "import_mode": {replaceImportMode}, "expected_draft_revision": {strconv.FormatInt(req.ExpectedDraftRevision, 10)}}
 	if req.Overwrite {
 		query.Set("overwrite_changes", "true")
 	}
