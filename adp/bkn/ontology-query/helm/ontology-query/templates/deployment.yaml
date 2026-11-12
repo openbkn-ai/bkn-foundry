@@ -107,6 +107,8 @@ spec:
             value: {{ .Values.metricResultSnapshot.maxAccountEntries | int64 | quote }}
           - name: BKN_METRIC_SNAPSHOT_TTL_SECONDS
             value: {{ .Values.metricResultSnapshot.ttlSeconds | int64 | quote }}
+          - name: BKN_TRACE_CORE_URL
+            value: {{ .Values.bknTrace.lifecycle.coreURL | quote }}
           {{- if .Values.bknTrace.evidencePublisher.enabled }}
           - name: BKN_TRACE_EVIDENCE_PUBLISHER_ENABLED
             value: "true"

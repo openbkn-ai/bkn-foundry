@@ -494,6 +494,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 		url, len(req.InstanceIdentities), dynamicParamKeys)
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
+	header = withVerifiedApplicationPrincipal(ctx, header)
 	withFunctionRuntimeCredential(ctx, header)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 

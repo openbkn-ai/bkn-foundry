@@ -26,6 +26,36 @@ import (
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
+func TestCallerRuntimeCredentialFromRequestIncludesManagedInteraction(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/action-types/at-1/execute", nil)
+	request.Header.Set("Authorization", "Bearer caller-token")
+	request.Header.Set(common.HeaderBKNConversationID, "conv_1")
+	request.Header.Set(common.HeaderBKNInteractionID, "int_1")
+	request.Header.Set(common.HeaderBKNParentOperationID, "op_registered")
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = request
+	credential := callerRuntimeCredentialFromRequest(ctx)
+	if credential.Authorization != "Bearer caller-token" || credential.ConversationID != "conv_1" ||
+		credential.InteractionID != "int_1" || credential.ParentOperationID != "op_registered" {
+		t.Fatalf("managed interaction was not captured: %+v", credential)
+	}
+}
+
+func TestActionCallerRuntimeCredentialUsesVerifiedVisitor(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/action-types/at-1/execute", nil)
+	request.Header.Set("X-BKN-Application-Principal-ID", "untrusted-header")
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = request
+	credential := actionCallerRuntimeCredential(ctx, hydra.Visitor{ID: "user-1", ClientID: "app-1"})
+	if credential.ApplicationPrincipalID != "app-1" {
+		t.Fatalf("principal = %q, want verified client", credential.ApplicationPrincipalID)
+	}
+	credential = actionCallerRuntimeCredential(ctx, hydra.Visitor{ID: "user-1"})
+	if credential.ApplicationPrincipalID != "user-1" {
+		t.Fatalf("principal = %q, want verified account fallback", credential.ApplicationPrincipalID)
+	}
+}
+
 func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 	Convey("Test RestHandler GetObjectsInObjectTypeByIn", t, func() {
 		test := setGinMode()

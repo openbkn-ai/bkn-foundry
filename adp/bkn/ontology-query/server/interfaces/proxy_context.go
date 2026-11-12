@@ -140,9 +140,11 @@ type callerRuntimeCredentialKey struct{}
 // reads BKN as the caller who asked for it. It never authorizes the proxied
 // execution itself: that still runs as the knowledge network's proxy account.
 type CallerRuntimeCredential struct {
-	Authorization     string
-	ConversationID    string
-	ParentOperationID string
+	Authorization          string
+	ApplicationPrincipalID string
+	ConversationID         string
+	InteractionID          string
+	ParentOperationID      string
 }
 
 // WithCallerRuntimeCredential attaches the caller's credential captured from

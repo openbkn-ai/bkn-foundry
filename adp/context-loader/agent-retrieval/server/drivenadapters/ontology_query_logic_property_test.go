@@ -55,3 +55,22 @@ func TestFunctionBackedCallsForwardCallerCredential(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteActionsForwardsVerifiedApplicationPrincipal(t *testing.T) {
+	ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		AuthMethod: "oauth", TokenInfo: &interfaces.TokenInfo{ClientID: "openbkn-sdk"},
+	})
+	client := &ontologyQueryClient{
+		logger: &mockLogger{}, baseURL: "http://ontology.example.com",
+		httpClient: &mockHTTPClient{bytesFunc: func(_ context.Context, _, _ string, headers map[string]string, _ interface{}) (int, []byte, error) {
+			if got := headers["X-BKN-Application-Principal-ID"]; got != "openbkn-sdk" {
+				t.Fatalf("application principal = %q", got)
+			}
+			return 200, []byte(`{"execution_id":"exec-1"}`), nil
+		}},
+	}
+	if _, err := client.ExecuteActions(ctx, &interfaces.ExecuteActionsRequest{KnID: "kn-1", AtID: "at-1"}); err != nil {
+		t.Fatal(err)
+	}
+}
