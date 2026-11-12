@@ -165,6 +165,15 @@ func (s *requirementService) liveNetwork(ctx context.Context, token string, entr
 	return network, released, live, "", nil
 }
 
+// runsVersion tells whether the network runs a version; one that cannot be told is taken not to.
+func (s *requirementService) runsVersion(ctx context.Context, token string, network string) bool {
+	if s.kva == nil {
+		return false
+	}
+	versioning, err := s.kva.GetVersioning(ctx, token, network)
+	return err == nil && versioning != nil && versioning.RunningVersion > 0
+}
+
 func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, projectID string) (*interfaces.LogicNeedsView, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListLogicNeeds")
 	defer span.End()
@@ -184,8 +193,8 @@ func (s *requirementService) ListLogicNeeds(ctx context.Context, token string, p
 		span.SetStatus(codes.Error, "Get live network failed")
 		return nil, internalError(ctx, "Get live network failed", err)
 	}
-	view := &interfaces.LogicNeedsView{NetworkID: network, Released: released, Reason: reason,
-		Needs: []*interfaces.LogicNeedView{}}
+	view := &interfaces.LogicNeedsView{NetworkID: network, Released: released,
+		Live: released || s.runsVersion(ctx, token, network), Reason: reason, Needs: []*interfaces.LogicNeedView{}}
 	// A project without a specification has no needs yet; that is no error.
 	if !ok {
 		span.SetStatus(codes.Ok, "")

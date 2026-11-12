@@ -329,6 +329,38 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(r.Signature, ShouldNotBeEmpty)
 		})
 
+		Convey("Before the first release, a network that runs a version is what the release goes on from\n", func() {
+			kva := pmock.NewMockKNVersionAccess(mockCtrl)
+			svc.kva = kva
+			preview.BaseVersion, preview.RunningVersion = "", 1
+			expect()
+			expectIndex()
+
+			Convey("Named by its label\n", func() {
+				kva.EXPECT().GetVersion(gomock.Any(), reviewToken, "supply", 1).Return(&interfaces.KNVersion{Version: 1, Label: "v1.0.0"}, nil)
+				r := review()
+				So(r.Release.BaseVersion, ShouldBeEmpty)
+				So(r.Release.RunningVersion, ShouldEqual, 1)
+				So(r.Release.RunningLabel, ShouldEqual, "v1.0.0")
+			})
+
+			Convey("Or by its number when its label cannot be read\n", func() {
+				kva.EXPECT().GetVersion(gomock.Any(), reviewToken, "supply", 1).Return(nil, errors.New("down"))
+				r := review()
+				So(r.Release.RunningVersion, ShouldEqual, 1)
+				So(r.Release.RunningLabel, ShouldBeEmpty)
+			})
+		})
+
+		Convey("After a release, or on a network without versions, no running version is named\n", func() {
+			preview.RunningVersion = 1
+			expect()
+			expectIndex()
+			r := review()
+			So(r.Release.BaseVersion, ShouldEqual, "1.0.0")
+			So(r.Release.RunningVersion, ShouldEqual, 0)
+		})
+
 		Convey("The signature stays while nothing changes and moves with the branch, main or draft\n", func() {
 			expect()
 			expectIndex()
