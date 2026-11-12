@@ -11,7 +11,8 @@ import (
 // Scenarios rest on the adopted ontology, which goes on changing after they are drafted. A
 // question records the signature of the items it rests on when drafted, accepted or changed; when
 // read, a question whose items now sign otherwise is marked changed, and so is each scenario it
-// belongs to. Adopted object types no question rests on are listed, for drafting again to cover.
+// belongs to. Adopted object types no question rests on, the network's own among them, are listed,
+// for drafting again to cover.
 
 // signQuestions records the signature of each question that has none.
 func signQuestions(questions []*interfaces.RequirementQuestion, draft *interfaces.Draft) {
@@ -45,8 +46,8 @@ func markOntologyChanges(spec *interfaces.RequirementSpec, draft *interfaces.Dra
 	}
 	for _, ot := range draft.Items.ObjectTypes {
 		ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
-		// What the network already has is not this project's to cover.
-		if ot.Adopted && !ot.Existing && !needed[ref] {
+		// Scenarios cover the whole model: what the network already has as well as what is new.
+		if ot.Adopted && !needed[ref] {
 			uncovered = append(uncovered, interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name})
 		}
 	}

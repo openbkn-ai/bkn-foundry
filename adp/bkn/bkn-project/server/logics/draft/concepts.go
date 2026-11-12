@@ -229,16 +229,48 @@ func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, 
 // now, by their ids: a table's concept is named as the catalog's semantic understanding named it.
 func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft, req *interfaces.Requirement,
 	found bool, tables map[string]*interfaces.VegaTable) *interfaces.DraftConcepts {
+	return projectConcepts(ctx, projectID, draft, req, found, tables, nil)
+}
+
+// tableConceptPrefix starts the key of a concept of a catalog table before drafting: the table is
+// a candidate object until drafting models it, when the concept is its item's.
+const tableConceptPrefix = "table_concepts/"
+
+// tableConceptKey names the concept of a catalog table before drafting.
+func tableConceptKey(resourceID string) string {
+	return tableConceptPrefix + resourceID
+}
+
+// beforeDrafting is what the concepts are read from while the project has no ready draft: what
+// the network already has, the tables of its catalogs as listed, and the project's naming language.
+type beforeDrafting struct {
+	existing interfaces.DraftItems
+	tables   []*interfaces.VegaTable
+	language string
+}
+
+// projectConcepts is conceptsWith, and before drafting, when before is given, the concepts of what
+// the network already has and one candidate object per catalog table no existing object type reads,
+// named as the catalog's semantic understanding named the table. Those are not judged here until
+// drafting models them.
+func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Draft, req *interfaces.Requirement,
+	found bool, tables map[string]*interfaces.VegaTable, before *beforeDrafting) *interfaces.DraftConcepts {
 	result := &interfaces.DraftConcepts{ProjectID: projectID, Concepts: []interfaces.DraftConcept{},
 		Counts: map[string]int{}}
 	items := &interfaces.DraftItems{}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		items, result.DraftUpdateTime = &draft.Items, draft.UpdateTime
+	} else if before != nil {
+		items = &before.existing
 	}
 	judged, mergedInto := conceptDecisions(items)
 	defined, added := conceptDefinitions(items)
 	reviewed, excluded := reviews(items)
+	confirmed := confirmedItems(items)
 	language := itemsLanguage(items)
+	if before != nil && result.DraftUpdateTime == 0 && before.language != "" {
+		language = before.language
+	}
 
 	byKey := map[string]*interfaces.DraftConcept{}
 	order := []string{}
@@ -278,6 +310,23 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 			documentConcept(&c, ot.Document)
 		}
 		add(c)
+	}
+	if before != nil && result.DraftUpdateTime == 0 {
+		// Before drafting, each table no existing object type reads is a candidate object.
+		read := existingTableIDs(items)
+		for _, table := range before.tables {
+			if table == nil || read[table.ID] {
+				continue
+			}
+			physical := physicalName(table)
+			c := interfaces.DraftConcept{Key: tableConceptKey(table.ID), Name: physical, Aliases: []string{},
+				Suggested: interfaces.CONCEPT_VERDICT_OBJECT, SuggestedBecause: interfaces.CONCEPT_BECAUSE_TABLE,
+				Sources: []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE, ID: table.ID, Name: physical}}}
+			if !understandConcept(&c, &interfaces.DraftObjectType{Name: physical}, table, language) {
+				result.NotUnderstood++
+			}
+			add(c)
+		}
 	}
 	for _, rt := range items.RelationTypes {
 		if isEvidence(rt.Document) || evidenceObjects[rt.Source] || evidenceObjects[rt.Target] {
@@ -331,7 +380,7 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 		byName := map[string]string{}
 		for _, key := range order {
 			c := byKey[key]
-			if c.Item == nil {
+			if c.Item == nil && !strings.HasPrefix(key, tableConceptPrefix) {
 				// A concept of the documents is no item a requirement concept could be.
 				continue
 			}
@@ -368,7 +417,11 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 				key = byName[normalized(rc.Term)]
 			}
 			if item := byKey[key]; item != nil {
-				item.Sources = append(item.Sources, source)
+				// One scenario drafting added for an item it asks about, citing no document, restates
+				// the item: it is no source of it.
+				if rc.Source != interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS || len(rc.Citations) > 0 {
+					item.Sources = append(item.Sources, source)
+				}
 				continue
 			}
 			c := interfaces.DraftConcept{Key: requirementConceptKey(rc.ID), Name: rc.Term, Description: rc.Definition,
@@ -425,7 +478,14 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 			// No one judges it here: it is in the model as the network has it.
 			c.Verdict, c.State = c.Suggested, interfaces.CONCEPT_STATE_IN_MODEL
 		case c.Item != nil:
-			judgeConcept(ctx, items, c, judged[key], reviewed[key], excluded[key])
+			review := reviewed[key]
+			// Confirming the model with the item in it confirms what drafting adopted, when no one
+			// judged the concept: a judgment says more of what it is.
+			if at := confirmed[key]; at != nil && c.Item.Adopted && judged[key].review == nil &&
+				(review == nil || at.Time > review.Time) {
+				review = at
+			}
+			judgeConcept(ctx, items, c, judged[key], review, excluded[key])
 		case judgedHere(key):
 			// No item: a person's judgment is all there is to it.
 			judgeConcept(ctx, items, c, judged[key], nil, "")
@@ -445,6 +505,25 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 		return rank[a.State] - rank[b.State]
 	})
 	return result
+}
+
+// confirmedItems are the items the last confirmation that committed wrote, by key, with who
+// confirmed them and when: they went into the model as they were.
+func confirmedItems(items *interfaces.DraftItems) map[string]*interfaces.DraftReview {
+	confirmed := map[string]*interfaces.DraftReview{}
+	c := items.Confirmation
+	if c == nil || c.Commit == "" || c.Time == 0 {
+		return confirmed
+	}
+	for _, path := range c.Files {
+		dir, file, ok := strings.Cut(path, "/")
+		id, bkn := strings.CutSuffix(file, ".bkn")
+		if !ok || !bkn || id == "" || strings.Contains(id, "/") {
+			continue
+		}
+		confirmed[itemKey(dir, id)] = &interfaces.DraftReview{By: c.By, Time: c.Time}
+	}
+	return confirmed
 }
 
 // judgeConcept sets what the concept is and where it stands. A judgment holds until a person
@@ -513,6 +592,43 @@ func (s *draftService) readConcepts(ctx context.Context, projectID string,
 	return conceptsWith(ctx, projectID, draft, req, found, s.conceptTables(ctx, draft, caller)), nil
 }
 
+// conceptsBeforeDrafting projects the concepts of a project with no ready draft: what the network
+// already has, a candidate object per table of its catalogs, and the requirement concepts. A list
+// that cannot be read is left out, as the concepts page lists what it can: a failed draft or the
+// person's access to a catalog must not empty it.
+func (s *draftService) conceptsBeforeDrafting(ctx context.Context, projectID string, entry *interfaces.ProjectEntry,
+	draft *interfaces.Draft, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
+	req, found, err := s.rqa.GetRequirement(ctx, projectID)
+	if err != nil {
+		return nil, internalError(ctx, "Read requirement failed", err)
+	}
+	before := &beforeDrafting{}
+	if entry.Project != nil {
+		before.language = entry.NamingLanguage
+	}
+	// What the project's earlier confirmations wrote is its own, not what the network had.
+	var owned []string
+	if draft != nil {
+		owned = ownedPaths(draft.Items.Confirmation)
+	}
+	if existing, err := s.existingItems(ctx, entry, owned); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read what the network has for the concepts: %v", err))
+	} else {
+		before.existing = existing
+	}
+	if s.va != nil && entry.Project != nil {
+		for _, catalogID := range entry.CatalogIDs {
+			tables, err := s.va.ListTables(ctx, caller, catalogID)
+			if err != nil {
+				otellog.LogWarn(ctx, fmt.Sprintf("List the tables of catalog %s for the concepts: %v", catalogID, err))
+				continue
+			}
+			before.tables = append(before.tables, tables...)
+		}
+	}
+	return projectConcepts(ctx, projectID, draft, req, found, nil, before), nil
+}
+
 // conceptTables reads the tables of the draft's object types as the caller sees them now, for
 // the names the catalog's semantic understanding gave them since drafting. The concepts are
 // listed without them when they cannot be read: the names drafting gave stand.
@@ -548,7 +664,8 @@ func (s *draftService) GetConcepts(ctx context.Context, token string, projectID 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetConcepts")
 	defer span.End()
 
-	if _, err := s.ps.GetProject(ctx, token, projectID); err != nil {
+	entry, err := s.ps.GetProject(ctx, token, projectID)
+	if err != nil {
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
@@ -562,7 +679,12 @@ func (s *draftService) GetConcepts(ctx context.Context, token string, projectID 
 	} else if err := documentHooks().CheckRead(ctx, token, draft); err != nil {
 		return nil, err
 	}
-	concepts, err := s.readConcepts(ctx, projectID, draft, caller)
+	var concepts *interfaces.DraftConcepts
+	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY {
+		concepts, err = s.conceptsBeforeDrafting(ctx, projectID, entry, draft, caller)
+	} else {
+		concepts, err = s.readConcepts(ctx, projectID, draft, caller)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Read concepts failed")
 		return nil, err
