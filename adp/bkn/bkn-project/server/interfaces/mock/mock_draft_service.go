@@ -71,6 +71,21 @@ func (mr *MockDraftServiceMockRecorder) AddCatalogs(ctx, token, projectID, req, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddCatalogs", reflect.TypeOf((*MockDraftService)(nil).AddCatalogs), ctx, token, projectID, req, caller)
 }
 
+// AskConcepts mocks base method.
+func (m *MockDraftService) AskConcepts(ctx context.Context, token, projectID string, req interfaces.DraftConceptAskRequest, caller interfaces.AccountInfo, stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AskConcepts", ctx, token, projectID, req, caller, stream)
+	ret0, _ := ret[0].(*interfaces.DraftAskAnswer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AskConcepts indicates an expected call of AskConcepts.
+func (mr *MockDraftServiceMockRecorder) AskConcepts(ctx, token, projectID, req, caller, stream any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AskConcepts", reflect.TypeOf((*MockDraftService)(nil).AskConcepts), ctx, token, projectID, req, caller, stream)
+}
+
 // AskNewRelationType mocks base method.
 func (m *MockDraftService) AskNewRelationType(ctx context.Context, token, projectID string, req interfaces.DraftRelationAskRequest, caller interfaces.AccountInfo, stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
 	m.ctrl.T.Helper()
@@ -296,18 +311,18 @@ func (mr *MockDraftServiceMockRecorder) GetCheck(ctx, token, projectID any) *gom
 }
 
 // GetConcepts mocks base method.
-func (m *MockDraftService) GetConcepts(ctx context.Context, token, projectID string) (*interfaces.DraftConcepts, error) {
+func (m *MockDraftService) GetConcepts(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetConcepts", ctx, token, projectID)
+	ret := m.ctrl.Call(m, "GetConcepts", ctx, token, projectID, caller)
 	ret0, _ := ret[0].(*interfaces.DraftConcepts)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetConcepts indicates an expected call of GetConcepts.
-func (mr *MockDraftServiceMockRecorder) GetConcepts(ctx, token, projectID any) *gomock.Call {
+func (mr *MockDraftServiceMockRecorder) GetConcepts(ctx, token, projectID, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConcepts", reflect.TypeOf((*MockDraftService)(nil).GetConcepts), ctx, token, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConcepts", reflect.TypeOf((*MockDraftService)(nil).GetConcepts), ctx, token, projectID, caller)
 }
 
 // GetDraft mocks base method.
@@ -488,6 +503,21 @@ func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID
 func (mr *MockDraftServiceMockRecorder) RestoreExcluded(ctx, token, projectID, restore, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreExcluded", reflect.TypeOf((*MockDraftService)(nil).RestoreExcluded), ctx, token, projectID, restore, caller)
+}
+
+// ReviseConcept mocks base method.
+func (m *MockDraftService) ReviseConcept(ctx context.Context, token, projectID string, req interfaces.DraftConceptRevise, caller interfaces.AccountInfo) (*interfaces.DraftConcepts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReviseConcept", ctx, token, projectID, req, caller)
+	ret0, _ := ret[0].(*interfaces.DraftConcepts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReviseConcept indicates an expected call of ReviseConcept.
+func (mr *MockDraftServiceMockRecorder) ReviseConcept(ctx, token, projectID, req, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviseConcept", reflect.TypeOf((*MockDraftService)(nil).ReviseConcept), ctx, token, projectID, req, caller)
 }
 
 // RunCheck mocks base method.
