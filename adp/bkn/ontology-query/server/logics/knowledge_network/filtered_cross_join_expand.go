@@ -56,10 +56,9 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 	}
 
 	filtered, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
-		query.IgnoreLocalIndex, batch, filterCurrent)
+		query.IgnoreLocalIndex, batch, filterCurrent, false)
 	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("filtered_cross_join evaluate current instance: %s", err.Error()))
+		return nil, err
 	}
 	if len(filtered) == 0 {
 		return nil, nil
@@ -151,12 +150,12 @@ func (kns *knowledgeNetworkService) matchFilteredCrossJoinRelations(ctx context.
 
 	maxQ := kns.filteredCrossJoinMaxExpand()
 	src, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
-		query.IgnoreLocalIndex, sourceObjects, rules.SourceCondition)
+		query.IgnoreLocalIndex, sourceObjects, rules.SourceCondition, true)
 	if err != nil {
 		return nil, err
 	}
 	tgt, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
-		query.IgnoreLocalIndex, targetObjects, rules.TargetCondition)
+		query.IgnoreLocalIndex, targetObjects, rules.TargetCondition, true)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +188,8 @@ func (kns *knowledgeNetworkService) matchFilteredCrossJoinRelations(ctx context.
 // filterLevelObjectsByCondition delegates LIKE evaluation to the backing resource,
 // whose collation may differ from Go's case-sensitive string matching.
 func (kns *knowledgeNetworkService) filterLevelObjectsByCondition(ctx context.Context,
-	knID, branch string, ignoreLocalIndex bool, objs []interfaces.LevelObject, c *cond.CondCfg) ([]interfaces.LevelObject, error) {
+	knID, branch string, ignoreLocalIndex bool, objs []interfaces.LevelObject, c *cond.CondCfg,
+	skipInvalidInstances bool) ([]interfaces.LevelObject, error) {
 	out := make([]interfaces.LevelObject, 0, len(objs))
 	if cond.ContainsLikeCondition(c) {
 		byType := make(map[string][]interfaces.LevelObject)
@@ -206,7 +206,8 @@ func (kns *knowledgeNetworkService) filterLevelObjectsByCondition(ctx context.Co
 				for _, lo := range group[start:end] {
 					identity := lo.ObjectUK
 					if len(identity) == 0 {
-						return nil, fmt.Errorf("instance %q has no identity for LIKE source filtering", lo.ObjectID)
+						return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+							WithErrorDetails(fmt.Sprintf("instance %q has no identity for LIKE source filtering", lo.ObjectID))
 					}
 					identities = append(identities, identity)
 				}
@@ -221,12 +222,14 @@ func (kns *knowledgeNetworkService) filterLevelObjectsByCondition(ctx context.Co
 					return nil, err
 				}
 				if objects.Incomplete || len(objects.Datas) > end-start {
-					return nil, fmt.Errorf("incomplete LIKE source filtering for object type %q", typeID)
+					return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_InternalError).
+						WithErrorDetails(fmt.Sprintf("incomplete LIKE source filtering for object type %q", typeID))
 				}
 				for _, row := range objects.Datas {
 					id, ok := row[interfaces.SYSTEM_PROPERTY_INSTANCE_ID].(string)
 					if !ok || id == "" {
-						return nil, fmt.Errorf("LIKE source filtering returned an instance without an ID")
+						return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_InternalError).
+							WithErrorDetails("LIKE source filtering returned an instance without an ID")
 					}
 					matched[id] = true
 				}
@@ -244,7 +247,11 @@ func (kns *knowledgeNetworkService) filterLevelObjectsByCondition(ctx context.Co
 			}
 			ok, err := logics.EvaluateInstanceAgainstCondition(ctx, lo.ObjectData, c, lo.ObjectType)
 			if err != nil {
-				return nil, err
+				if skipInvalidInstances {
+					continue
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+					WithErrorDetails(fmt.Sprintf("filtered_cross_join evaluate current instance: %s", err.Error()))
 			}
 			if !ok {
 				continue

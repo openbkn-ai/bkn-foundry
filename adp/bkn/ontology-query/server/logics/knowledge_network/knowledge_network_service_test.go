@@ -49,9 +49,47 @@ func TestFilteredCrossJoinLikeUsesVegaResults(t *testing.T) {
 			return interfaces.Objects{Datas: []map[string]any{{interfaces.SYSTEM_PROPERTY_INSTANCE_ID: "id-1"}}}, nil
 		})
 	filtered, err := service.filterLevelObjectsByCondition(context.Background(), "kn", "main", true, input,
-		&cond.CondCfg{Name: "name", Operation: cond.OperationLike, Value: "apple"})
+		&cond.CondCfg{Name: "name", Operation: cond.OperationLike, Value: "apple"}, false)
 	if err != nil || len(filtered) != 1 || filtered[0].ObjectID != "id-1" {
 		t.Fatalf("filtered = %#v, err = %v", filtered, err)
+	}
+}
+
+func TestFilteredCrossJoinExpandPreservesSourceFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	service := &knowledgeNetworkService{ots: objects, appSetting: &common.AppSetting{}}
+	sourceErr := httperrors.NewHTTPError(context.Background(), http.StatusServiceUnavailable, oerrors.OntologyQuery_InternalError)
+	objects.EXPECT().ScanObjectsByObjectTypeID(gomock.Any(), gomock.Any(), 1).
+		Return(interfaces.Objects{}, sourceErr)
+	_, err := service.expandFilteredCrossJoin(context.Background(),
+		&interfaces.SubGraphQueryBaseOnSource{KNID: "kn", Branch: "main"},
+		[]interfaces.LevelObject{{ObjectID: "source-1", ObjectUK: map[string]any{"id": "1"},
+			ObjectType: &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "source"}}}},
+		&interfaces.TypeEdge{}, interfaces.ObjectTypeWithKeyField{}, true,
+		&interfaces.FilteredCrossJoinMapping{SourceCondition: &cond.CondCfg{Name: "name", Operation: cond.OperationLike, Value: "%test%"}})
+	if err != sourceErr {
+		t.Fatalf("expand error = %v, want source error %v", err, sourceErr)
+	}
+}
+
+func TestFilteredCrossJoinMatchSkipsInvalidInstance(t *testing.T) {
+	service := &knowledgeNetworkService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{}
+	source := []interfaces.LevelObject{
+		{ObjectID: "invalid", ObjectData: map[string]any{"date": "not-a-date"}, ObjectType: objectType},
+		{ObjectID: "valid", ObjectData: map[string]any{"date": "2025-01-01T00:00:00Z"}, ObjectType: objectType},
+	}
+	target := []interfaces.LevelObject{{ObjectID: "target", ObjectType: objectType}}
+	edge := &interfaces.TypeEdge{RelationTypeId: "relation", RelationType: interfaces.RelationType{
+		RTName: "relation", MappingRules: &interfaces.FilteredCrossJoinMapping{
+			SourceCondition: &cond.CondCfg{Name: "date", Operation: cond.OperationBefore, Value: "2026-01-01T00:00:00Z"},
+		},
+	}}
+	relations, err := service.matchFilteredCrossJoinRelations(context.Background(),
+		&interfaces.SubGraphQueryBaseOnObjects{KNID: "kn", Branch: "main"}, source, target, edge)
+	if err != nil || len(relations) != 1 || relations[0].SourceObjectId != "valid" || relations[0].TargetObjectId != "target" {
+		t.Fatalf("relations = %#v, err = %v", relations, err)
 	}
 }
 
