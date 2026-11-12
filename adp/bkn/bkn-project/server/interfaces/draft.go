@@ -135,6 +135,34 @@ type DraftItems struct {
 	Adding *DraftAdding `json:"adding,omitempty"`
 }
 
+// DraftExisting is what the project's network already has and the draft did not write: kept on
+// the branch as it is, shown beside the draft.
+type DraftExisting struct {
+	ObjectTypes   []*DraftExistingObjectType   `json:"object_types"`
+	RelationTypes []*DraftExistingRelationType `json:"relation_types"`
+}
+
+// DraftExistingObjectType is an object type the network already has.
+type DraftExistingObjectType struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Description string   `json:"description"`
+	// TableID is the resource id of the table it reads; empty when it reads none.
+	TableID       string   `json:"table_id"`
+	PrimaryKeys   []string `json:"primary_keys"`
+	PropertyCount int      `json:"property_count"`
+}
+
+// DraftExistingRelationType is a relation type the network already has.
+type DraftExistingRelationType struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Aliases []string `json:"aliases,omitempty"`
+	Source  string   `json:"source"`
+	Target  string   `json:"target"`
+}
+
 // DraftInputs is what drafting read and how it decided: the version of its rules and their
 // settings, the catalogs, and each table read with a fingerprint of its structure. It holds no data
 // values.
@@ -147,6 +175,9 @@ type DraftInputs struct {
 	Partial bool `json:"partial"`
 	// NamingLanguage is the language the draft named its items in.
 	NamingLanguage string `json:"naming_language"`
+	// ExistingTables are the names of the catalogs' tables drafting left out because an object
+	// type the network already has reads them; absent when none were.
+	ExistingTables []string `json:"existing_tables,omitempty"`
 	// IDs sums up the project's registered ids as drafting left them; absent when there are none.
 	IDs *DraftInputIDs `json:"ids,omitempty"`
 }

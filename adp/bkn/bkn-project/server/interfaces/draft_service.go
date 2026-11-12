@@ -22,6 +22,10 @@ type DraftService interface {
 		caller AccountInfo) (*Draft, error)
 	// GetDraft returns the project's current draft.
 	GetDraft(ctx context.Context, token string, projectID string) (*Draft, error)
+	// GetExisting returns the object and relation types the project's network already has, on its
+	// branch and not written by the project's draft: what a project on an existing network starts
+	// from. Drafting does not draft the tables they read again.
+	GetExisting(ctx context.Context, token string, projectID string) (*DraftExisting, error)
 	// EditDraftItem applies a person's edit to one item of a ready draft, records it as
 	// decisions and returns the draft.
 	EditDraftItem(ctx context.Context, token string, projectID string, kind string, itemID string,
