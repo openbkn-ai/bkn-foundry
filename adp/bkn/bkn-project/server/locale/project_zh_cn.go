@@ -20,7 +20,7 @@ var projectZhCN = i18n.I18nMessages{
 		"BknProject.Project.VersioningRequired":            "需要开启版本管理 这个网络还没有开启版本管理。开启后，这个网络所有使用者在工作区的修改都要发布才生效，网络当前内容成为版本 1。请确认后再创建项目。",
 		"BknProject.Project.VersioningForbidden":           "无法开启版本管理 你没有这个网络的修改权限，请联系网络的创建者或管理员开启版本管理后再创建项目。",
 		"BknProject.Project.CatalogMissing":                "数据目录已被删除 所选的数据目录已不存在，请选择其他数据目录。",
-		"BknProject.Project.BknBackendRequestFailed":       "暂时读不到知识网络 知识网络服务返回了错误，请稍后重试；问题持续时请联系管理员。",
+		"BknProject.Project.BknBackendRequestFailed":       "知识网络服务没有完成这次操作 知识网络服务拒绝或未能处理这次请求；问题持续时请联系管理员。",
 		"BknProject.Project.InternalError":                 "内部错误 请联系管理员。",
 		"BknProject.Requirement.InvalidRequestBody":        "请求体不合法 请求体必须是合法的 JSON。",
 		"BknProject.Requirement.MissingUpdateTime":         "缺少更新时间 请带上读取需求规格时的 update_time，刷新后再试。",
