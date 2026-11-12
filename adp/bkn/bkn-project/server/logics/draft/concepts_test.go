@@ -254,7 +254,7 @@ func Test_ConceptService(t *testing.T) {
 			ctrl2 := gomock.NewController(t)
 			none := pmock.NewMockDraftAccess(ctrl2)
 			none.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
-			got, err := (&draftService{setting: testSetting, da: none, ps: ps, rqa: rqa}).GetConcepts(ctx, token, "p1")
+			got, err := (&draftService{setting: testSetting, da: none, ps: ps, rqa: rqa}).GetConcepts(ctx, token, "p1", interfaces.AccountInfo{})
 			So(err, ShouldBeNil)
 			So(got.DraftUpdateTime, ShouldEqual, 0)
 			// With no item to be, every requirement concept stands on its own.
@@ -327,7 +327,7 @@ func Test_ConceptService(t *testing.T) {
 			req := conceptRequirement()
 			req.Spec.Concepts = append(req.Spec.Concepts,
 				&interfaces.RequirementConcept{ID: "k6", Term: "Stores", Category: "kinetic"})
-			got, err := svc.GetConcepts(ctx, token, "p1")
+			got, err := svc.GetConcepts(ctx, token, "p1", interfaces.AccountInfo{})
 			So(err, ShouldBeNil)
 			So(got, ShouldNotBeNil)
 			concepts := conceptsOf(ctx, "p1", draft, req, true)

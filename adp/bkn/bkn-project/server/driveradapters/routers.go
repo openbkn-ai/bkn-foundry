@@ -148,7 +148,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// draft:accept_suggestions.
 	apiV1.GET("/projects/:project_id/ontology/candidates", r.GetCandidatesByEx)
 	// The concepts of the project's sources, projected each time they are read; judging and
-	// merging them are concepts:judge and concepts:merge.
+	// merging them are concepts:judge and concepts:merge; concepts:ask asks AI about them and
+	// concepts:revise adopts a revision it proposed.
 	apiV1.GET("/projects/:project_id/ontology/concepts", r.GetConceptsByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)

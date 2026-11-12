@@ -93,6 +93,9 @@ type askInput struct {
 	Candidates []askCandidateLine `json:"candidates,omitempty"`
 	// Editable are the fields a revision may change.
 	Editable []string `json:"editable"`
+	// Task and Concepts, for the project's concepts: what is asked of them, and the concepts.
+	Task     string       `json:"task,omitempty"`
+	Concepts []askConcept `json:"concepts,omitempty"`
 }
 
 type askObjectType struct {
@@ -174,6 +177,8 @@ type askRelation struct {
 // askOutput is the structured result that follows the answer's text.
 type askOutput struct {
 	Revisions []askRevisionOutput `json:"revisions"`
+	// raw is the result as given, for a turn whose format is its own.
+	raw json.RawMessage
 }
 
 // askRevisionOutput is a revision as the Agent gives it.
@@ -219,6 +224,8 @@ func askResponseFormat(fields []string) map[string]any {
 type askTurn struct {
 	input  askInput
 	finish func(out *askOutput) *interfaces.DraftAskAnswer
+	// format is the result's JSON Schema, when it is not askResponseFormat's of the editable fields.
+	format map[string]any
 	// answerOptional gives the revisions when the Agent writes no answer.
 	answerOptional bool
 }
@@ -256,8 +263,12 @@ func (s *draftService) ask(ctx context.Context, caller interfaces.AccountInfo, t
 	if err != nil {
 		return nil, internalError(ctx, "Encode question", err)
 	}
-	text, raw, code := s.askAgent(ctx, caller, turn.input.agentID, string(message), askResponseFormat(turn.input.Editable), stream, turn.answerOptional)
-	var out askOutput
+	format := turn.format
+	if format == nil {
+		format = askResponseFormat(turn.input.Editable)
+	}
+	text, raw, code := s.askAgent(ctx, caller, turn.input.agentID, string(message), format, stream, turn.answerOptional)
+	out := askOutput{raw: raw}
 	if code == "" && json.Unmarshal(raw, &out) != nil {
 		code = perrors.BknProject_Draft_AskUnavailable
 	}

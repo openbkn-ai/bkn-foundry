@@ -18,7 +18,22 @@ const (
 	DRAFT_DECISION_MERGE = "merge"
 	// DRAFT_DECISION_UNMERGE takes a merged concept out again.
 	DRAFT_DECISION_UNMERGE = "unmerge"
+	// DRAFT_DECISION_DEFINE names and defines a concept no draft item is: After is a
+	// DraftConceptDefinition. A concept that is an item is named on the item.
+	DRAFT_DECISION_DEFINE = "define"
+	// DRAFT_DECISION_ADD adds a concept a person adopted from Ask AI, no source extracted: After is
+	// a DraftConceptDefinition, its item id the concept's key.
+	DRAFT_DECISION_ADD = "add"
 )
+
+// DraftConceptDefinition is a concept's name, definition and suggested verdict as a decision
+// records it. From, of an added concept, is the concept it was split from, whose sources it shares.
+type DraftConceptDefinition struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Verdict     string `json:"verdict,omitempty"`
+	From        string `json:"from,omitempty"`
+}
 
 // What a concept is judged to be.
 const (
@@ -71,6 +86,15 @@ const (
 	CONCEPT_SOURCE_REQUIREMENT = "requirement"
 )
 
+// Why drafting suggested what a concept drafted from a table is: from the table alone, or from the
+// business name and description the catalog's semantic understanding gave the table.
+const (
+	CONCEPT_BECAUSE_TABLE      = "table_entity"
+	CONCEPT_BECAUSE_UNDERSTOOD = "table_understood"
+	// CONCEPT_BECAUSE_AI is a concept a person added from Ask AI's revisions.
+	CONCEPT_BECAUSE_AI = "ai"
+)
+
 // DraftConcepts lists a project's concepts: those of the draft's items, each with the
 // requirement concepts that are it, then the requirement concepts no item is. DraftUpdateTime is
 // zero without a ready draft; nothing can be judged then.
@@ -83,18 +107,27 @@ type DraftConcepts struct {
 	Concepts              []DraftConcept `json:"concepts"`
 	// Counts are the concepts in each state, and by verdict under "verdict:<verdict>".
 	Counts map[string]int `json:"counts"`
+	// NotUnderstood counts the tables concepts are drafted from that the catalog's semantic
+	// understanding has given no business name yet: their concepts are named by the table.
+	NotUnderstood int `json:"not_understood"`
 }
 
 // DraftConcept is one concept. Item is the draft item it is, absent for a requirement concept no
 // item is. Suggested is what drafting or the specification says it is, Verdict what it is now: a
 // person's judgment, else the suggestion.
 type DraftConcept struct {
-	Key         string               `json:"key"`
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Sources     []DraftConceptSource `json:"sources"`
-	Item        *DraftConceptItem    `json:"item,omitempty"`
-	Suggested   string               `json:"suggested"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Aliases are its other names: an item's aliases, and the table name of a concept the
+	// catalog's semantic understanding named.
+	Aliases []string             `json:"aliases,omitempty"`
+	Sources []DraftConceptSource `json:"sources"`
+	// AI tells a concept AI named or added: by the catalog's semantic understanding, or adopted
+	// from Ask AI.
+	AI        bool              `json:"ai,omitempty"`
+	Item      *DraftConceptItem `json:"item,omitempty"`
+	Suggested string            `json:"suggested"`
 	// SuggestedBecause is a code for why drafting suggested it, worded by the client.
 	SuggestedBecause string `json:"suggested_because,omitempty"`
 	Verdict          string `json:"verdict"`
@@ -158,4 +191,61 @@ type DraftConceptMerge struct {
 	UpdateTime int64  `json:"update_time"`
 	Key        string `json:"key"`
 	Into       string `json:"into"`
+}
+
+// DraftConceptAskRequest is a question to Ask AI about the project's concepts, with the
+// conversation so far, kept by the client.
+type DraftConceptAskRequest struct {
+	Question string         `json:"question"`
+	History  []DraftAskTurn `json:"history"`
+}
+
+// The revisions Ask AI proposes of the concepts, as DraftAskRevision's field; Value is a
+// DraftConceptRevision.
+const (
+	// CONCEPT_REVISION_DEFINE renames and redefines a concept: Key, Name and Description.
+	CONCEPT_REVISION_DEFINE = "define"
+	// CONCEPT_REVISION_VERDICT judges a concept: Key and Verdict.
+	CONCEPT_REVISION_VERDICT = "verdict"
+	// CONCEPT_REVISION_MERGE merges a concept into another: Key and Into.
+	CONCEPT_REVISION_MERGE = "merge"
+	// CONCEPT_REVISION_SPLIT splits a concept: Key and Parts, the first of which it becomes.
+	CONCEPT_REVISION_SPLIT = "split"
+	// CONCEPT_REVISION_ADD adds a concept: Name, Description and Verdict.
+	CONCEPT_REVISION_ADD = "add"
+	// CONCEPT_REVISION_ALIASES replaces a concept's aliases: Key and Aliases, the whole list.
+	CONCEPT_REVISION_ALIASES = "aliases"
+)
+
+// CONCEPT_REVISIONS are the revisions Ask AI may propose of the concepts.
+var CONCEPT_REVISIONS = []string{
+	CONCEPT_REVISION_DEFINE, CONCEPT_REVISION_VERDICT, CONCEPT_REVISION_MERGE, CONCEPT_REVISION_SPLIT,
+	CONCEPT_REVISION_ADD, CONCEPT_REVISION_ALIASES,
+}
+
+// DraftConceptRevision is one revision of the concepts, checked against them as they stand.
+type DraftConceptRevision struct {
+	Key         string             `json:"key,omitempty"`
+	Name        string             `json:"name,omitempty"`
+	Description string             `json:"description,omitempty"`
+	Verdict     string             `json:"verdict,omitempty"`
+	Into        string             `json:"into,omitempty"`
+	Aliases     []string           `json:"aliases,omitempty"`
+	Parts       []DraftConceptPart `json:"parts,omitempty"`
+}
+
+// DraftConceptPart is one of the concepts a split makes.
+type DraftConceptPart struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Verdict     string `json:"verdict"`
+}
+
+// DraftConceptRevise adopts one revision Ask AI proposed, on the draft read: it is recorded as
+// the person's decision, as judging or merging by hand is, and can be changed again.
+type DraftConceptRevise struct {
+	UpdateTime int64                `json:"update_time"`
+	Field      string               `json:"field"`
+	Value      DraftConceptRevision `json:"value"`
+	Reason     string               `json:"reason"`
 }

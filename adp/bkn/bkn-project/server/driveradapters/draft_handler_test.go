@@ -375,7 +375,7 @@ func Test_DraftRestHandler(t *testing.T) {
 		Convey("Concepts are read, judged and merged\n", func() {
 			const project = "/api/bkn-project/v1/projects/p1/ontology"
 			concepts := &interfaces.DraftConcepts{ProjectID: "p1", Concepts: []interfaces.DraftConcept{}}
-			drs.EXPECT().GetConcepts(gomock.Any(), "Bearer t", "p1").Return(concepts, nil)
+			drs.EXPECT().GetConcepts(gomock.Any(), "Bearer t", "p1", gomock.Any()).Return(concepts, nil)
 			So(serve(handler, http.MethodGet, project+"/concepts").Result().StatusCode, ShouldEqual, http.StatusOK)
 
 			drs.EXPECT().JudgeConcept(gomock.Any(), "Bearer t", "p1", interfaces.DraftConceptJudge{UpdateTime: 5,
@@ -391,6 +391,19 @@ func Test_DraftRestHandler(t *testing.T) {
 				ShouldEqual, http.StatusOK)
 			So(serveBody(handler, http.MethodPost, project+"/concepts:judge", []byte(`{`)).Result().StatusCode,
 				ShouldEqual, http.StatusBadRequest)
+
+			drs.EXPECT().AskConcepts(gomock.Any(), "Bearer t", "p1", interfaces.DraftConceptAskRequest{Question: "q"},
+				caller, nil).Return(&interfaces.DraftAskAnswer{Answer: "a"}, nil)
+			w := serveBody(handler, http.MethodPost, project+"/concepts:ask", []byte(`{"question":"q"}`))
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"answer":"a"`)
+
+			drs.EXPECT().ReviseConcept(gomock.Any(), "Bearer t", "p1", interfaces.DraftConceptRevise{UpdateTime: 5,
+				Field: "define", Value: interfaces.DraftConceptRevision{Key: "object_types/a", Name: "A"}, Reason: "r"},
+				caller).Return(concepts, nil)
+			So(serveBody(handler, http.MethodPost, project+"/concepts:revise",
+				[]byte(`{"update_time":5,"field":"define","value":{"key":"object_types/a","name":"A"},"reason":"r"}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
 		})
 
 		Convey("The understanding is read as the caller\n", func() {

@@ -22,6 +22,9 @@ import (
 const (
 	conceptsActionJudge = "concepts:judge"
 	conceptsActionMerge = "concepts:merge"
+	// conceptsActionAsk asks AI about the concepts; conceptsActionRevise adopts a revision it proposed.
+	conceptsActionAsk    = "concepts:ask"
+	conceptsActionRevise = "concepts:revise"
 )
 
 func (r *restHandler) GetConceptsByEx(c *gin.Context) { r.withExVisitor(c, r.GetConcepts) }
@@ -35,7 +38,7 @@ func (r *restHandler) GetConcepts(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("project_id")
 	span.SetAttributes(attr.Key("project_id").String(id))
 
-	concepts, err := r.drs.GetConcepts(ctx, visitor.TokenID, id)
+	concepts, err := r.drs.GetConcepts(ctx, visitor.TokenID, id, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return
@@ -82,6 +85,49 @@ func (r *restHandler) MergeConcept(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	concepts, err := r.drs.MergeConcept(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, concepts)
+}
+
+// AskConcepts serves POST /projects/{project_id}/ontology/concepts:ask: Ask AI about the project's
+// concepts. It reads the draft and never changes it.
+func (r *restHandler) AskConcepts(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.DraftConceptAskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	replyAsk(c, span, func(stream *interfaces.DraftAskStream) (*interfaces.DraftAskAnswer, error) {
+		return r.drs.AskConcepts(ctx, visitor.TokenID, id, req, visitorAccount(visitor), stream)
+	})
+}
+
+// ReviseConcept adopts a revision Ask AI proposed of the concepts and replies the concepts.
+func (r *restHandler) ReviseConcept(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var req interfaces.DraftConceptRevise
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	concepts, err := r.drs.ReviseConcept(ctx, visitor.TokenID, id, req, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

@@ -43,8 +43,18 @@ type DraftService interface {
 	DeleteRelationType(ctx context.Context, token string, projectID string, itemID string, updateTime int64,
 		caller AccountInfo) (*Draft, error)
 	// GetConcepts projects the project's concepts from its draft and requirement specification,
-	// with the judgments and merges people made.
-	GetConcepts(ctx context.Context, token string, projectID string) (*DraftConcepts, error)
+	// with the judgments and merges people made; a table's concept takes the business name the
+	// catalog's semantic understanding gave the table, as the caller reads it.
+	GetConcepts(ctx context.Context, token string, projectID string, caller AccountInfo) (*DraftConcepts, error)
+	// AskConcepts answers a question about the project's concepts, as the caller asks bkn-agent,
+	// and proposes revisions of them; stream, when set, receives the answer as it is written. It
+	// never changes the draft.
+	AskConcepts(ctx context.Context, token string, projectID string, req DraftConceptAskRequest,
+		caller AccountInfo, stream *DraftAskStream) (*DraftAskAnswer, error)
+	// ReviseConcept adopts one revision Ask AI proposed of the concepts, recorded as the caller's
+	// decision.
+	ReviseConcept(ctx context.Context, token string, projectID string, req DraftConceptRevise,
+		caller AccountInfo) (*DraftConcepts, error)
 	// JudgeConcept records what a concept is and adopts its draft item, or leaves it out, to match.
 	JudgeConcept(ctx context.Context, token string, projectID string, req DraftConceptJudge,
 		caller AccountInfo) (*DraftConcepts, error)
