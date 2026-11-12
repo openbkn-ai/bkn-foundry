@@ -562,11 +562,19 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 				credential, ok := interfaces.CallerRuntimeCredentialFromContext(ctx)
 				So(ok, ShouldBeTrue)
 				So(credential.Authorization, ShouldEqual, "Bearer caller-token")
+				traceContext, ok := common.GetTraceContextFromCtx(ctx)
+				So(ok, ShouldBeTrue)
+				So(traceContext.ConversationID, ShouldEqual, "conv_001")
+				So(traceContext.InteractionID, ShouldEqual, "int_001")
+				So(traceContext.OperationID, ShouldEqual, "op_registered")
 				return map[string]any{"checked": true}, nil
 			})
 
 		service.executeAsync(execution, actionType, req,
-			interfaces.CallerRuntimeCredential{Authorization: "Bearer caller-token"})
+			interfaces.CallerRuntimeCredential{
+				Authorization: "Bearer caller-token", ConversationID: "conv_001",
+				InteractionID: "int_001", ParentOperationID: "op_registered",
+			})
 
 		So(len(progressUpdates), ShouldBeGreaterThanOrEqualTo, 1)
 		So(progressUpdates[0].SuccessCount, ShouldEqual, 1)

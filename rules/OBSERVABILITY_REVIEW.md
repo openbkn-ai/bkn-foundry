@@ -20,12 +20,13 @@ Review 时逐条回答：
 
 ## Trace 硬规则
 
-**bkn-trace 只记录 Agent（包括第三方 Agent、bkn-agent）通过 Context Loader 的 MCP 接口发起并完成的业务调用。**
+**bkn-trace 记录 Agent（包括第三方 Agent、bkn-agent）通过 Context Loader 的 MCP 接口发起并完成的业务调用，以及已鉴权、已授权的异步 Function 行动为了执行 SDK 内部查询而建立的一次性托管交互。** 后者必须以行动执行 ID 定位，使用发起者身份，并在有发起操作时记录其原始 ID；行动的异步生命周期不能继续占用已经结束的发起交互。
 
 因此：
 
-- 允许进入 Trace 的入口是 Context Loader MCP 的业务工具调用；必须能关联调用主体和业务上下文。
-- 通用 HTTP、页面读取、平台内部调用、MCP `initialize`/`tools/list`/信息发现、健康检查、日志/Trace/审计查询和授权判定不得创建 Trace。
+- 允许进入 Trace 的入口是 Context Loader MCP 的业务工具调用，以及上述异步 Function 行动；必须能关联调用主体和业务上下文。
+- Function 行动的托管交互只覆盖该次行动的函数调用及其 SDK 子查询，执行结束后必须关闭；行动发起时的授权和取消状态须先检查，不能因记录 Trace 绕过执行门禁。
+- 除上述函数行动外，通用 HTTP、页面读取、平台内部调用、MCP `initialize`/`tools/list`/信息发现、健康检查、日志/Trace/审计查询和授权判定不得创建 Trace。
 - Context Loader 生命周期调用只建立/结束同一次 MCP 业务调用的上下文，不单列用户可见 Trace。
 - 不得用普通 OTLP span、HTTP middleware 或日志字段补造越界 Trace。
 

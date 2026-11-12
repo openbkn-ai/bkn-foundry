@@ -37,13 +37,14 @@ var (
 )
 
 type actionSchedulerService struct {
-	appSetting  *common.AppSetting
-	omAccess    interfaces.OntologyManagerAccess
-	aoAccess    interfaces.AgentOperatorAccess
-	logsService interfaces.ActionLogsService
-	ots         interfaces.ObjectTypeService
-	permissions interfaces.ActionExecutionPermissionService
-	proxy       interfaces.ProxyContextResolver
+	appSetting    *common.AppSetting
+	omAccess      interfaces.OntologyManagerAccess
+	aoAccess      interfaces.AgentOperatorAccess
+	logsService   interfaces.ActionLogsService
+	ots           interfaces.ObjectTypeService
+	permissions   interfaces.ActionExecutionPermissionService
+	proxy         interfaces.ProxyContextResolver
+	functionTrace managedFunctionTrace
 
 	duplicateCheckHook interfaces.DuplicateCheckHook
 }
@@ -60,6 +61,7 @@ func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionS
 			proxy:       logics.PCR,
 		}
 		svc.permissions = permission.NewPermissionService(appSetting)
+		svc.functionTrace = newManagedFunctionTraceFromEnv()
 		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
 		svc.duplicateCheckHook = svc.defaultDuplicateCheck
 		assService = svc
@@ -374,6 +376,17 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
 	// A Function-backed action reads BKN as the caller who started it.
 	ctx = interfaces.WithCallerRuntimeCredential(ctx, callerCredential)
+	traceOutcome := "handed_off"
+	if s.functionTrace == nil && callerCredential.ConversationID != "" && callerCredential.InteractionID != "" &&
+		callerCredential.ParentOperationID != "" {
+		// The HTTP request is gone by the time the worker invokes a Function.
+		// Restore only the managed identifiers captured at the authenticated boundary.
+		ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
+			ConversationID: callerCredential.ConversationID,
+			InteractionID:  callerCredential.InteractionID,
+			OperationID:    callerCredential.ParentOperationID,
+		})
+	}
 	if execution.Proxy == nil && strings.HasPrefix(execution.ProxyModelVersion, interfaces.CallerIdentityModelPrefix) {
 		// Started on the draft or a history version: the tool runs as the caller who started it.
 		ctx = interfaces.WithCallerIdentityExecution(ctx)
@@ -382,7 +395,6 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	} else {
 		logger.Errorf("Execution %s has an invalid proxy snapshot: %v", execution.ID, err)
 	}
-
 	logger.Infof("Starting async execution: %s, mode: %s, target instances: %d",
 		execution.ID, execution.ExecutionMode, len(req.Instances))
 
@@ -390,9 +402,32 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	if err := s.logsService.MarkExecutionRunning(ctx, execution.KNID, execution.ID); err != nil {
 		logger.Warnf("Failed to update execution status to running: %v", err)
 	}
+	if s.functionTrace != nil && actionType.ActionSource.Type == interfaces.ActionSourceTypeTool {
+		if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
+			proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction &&
+			!s.isExecutionCancelled(ctx, execution.KNID, execution.ID) {
+			if err := s.authorizeExecution(ctx, execution.PermissionSnapshot); err != nil {
+				s.failManagedFunctionExecution(ctx, execution, req, err)
+				return
+			}
+			managedCtx, finish, err := s.functionTrace.Open(ctx, execution, callerCredential)
+			if err != nil {
+				logger.Errorf("Failed to start managed action Function context for execution %s: %v", execution.ID, err)
+				s.failManagedFunctionExecution(ctx, execution, req, err)
+				return
+			}
+			ctx = managedCtx
+			defer func() { finish(traceOutcome) }()
+		}
+	}
 
 	if execution.ExecutionMode == interfaces.ExecutionModeOnce {
-		s.executeOnce(ctx, execution, actionType, req)
+		switch s.executeOnce(ctx, execution, actionType, req) {
+		case interfaces.ExecutionStatusFailed:
+			traceOutcome = "failed"
+		case interfaces.ExecutionStatusCancelled:
+			traceOutcome = "cancelled"
+		}
 		return
 	}
 
@@ -442,7 +477,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		}
 
 		// Execute based on action source type
-		params, result, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params)
+		params, result, execErr := s.invokeActionSource(withActionInvocation(ctx, i), execution.PermissionSnapshot, actionType, params)
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
@@ -487,6 +522,11 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	} else {
 		finalStatus = interfaces.ExecutionStatusCompleted
 	}
+	if finalStatus == interfaces.ExecutionStatusFailed {
+		traceOutcome = "failed"
+	} else if finalStatus == interfaces.ExecutionStatusCancelled {
+		traceOutcome = "cancelled"
+	}
 
 	endTime := time.Now().UnixMilli()
 
@@ -508,6 +548,32 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 
 	logger.Infof("Completed async execution: %s, success: %d, failed: %d, cancelled: %d",
 		execution.ID, successCount, failedCount, cancelledCount)
+}
+
+func (s *actionSchedulerService) failManagedFunctionExecution(ctx context.Context,
+	execution *interfaces.ActionExecution, req *interfaces.ActionExecutionRequest, cause error) {
+	now := time.Now().UnixMilli()
+	results := resultBuffer{}
+	if execution.ExecutionMode == interfaces.ExecutionModeOnce {
+		results.add(interfaces.ObjectExecutionResult{
+			Targets: req.Instances, Status: interfaces.ObjectStatusFailed,
+			ErrorMessage: cause.Error(), StartTime: now, EndTime: now,
+		})
+	} else {
+		for _, target := range req.Instances {
+			results.add(interfaces.ObjectExecutionResult{
+				ObjectSystemInfo: target, Status: interfaces.ObjectStatusFailed,
+				ErrorMessage: cause.Error(), StartTime: now, EndTime: now,
+			})
+		}
+	}
+	s.flushFinalResults(ctx, execution, &results)
+	if err := s.logsService.FinishExecution(ctx, execution.KNID, execution.ID, &interfaces.ExecutionOutcome{
+		Status: interfaces.ExecutionStatusFailed, FailedCount: execution.TotalCount,
+		EndTime: now, DurationMs: now - execution.StartTime,
+	}); err != nil {
+		logger.Errorf("Failed to record managed Function setup failure for execution %s: %v", execution.ID, err)
+	}
 }
 
 // resolveExecutionMode runs object and relation operations for each explicit target.
@@ -533,6 +599,15 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 
 	switch actionType.ActionSource.Type {
 	case interfaces.ActionSourceTypeTool:
+		if s.functionTrace != nil {
+			if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
+				proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction {
+				result, err := s.functionTrace.Run(ctx, actionType.ActionSource.ToolID, func(runCtx context.Context) (any, error) {
+					return ExecuteTool(runCtx, s.aoAccess, actionType, params)
+				})
+				return params, result, err
+			}
+		}
 		result, err := ExecuteTool(ctx, s.aoAccess, actionType, params)
 		return params, result, err
 	case interfaces.ActionSourceTypeMCP:
@@ -547,7 +622,7 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 // The matched instances are recorded as the targets of that invocation, so the execution log
 // still shows what the action was aimed at.
 func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *interfaces.ActionExecution,
-	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest) {
+	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest) string {
 
 	startTime := time.Now().UnixMilli()
 	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionInstancesMerged", map[string]any{"count": len(req.Instances)})
@@ -577,7 +652,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.EndTime = endTime
 		result.DurationMs = endTime - startTime
 		s.finishOnce(ctx, execution, result, interfaces.ExecutionStatusCancelled, 0, 0, endTime)
-		return
+		return interfaces.ExecutionStatusCancelled
 	}
 
 	// No parameter reads an instance property in this mode, so an empty object payload
@@ -588,7 +663,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.ErrorMessage = fmt.Sprintf("Failed to build parameters: %v", err)
 		failedCount = 1
 	} else {
-		sentParams, invokeResult, execErr := s.invokeActionSource(ctx, execution.PermissionSnapshot, actionType, params)
+		sentParams, invokeResult, execErr := s.invokeActionSource(withActionInvocation(ctx, 0), execution.PermissionSnapshot, actionType, params)
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed
@@ -622,6 +697,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 
 	logger.Infof("Completed aggregated execution: %s, targets: %d, invocations: 1, status: %s",
 		execution.ID, len(req.Instances), finalStatus)
+	return finalStatus
 }
 
 // finishOnce writes the terminal record of an ExecutionModeOnce run.

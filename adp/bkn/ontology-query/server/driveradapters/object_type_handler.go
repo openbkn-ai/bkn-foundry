@@ -332,8 +332,20 @@ func callerRuntimeCredentialFromRequest(c *gin.Context) interfaces.CallerRuntime
 	return interfaces.CallerRuntimeCredential{
 		Authorization:     strings.TrimSpace(c.GetHeader("Authorization")),
 		ConversationID:    common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNConversationID)),
+		InteractionID:     common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNInteractionID)),
 		ParentOperationID: common.SanitizeBusinessTraceID(c.GetHeader(common.HeaderBKNParentOperationID)),
 	}
+}
+
+func actionCallerRuntimeCredential(c *gin.Context, visitor hydra.Visitor) interfaces.CallerRuntimeCredential {
+	credential := callerRuntimeCredentialFromRequest(c)
+	credential.ApplicationPrincipalID = strings.TrimSpace(visitor.ClientID)
+	if credential.ApplicationPrincipalID == "" {
+		// Match Context Loader's authenticated-owner fallback for tokens
+		// without a client ID. Never derive ownership from request headers.
+		credential.ApplicationPrincipalID = visitor.ID
+	}
+	return credential
 }
 
 func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor) {

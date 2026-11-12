@@ -147,6 +147,8 @@ metricResultSnapshot:
   ttlSeconds: 900
 
 bknTrace:
+  lifecycle:
+    coreURL: "http://agent-observability-internal:8081"
   evidencePublisher:
     enabled: false
     brokers: ""
