@@ -67,6 +67,9 @@ func Test_ListLogicNeeds(t *testing.T) {
 		live := func() {
 			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
 				Return([]*interfaces.Release{{NetworkID: "kn1"}}, nil)
+			// The lineage's first release made version 1: the project created the network.
+			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: releasesPage}).
+				Return([]*interfaces.Release{{NetworkID: "kn1", KNVersion: 1}}, nil)
 		}
 
 		Convey("Each linked implementation is read live from the live network, once per list\n", func() {
@@ -114,6 +117,8 @@ func Test_ListLogicNeeds(t *testing.T) {
 			So(got.Needs[7].Implementation, ShouldResemble, &interfaces.LogicNeedImplementation{Available: true,
 				Name: "Hold order", OwnerObjectTypeID: "sales_order"})
 			So(got.Needs[8].Implementation, ShouldBeNil)
+			// A network the project created lists nothing as already there.
+			So(got.NetworkItems, ShouldBeEmpty)
 		})
 
 		Convey("An implementation gone, forbidden or not answered says so; one failed list is read once\n", func() {
@@ -234,10 +239,14 @@ func Test_ListLogicNeedsBeforeRelease(t *testing.T) {
 		ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil).Times(2)
 
 		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 1}, nil)
+		bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(nil, nil)
+		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", gomock.Any(), "").Return(nil, nil).Times(2)
+		bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(nil, nil)
 		got, err := svc.ListLogicNeeds(ctx, token, "p1")
 		So(err, ShouldBeNil)
 		So(got.Released, ShouldBeFalse)
 		So(got.Live, ShouldBeTrue)
+		So(got.NetworkItems, ShouldBeEmpty)
 
 		// One whose versions cannot be read is taken not to run one.
 		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(nil, errors.New("down"))
@@ -557,5 +566,94 @@ func Test_LinkLogicNeed(t *testing.T) {
 func Test_Squeezed(t *testing.T) {
 	Convey("Names compare without case, any space, underscores or hyphens\n", t, func() {
 		So(squeezed(" Late_Rate-x　y\tz "), ShouldEqual, "lateratexyz")
+	})
+}
+
+func Test_ListLogicNeedsNetworkItems(t *testing.T) {
+	Convey("A project started on a running network lists what the network has, with the needs each covers\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		kva := pmock.NewMockKNVersionAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, bba: bba, rla: rla, da: da, kva: kva}
+		ctx := context.Background()
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{
+			Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller}}, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
+		bba.EXPECT().ListObjectTypeIDs(gomock.Any(), token, "kn1").Return([]string{"sales_order"}, nil).AnyTimes()
+		lists := func() {
+			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
+				[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
+				[]*interfaces.KNCapability{{CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(
+				[]*interfaces.KNCapability{{CapabilityID: "s1", Name: "Triage"}}, nil)
+		}
+
+		Convey("Before the first release, with the needs linked to them; metrics the edition lacks are none\n", func() {
+			rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 2}, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(linkSpec(), true, nil)
+			lists()
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(nil, backendErr(http.StatusNotFound, ""))
+			// The needs' own implementations are read from the same lists.
+			bba.EXPECT().GetObjectMetric(gomock.Any(), token, "kn1", "m1").Return(nil, backendErr(http.StatusNotFound, ""))
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "openapi").Return(nil, nil)
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_MCP_TOOL, "").Return(nil, nil)
+
+			got, err := svc.ListLogicNeeds(ctx, token, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Live, ShouldBeTrue)
+			So(got.NetworkItemsReason, ShouldBeEmpty)
+			So(got.NetworkItems, ShouldResemble, []*interfaces.LogicNetworkItem{
+				{Type: interfaces.LOGIC_LINK_ACTION_TYPE, ID: "a1", Name: "Hold order", OwnerObjectTypeID: "sales_order", NeedIDs: []string{"n8"}},
+				{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "box1", Name: "Window check", Description: "d", NeedIDs: []string{"n4"}},
+				{Type: interfaces.LOGIC_LINK_SKILL, ID: "s1", Name: "Triage", NeedIDs: []string{"n6"}},
+			})
+		})
+
+		Convey("Without a specification yet; a list not answered says why and the rest is listed\n", func() {
+			rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 2}, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(nil, backendErr(http.StatusForbidden, "x"))
+			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", gomock.Any(), "").Return(nil, nil).Times(2)
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return([]*interfaces.KNObjectMetric{
+				{ID: "m1", Name: "Late rate", OwnerObjectTypeID: "sales_order", OwnerObjectTypeName: "Sales order"}}, nil)
+
+			got, err := svc.ListLogicNeeds(ctx, token, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.NetworkItemsReason, ShouldEqual, interfaces.LOGIC_IMPLEMENTATION_FORBIDDEN)
+			So(got.NetworkItems, ShouldResemble, []*interfaces.LogicNetworkItem{{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1",
+				Name: "Late rate", OwnerObjectTypeID: "sales_order", OwnerObjectTypeName: "Sales order", NeedIDs: []string{}}})
+		})
+
+		Convey("After the project's release, when its first release built on versions the network had\n", func() {
+			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1}).
+				Return([]*interfaces.Release{{ID: "r2"}}, nil)
+			page := make([]*interfaces.Release, releasesPage)
+			for i := range page {
+				page[i] = &interfaces.Release{ID: fmt.Sprintf("r%d", 200-i), CreateTime: int64(200 - i), KNVersion: 200 - i}
+			}
+			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: releasesPage}).
+				Return(page, nil)
+			rla.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "kn1", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: releasesPage,
+				Cursor: &interfaces.ReleaseCursor{CreateTime: 101, ID: "r101"}}).Return([]*interfaces.Release{{ID: "r1", KNVersion: 4}}, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			lists()
+			bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(nil, nil)
+
+			got, err := svc.ListLogicNeeds(ctx, token, "p1")
+
+			So(err, ShouldBeNil)
+			So(got.Released, ShouldBeTrue)
+			So(got.NetworkItems, ShouldHaveLength, 3)
+		})
 	})
 }

@@ -226,11 +226,15 @@ func Test_AnalyseKinetic(t *testing.T) {
 		ra := pmock.NewMockRequirementAccess(ctrl)
 		da := pmock.NewMockDraftAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
-		svc := &requirementService{ps: ps, ra: ra, da: da, ba: ba,
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		// A network the project created and never released: nothing of it is read, no bba nor kva
+		// is there to read it, and the analysis goes as it always did.
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		svc := &requirementService{ps: ps, ra: ra, da: da, ba: ba, rla: rla,
 			now: func() int64 { return 1000 }, newID: func() string { return "run1" },
 			run: func(fn func()) { fn() }, sleep: func(time.Duration) {}}
 		ctx := context.Background()
-		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller,
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller,
 			CatalogIDs: []string{"c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}
 		docs := testDocuments()
 		need := func(id, name, source string, accepted bool) *interfaces.RequirementLogicNeed {
@@ -270,7 +274,7 @@ func Test_AnalyseKinetic(t *testing.T) {
 			{"id":"y","kind":"metric","name":"stated","definition":"","concept_ids":["c1"],"citations":[]},
 			{"id":"z","kind":"skill","name":"Made up Skill","definition":"","citations":[],"supplement_reason":"r"}]}`
 
-		Convey("It replaces the analysed needs no one made theirs, and keeps the rest\n", func() {
+		Convey("On a network the project created, it replaces the analysed needs no one made theirs, and keeps the rest\n", func() {
 			st := &runStore{req: previous()}
 			expectRun(st, kineticDraft())
 			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
@@ -377,5 +381,81 @@ func Test_AnalyseKinetic(t *testing.T) {
 			_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 		})
+	})
+}
+
+func Test_AnalyseKineticOnNetwork(t *testing.T) {
+	Convey("On a network the project started on, the analysis builds on what the network has\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		ba := pmock.NewMockBknAgentAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		kva := pmock.NewMockKNVersionAccess(ctrl)
+		bba := pmock.NewMockBknBackendAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, ba: ba, rla: rla, kva: kva, bba: bba,
+			now: func() int64 { return 1000 }, newID: func() string { return "run1" },
+			run: func(fn func()) { fn() }, sleep: func(time.Duration) {}}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller,
+			CatalogIDs: []string{"c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(testDocuments(), nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(kineticDraft(), true, nil)
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 3}, nil)
+		bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
+			[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
+		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
+			[]*interfaces.KNCapability{{CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
+		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(nil, nil)
+		bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(
+			[]*interfaces.KNObjectMetric{{ID: "m1", Name: "Late rate", OwnerObjectTypeID: "sales_order"}}, nil)
+		st := &runStore{req: &interfaces.Requirement{ProjectID: "p1", Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY,
+			UpdateTime: 7, Spec: interfaces.RequirementSpec{
+				LogicNeeds: []*interfaces.RequirementLogicNeed{
+					// The documents state a need the network has; a person changed one it has too.
+					{ID: "n1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "hold-order", Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS,
+						ConceptIDs: []string{}, ScenarioIDs: []string{}},
+					{ID: "n2", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", Source: interfaces.LOGIC_NEED_FROM_PERSON,
+						Edited: true, ConceptIDs: []string{}, ScenarioIDs: []string{}},
+				},
+				LastIDs: map[string]int{"n": 2}}}}
+		st.expect(ra)
+		output := `{"logic_needs":[
+			{"id":"kept-network-2","kind":"function","name":"Window check","definition":"d","object_type_ids":["sales_order"],"citations":[]},
+			{"id":"x","kind":"function","name":"window_check","definition":"","citations":[],"supplement_reason":"r"},
+			{"id":"y","kind":"metric","name":"On-time rate","definition":"","citations":[],"supplement_reason":"r"}]}`
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				var msg kineticMessage
+				So(json.Unmarshal([]byte(req.Message[strings.Index(req.Message, "{"):]), &msg), ShouldBeNil)
+				// The network's items go as kept needs after the specification's: the Agent never repeats them.
+				So(msg.Kept.LogicNeeds, ShouldResemble, []messageLogicNeed{
+					{ID: "kept-n1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "hold-order"},
+					{ID: "kept-n2", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
+					// Those on the model's object types first.
+					{ID: "kept-network-1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"}},
+					{ID: "kept-network-3", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", ObjectTypeIDs: []string{"sales_order"}},
+					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
+				})
+				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
+				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
+			})
+
+		_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, false)
+
+		So(err, ShouldBeNil)
+		spec := st.req.Spec
+		// Only the gap is a new need: what the network has is not given again.
+		So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3"})
+		So(spec.LogicNeeds[2].Name, ShouldEqual, "On-time rate")
+		So(spec.LogicNeeds[2].Link, ShouldBeNil)
+		// The stated need the network covers is linked to it; the one a person changed is left to them.
+		So(spec.LogicNeeds[0].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_ACTION_TYPE,
+			ID: "a1", By: caller, At: 1000})
+		So(spec.LogicNeeds[1].Link, ShouldBeNil)
 	})
 }

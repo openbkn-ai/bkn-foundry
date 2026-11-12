@@ -94,6 +94,31 @@ type LogicNeedsView struct {
 	Live   bool             `json:"live"`
 	Reason string           `json:"reason,omitempty"`
 	Needs  []*LogicNeedView `json:"needs"`
+	// NetworkItems are the action types, functions, Skills and object metrics the network already
+	// had when the project started on it, read live; empty on a network the project created.
+	// NetworkItemsReason says some of them could not be read.
+	NetworkItems       []*LogicNetworkItem `json:"network_items"`
+	NetworkItemsReason string              `json:"network_items_reason,omitempty"`
+}
+
+// LogicNetworkItem is an implementation the network already has: an action type, a function, a
+// Skill or an object metric. It is edited in the network, never in the project. NeedIDs are the
+// project's needs linked to it, the needs it covers.
+type LogicNetworkItem struct {
+	Type                string   `json:"type"`
+	ID                  string   `json:"id"`
+	BoxID               string   `json:"box_id,omitempty"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description,omitempty"`
+	OwnerObjectTypeID   string   `json:"owner_object_type_id,omitempty"`
+	OwnerObjectTypeName string   `json:"owner_object_type_name,omitempty"`
+	NeedIDs             []string `json:"need_ids"`
+}
+
+// Implements tells whether the item is what link points at.
+func (item *LogicNetworkItem) Implements(link *RequirementLogicLink) bool {
+	return link != nil && item.Type == link.Type && item.ID == link.ID &&
+		(item.Type != LOGIC_LINK_FUNCTION || item.BoxID == link.BoxID)
 }
 
 // Why a candidate is offered for a need.
