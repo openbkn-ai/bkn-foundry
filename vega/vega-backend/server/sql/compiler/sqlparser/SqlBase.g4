@@ -78,7 +78,8 @@ typeName: identifier (LPAREN NUMBER (COMMA NUMBER)? RPAREN)?;
 
 literal: NUMBER | STRING | NULL | TRUE | FALSE;
 
-identifier: IDENTIFIER | QUOTED_IDENTIFIER;
+// ALL 仅在 UNION 后充当量词，其他位置保留既有标识符兼容性。
+identifier: IDENTIFIER | QUOTED_IDENTIFIER | ALL;
 
 SELECT: 'SELECT';
 UNION: 'UNION';

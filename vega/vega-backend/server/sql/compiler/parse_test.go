@@ -17,6 +17,47 @@ import (
 )
 
 func TestParseSQL(t *testing.T) {
+	t.Run("ALL remains an identifier outside UNION quantifiers", func(t *testing.T) {
+		for _, test := range []struct {
+			input string
+			want  string
+		}{
+			{"SELECT all FROM {{a}}", "SELECT `all` FROM `A`"},
+			{"SELECT id AS all FROM {{a}}", "SELECT `id` AS `all` FROM `A`"},
+			{"SELECT id all FROM {{a}}", "SELECT `id` AS `all` FROM `A`"},
+			{"SELECT all.all FROM {{a}} AS all WHERE all.all > 0 ORDER BY all.all", "SELECT `all`.`all` FROM `A` AS `all` WHERE (`all`.`all` > 0) ORDER BY `all`.`all` ASC"},
+			{"SELECT ALL.* FROM {{a}} ALL", "SELECT `ALL`.* FROM `A` AS `ALL`"},
+			{"SELECT all AS aLl FROM {{a}} ORDER BY aLl", "SELECT `all` AS `aLl` FROM `A` ORDER BY `aLl` ASC"},
+		} {
+			t.Run(test.input, func(t *testing.T) {
+				query, err := ParseSQL(test.input)
+				require.NoError(t, err)
+				query.FromPart.(*sb.Table).SourceIdentifier = "`A`"
+				text, args, err := mysql.ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, test.want, text)
+				assert.Empty(t, args)
+			})
+		}
+		for _, operator := range []string{"UNION", "UNION ALL", "UNION DISTINCT"} {
+			t.Run(operator, func(t *testing.T) {
+				query, err := ParseSQL("SELECT all.all AS all FROM {{a}} all " + operator + " SELECT all FROM {{b}} ORDER BY all")
+				require.NoError(t, err)
+				union := query.FromPart.(*sb.Union)
+				assert.Equal(t, operator == "UNION ALL", union.All)
+				union.Left.FromPart.(*sb.Table).SourceIdentifier = "`A`"
+				union.Right.FromPart.(*sb.Table).SourceIdentifier = "`B`"
+				text, args, err := mysql.ToSql(query)
+				require.NoError(t, err)
+				renderedOperator := "UNION"
+				if union.All {
+					renderedOperator = "UNION ALL"
+				}
+				assert.Equal(t, "SELECT * FROM (SELECT `all`.`all` AS `all` FROM `A` AS `all` "+renderedOperator+" SELECT `all` FROM `B`) AS `_union_result` ORDER BY `all` ASC", text)
+				assert.Empty(t, args)
+			})
+		}
+	})
 	t.Run("union keeps branch and whole query limits separate", func(t *testing.T) {
 		query, err := ParseSQL("(SELECT id AS n FROM {{current}} ORDER BY id LIMIT 2) UNION ALL SELECT id FROM {{archive}} ORDER BY n DESC LIMIT 5 OFFSET 1")
 		require.NoError(t, err)
@@ -100,6 +141,7 @@ func TestParseSQL(t *testing.T) {
 		for _, input := range []string{
 			"SELECT id FROM {{a}} UNION SELECT id, kind FROM {{b}}",
 			"SELECT id FROM {{a}} UNION ALL",
+			"SELECT id FROM {{a}} UNION ALL ALL SELECT id FROM {{b}}",
 			"SELECT id FROM {{a}} ORDER BY id UNION SELECT id FROM {{b}}",
 			"SELECT id FROM {{a}} UNION SELECT id FROM hidden_table",
 			"SELECT id FROM {{a}} UNION SELECT SLEEP(1) FROM {{b}}",
