@@ -168,7 +168,7 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(revision, ShouldEqual, 8)
 			So(got[0].method, ShouldEqual, http.MethodPost)
 			So(got[0].path, ShouldEqual, "/api/bkn-backend/v1/bkns")
-			So(got[0].query, ShouldEqual, "expected_draft_revision=7&import_mode=replace")
+			So(got[0].query, ShouldEqual, "branch=draft&expected_draft_revision=7&import_mode=replace")
 			So(got[0].auth, ShouldEqual, token)
 			So(got[0].files, ShouldResemble, map[string]string{"network.bkn": "network", "object_types/order.bkn": "order"})
 			So(result.KNID, ShouldEqual, "orders")
@@ -183,7 +183,7 @@ func Test_KNVersionAccess(t *testing.T) {
 				interfaces.KNReplaceImport{ExpectedDraftRevision: 0, Overwrite: true})
 
 			So(err, ShouldBeNil)
-			So(got[0].query, ShouldEqual, "expected_draft_revision=0&import_mode=replace&overwrite_changes=true")
+			So(got[0].query, ShouldEqual, "branch=draft&expected_draft_revision=0&import_mode=replace&overwrite_changes=true")
 		})
 
 		Convey("ReplaceDraft keeps a revision conflict's status and code\n", func() {
