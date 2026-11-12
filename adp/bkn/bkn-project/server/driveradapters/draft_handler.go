@@ -37,6 +37,7 @@ const (
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
+func (r *restHandler) GetExistingByEx(c *gin.Context)    { r.withExVisitor(c, r.GetExisting) }
 func (r *restHandler) GetCheckByEx(c *gin.Context)       { r.withExVisitor(c, r.GetCheck) }
 func (r *restHandler) GetIndexByEx(c *gin.Context)       { r.withExVisitor(c, r.GetIndex) }
 func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.GetStatus) }
@@ -272,6 +273,24 @@ func (r *restHandler) GetDraft(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// GetExisting replies the object and relation types the project's network already has.
+func (r *restHandler) GetExisting(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	existing, err := r.drs.GetExisting(ctx, visitor.TokenID, id)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, existing)
 }
 
 // GetStatus replies where the project stands for the caller: its stage, what blocks it and who

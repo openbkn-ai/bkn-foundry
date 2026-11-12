@@ -185,7 +185,11 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 	}
 	snapshot := *draft
 	background := context.WithoutCancel(ctx)
-	s.run(func() { s.draftAdded(background, &snapshot, adding, caller) })
+	used, err := s.existingTables(ctx, entry, ownedPaths(draft.Items.Confirmation))
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read existing definitions of project %s: %v", projectID, err))
+	}
+	s.run(func() { s.draftAdded(background, &snapshot, adding, caller, used) })
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }
@@ -198,14 +202,14 @@ const maxAddAttempts = 3
 // drafting failed, the draft being left as it is. It gives up when the draft was drafted again, or
 // another adding took over, meanwhile.
 func (s *draftService) draftAdded(ctx context.Context, snapshot *interfaces.Draft, adding *interfaces.DraftAdding,
-	caller interfaces.AccountInfo) {
+	caller interfaces.AccountInfo, used map[string]bool) {
 	timed, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	timed, span := oteltrace.StartNamedInternalSpan(timed, "DraftAddedCatalogs")
 	defer span.End()
 	projectID := snapshot.ProjectID
 
-	result, err := s.draftCatalogs(timed, snapshot, adding.CatalogIDs, caller)
+	result, err := s.draftCatalogs(timed, snapshot, adding.CatalogIDs, caller, used)
 	if err == nil {
 		err = s.recordIDs(timed, result.recorded)
 	}
@@ -264,11 +268,12 @@ type addedDraft struct {
 // draftCatalogs drafts the tables of the catalogs added with the tables of the draft's object types,
 // which the new tables may relate to and which are not counted again.
 func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draft, added []string,
-	caller interfaces.AccountInfo) (*addedDraft, error) {
+	caller interfaces.AccountInfo, used map[string]bool) (*addedDraft, error) {
 	tables, unreadable, err := s.readCatalogs(ctx, added, caller)
 	if err != nil {
 		return nil, err
 	}
+	tables, unreadable, _ = withoutExistingTables(tables, unreadable, used)
 	keys := draftedKeys(&draft.Items)
 	isNew := map[string]bool{}
 	for _, t := range tables {
