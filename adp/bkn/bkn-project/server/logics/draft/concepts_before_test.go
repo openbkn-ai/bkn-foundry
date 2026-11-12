@@ -165,6 +165,12 @@ func Test_ConceptsAfterConfirming(t *testing.T) {
 				ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
 		})
 
+		Convey("A confirmation of an earlier draft, carried over by drafting again, confirms nothing\n", func() {
+			draft.CreateTime = 11
+			So(conceptByKey(conceptsOf(ctx, "p1", draft, nil, false), "object_types/items").State,
+				ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
+		})
+
 		Convey("An item taken out after the confirmation is out\n", func() {
 			draft.Items.ObjectTypes[1].Adopted = false
 			draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES,

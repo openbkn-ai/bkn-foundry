@@ -266,7 +266,10 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 	judged, mergedInto := conceptDecisions(items)
 	defined, added := conceptDefinitions(items)
 	reviewed, excluded := reviews(items)
-	confirmed := confirmedItems(items)
+	confirmed := map[string]*interfaces.DraftReview{}
+	if result.DraftUpdateTime > 0 {
+		confirmed = confirmedItems(draft)
+	}
 	language := itemsLanguage(items)
 	if before != nil && result.DraftUpdateTime == 0 && before.language != "" {
 		language = before.language
@@ -508,11 +511,12 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 }
 
 // confirmedItems are the items the last confirmation that committed wrote, by key, with who
-// confirmed them and when: they went into the model as they were.
-func confirmedItems(items *interfaces.DraftItems) map[string]*interfaces.DraftReview {
+// confirmed them and when: they went into the model as they were. A confirmation of an earlier
+// draft, which drafting again carries over, confirmed nothing of this one.
+func confirmedItems(draft *interfaces.Draft) map[string]*interfaces.DraftReview {
 	confirmed := map[string]*interfaces.DraftReview{}
-	c := items.Confirmation
-	if c == nil || c.Commit == "" || c.Time == 0 {
+	c := draft.Items.Confirmation
+	if c == nil || c.Commit == "" || c.Time == 0 || c.Time < draft.CreateTime {
 		return confirmed
 	}
 	for _, path := range c.Files {
