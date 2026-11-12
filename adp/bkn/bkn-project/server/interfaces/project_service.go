@@ -41,6 +41,9 @@ type ProjectEntry struct {
 	*Project
 	// OtherProjects counts the other unarchived projects of the same network.
 	OtherProjects int64 `json:"other_projects"`
+	// OwnerName is the owner's display name, for people who may not list users; empty when the
+	// directory does not know it.
+	OwnerName string `json:"owner_name,omitempty"`
 }
 
 type ProjectList struct {

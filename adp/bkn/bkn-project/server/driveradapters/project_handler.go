@@ -77,6 +77,7 @@ func (r *restHandler) CreateProject(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusCreated, entry)
 }
 
@@ -97,6 +98,7 @@ func (r *restHandler) ListProjects(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.nameOwners(ctx, list.Entries...)
 	rest.ReplyOK(c, http.StatusOK, list)
 }
 
@@ -114,6 +116,7 @@ func (r *restHandler) GetProject(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -132,6 +135,7 @@ func (r *restHandler) SetProjectArchived(c *gin.Context, visitor hydra.Visitor, 
 		hooks.Archived(ctx, visitor.TokenID, id, visitorAccount(visitor))
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -157,6 +161,7 @@ func (r *restHandler) SetProjectCatalogs(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -181,5 +186,6 @@ func (r *restHandler) SetProjectNamingLanguage(c *gin.Context, visitor hydra.Vis
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }

@@ -38,8 +38,10 @@ type Release struct {
 	BaseVersion string      `json:"base_version"`
 	ProjectID   string      `json:"project_id"`
 	Publisher   AccountInfo `json:"publisher"`
-	Notes       string      `json:"notes"`
-	State       string      `json:"state"`
+	// PublisherName is the publisher's display name where a reply names it; never stored.
+	PublisherName string `json:"publisher_name,omitempty"`
+	Notes         string `json:"notes"`
+	State         string `json:"state"`
 	// KNVersion is the network version publishing made; 0 while prepared.
 	KNVersion int `json:"kn_version"`
 	// BranchCommit holds the definitions prepared; publishing tags it v<version>.

@@ -241,6 +241,8 @@ type ProjectVersion struct {
 	KNVersion
 	Origin  string `json:"origin"`
 	Release string `json:"release,omitempty"`
+	// PublisherName is the publisher's display name; empty when the directory does not know it.
+	PublisherName string `json:"publisher_name,omitempty"`
 }
 
 // ProjectCopyVersion is the body of copying a version as the draft: OverwriteDraftChanges confirms
