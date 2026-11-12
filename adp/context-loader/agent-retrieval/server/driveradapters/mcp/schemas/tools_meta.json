@@ -148,14 +148,10 @@
       "not_for": "不用于发现有哪些行动类，也不执行行动；发现行动类用 search_schema 或 get_kn_detail，执行用 execute_action。",
       "next_step": "行动类 ID 取自 get_kn_detail 或 search_schema。",
       "keywords": [
-        "行动",
-        "操作",
-        "能做什么",
-        "可执行",
+        "行动类定义",
+        "需要哪些参数",
         "动作定义",
-        "action",
-        "operation",
-        "what can I do",
+        "action inputs",
         "action parameters",
         "action definition"
       ],
