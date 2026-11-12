@@ -66,7 +66,7 @@ func Test_ScenariosCoverTheWholeModel(t *testing.T) {
 			}
 			spec := emptySpec()
 			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{{ID: "n1", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check",
-				Link: &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "box1"},
+				Link:       &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "box1"},
 				ConceptIDs: []string{}, ScenarioIDs: []string{}}}
 			spec.LastIDs = map[string]int{"n": 1}
 			out := &draftOutput{Questions: []agentQuestion{
