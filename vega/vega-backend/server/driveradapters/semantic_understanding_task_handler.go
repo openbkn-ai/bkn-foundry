@@ -328,3 +328,58 @@ func isValidSemanticUnderstandingTaskStatus(status string) bool {
 	}
 	return false
 }
+
+// ApplySemanticUnderstandingTaskByEx 应用已保存的语义理解结果。
+func (r *restHandler) ApplySemanticUnderstandingTaskByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.applySemanticUnderstandingTask(c, visitor)
+}
+
+// ApplySemanticUnderstandingTaskByIn 为内部调用应用已保存结果。
+func (r *restHandler) ApplySemanticUnderstandingTaskByIn(c *gin.Context) {
+	r.applySemanticUnderstandingTask(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) applySemanticUnderstandingTask(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	var req interfaces.ApplySemanticUnderstandingTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if req.ApplyMode != interfaces.SemanticUnderstandingApplyModeFillEmpty &&
+		req.ApplyMode != interfaces.SemanticUnderstandingApplyModeForce {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).WithErrorDetails("apply_mode must be fill_empty or force")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	task, appliedNow, err := r.suts.Apply(ctx, c.Param("id"), &req)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_ApplyFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if !appliedNow {
+		c.Set("operation_audit_no_changes", true)
+	} else {
+		c.Set(operationAuditTargetIDKey, task.ResourceID)
+		c.Set("operation_audit_target_names", []string{task.ResourceName})
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, task)
+}

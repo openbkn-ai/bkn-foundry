@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -599,5 +600,63 @@ func TestOperationAuditRenameRealHandlers(t *testing.T) {
 				require.Equal(t, "update", store.entries[0].Action)
 			})
 		}
+	}
+}
+
+func TestOperationAuditSemanticApplyRealHandler(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		changed, missingActor, failed bool
+	}{
+		{name: "committed", changed: true},
+		{name: "already applied"},
+		{name: "no resource changes"},
+		{name: "missing actor", changed: true, missingActor: true},
+		{name: "application rejected", failed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			service := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
+			store := &capturedOperationAuditRecorder{}
+			h := newOperationAuditTestHandler(store)
+			h.suts = service
+			var applyErr error
+			if tc.failed {
+				applyErr = httperrors.NewHTTPError(context.Background(), http.StatusConflict, "VegaBackend.SemanticUnderstandingTask.SchemaMismatch")
+			}
+			service.EXPECT().Apply(gomock.Any(), "task-1", gomock.Any()).Return(&interfaces.SemanticUnderstandingTask{ID: "task-1", ResourceID: "resource-1", ResourceName: "Business Orders", Applied: !tc.failed}, tc.changed, applyErr)
+			actor := hydra.Visitor{ID: "actor-1", Type: "user"}
+			if tc.missingActor {
+				actor.ID = ""
+			}
+			engine := gin.New()
+			engine.Use(h.OperationAudit())
+			engine.POST(semanticUnderstandingTaskExternalURL+"/:id/apply", func(c *gin.Context) {
+				c.Set(operationAuditVisitorKey, actor)
+				h.applySemanticUnderstandingTask(c, actor)
+			})
+			response := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, semanticUnderstandingTaskExternalURL+"/task-1/apply", strings.NewReader(`{"apply_mode":"force","name":"forged name"}`))
+			req.Header.Set("Content-Type", "application/json")
+			engine.ServeHTTP(response, req)
+			if tc.failed {
+				assert.Equal(t, http.StatusConflict, response.Code)
+			} else {
+				assert.Equal(t, http.StatusOK, response.Code)
+				var returnedTask interfaces.SemanticUnderstandingTask
+				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &returnedTask))
+				assert.True(t, returnedTask.Applied)
+			}
+			if !tc.changed || tc.failed || tc.missingActor {
+				assert.Empty(t, store.entries)
+				return
+			}
+			require.Len(t, store.entries, 1)
+			assert.Equal(t, "update", store.entries[0].Action)
+			assert.Equal(t, "resource", store.entries[0].TargetType)
+			assert.Equal(t, "resource-1", store.entries[0].TargetID)
+			assert.Equal(t, "Business Orders", store.entries[0].TargetName)
+			assert.Equal(t, "actor-1", store.entries[0].ActorID)
+		})
 	}
 }

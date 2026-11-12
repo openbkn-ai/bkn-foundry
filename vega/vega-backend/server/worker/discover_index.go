@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
 )
 
 // indexDiscoverItem represents an index discover item.
@@ -300,7 +301,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		}
 		resource.SchemaDefinition = props
 
-		resource.Description = resolveSourceDescription(resource.Description, sourceOriginalDescription(resource.SourceMetadata), idx.Description)
+		resource.Description = resolveSourceDescription(resource.Description, semantic_understanding_task.SourceOriginalDescription(resource.SourceMetadata), idx.Description)
 
 		// SourceMetadata stores the complete source IndexMeta without additional fields.
 		data, err := sonic.Marshal(idx)

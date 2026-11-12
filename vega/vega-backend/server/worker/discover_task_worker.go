@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/discover_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
 )
 
 const (
@@ -435,7 +436,7 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 		if !found {
 			return nil, fmt.Errorf("index %q not found within the connector discovery scope", meta.Name)
 		}
-		meta.Description = sourceOriginalDescription(resource.SourceMetadata)
+		meta.Description = semantic_understanding_task.SourceOriginalDescription(resource.SourceMetadata)
 		if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, []indexDiscoverItem{{
 			resource: resource, indexMeta: meta, markAfterEnrich: true,
 		}}, result, progress); err != nil {

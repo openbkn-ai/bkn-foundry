@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
 )
 
 // tableDiscoverItem represents a table discover item.
@@ -327,7 +328,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		resourcelogic.InitializeJSONIndexAttributes(props)
 		resource.SchemaDefinition = props
 
-		resource.Description = resolveSourceDescription(resource.Description, sourceOriginalDescription(resource.SourceMetadata), table.Description)
+		resource.Description = resolveSourceDescription(resource.Description, semantic_understanding_task.SourceOriginalDescription(resource.SourceMetadata), table.Description)
 
 		// 源元数据完整保存 TableMeta，不保留旧的额外字段。
 		data, err := sonic.Marshal(table)

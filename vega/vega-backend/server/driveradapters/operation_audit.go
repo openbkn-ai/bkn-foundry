@@ -52,7 +52,9 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		request := captureOperationAuditRequest(c.Request)
 		c.Next()
-		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || (c.Writer.Status() == http.StatusAccepted && !c.GetBool("operation_audit_committed")) || c.GetBool("operation_audit_preview") {
+		if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 ||
+			(c.Writer.Status() == http.StatusAccepted && !c.GetBool("operation_audit_committed")) ||
+			c.GetBool("operation_audit_preview") || c.GetBool("operation_audit_no_changes") {
 			return
 		}
 

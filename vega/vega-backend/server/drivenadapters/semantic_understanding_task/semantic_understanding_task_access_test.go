@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestSemanticUnderstandingTaskAccessGetByID(t *testing.T) {
 			WithArgs(task.ID).
 			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).AddRow(semanticUnderstandingTaskRowValues(task)...))
 
-		got, err := access.GetByID(context.Background(), task.ID)
+		got, err := access.GetByID(context.Background(), nil, task.ID)
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -55,6 +56,32 @@ func TestSemanticUnderstandingTaskAccessGetByID(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("uses the supplied transaction without adding locking SQL", func(t *testing.T) {
+		db, dbMock, access := newSemanticUnderstandingTaskAccessMock(t)
+		t.Cleanup(func() { _ = db.Close() })
+		txDB, txMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = txDB.Close() })
+		task := sampleSemanticUnderstandingTask()
+		txMock.ExpectBegin()
+		tx, err := txDB.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		query := "SELECT " + joinSemanticUnderstandingTaskColumns() + " FROM t_semantic_understanding_task WHERE f_id = ?"
+		txMock.ExpectQuery("^" + regexp.QuoteMeta(query) + "$").WithArgs(task.ID).
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskColumns()).AddRow(semanticUnderstandingTaskRowValues(task)...))
+
+		got, err := access.GetByID(context.Background(), tx, task.ID)
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, task.ID, got.ID)
+		assert.Equal(t, task.ApplyMode, got.ApplyMode)
+		txMock.ExpectRollback()
+		require.NoError(t, tx.Rollback())
+		require.NoError(t, dbMock.ExpectationsWereMet())
+		require.NoError(t, txMock.ExpectationsWereMet())
+	})
+
 	t.Run("returns nil when not found", func(t *testing.T) {
 		db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
@@ -63,7 +90,7 @@ func TestSemanticUnderstandingTaskAccessGetByID(t *testing.T) {
 			WithArgs("missing").
 			WillReturnError(sql.ErrNoRows)
 
-		got, err := access.GetByID(context.Background(), "missing")
+		got, err := access.GetByID(context.Background(), nil, "missing")
 
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -421,4 +448,24 @@ func TestBuildOrderByClause(t *testing.T) {
 		}
 	})
 
+}
+
+func TestSemanticUnderstandingTaskAccessSetCompletedApplied(t *testing.T) {
+	for _, changed := range []bool{true, false} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			db, mock, access := newSemanticUnderstandingTaskAccessMock(t)
+			defer func() { _ = db.Close() }()
+			mock.ExpectBegin()
+			tx, err := db.BeginTx(context.Background(), nil)
+			require.NoError(t, err)
+			mock.ExpectExec(regexp.QuoteMeta("UPDATE t_semantic_understanding_task SET f_applied = ?, f_apply_detail_json = ? WHERE f_applied = ? AND f_apply_mode = ? AND f_id = ? AND f_status = ?")).
+				WithArgs(changed, `{"apply_mode":"force"}`, false, "dry_run", "task-1", "completed").WillReturnResult(sqlmock.NewResult(0, 1))
+			updated, err := access.SetCompletedApplied(context.Background(), tx, "task-1", changed, `{"apply_mode":"force"}`)
+			require.NoError(t, err)
+			assert.True(t, updated)
+			mock.ExpectCommit()
+			require.NoError(t, tx.Commit())
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

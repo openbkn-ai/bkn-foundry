@@ -114,6 +114,31 @@ func TestResourceAccessCreate(t *testing.T) {
 }
 
 func TestResourceAccessGetByID(t *testing.T) {
+	t.Run("uses the supplied transaction with plain SQL and preserves attributes", func(t *testing.T) {
+		access, dbMock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		txDB, txMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = txDB.Close() })
+		values := resourceRowValues(sampleResource())
+		values[17] = `[{"name":"id","type":"integer","attributes":{"limit":9007199254740993}}]`
+		txMock.ExpectBegin()
+		tx, err := txDB.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		txMock.ExpectQuery("^" + regexp.QuoteMeta(resourceSelectSQL("f_id = ?")) + "$").WithArgs("resource-1").WillReturnRows(resourceRows().AddRow(values...))
+		got, err := access.GetByID(context.Background(), tx, "resource-1")
+		require.NoError(t, err)
+		require.Len(t, got.SchemaDefinition, 1)
+		assert.Equal(t, json.Number("9007199254740993"), got.SchemaDefinition[0].Attributes["limit"])
+		encoded, err := json.Marshal(got.SchemaDefinition)
+		require.NoError(t, err)
+		assert.Contains(t, string(encoded), "9007199254740993")
+		txMock.ExpectRollback()
+		require.NoError(t, tx.Rollback())
+		require.NoError(t, dbMock.ExpectationsWereMet())
+		require.NoError(t, txMock.ExpectationsWereMet())
+	})
+
 	t.Run("reads derived object definition", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
