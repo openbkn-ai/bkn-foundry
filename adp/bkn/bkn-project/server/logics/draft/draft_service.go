@@ -142,6 +142,15 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 			WithErrorDetails(strings.Join(missing, ", "))
 	}
 
+	// On an existing network the tables its object types read are modeled already: drafting
+	// leaves them out rather than model them a second time. Drafting without knowing them could
+	// model a table twice, so a failed read stops it.
+	used, err := s.existingTablesOf(ctx, entry)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read existing definitions failed")
+		return nil, internalError(ctx, "Read existing definitions failed", err)
+	}
+
 	now := time.Now().UnixMilli()
 	draft := &interfaces.Draft{
 		ProjectID:  projectID,
@@ -174,12 +183,6 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
 	plans := draft.Items.DatasetPlans
-	// On an existing network the tables its object types read are modeled already: drafting
-	// leaves them out rather than model them a second time.
-	used, err := s.existingTables(ctx, entry, ownedPaths(carried))
-	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Read existing definitions of project %s: %v", projectID, err))
-	}
 	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans, used) })
 
 	span.SetStatus(codes.Ok, "")

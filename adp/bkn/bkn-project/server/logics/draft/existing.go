@@ -125,6 +125,23 @@ func (s *draftService) existingTables(ctx context.Context, entry *interfaces.Pro
 	return existingTableIDs(existing), nil
 }
 
+// existingTablesOf reads the tables existing object types read, leaving out what the project's
+// current draft wrote.
+func (s *draftService) existingTablesOf(ctx context.Context, entry *interfaces.ProjectEntry) (map[string]bool, error) {
+	if s.gs == nil || entry == nil || entry.Project == nil {
+		return map[string]bool{}, nil
+	}
+	var owned []string
+	draft, exist, err := s.da.GetDraft(ctx, entry.ID)
+	if err != nil {
+		return nil, err
+	}
+	if exist {
+		owned = ownedPaths(draft.Items.Confirmation)
+	}
+	return s.existingTables(ctx, entry, owned)
+}
+
 // existingTableIDs are the tables the existing object types read.
 func existingTableIDs(existing *interfaces.DraftExisting) map[string]bool {
 	ids := map[string]bool{}

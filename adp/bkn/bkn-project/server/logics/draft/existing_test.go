@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -130,32 +131,55 @@ func Test_GenerateDraftLeavesOutExistingTables(t *testing.T) {
 			ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Branch: "project/p1",
 			CatalogIDs: []string{"c1"}}}
-		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-		va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
-		da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
-		gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{
-			"object_types/regions.bkn": []byte(publishedRegions),
-		}, nil)
-		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{
-			{ID: "t_regions", Name: "regions", CatalogID: "c1"},
-			{ID: "t_orders", Name: "orders", CatalogID: "c1"},
-		}, nil)
-		va.EXPECT().GetTables(gomock.Any(), caller, []string{"t_regions", "t_orders"}).Return([]*interfaces.VegaTable{
-			table("t_regions", "c1", "regions", 2, []string{"code"}, col("code", "string", "")),
-			table("t_orders", "c1", "orders", 2, []string{"id"}, col("id", "string", "")),
-		}, nil)
-		va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
-			Return([]map[string]any{{"total": float64(2), "distinct_values": float64(2), "nulls": float64(0)}}, nil).AnyTimes()
-		var finished *interfaces.Draft
-		da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
+		va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
 
-		_, err := svc.GenerateDraft(context.Background(), token, "p1", caller, false)
+		Convey("a failed read of the branch stops drafting before it starts\n", func() {
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(nil, errors.New("git down"))
 
-		So(err, ShouldBeNil)
-		So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
-		So(finished.Items.ObjectTypes, ShouldHaveLength, 1)
-		So(finished.Items.ObjectTypes[0].Table.ResourceID, ShouldEqual, "t_orders")
-		So(finished.Items.Inputs.ExistingTables, ShouldResemble, []string{"regions"})
+			_, err := svc.GenerateDraft(context.Background(), token, "p1", caller, false)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("a table an existing object type reads is not drafted and is named\n", func() {
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{
+				"object_types/regions.bkn": []byte(publishedRegions),
+			}, nil)
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{
+				{ID: "t_regions", Name: "regions", CatalogID: "c1"},
+				{ID: "t_orders", Name: "orders", CatalogID: "c1"},
+			}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"t_regions", "t_orders"}).Return([]*interfaces.VegaTable{
+				table("t_regions", "c1", "regions", 2, []string{"code"}, col("code", "string", "")),
+				table("t_orders", "c1", "orders", 2, []string{"id"}, col("id", "string", "")),
+			}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
+				Return([]map[string]any{{"total": float64(2), "distinct_values": float64(2), "nulls": float64(0)}}, nil).AnyTimes()
+			var finished *interfaces.Draft
+			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+
+			_, err := svc.GenerateDraft(context.Background(), token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
+			So(finished.Items.ObjectTypes, ShouldHaveLength, 1)
+			So(finished.Items.ObjectTypes[0].Table.ResourceID, ShouldEqual, "t_orders")
+			So(finished.Items.Inputs.ExistingTables, ShouldResemble, []string{"regions"})
+		})
+	})
+}
+
+func Test_ApplyAddedNamesExistingTables(t *testing.T) {
+	Convey("Test adding catalogs names the tables left out for the network\n", t, func() {
+		service := &draftService{setting: testSetting}
+		items := interfaces.DraftItems{Inputs: &interfaces.DraftInputs{ExistingTables: []string{"regions"}}}
+
+		merged := service.applyAdded(items, &addedDraft{existingTables: []string{"suppliers", "regions"}},
+			[]string{"c2"}, &interfaces.DraftCatalogsAdded{})
+
+		So(merged.Inputs.ExistingTables, ShouldResemble, []string{"regions", "suppliers"})
 	})
 }

@@ -168,6 +168,13 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 		}
 	}
 
+	// Tables existing object types read are left out, as drafting leaves them out; adding without
+	// knowing them could model a table twice, so a failed read stops it.
+	used, err := s.existingTables(ctx, entry, ownedPaths(draft.Items.Confirmation))
+	if err != nil {
+		span.SetStatus(codes.Error, "Read existing definitions failed")
+		return nil, internalError(ctx, "Read existing definitions failed", err)
+	}
 	// The draft stays ready while the catalogs are drafted; it only says they are being added, written
 	// on the draft as it was read, so that no edit made since is lost.
 	read := draft.UpdateTime
@@ -185,10 +192,6 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 	}
 	snapshot := *draft
 	background := context.WithoutCancel(ctx)
-	used, err := s.existingTables(ctx, entry, ownedPaths(draft.Items.Confirmation))
-	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Read existing definitions of project %s: %v", projectID, err))
-	}
 	s.run(func() { s.draftAdded(background, &snapshot, adding, caller, used) })
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -263,6 +266,8 @@ type addedDraft struct {
 	tables     []*interfaces.VegaTable
 	unreadable []*interfaces.DraftTable
 	recorded   []*interfaces.RegisteredID
+	// existingTables are the new tables left out because an existing object type reads them.
+	existingTables []string
 }
 
 // draftCatalogs drafts the tables of the catalogs added with the tables of the draft's object types,
@@ -273,7 +278,7 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 	if err != nil {
 		return nil, err
 	}
-	tables, unreadable, _ = withoutExistingTables(tables, unreadable, used)
+	tables, unreadable, left := withoutExistingTables(tables, unreadable, used)
 	keys := draftedKeys(&draft.Items)
 	isNew := map[string]bool{}
 	for _, t := range tables {
@@ -307,7 +312,7 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 	if err != nil {
 		return nil, err
 	}
-	result := &addedDraft{drafted: drafted, tables: tables}
+	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left}
 	// Tables drafting itself could not read, such as a code table whose values it could not query,
 	// are unreadable as those the catalogs listed but vega did not give.
 	for _, t := range drafted.Unreadable {
@@ -354,6 +359,9 @@ func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraf
 	inputs.Tables = append(slices.Clone(inputs.Tables), addedInputs.Tables...)
 	slices.SortFunc(inputs.Tables, func(a, b interfaces.DraftInputTable) int { return strings.Compare(a.ResourceID, b.ResourceID) })
 	inputs.Partial = inputs.Partial || addedInputs.Partial
+	if len(result.existingTables) > 0 {
+		inputs.ExistingTables = slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(inputs.ExistingTables), result.existingTables...))))
+	}
 	merged.Inputs = &inputs
 	return merged
 }
