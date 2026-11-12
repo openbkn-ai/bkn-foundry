@@ -8,6 +8,7 @@ package knactionrecall
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -86,13 +87,18 @@ func TestGetActionInfo_ActionSourceNil(t *testing.T) {
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ExecutionSchema: testActionExecutionSchema("pod_name", "namespace"),
-				ActionSource:    nil,
-				Actions:         []interfaces.ActionParams{},
+				ActionType: &interfaces.ActionTypeInfo{
+					ID: "at-001", Name: "Restart pod",
+					OperationConfig: map[string]any{"type": "object"},
+				},
+				ActionSource: nil,
+				Actions:      []interfaces.ActionParams{},
 			}, nil)
 
 		resp, err := service.GetActionInfo(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
+		convey.So(resp.ActionType.Name, convey.ShouldEqual, "Restart pod")
 		convey.So(len(resp.DynamicTools), convey.ShouldEqual, 0)
 	})
 }
@@ -128,15 +134,50 @@ func TestGetActionInfo_ActionsEmpty(t *testing.T) {
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ExecutionSchema: testActionExecutionSchema("pod_name", "namespace"),
-				ActionSource:    &interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool},
-				Actions:         []interfaces.ActionParams{},
+				ActionType: &interfaces.ActionTypeInfo{
+					ID: "at-001", Name: "Restart pod",
+					OperationConfig: map[string]any{"type": "object"},
+				},
+				ActionSource: &interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool},
+				Actions:      []interfaces.ActionParams{},
 			}, nil)
 
 		resp, err := service.GetActionInfo(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
+		convey.So(resp.ActionType.Name, convey.ShouldEqual, "Restart pod")
 		convey.So(len(resp.DynamicTools), convey.ShouldEqual, 0)
 	})
+}
+
+func TestGetActionInfo_LegacyTypeInfoOmitted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockOntologyQuery := mocks.NewMockDrivenOntologyQuery(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
+	mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).Return(
+		&interfaces.QueryActionsResponse{Actions: []interfaces.ActionParams{}}, nil,
+	)
+	service := &knActionRecallServiceImpl{logger: mockLogger, ontologyQuery: mockOntologyQuery}
+	resp, err := service.GetActionInfo(context.Background(), &interfaces.KnActionRecallRequest{KnID: "kn-001", AtID: "at-001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.ActionType != nil {
+		t.Fatalf("legacy response must omit action type, got %+v", resp.ActionType)
+	}
+	encoded, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := payload["action_type"]; exists {
+		t.Fatalf("legacy response unexpectedly exposes action_type: %s", encoded)
+	}
 }
 
 // TestGetActionInfo_UnsupportedType Tests an unsupported action_source type.
