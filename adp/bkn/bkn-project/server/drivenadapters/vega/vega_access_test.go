@@ -303,6 +303,43 @@ func Test_VegaAccess(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("ListLastBuilds keeps each table's latest finished build, only for an account that may manage tasks\n", func() {
+			type reply struct {
+				code int
+				body string
+			}
+			tasksBody := `{"entries":[{"id":"t2","resource_id":"r1","status":"completed","finish_time":20},
+				{"id":"t1","resource_id":"r1","status":"completed","finish_time":10},
+				{"id":"t3","resource_id":"r2","status":"completed","finish_time":15}],"total_count":3}`
+			byPath := map[string]reply{
+				"/api/vega-backend/in/v1/catalogs/c1": {http.StatusOK, `{"entries":[{"id":"c1","operations":["view_detail","task_manage"]}]}`},
+				"/api/vega-backend/in/v1/catalogs/c2": {http.StatusOK, `{"entries":[{"id":"c2","operations":["view_detail"]}]}`},
+				"/api/vega-backend/in/v1/build-tasks": {http.StatusOK, tasksBody},
+			}
+			var queries []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/vega-backend/in/v1/build-tasks" {
+					queries = append(queries, r.URL.RawQuery)
+				}
+				w.WriteHeader(byPath[r.URL.Path].code)
+				_, _ = w.Write([]byte(byPath[r.URL.Path].body))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+
+			built, visible, err := each.ListLastBuilds(ctx, account, "c1")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeTrue)
+			So(built, ShouldResemble, map[string]int64{"r1": 20, "r2": 15})
+			So(queries, ShouldResemble, []string{"catalog_id=c1&direction=desc&limit=-1&sort=finish_time&status=completed"})
+
+			built, visible, err = each.ListLastBuilds(ctx, account, "c2")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeFalse)
+			So(built, ShouldBeEmpty)
+			So(len(queries), ShouldEqual, 1)
+		})
+
 		Convey("UpdateIndexConfig fills only the keys the table lacks and sends the resource back as read\n", func() {
 			type reply struct {
 				code int

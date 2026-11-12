@@ -144,4 +144,6 @@ type KnowledgeNetwork struct {
 	Operations []string `json:"operations,omitempty"`
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
+	// Comment is the network's description.
+	Comment string `json:"comment,omitempty"`
 }

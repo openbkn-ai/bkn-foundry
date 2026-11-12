@@ -66,6 +66,7 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 		return nil, internalError(ctx, "Read tables failed", err)
 	}
 	s.attachBuilds(ctx, index, projectID, confirmation.Commit)
+	s.attachBuiltTimes(ctx, index, caller)
 	span.SetStatus(codes.Ok, "")
 	return index, nil
 }

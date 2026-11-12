@@ -118,6 +118,10 @@ type DraftService interface {
 	// GetIndex returns the readiness of the local indexes of the draft's adopted object types, read
 	// from vega-backend as the caller.
 	GetIndex(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectIndex, error)
+	// GetExistingIndex returns the readiness of the local indexes of the tables the network's
+	// existing object types read, read from vega-backend as the caller; none on a new network. The
+	// network keeps them: they are shown, never built, here.
+	GetExistingIndex(ctx context.Context, token string, projectID string, caller AccountInfo) (*ProjectIndex, error)
 	// RunCheck checks the last confirmation again in the background, for the project owner, and
 	// returns the check, running.
 	RunCheck(ctx context.Context, token string, projectID string, caller AccountInfo) (*Check, error)

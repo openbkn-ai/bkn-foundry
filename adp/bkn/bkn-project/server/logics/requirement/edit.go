@@ -50,7 +50,8 @@ type change func(spec *interfaces.RequirementSpec, drafted *draftedItems) error
 // specification as the caller read it.
 func (s *requirementService) update(ctx context.Context, token string, projectID string, updateTime int64,
 	caller interfaces.AccountInfo, apply change) (*interfaces.Requirement, error) {
-	if _, err := s.ownedProject(ctx, token, projectID, caller); err != nil {
+	entry, err := s.ownedProject(ctx, token, projectID, caller)
+	if err != nil {
 		return nil, err
 	}
 	if updateTime == 0 {
@@ -73,6 +74,7 @@ func (s *requirementService) update(ctx context.Context, token string, projectID
 	if err != nil {
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
+	drafted.token, drafted.entry = token, entry
 	if err := apply(&req.Spec, drafted); err != nil {
 		return nil, err
 	}
@@ -92,8 +94,12 @@ func (s *requirementService) update(ctx context.Context, token string, projectID
 type draftedItems struct {
 	refs  map[interfaces.RequirementItemRef]bool
 	draft *interfaces.Draft
-	// docs are the project's documents, read only for an edit that gives an input's example.
+	// docs are the project's documents and the network's background, which drafting cites too,
+	// read only for an edit that gives an input's example.
 	docs map[string]*interfaces.RequirementDocument
+	// token and entry read the network's background as the caller.
+	token string
+	entry *interfaces.ProjectEntry
 }
 
 func (d *draftedItems) has(ref interfaces.RequirementItemRef) bool { return d.refs[ref] }
@@ -130,7 +136,7 @@ func (s *requirementService) exampleDocuments(ctx context.Context, projectID str
 	if err != nil {
 		return internalError(ctx, "Get requirement documents failed", err)
 	}
-	drafted.docs = documentsByID(docs)
+	drafted.docs = documentsByID(s.withBackground(ctx, drafted.token, drafted.entry, docs))
 	return nil
 }
 

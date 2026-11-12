@@ -36,10 +36,13 @@ const (
 	sourceChangesActionDraft = "source-changes:draft"
 )
 
-func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
-func (r *restHandler) GetExistingByEx(c *gin.Context)    { r.withExVisitor(c, r.GetExisting) }
-func (r *restHandler) GetCheckByEx(c *gin.Context)       { r.withExVisitor(c, r.GetCheck) }
-func (r *restHandler) GetIndexByEx(c *gin.Context)       { r.withExVisitor(c, r.GetIndex) }
+func (r *restHandler) GetDraftByEx(c *gin.Context)    { r.withExVisitor(c, r.GetDraft) }
+func (r *restHandler) GetExistingByEx(c *gin.Context) { r.withExVisitor(c, r.GetExisting) }
+func (r *restHandler) GetCheckByEx(c *gin.Context)    { r.withExVisitor(c, r.GetCheck) }
+func (r *restHandler) GetIndexByEx(c *gin.Context)    { r.withExVisitor(c, r.GetIndex) }
+func (r *restHandler) GetExistingIndexByEx(c *gin.Context) {
+	r.withExVisitor(c, r.GetExistingIndex)
+}
 func (r *restHandler) GetStatusByEx(c *gin.Context)      { r.withExVisitor(c, r.GetStatus) }
 func (r *restHandler) GetPendingByEx(c *gin.Context)     { r.withExVisitor(c, r.GetPending) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
@@ -363,6 +366,24 @@ func (r *restHandler) GetIndex(c *gin.Context, visitor hydra.Visitor) {
 	span.SetAttributes(attr.Key("project_id").String(id))
 
 	index, err := r.drs.GetIndex(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, index)
+}
+
+// GetExistingIndex replies the readiness of the local indexes of the network's existing object types.
+func (r *restHandler) GetExistingIndex(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	index, err := r.drs.GetExistingIndex(ctx, visitor.TokenID, id, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

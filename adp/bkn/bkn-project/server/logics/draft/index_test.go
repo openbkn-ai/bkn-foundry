@@ -158,6 +158,8 @@ func Test_GetIndex(t *testing.T) {
 		}}
 		configured := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"updated_at"},
 			LocalStatus: interfaces.VEGA_LOCAL_STATUS_UNAVAILABLE}
+		// When each table was last built is read beside the readiness; Test_GetIndexBuiltTime covers it.
+		va.EXPECT().ListLastBuilds(gomock.Any(), caller, gomock.Any()).Return(map[string]int64{}, true, nil).AnyTimes()
 
 		Convey("The adopted object types' tables are read as the caller, and each catalog's tasks once\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
@@ -270,5 +272,45 @@ func Test_GetIndex(t *testing.T) {
 
 			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Draft_InternalError)
 		})
+	})
+}
+
+func Test_GetIndexBuiltTime(t *testing.T) {
+	Convey("Test when each table's index was last built\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		da := pmock.NewMockDraftAccess(ctrl)
+		va := pmock.NewMockVegaAccess(ctrl)
+		ps := pmock.NewMockProjectService(ctrl)
+		iba := pmock.NewMockIndexBuildAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, va: va, ps: ps, iba: iba}
+		ctx := context.Background()
+		ready := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"u"},
+			LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx"}
+		draft := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{
+				{ID: "orders", Name: "orders", Adopted: true, Table: interfaces.DraftTable{ResourceID: "r_orders", CatalogID: "c1"}},
+				{ID: "parts", Name: "parts", Adopted: true, Table: interfaces.DraftTable{ResourceID: "r_parts", CatalogID: "c2"}},
+			},
+			// Confirmed again since: this confirmation started no build, the tables being ready.
+			Confirmation: &interfaces.DraftConfirmation{Commit: "c2ffee"},
+		}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+		va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{
+			{ID: "r_orders", Index: ready}, {ID: "r_parts", Index: ready}}, nil)
+		va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).Times(2)
+		iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c2ffee").Return([]*interfaces.IndexBuild{}, nil)
+		va.EXPECT().ListLastBuilds(gomock.Any(), caller, "c1").Return(map[string]int64{"r_orders": 1700}, true, nil)
+		// A catalog whose tasks the caller may not list leaves its tables without a time.
+		va.EXPECT().ListLastBuilds(gomock.Any(), caller, "c2").Return(map[string]int64{}, false, nil)
+
+		index, err := svc.GetIndex(ctx, token, "p1", caller)
+
+		So(err, ShouldBeNil)
+		So(index.ObjectTypes[0].State, ShouldEqual, interfaces.INDEX_STATE_READY)
+		So(index.ObjectTypes[0].Build, ShouldBeNil)
+		So(index.ObjectTypes[0].BuiltTime, ShouldEqual, 1700)
+		So(index.ObjectTypes[1].BuiltTime, ShouldEqual, 0)
 	})
 }
