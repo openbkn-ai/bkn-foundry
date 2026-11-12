@@ -43,6 +43,8 @@ type requirementService struct {
 	// kva tells whether the network runs a version, as one a project started from does before
 	// the project's first release.
 	kva interfaces.KNVersionAccess
+	// gs reads the network's SKILL.md on the project's branch, for the network's background.
+	gs interfaces.GitStore
 	// now, newID, run and sleep are replaced in tests: run drafts in the background, sleep waits
 	// between reads of the Agent's task.
 	now   func() int64
@@ -62,6 +64,7 @@ func NewRequirementService() interfaces.RequirementService {
 			bba:   logics.BBA,
 			rla:   logics.RA,
 			kva:   logics.KVA,
+			gs:    logics.GS,
 			now:   func() int64 { return time.Now().UnixMilli() },
 			newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 			run:   func(fn func()) { go fn() },

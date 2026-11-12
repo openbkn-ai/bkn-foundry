@@ -102,6 +102,22 @@ func (mr *MockVegaAccessMockRecorder) ListActiveBuildTasks(ctx, account, catalog
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActiveBuildTasks", reflect.TypeOf((*MockVegaAccess)(nil).ListActiveBuildTasks), ctx, account, catalogID)
 }
 
+// ListLastBuilds mocks base method.
+func (m *MockVegaAccess) ListLastBuilds(ctx context.Context, account interfaces.VegaAccount, catalogID string) (map[string]int64, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLastBuilds", ctx, account, catalogID)
+	ret0, _ := ret[0].(map[string]int64)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListLastBuilds indicates an expected call of ListLastBuilds.
+func (mr *MockVegaAccessMockRecorder) ListLastBuilds(ctx, account, catalogID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLastBuilds", reflect.TypeOf((*MockVegaAccess)(nil).ListLastBuilds), ctx, account, catalogID)
+}
+
 // ListSemanticTasks mocks base method.
 func (m *MockVegaAccess) ListSemanticTasks(ctx context.Context, account interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaSemanticTask, bool, error) {
 	m.ctrl.T.Helper()

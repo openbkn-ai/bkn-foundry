@@ -383,6 +383,55 @@ func (va *vegaAccess) ListActiveBuildTasks(ctx context.Context, account interfac
 	return tasks, true, nil
 }
 
+// ListLastBuilds calls GET /build-tasks?catalog_id=&status=completed&sort=finish_time&direction=desc
+// when the account may manage the catalog's tasks, and keeps each table's latest finish time.
+func (va *vegaAccess) ListLastBuilds(ctx context.Context, account interfaces.VegaAccount,
+	catalogID string) (map[string]int64, bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListLastBuilds")
+	defer span.End()
+	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
+
+	visible, err := va.mayManageTasks(ctx, span, account, catalogID)
+	if err != nil || !visible {
+		return map[string]int64{}, false, err
+	}
+
+	httpUrl := va.baseUrl + "/build-tasks"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"catalog_id": {catalogID}, "limit": {noLimit}, "status": {"completed"},
+		"sort": {"finish_time"}, "direction": {"desc"}}
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	logger.Debugf("ListLastBuilds finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list build tasks failed")
+		return nil, false, fmt.Errorf("list completed build tasks of catalog %s: %w", catalogID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, false, vegaError(respCode, respBody)
+	}
+	list := &struct {
+		Entries []struct {
+			ResourceID string `json:"resource_id"`
+			FinishTime int64  `json:"finish_time"`
+		} `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal build tasks failed")
+		return nil, false, fmt.Errorf("unmarshal completed build tasks of catalog %s: %w", catalogID, err)
+	}
+	// The latest of each table, whatever order the reply comes in.
+	built := map[string]int64{}
+	for _, entry := range list.Entries {
+		if entry.FinishTime > built[entry.ResourceID] {
+			built[entry.ResourceID] = entry.FinishTime
+		}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return built, true, nil
+}
+
 // mayManageTasks tells, from GET /catalogs/{id}, whether the account may manage the catalog's tasks,
 // recording on the caller's span why it may not. A catalog the account may not see, or that is
 // gone, has none it may manage.

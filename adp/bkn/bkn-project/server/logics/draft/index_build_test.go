@@ -152,6 +152,8 @@ func Test_BuildIndex(t *testing.T) {
 			}
 		}
 		configured := interfaces.VegaTableIndex{PrimaryKeyFields: []string{"id"}, IncrementalFields: []string{"u"}}
+		// When each table was last built is read beside the readiness; Test_GetIndexBuiltTime covers it.
+		va.EXPECT().ListLastBuilds(gomock.Any(), caller, gomock.Any()).Return(map[string]int64{}, true, nil).AnyTimes()
 
 		Convey("The owner builds the confirmed tables again and gets the readiness with the builds\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)

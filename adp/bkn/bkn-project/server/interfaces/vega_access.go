@@ -149,6 +149,10 @@ type VegaAccess interface {
 	// stopping, and whether the account may see them: listing them needs the catalog's
 	// task_manage permission.
 	ListActiveBuildTasks(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaBuildTask, bool, error)
+	// ListLastBuilds returns, by table, when its local index was last built: the finish time of the
+	// table's latest completed build task in the catalog, in milliseconds. Like the active tasks it
+	// needs the catalog's task_manage permission, and whether the account has it.
+	ListLastBuilds(ctx context.Context, account VegaAccount, catalogID string) (map[string]int64, bool, error)
 	// CreateBuildTask starts a full batch build of the table's local index as the account and
 	// returns the task id. A refusal is a *VegaError.
 	CreateBuildTask(ctx context.Context, account VegaAccount, resourceID string) (string, error)
