@@ -27,10 +27,25 @@ func (d *drafter) withRegisteredIDs(projectID string, ids []*interfaces.Register
 	return d
 }
 
+// withTaken keeps the ids of the object and relation types of items from what this draft names.
+func (d *drafter) withTaken(items *interfaces.DraftItems) *drafter {
+	d.taken = map[string]map[string]bool{interfaces.ID_KIND_OBJECT_TYPES: {}, interfaces.ID_KIND_RELATION_TYPES: {}}
+	for _, ot := range items.ObjectTypes {
+		d.taken[interfaces.ID_KIND_OBJECT_TYPES][ot.ID] = true
+	}
+	for _, rt := range items.RelationTypes {
+		d.taken[interfaces.ID_KIND_RELATION_TYPES][rt.ID] = true
+	}
+	return d
+}
+
 // reserve takes the ids registered for kind into taken before any item is named, so an item
 // drafted later, such as a new table that sorts first, cannot take a registered id. For
 // properties, sourcePrefix keeps it to one table's.
 func (d *drafter) reserve(kind string, sourcePrefix string, taken map[string]bool) {
+	for id := range d.taken[kind] {
+		taken[id] = true
+	}
 	for key, id := range d.registered {
 		if key.Kind == kind && strings.HasPrefix(key.SourceKey, sourcePrefix) {
 			taken[id.ID] = true

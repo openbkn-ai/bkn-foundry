@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -127,6 +128,7 @@ func Test_GenerateDraftLeavesOutExistingTables(t *testing.T) {
 		gs := pmock.NewMockGitStore(ctrl)
 		setting := testSetting
 		setting.QueryTimeout = 60
+		setting.Timeout = time.Minute
 		svc := &draftService{setting: setting, da: da, va: va, ps: ps, gs: gs, ca: pmock.NewMockCheckAccess(ctrl),
 			ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Branch: "project/p1",
@@ -164,9 +166,13 @@ func Test_GenerateDraftLeavesOutExistingTables(t *testing.T) {
 			_, err := svc.GenerateDraft(context.Background(), token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
+			So(finished.Error, ShouldEqual, "")
 			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
-			So(finished.Items.ObjectTypes, ShouldHaveLength, 1)
-			So(finished.Items.ObjectTypes[0].Table.ResourceID, ShouldEqual, "t_orders")
+			// The network's own object type is in the draft as it is; only the other table is drafted.
+			So(finished.Items.ObjectTypes, ShouldHaveLength, 2)
+			So(findObjectType(&finished.Items, "regions").Existing, ShouldBeTrue)
+			So(findObjectType(&finished.Items, "orders").Table.ResourceID, ShouldEqual, "t_orders")
+			So(finished.Items.Inputs.Tables, ShouldHaveLength, 1)
 			So(finished.Items.Inputs.ExistingTables, ShouldResemble, []string{"regions"})
 		})
 	})

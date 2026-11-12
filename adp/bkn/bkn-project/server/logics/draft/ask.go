@@ -299,6 +299,10 @@ func (s *draftService) AskObjectType(ctx context.Context, token string, projectI
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if objectType.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
+	}
 	base := workingObjectType(objectType, req.Working)
 	in.Kind = askKindObjectType
 	base, asked, editable, err := s.documentAskObject(ctx, token, draft, objectType, base)
@@ -364,6 +368,10 @@ func (s *draftService) AskRelationType(ctx context.Context, token string, projec
 	if relationType == nil {
 		span.SetStatus(codes.Error, "Relation type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if relationType.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
 	}
 	base := s.workingRelationType(ctx, &draft.Items, relationType, req.Working, caller)
 	asking, err := documentHooks().AskRelation(ctx, draftHost{s}, token, draft, relationType, base)

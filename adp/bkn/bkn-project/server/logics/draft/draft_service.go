@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -142,10 +143,10 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 			WithErrorDetails(strings.Join(missing, ", "))
 	}
 
-	// On an existing network the tables its object types read are modeled already: drafting
-	// leaves them out rather than model them a second time. Drafting without knowing them could
-	// model a table twice, so a failed read stops it.
-	used, err := s.existingTablesOf(ctx, entry)
+	// On an existing network the draft holds what the network already has, and the tables its
+	// object types read are modeled already: drafting leaves them out rather than model them a
+	// second time. Drafting without knowing them could model a table twice, so a failed read stops it.
+	existing, err := s.existingItemsFor(ctx, entry)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read existing definitions failed")
 		return nil, internalError(ctx, "Read existing definitions failed", err)
@@ -183,7 +184,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
 	plans := draft.Items.DatasetPlans
-	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans, used) })
+	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans, existing) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -192,14 +193,14 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string, language string,
 	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation, plans []*interfaces.DraftDatasetPlan,
-	used map[string]bool) {
+	existing interfaces.DraftItems) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
 	defer span.End()
 
 	result := &interfaces.Draft{ProjectID: projectID, Status: interfaces.DRAFT_STATUS_READY}
-	items, err := s.draftFromTables(ctx, projectID, catalogIDs, language, caller, used)
+	items, err := s.draftFromTables(ctx, projectID, catalogIDs, language, caller, existing)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		result.Status, result.Error = interfaces.DRAFT_STATUS_FAILED, FailureTimeout
@@ -266,30 +267,56 @@ func (s *draftService) readCatalogs(ctx context.Context, catalogIDs []string,
 	return tables, unreadable, nil
 }
 
+// draftFromTables drafts the tables of the catalogs. On an existing network the draft holds what the
+// network already has: the tables its object types read are not drafted again, but are drafted
+// beside the new ones, uncounted, so that a new table may relate to its object types.
 func (s *draftService) draftFromTables(ctx context.Context, projectID string, catalogIDs []string, language string,
-	caller interfaces.AccountInfo, used map[string]bool) (interfaces.DraftItems, error) {
-	tables, unreadable, err := s.readCatalogs(ctx, catalogIDs, caller)
+	caller interfaces.AccountInfo, existing interfaces.DraftItems) (interfaces.DraftItems, error) {
+	listed, unreadable, err := s.readCatalogs(ctx, catalogIDs, caller)
 	if err != nil {
 		return interfaces.DraftItems{}, err
 	}
-	tables, unreadable, left := withoutExistingTables(tables, unreadable, used)
+	used := existingTableIDs(&existing)
+	tables, unreadable, left := withoutExistingTables(listed, unreadable, used)
 	registered, err := s.ira.ListIDs(ctx, projectID)
 	if err != nil {
 		return interfaces.DraftItems{}, fmt.Errorf("read registered ids: %w", err)
 	}
-	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
-	d := newDrafter(s.setting, c).withRegisteredIDs(projectID, registered).withNamingLanguage(language)
-	items, err := d.draft(ctx, tables, unreadable)
+	var c counter = &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
+	drafting := tables
+	if len(existing.ObjectTypes) > 0 {
+		c = &draftedCounter{counter: c, keys: draftedKeys(&existing)}
+		drafting = slices.Clone(tables)
+		catalogOf := map[string]string{}
+		for _, t := range listed {
+			if used[t.ID] {
+				drafting = append(drafting, t)
+				catalogOf[t.ID] = t.CatalogID
+			}
+		}
+		for _, ot := range existing.ObjectTypes {
+			ot.Table.CatalogID = catalogOf[ot.Table.ResourceID]
+		}
+	}
+	d := newDrafter(s.setting, c).withRegisteredIDs(projectID, registered).withNamingLanguage(language).
+		withTaken(&existing)
+	items, err := d.draft(ctx, drafting, unreadable)
 	if err != nil {
 		return items, err
+	}
+	recorded := d.recorded
+	if len(existing.ObjectTypes) > 0 || len(existing.RelationTypes) > 0 {
+		// The ids of what existing tables drafted are not registered: those tables keep the network's.
+		recorded = recordedOf(d.recorded, tables)
+		items = relatedToExisting(existing, items, tables)
 	}
 	// Ids are registered before the draft is recorded: a draft whose ids later drafts could not
 	// give again must not stand.
 	now := time.Now().UnixMilli()
-	for _, id := range d.recorded {
+	for _, id := range recorded {
 		id.CreateTime, id.UpdateTime = now, now
 	}
-	if err := s.ira.RecordIDs(ctx, d.recorded); err != nil {
+	if err := s.ira.RecordIDs(ctx, recorded); err != nil {
 		return interfaces.DraftItems{}, fmt.Errorf("record ids: %w", err)
 	}
 	// Tables drafting itself could not read, such as a code table whose values it could not
@@ -297,7 +324,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
 	items.Inputs.NamingLanguage = d.language()
 	items.Inputs.ExistingTables = left
-	items.Inputs.IDs = registryInputsOf(registered, d.recorded, d.named)
+	items.Inputs.IDs = registryInputsOf(registered, recorded, d.named)
 	return items, nil
 }
 

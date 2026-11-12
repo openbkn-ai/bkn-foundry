@@ -79,6 +79,10 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if objectType.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
+	}
 	if err := documentHooks().CheckIdentity(ctx, &draft.Items, objectType, identity.Properties); err != nil {
 		return nil, err
 	}

@@ -27,9 +27,9 @@ import (
 // count it again.
 var errNotCounted = errors.New("not counted: the table is drafted already")
 
-// draftedCounter counts the tables of added catalogs, and none of those the draft has already. Of
-// those, only the field the object type's single-field identity maps is answered, as unique, so
-// that the tables added can relate to it.
+// draftedCounter counts the tables of added catalogs, and of those the draft has already only a
+// join to a new table. Of those, only the field the object type's single-field identity maps is
+// answered, as unique, so that the tables added can relate to it.
 type draftedCounter struct {
 	counter
 	// keys are the identity fields of the tables drafted already, by table id.
@@ -82,7 +82,9 @@ func (c *draftedCounter) codeValues(ctx context.Context, table *interfaces.VegaT
 
 func (c *draftedCounter) joinStats(ctx context.Context, source *interfaces.VegaTable, field string,
 	target *interfaces.VegaTable, key string) (int64, int64, int64, int64, error) {
-	if _, drafted := c.keys[source.ID]; drafted {
+	// A join between two tables drafted already is not drafted again; one to a new table is counted.
+	_, sourceDrafted := c.keys[source.ID]
+	if _, targetDrafted := c.keys[target.ID]; sourceDrafted && targetDrafted {
 		return 0, 0, 0, 0, errNotCounted
 	}
 	return c.counter.joinStats(ctx, source, field, target, key)
@@ -170,7 +172,7 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 
 	// Tables existing object types read are left out, as drafting leaves them out; adding without
 	// knowing them could model a table twice, so a failed read stops it.
-	used, err := s.existingTables(ctx, entry, ownedPaths(draft.Items.Confirmation))
+	existing, err := s.existingItems(ctx, entry, ownedPaths(draft.Items.Confirmation))
 	if err != nil {
 		span.SetStatus(codes.Error, "Read existing definitions failed")
 		return nil, internalError(ctx, "Read existing definitions failed", err)
@@ -192,7 +194,7 @@ func (s *draftService) AddCatalogs(ctx context.Context, token string, projectID 
 	}
 	snapshot := *draft
 	background := context.WithoutCancel(ctx)
-	s.run(func() { s.draftAdded(background, &snapshot, adding, caller, used) })
+	s.run(func() { s.draftAdded(background, &snapshot, adding, caller, existing) })
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }
@@ -205,14 +207,14 @@ const maxAddAttempts = 3
 // drafting failed, the draft being left as it is. It gives up when the draft was drafted again, or
 // another adding took over, meanwhile.
 func (s *draftService) draftAdded(ctx context.Context, snapshot *interfaces.Draft, adding *interfaces.DraftAdding,
-	caller interfaces.AccountInfo, used map[string]bool) {
+	caller interfaces.AccountInfo, existing interfaces.DraftItems) {
 	timed, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	timed, span := oteltrace.StartNamedInternalSpan(timed, "DraftAddedCatalogs")
 	defer span.End()
 	projectID := snapshot.ProjectID
 
-	result, err := s.draftCatalogs(timed, snapshot, adding.CatalogIDs, caller, used)
+	result, err := s.draftCatalogs(timed, snapshot, adding.CatalogIDs, caller, existing)
 	if err == nil {
 		err = s.recordIDs(timed, result.recorded)
 	}
@@ -268,18 +270,22 @@ type addedDraft struct {
 	recorded   []*interfaces.RegisteredID
 	// existingTables are the new tables left out because an existing object type reads them.
 	existingTables []string
+	// existing is what the network already has, which the draft holds as its existing items.
+	existing interfaces.DraftItems
 }
 
 // draftCatalogs drafts the tables of the catalogs added with the tables of the draft's object types,
 // which the new tables may relate to and which are not counted again.
 func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draft, added []string,
-	caller interfaces.AccountInfo, used map[string]bool) (*addedDraft, error) {
+	caller interfaces.AccountInfo, existing interfaces.DraftItems) (*addedDraft, error) {
 	tables, unreadable, err := s.readCatalogs(ctx, added, caller)
 	if err != nil {
 		return nil, err
 	}
-	tables, unreadable, left := withoutExistingTables(tables, unreadable, used)
-	keys := draftedKeys(&draft.Items)
+	tables, unreadable, left := withoutExistingTables(tables, unreadable, existingTableIDs(&existing))
+	// The new tables may relate to what the network already has, as to the draft's own items.
+	withNetwork := withExisting(draft.Items, existing)
+	keys := draftedKeys(&withNetwork)
 	isNew := map[string]bool{}
 	for _, t := range tables {
 		isNew[t.ID] = true
@@ -307,12 +313,13 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 		return nil, fmt.Errorf("read registered ids: %w", err)
 	}
 	c := &draftedCounter{counter: &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}, keys: keys}
-	d := newDrafter(s.setting, c).withRegisteredIDs(draft.ProjectID, registered).withNamingLanguage(draftLanguage(draft))
+	d := newDrafter(s.setting, c).withRegisteredIDs(draft.ProjectID, registered).withNamingLanguage(draftLanguage(draft)).
+		withTaken(&existing)
 	drafted, err := d.draft(ctx, all, unreadable)
 	if err != nil {
 		return nil, err
 	}
-	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left}
+	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left, existing: existing}
 	// Tables drafting itself could not read, such as a code table whose values it could not query,
 	// are unreadable as those the catalogs listed but vega did not give.
 	for _, t := range drafted.Unreadable {
@@ -321,14 +328,7 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 		}
 	}
 	// Only the ids of what the new tables drafted are registered: those the draft has stand as given.
-	for _, id := range d.recorded {
-		for _, t := range tables {
-			if id.SourceKey == t.ID || strings.HasPrefix(id.SourceKey, t.ID+"/") {
-				result.recorded = append(result.recorded, id)
-				break
-			}
-		}
-	}
+	result.recorded = recordedOf(d.recorded, tables)
 	return result, nil
 }
 
@@ -349,7 +349,8 @@ func (s *draftService) recordIDs(ctx context.Context, ids []*interfaces.Register
 func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraft, added []string,
 	record *interfaces.DraftCatalogsAdded) interfaces.DraftItems {
 	// Merging rewrites what it takes, its ids and ends; a retry merges what drafting gave again.
-	merged := mergeDrafted(items, cloneItems(result.drafted), result.tables, result.unreadable, record)
+	merged := mergeDrafted(withExisting(items, result.existing), cloneItems(result.drafted), result.tables,
+		result.unreadable, record)
 	inputs := interfaces.DraftInputs{}
 	if items.Inputs != nil {
 		inputs = *items.Inputs
@@ -367,10 +368,10 @@ func (s *draftService) applyAdded(items interfaces.DraftItems, result *addedDraf
 }
 
 // mergeDrafted adds to the draft's items what the new tables drafted: their object types and value
-// types, and the relations with an end among them, each marked with the catalog that added it. The
-// draft's items stay exactly as they are; a relation's end at one of them takes its id and property,
-// and a relation needing a property the draft's object type does not have is left out. New ids
-// meeting the draft's take the first free suffix.
+// types, and the relations with an end among them, each marked with the catalog that added it when
+// record is given. The draft's items stay exactly as they are; a relation's end at one of them takes
+// its id and property, and a relation needing a property the draft's object type does not have is
+// left out. New ids meeting the draft's take the first free suffix.
 func mergeDrafted(items interfaces.DraftItems, drafted interfaces.DraftItems, tables []*interfaces.VegaTable,
 	unreadable []*interfaces.DraftTable, record *interfaces.DraftCatalogsAdded) interfaces.DraftItems {
 	isNew := map[string]bool{}
@@ -434,9 +435,12 @@ func mergeDrafted(items interfaces.DraftItems, drafted interfaces.DraftItems, ta
 				merged.Excluded = append(merged.Excluded, &excluded)
 			}
 		}
-		ot.ID, ot.AddedByCatalog = id, ot.Table.CatalogID
+		ot.ID = id
 		merged.ObjectTypes = append(merged.ObjectTypes, ot)
-		record.ObjectTypes = append(record.ObjectTypes, id)
+		if record != nil {
+			ot.AddedByCatalog = ot.Table.CatalogID
+			record.ObjectTypes = append(record.ObjectTypes, id)
+		}
 	}
 	property := func(objectType string, name string) (string, bool) {
 		names, old := propertyOf[objectType]
@@ -450,7 +454,10 @@ func mergeDrafted(items interfaces.DraftItems, drafted interfaces.DraftItems, ta
 		if !isNew[vt.CodeTable.ResourceID] {
 			continue
 		}
-		vt.ID, vt.AddedByCatalog = free(interfaces.DRAFT_KIND_VALUE_TYPES, vt.ID), vt.CodeTable.CatalogID
+		vt.ID = free(interfaces.DRAFT_KIND_VALUE_TYPES, vt.ID)
+		if record != nil {
+			vt.AddedByCatalog = vt.CodeTable.CatalogID
+		}
 		// Only new object types use it: those the draft has stay as they are.
 		vt.UsedBy = slices.DeleteFunc(vt.UsedBy, func(ref interfaces.DraftPropertyRef) bool {
 			_, old := propertyOf[ref.ObjectType]
@@ -461,7 +468,9 @@ func mergeDrafted(items interfaces.DraftItems, drafted interfaces.DraftItems, ta
 		}
 		vt.Adopted = vt.Adopted && len(vt.UsedBy) > 0
 		merged.ValueTypes = append(merged.ValueTypes, vt)
-		record.ValueTypes = append(record.ValueTypes, vt.ID)
+		if record != nil {
+			record.ValueTypes = append(record.ValueTypes, vt.ID)
+		}
 	}
 relations:
 	for _, rt := range drafted.RelationTypes {
@@ -500,13 +509,18 @@ relations:
 			catalog = rt.LinkTable.CatalogID
 		}
 		rt.Source, rt.Target = objectTypeID[rt.Source], objectTypeID[rt.Target]
-		rt.ID, rt.AddedByCatalog = free(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID), catalog
+		rt.ID = free(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID)
+		if record != nil {
+			rt.AddedByCatalog = catalog
+		}
 		merged.RelationTypes = append(merged.RelationTypes, rt)
 		// An end the draft has is adopted as people left it, which drafting did not know.
 		if rt.Adopted && !(objectTypeAdopted(&merged, rt.Source) && objectTypeAdopted(&merged, rt.Target)) {
 			rt.Adopted, rt.ProposedBecause = false, proposedEndNotAdopted
 		}
-		record.RelationTypes = append(record.RelationTypes, rt.ID)
+		if record != nil {
+			record.RelationTypes = append(record.RelationTypes, rt.ID)
+		}
 	}
 
 	return merged

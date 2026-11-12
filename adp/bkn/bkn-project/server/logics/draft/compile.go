@@ -98,6 +98,13 @@ func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.Draft
 		if !ot.Adopted {
 			continue
 		}
+		// What the network already has stays on the branch as it is: a relation drafted to it is
+		// written, it is not.
+		if ot.Existing {
+			objectTypes[ot.ID] = true
+			objectNames[ot.Name] = ot.ID
+			continue
+		}
 		if documentHooks().ObjectNeedsRepair(items, ot) {
 			return nil, fmt.Errorf("event %q has a participant relationship requiring repair", ot.ID)
 		}
@@ -140,7 +147,7 @@ func compileDraftBeside(items *interfaces.DraftItems, evidence *interfaces.Draft
 		}
 		// A relation adopted while an end is not is a pending item a person settles first; it
 		// would not be read as a relation of this network either.
-		if rt.Adopted && objectTypes[rt.Source] && objectTypes[rt.Target] {
+		if rt.Adopted && !rt.Existing && objectTypes[rt.Source] && objectTypes[rt.Target] {
 			compiled, err := compileRelationType(rt)
 			if err != nil {
 				return nil, err

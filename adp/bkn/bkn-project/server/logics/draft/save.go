@@ -69,6 +69,10 @@ func (s *draftService) SaveObjectType(ctx context.Context, token string, project
 		span.SetStatus(codes.Error, "Object type not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
 	}
+	if ot.Existing {
+		span.SetStatus(codes.Error, "Existing item")
+		return nil, existingItem(ctx)
+	}
 	// Aliases are not offered for document items.
 	if ot.Document != nil && edit.Aliases != nil && len(*edit.Aliases) > 0 {
 		return nil, aliasError(ctx, ot.Name, "", aliasOnDocument, "")

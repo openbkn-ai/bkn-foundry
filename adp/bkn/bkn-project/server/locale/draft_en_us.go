@@ -25,6 +25,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Draft.EndpointNotAdopted":          "Object Type Not Adopted. Adopt both object types a relation type connects before adopting the relation type.",
 		"BknProject.Draft.ItemNotFound":                "Draft Item Not Found. The draft has no such item.",
 		"BknProject.Draft.ProjectArchived":             "Project Archived. Unarchive the project before changing its draft.",
+		"BknProject.Draft.ExistingItem":                "Already in the Network. Edit what the network already has in the knowledge network.",
 		"BknProject.Draft.NotReady":                    "Draft Not Ready. Only a draft that finished drafting can be changed.",
 		"BknProject.Draft.Stale":                       "Draft Changed. Someone changed the draft after you loaded it; reload it and try again.",
 		"BknProject.Draft.HasDecisions":                "Draft Has Decisions. Drafting again discards existing decisions and document candidates; confirm discarding them to draft again.",
