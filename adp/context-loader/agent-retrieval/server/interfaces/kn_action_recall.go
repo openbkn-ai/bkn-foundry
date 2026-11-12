@@ -46,7 +46,18 @@ type KnActionRecallRequest struct {
 // KnActionRecallResponse Knowledge Network Action Recall Response
 type KnActionRecallResponse struct {
 	Headers      map[string]string `json:"headers"` // HTTP Header Parameters
+	ActionType   *KnActionTypeInfo `json:"action_type,omitempty"`
 	DynamicTools []KnDynamicTool   `json:"_dynamic_tools"`
+}
+
+// KnActionTypeInfo carries the business meaning of the action independently of its bound tool.
+type KnActionTypeInfo struct {
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description,omitempty"`
+	ActionIntent    string         `json:"action_intent,omitempty"`
+	ObjectTypeID    string         `json:"object_type_id,omitempty"`
+	OperationConfig map[string]any `json:"operation_config"`
 }
 
 // KnDynamicTool Dynamic Tool Definition
@@ -108,7 +119,9 @@ type ActionTypeInfo struct {
 	OperationConfig map[string]any    `json:"operation_config"`
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
+	Comment         string            `json:"comment,omitempty"`
 	ActionType      string            `json:"action_type"` // add/modify/delete
+	ActionIntent    string            `json:"action_intent,omitempty"`
 	ObjectTypeID    string            `json:"object_type_id"`
 	Parameters      []ActionTypeParam `json:"parameters"`
 	Condition       map[string]any    `json:"condition"`

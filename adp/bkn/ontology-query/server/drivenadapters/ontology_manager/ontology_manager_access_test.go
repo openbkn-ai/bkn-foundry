@@ -524,7 +524,7 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 			actionType := interfaces.ActionType{
-				ATID: atID,
+				ATID: atID, Comment: "Restart the selected pod",
 			}
 			response := struct {
 				ActionTypes []interfaces.ActionType `json:"entries"`
@@ -542,6 +542,7 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(exists, ShouldBeTrue)
 			So(result.ATID, ShouldEqual, atID)
+			So(result.Comment, ShouldEqual, "Restart the selected pod")
 			So(rawSnapshot, ShouldNotBeNil)
 			So(rawSnapshot["id"], ShouldEqual, atID)
 		})

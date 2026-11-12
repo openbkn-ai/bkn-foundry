@@ -4,6 +4,7 @@
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
     "input_schema.properties._instance_identities.description": "Explicit targets for object modification or deletion, taken from instance query results. Missing identities never trigger a condition scan. Definition discovery may omit targets.",
+    "output_schema.properties.action_type.description": "The action type's business name, description and operation configuration, separate from the bound tool's name and description. Older services may omit it.",
     "output_schema.properties.headers.description": "Headers required when calling the returned action tools.",
     "output_schema.properties._dynamic_tools.description": "Dynamic tool definitions. Each entry carries parameters (the input schema, with dynamic parameters under parameters.properties.dynamic_params), and, when the tool declares an output contract, output_schema: the shape of the result field on success, to be used when describing the outcome in natural language.",
     "input_schema.properties.relation_target.description": "One explicit directed source and target instance pair for establishing or removing a relation. Identity keys follow each endpoint object type primary keys; applicability conditions do not provide identities.",

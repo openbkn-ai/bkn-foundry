@@ -62,6 +62,7 @@ type ActionType struct {
 	OperationConfig *ActionOperationConfig `json:"operation_config"`
 	ATID            string                 `json:"id"`
 	ATName          string                 `json:"name"`
+	Comment         string                 `json:"comment,omitempty"`
 	ActionType      string                 `json:"action_type"`
 	ActionIntent    string                 `json:"action_intent,omitempty"`
 	ObjectTypeID    string                 `json:"object_type_id"`

@@ -60,6 +60,28 @@
   "output_schema": {
     "type": "object",
     "properties": {
+      "action_type": {
+        "type": "object",
+        "description": "行动类的业务定义，与底层执行工具的名称和描述分开；旧版服务可能不返回。",
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "description": {"type": "string"},
+          "action_intent": {"type": "string", "enum": ["add", "modify", "delete"]},
+          "object_type_id": {"type": "string"},
+          "operation_config": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string", "enum": ["object", "relation", "tool"]},
+              "relation_type_id": {"type": "string"},
+              "relation_operation": {"type": "string", "enum": ["create", "delete"]},
+              "anchor_role": {"type": "string", "enum": ["source", "target"]}
+            },
+            "required": ["type"]
+          }
+        },
+        "required": ["id", "name", "operation_config"]
+      },
       "headers": {
         "type": "object",
         "description": "返回的 Header 信息",

@@ -1647,17 +1647,18 @@ components:
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: "Matching rules for the relation. direct uses key mapping; indirect uses IndirectMappingRule backed by a resource; filtered_cross_join (FCJ) uses FilteredCrossJoinMappingRule."
     ReqActionType:
-      description: Action type creation information
+      description: |
+        Action type creation information. object_type_id and object_type are not required for
+        independent tool actions (operation_config.type=tool). Object and relation operations
+        require object_type_id; object_type is a display projection resolved by the server.
       required:
         - operation_config
         - action_type
         - groups
         - kn_id
         - name
-        - object_type
         - concept_type
         - branch
-        - object_type_id
       type: object
       properties:
         operation_config:
@@ -1710,7 +1711,7 @@ components:
             - delete
           type: string
         object_type_id:
-          description: Object type ID bound to the action type
+          description: Required for object and relation operations; omit for independent tool actions.
           type: string
           maxLength: 128
           pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
@@ -1738,17 +1739,18 @@ components:
           $ref: "#/components/schemas/Schedule"
           description: Action listener parameter configuration
     UpdateActionType:
-      description: Action type update information
+      description: |
+        Action type update information. object_type_id and object_type are not required for
+        independent tool actions (operation_config.type=tool). Object and relation operations
+        require object_type_id; object_type is a display projection resolved by the server.
       required:
         - operation_config
         - action_type
         - groups
         - kn_id
         - name
-        - object_type
         - concept_type
         - branch
-        - object_type_id
       type: object
       properties:
         operation_config:
@@ -1795,7 +1797,7 @@ components:
             - delete
           type: string
         object_type_id:
-          description: Object type ID bound to the action type
+          description: Required for object and relation operations; omit for independent tool actions.
           type: string
           maxLength: 128
           pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
@@ -1891,10 +1893,10 @@ components:
             - delete
           type: string
         object_type_id:
-          description: Object type ID bound to the action type
+          description: Bound object type ID; empty for an independent tool action.
           type: string
         object_type_name:
-          description: Object type name bound to the action type
+          description: Bound object type name; empty for an independent tool action.
           type: string
         condition:
           $ref: "#/components/schemas/ActionCondition"

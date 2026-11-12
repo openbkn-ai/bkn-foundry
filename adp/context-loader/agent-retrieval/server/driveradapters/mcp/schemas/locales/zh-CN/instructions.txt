@@ -46,7 +46,7 @@ ContextLoader 知识网络查询工具集使用指南。
 - 不知道拓扑、要发现关联（「这张订单牵连到什么」「这个供应商两跳内碰到谁」）→ explore_subgraph，只给起点对象类 + 方向 + 跳数，路径由引擎散。**别为了用 query_instance_subgraph 去先枚举关系类拼路径**，那是把探索硬凑成取数，路径一长就组合爆炸。
 - 反向上溯 / 反查用途（「这个零件被哪些成品用到」「这条记录往上挂在谁身上」）→ 同样是 explore_subgraph，传 direction=backward 沿入边走。**别在 run_code 里逐节点循环调 query_object_instance 自己爬父链**：那会把一次交互的操作预算耗光，中途被拒。
   注意 path_length 上限是 3。层级更深（多级 BOM 之类）走这条到不了根，改用已发布函数，或一次性分页取回全表在本地遍历——run_cypher 不支持变长路径，递归展开写不出来。
-- 对象可执行行动召回 → get_action_info。
+- 查看行动类的业务含义与执行参数（对象、关系或独立工具行动）→ get_action_info。
 
 指标取数（OT 优先，禁止自行重写已建模指标的口径）：
 1. 先锁定对象类：search_schema 或 get_kn_detail（summary 里 related_metric_count>0 的对象类才有指标）。

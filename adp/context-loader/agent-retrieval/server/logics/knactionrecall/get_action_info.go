@@ -40,7 +40,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		RelationTarget:     req.RelationTarget,
 		ObjectInput:        req.ObjectInput,
 		InstanceIdentities: instanceIdentities,
-		IncludeTypeInfo:    false, // No type information required.
+		IncludeTypeInfo:    true,
 	}
 
 	actionsResp, err := s.ontologyQuery.QueryActions(ctx, actionsReq)
@@ -48,11 +48,13 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] QueryActions failed, err: %v", err)
 		return nil, err
 	}
+	actionInfo := businessActionInfo(actionsResp.ActionType)
 
 	// 3. Validate the response.
 	if actionsResp.ActionSource == nil {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#GetActionInfo] ActionSource is nil")
 		return &interfaces.KnActionRecallResponse{
+			ActionType:   actionInfo,
 			DynamicTools: []interfaces.KnDynamicTool{},
 		}, nil
 	}
@@ -60,6 +62,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	if len(actionsResp.Actions) == 0 {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#GetActionInfo] Actions is empty")
 		return &interfaces.KnActionRecallResponse{
+			ActionType:   actionInfo,
 			DynamicTools: []interfaces.KnDynamicTool{},
 		}, nil
 	}
@@ -182,8 +185,27 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 
 	return &interfaces.KnActionRecallResponse{
 		Headers:      headers,
+		ActionType:   actionInfo,
 		DynamicTools: []interfaces.KnDynamicTool{dynamicTool},
 	}, nil
+}
+
+func businessActionInfo(action *interfaces.ActionTypeInfo) *interfaces.KnActionTypeInfo {
+	if action == nil {
+		return nil
+	}
+	intent := action.ActionIntent
+	if intent == "" {
+		intent = action.ActionType
+	}
+	return &interfaces.KnActionTypeInfo{
+		ID:              action.ID,
+		Name:            action.Name,
+		Description:     action.Comment,
+		ActionIntent:    intent,
+		ObjectTypeID:    action.ObjectTypeID,
+		OperationConfig: action.OperationConfig,
+	}
 }
 
 // buildActionDriverAPIURL builds the internal action driver execution endpoint.

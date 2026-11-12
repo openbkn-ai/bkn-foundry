@@ -141,10 +141,10 @@
     "group": "action",
     "group_title": "行动类执行",
     "order": 310,
-    "description": "行动信息召回。针对对象实例返回可执行行动的工具定义，含入参 schema 与（工具已声明时的）执行结果 schema output_schema。",
+    "description": "按行动类 ID 查询业务定义与可执行参数。action_type 给出业务名称、说明和对象/关系/独立工具操作语义；_dynamic_tools 给出底层执行工具的入参 schema 与（工具已声明时的）结果 schema output_schema。",
     "gateway": {
-      "summary": "查看对象上可执行的行动及其入参定义，只读，不会执行。",
-      "use_when": "想知道某类对象能做哪些操作、每个操作需要什么参数。",
+      "summary": "查看一个行动类的业务语义与执行入参，只读，不会执行。",
+      "use_when": "已知行动类 ID，想确认它对对象、关系或独立任务做什么，以及需要哪些参数。",
       "not_for": "本入口不能执行行动；执行须使用完整入口的 execute_action。",
       "next_step": "行动类 ID 取自 get_kn_detail 或 search_schema。",
       "keywords": [
@@ -171,7 +171,7 @@
     "group": "action",
     "group_title": "行动类执行",
     "order": 320,
-    "description": "执行行动。先用 get_action_info 获取行动的 dynamic_params schema，再填入真实动态参数值触发执行（异步，返回 execution_id）。同一 kn + 行动类型 + 实例集合与 dynamic_params 在窗口期内重复提交会返回 409，不要重试，改用 get_action_execution 查询已有 execution。",
+    "description": "执行行动。先用 get_action_info 查看行动的业务语义与参数 schema；按对象新建、对象修改/删除、关系操作或独立工具行动分别填写 object_input、_instance_identities、relation_target 或仅 dynamic_params。执行是异步的，返回 execution_id；重复提交可能返回 409，不要重试，改用 get_action_execution 查询已有 execution。",
     "gateway": {
       "summary": "执行知识网络上的一个行动（异步，会改变业务数据或触发外部操作），返回执行 ID。",
       "use_when": "用户明确要求执行某个行动，例如发起采购订单、关闭监控任务、发送通知。",

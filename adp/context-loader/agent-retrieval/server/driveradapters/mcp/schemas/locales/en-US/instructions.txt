@@ -39,7 +39,7 @@ Query routing:
 - Use explore_subgraph when the topology is unknown and the question is what something connects to. Give a source object type, a direction and a hop count; the engine finds the paths. Do NOT enumerate relation types to hand-assemble a path for query_instance_subgraph instead - that turns discovery into a combinatorial search.
 - For reverse lookups - which finished goods use this part, what does this record roll up to - use explore_subgraph with direction=backward to walk incoming edges. Do NOT loop over query_object_instance inside run_code to crawl the parent chain node by node: that burns the interaction's operation budget and gets cut off partway.
   Note that path_length caps at 3. Deeper hierarchies (multi-level BOM and the like) will not reach the root this way; use a published function, or page the whole table back once and walk it locally - run_cypher has no variable-length paths, so a recursive expansion cannot be expressed.
-- Use get_action_info to discover actions that can be executed for object instances.
+- Use get_action_info to inspect the business meaning and inputs of an action type, including object, relation, and independent-tool actions.
 
 Metrics, object type first. Never re-derive a modelled metric yourself — its formula lives in the metric definition:
 1. Recall the object type with search_schema or get_kn_detail. In the get_kn_detail summary, only object types with related_metric_count > 0 have metrics.
