@@ -207,7 +207,7 @@ RETURN toUpper(s.supplier_name) AS supplier,
 
 - 和 CASE、coalesce 一样，能写在 RETURN、WITH、ORDER BY、比较的两侧和聚合的参数里，参数可以是属性、聚合或算出来的值，也可以互相嵌套。
 - `round`、`abs`、`toInteger`、`toFloat` 只接受数字，`toUpper`、`toLower` 只接受字符串，类型不对返回 400；数字要先 `toString(x)` 再转大小写。
-- decimal 类型的值（包括对它的 `sum()`）默认以字符串返回，如 `"13833141.000000"`；要拿到数字，用 `toFloat(...)` 或 `round(..., n)`。`abs` 不改变类型。
+- 数值列（包括 DECIMAL 及对它的 `sum()`）以 JSON 数字返回，保留精确十进制位；文本列保持字符串。超出 IEEE 754 精度范围时，客户端应使用精确数值解码，避免转成二进制浮点数后丢失精度。
 - `toInteger` 的结果是整数，再做除法时仍要按「两个整数相除」的规则乘 1.0。
 - 恰好在中间的值（如 2.5）往哪边取整由数据源决定。
 

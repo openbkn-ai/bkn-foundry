@@ -28,7 +28,7 @@ func TestRunCypherQueryPreservesDynamicNumbers(t *testing.T) {
 	const body = `{"columns":[],"entries":[{
 		"safe":9007199254740991,"even":9007199254740992,"odd":9007199254740993,
 		"negative_safe":-9007199254740991,"negative_even":-9007199254740992,
-		"negative":-9007199254740993,"small":42,"fraction":1.25,"exponent":1e3,
+		"negative":-9007199254740993,"small":42,"fraction":1.25,"exponent":1e3,"decimal":100.0000000000000001,
 		"exact_text":"9007199254740993","empty":null,"flag":true,
 		"node":{"properties":{"large_value":9007199254740993}},
 		"collected":[-9007199254740993,{"value":9007199254740993}]

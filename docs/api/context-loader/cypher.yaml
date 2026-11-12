@@ -104,7 +104,7 @@ paths:
         - **标量函数**：`round(x)`、`round(x, n)`（n 为 0 到 30 的整数字面量，结果是数字）、`abs(x)`、
           `toInteger(x)`（向零截断）、`toFloat(x)`、`toUpper(s)`、`toLower(s)`、`toString(x)`，能写在 CASE 能写的地方。
           `round` / `abs` / `toInteger` / `toFloat` 只接受数字，`toUpper` / `toLower` 只接受字符串，类型不对返回 400。
-          decimal 值（含对它的 `sum()`）以字符串返回，如 `"13833141.000000"`，要数字用 `toFloat(...)` 或 `round(..., n)`。
+          数值列（含 DECIMAL 及对它的 `sum()`）以 JSON 数字返回并保留精确十进制位，文本列保持字符串。客户端应使用精确数值解码，避免 IEEE 754 舍入。
           这类查询总走 SQL 路径。
         - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
           或 DISTINCT 折叠后，只能按返回的值排序。SKIP、LIMIT 可写整数或参数（`SKIP $from LIMIT $size`），

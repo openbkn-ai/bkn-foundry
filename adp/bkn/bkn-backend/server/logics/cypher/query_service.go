@@ -179,6 +179,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if compiled.plan.Limit == nil && len(result.Entries) >= interfaces.CYPHER_DEFAULT_LIMIT {
 		result.Limited = true
 	}
+	if err := decimalColumnsAsNumbers(result.Columns, result.Entries); err != nil {
+		return nil, executionError(ctx, err)
+	}
 	return result, nil
 }
 
