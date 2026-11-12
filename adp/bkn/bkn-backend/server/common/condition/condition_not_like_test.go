@@ -125,7 +125,8 @@ func TestNotLikeCond_Convert(t *testing.T) {
 			So(dsl, ShouldContainSubstring, "must_not")
 			So(dsl, ShouldContainSubstring, "wildcard")
 			So(dsl, ShouldContainSubstring, "field1")
-			So(dsl, ShouldContainSubstring, "*test*")
+			So(dsl, ShouldContainSubstring, `"field1": "test"`)
+			So(dsl, ShouldContainSubstring, `"exists"`)
 		})
 	})
 }
@@ -156,7 +157,7 @@ func TestNotLikeCond_Convert2SQL(t *testing.T) {
 			So(sql, ShouldNotBeEmpty)
 			So(sql, ShouldContainSubstring, "field1")
 			So(sql, ShouldContainSubstring, "NOT LIKE")
-			So(sql, ShouldContainSubstring, "%test%")
+			So(sql, ShouldEqual, `"field1" NOT LIKE 'test' ESCAPE '!'`)
 		})
 	})
 }

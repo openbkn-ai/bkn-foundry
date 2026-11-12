@@ -1925,3 +1925,29 @@ func Test_FormatMissingParamNames(t *testing.T) {
 		})
 	})
 }
+
+func TestLikeCompletePatternLocalEvaluation(t *testing.T) {
+	tests := []struct {
+		operation string
+		data      map[string]any
+		pattern   string
+		want      bool
+	}{
+		{cond.OperationLike, map[string]any{"name": "apple"}, "apple", true},
+		{cond.OperationLike, map[string]any{"name": "pineapple"}, "apple", false},
+		{cond.OperationLike, map[string]any{"name": "pineapple"}, "%apple", true},
+		{cond.OperationLike, map[string]any{"name": "a%b"}, `a\%b`, true},
+		{cond.OperationLike, map[string]any{"name": "a中b"}, "a_b", true},
+		{cond.OperationNotLike, map[string]any{"name": "pineapple"}, "apple", true},
+		{cond.OperationNotLike, map[string]any{"name": "apple"}, "apple", false},
+		{cond.OperationNotLike, map[string]any{"name": nil}, "apple", false},
+		{cond.OperationNotLike, map[string]any{}, "apple", false},
+	}
+	for _, tc := range tests {
+		result, err := evaluateConditionRecursive(context.Background(), tc.data,
+			&cond.CondCfg{Name: "name", Operation: tc.operation, Value: tc.pattern}, nil)
+		if err != nil || result != tc.want {
+			t.Errorf("%s %v %q = %v, %v; want %v", tc.operation, tc.data, tc.pattern, result, err, tc.want)
+		}
+	}
+}

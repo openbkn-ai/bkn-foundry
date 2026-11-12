@@ -9,6 +9,7 @@ package condition
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
@@ -35,6 +36,9 @@ func NewLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataPr
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
 	}
+	if err := common.ValidateSQLLikePattern(val); err != nil {
+		return nil, fmt.Errorf("condition [like]: %w", err)
+	}
 
 	return &LikeCond{
 		mCfg:             cfg,
@@ -44,12 +48,14 @@ func NewLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataPr
 }
 
 func (cond *LikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	// Replace wildcards in like.
-	v := common.ReplaceLikeWildcards(cond.mValue)
-	v = fmt.Sprintf("%q", v)
+	pattern, err := common.SQLLikeToWildcard(cond.mValue)
+	if err != nil {
+		return "", err
+	}
+	v := fmt.Sprintf("%q", pattern)
 	dslStr := fmt.Sprintf(`
 					{
-						"regexp": {
+						"wildcard": {
 							"%s": %v
 						}
 					}`, cond.mFilterFieldName, v)
@@ -58,19 +64,19 @@ func (cond *LikeCond) Convert(ctx context.Context, vectorizer func(ctx context.C
 }
 
 func (cond *LikeCond) Convert2SQL(ctx context.Context) (string, error) {
-	v := cond.mCfg.Value
-	vStr, ok := v.(string)
-	if ok {
-		v = Special.Replace(fmt.Sprintf("%v", vStr))
-	}
-
-	vStr = fmt.Sprintf("%v", v)
-	sqlStr := fmt.Sprintf(`"%s" LIKE '%s'`, cond.mFilterFieldName, "%"+vStr+"%")
+	sqlStr := fmt.Sprintf(`"%s" LIKE '%s' ESCAPE '!'`, cond.mFilterFieldName, escapeSQLLikeLiteral(cond.mValue))
 
 	return sqlStr, nil
 }
 
 func rewriteLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
+	value, ok := cfg.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
+	}
+	if err := common.ValidateSQLLikePattern(value); err != nil {
+		return nil, fmt.Errorf("property '%s': %w", cfg.Name, err)
+	}
 
 	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
@@ -81,4 +87,22 @@ func rewriteLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 		Operation: cfg.Operation,
 		Value:     cfg.Value,
 	}, nil
+}
+
+func escapeSQLLikeLiteral(pattern string) string {
+	var result strings.Builder
+	escaped := false
+	for _, r := range pattern {
+		if !escaped && r == '\\' {
+			escaped = true
+			continue
+		}
+		if escaped && (r == '%' || r == '_' || r == '!' || r == '[') ||
+			!escaped && (r == '!' || r == '[') {
+			result.WriteByte('!')
+		}
+		result.WriteRune(r)
+		escaped = false
+	}
+	return strings.NewReplacer(`\`, `\\`, `'`, `''`).Replace(result.String())
 }

@@ -19,6 +19,22 @@ import (
 
 const MaxSubCondition = 100
 
+// ContainsLikeCondition reports whether a condition needs the source's LIKE collation.
+func ContainsLikeCondition(cfg *CondCfg) bool {
+	if cfg == nil {
+		return false
+	}
+	if cfg.Operation == OperationLike || cfg.Operation == OperationNotLike {
+		return true
+	}
+	for _, child := range cfg.SubConds {
+		if ContainsLikeCondition(child) {
+			return true
+		}
+	}
+	return false
+}
+
 func validationError(ctx context.Context, name string, templateData map[string]any) error {
 	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail."+name, templateData)
 	if renderErr != nil {

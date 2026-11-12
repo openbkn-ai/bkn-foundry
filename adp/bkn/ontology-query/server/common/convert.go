@@ -130,54 +130,79 @@ func AnyToString(value any) string {
 	}
 }
 
-// ReplaceLikeWildcards replaces like wildcards with regex characters.
-func ReplaceLikeWildcards(input string) string {
-	if input == "" {
-		return input
-	}
-
-	var result strings.Builder
+// ValidateSQLLikePattern checks the complete LIKE pattern contract used by Vega.
+func ValidateSQLLikePattern(pattern string) error {
 	escaped := false
-	runes := []rune(input)
-
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-
+	for _, r := range pattern {
 		if escaped {
-			// The character after an escape character.
-			switch r {
-			case '%', '_', '\\':
-				result.WriteRune(r)
-			default:
-				// If a non-special character is escaped, keep both the escape character and the character.
-				result.WriteRune('\\')
-				result.WriteRune(r)
-			}
 			escaped = false
 		} else if r == '\\' {
-			// When an escape character is encountered, check whether it is the last character.
-			if i == len(runes)-1 {
-				// If the escape character is at the end, output it directly.
-				result.WriteRune(r)
-			} else {
-				// Mark the escape state without outputting the escape character immediately.
-				escaped = true
-			}
-		} else if r == '%' {
-			result.WriteString(".*")
-		} else if r == '_' {
-			result.WriteString(".")
-		} else {
-			result.WriteRune(r)
+			escaped = true
 		}
 	}
-
-	// Handle strings ending with an escape character.
 	if escaped {
-		result.WriteRune('\\')
+		return fmt.Errorf("LIKE pattern ends with an incomplete escape")
 	}
+	return nil
+}
 
-	return result.String()
+// SQLLikeToWildcard converts a complete SQL LIKE pattern for index wildcard queries.
+func SQLLikeToWildcard(pattern string) (string, error) {
+	if err := ValidateSQLLikePattern(pattern); err != nil {
+		return "", err
+	}
+	var result strings.Builder
+	escaped := false
+	for _, r := range pattern {
+		if !escaped {
+			switch r {
+			case '\\':
+				escaped = true
+				continue
+			case '%':
+				result.WriteByte('*')
+				continue
+			case '_':
+				result.WriteByte('?')
+				continue
+			}
+		}
+		if r == '*' || r == '?' || r == '\\' {
+			result.WriteByte('\\')
+		}
+		result.WriteRune(r)
+		escaped = false
+	}
+	return result.String(), nil
+}
+
+// MatchSQLLikePattern matches the entire string; % and _ are the only wildcards.
+func MatchSQLLikePattern(value, pattern string) (bool, error) {
+	if err := ValidateSQLLikePattern(pattern); err != nil {
+		return false, err
+	}
+	input := []rune(value)
+	matched := make([]bool, len(input)+1)
+	matched[0] = true
+	escaped := false
+	for _, r := range pattern {
+		if !escaped && r == '\\' {
+			escaped = true
+			continue
+		}
+		if !escaped && r == '%' {
+			for i := 1; i <= len(input); i++ {
+				matched[i] = matched[i] || matched[i-1]
+			}
+		} else {
+			for i := len(input); i > 0; i-- {
+				matched[i] = matched[i-1] && (!escaped && r == '_' || input[i-1] == r)
+			}
+			matched[0] = false
+		}
+		escaped = false
+	}
+	return matched[len(input)], nil
 }
 
 // lastDayOfMonth returns the last day of the month for the given date.

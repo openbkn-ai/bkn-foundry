@@ -530,6 +530,13 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
+		if (cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike) &&
+			(cfg.ValueFrom == "" || cfg.ValueFrom == cond.ValueFrom_Const) {
+			if err := cond.ValidateLikePattern(cfg.Operation, cfg.Value.(string)); err != nil {
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+					WithErrorDetails(err.Error())
+			}
+		}
 
 	case cond.OperationContain, cond.OperationNotContain:
 		// contain and not_contain accept one value or a non-empty array.

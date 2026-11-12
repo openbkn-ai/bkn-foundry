@@ -31,8 +31,8 @@ func (kns *knowledgeNetworkService) filteredCrossJoinMaxExpand() int {
 }
 
 // expandFilteredCrossJoin builds next-hop objects for relation type filtered_cross_join:
-// Current-side batch is filtered in memory with EvaluateInstanceAgainstCondition (avoids second object-store query
-// and keeps relation-side semantics aligned with app-layer condition evaluation).
+// Current-side batches use the backing resource for LIKE, whose collation may
+// differ from Go, and use local evaluation for other conditions.
 // Next-side instances: relation mapping condition AND path-node ActualCondition, via GetObjectsByObjectTypeID.
 // Pairs are emitted in stable order (current ObjectID asc, then next row order) until maxEdgeExpand (silent truncate).
 func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
@@ -55,19 +55,10 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 		queryNext = rules.SourceCondition
 	}
 
-	filtered := make([]interfaces.LevelObject, 0, len(batch))
-	for _, lo := range batch {
-		if lo.ObjectType == nil {
-			continue
-		}
-		ok, err := logics.EvaluateInstanceAgainstCondition(ctx, lo.ObjectData, filterCurrent, lo.ObjectType)
-		if err != nil {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("filtered_cross_join evaluate current instance: %s", err.Error()))
-		}
-		if ok {
-			filtered = append(filtered, lo)
-		}
+	filtered, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
+		query.IgnoreLocalIndex, batch, filterCurrent, false)
+	if err != nil {
+		return nil, err
 	}
 	if len(filtered) == 0 {
 		return nil, nil
@@ -146,6 +137,7 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 // matchFilteredCrossJoinRelations pairs source and target instances using filtered_cross_join rules with the same
 // ordering and silent truncation as expandFilteredCrossJoin (for SearchSubgraphByObjects).
 func (kns *knowledgeNetworkService) matchFilteredCrossJoinRelations(ctx context.Context,
+	query *interfaces.SubGraphQueryBaseOnObjects,
 	sourceObjects []interfaces.LevelObject,
 	targetObjects []interfaces.LevelObject,
 	edge *interfaces.TypeEdge,
@@ -157,8 +149,16 @@ func (kns *knowledgeNetworkService) matchFilteredCrossJoinRelations(ctx context.
 	}
 
 	maxQ := kns.filteredCrossJoinMaxExpand()
-	src := filterAndSortLevelObjectsByCond(ctx, sourceObjects, rules.SourceCondition)
-	tgt := filterAndSortLevelObjectsByCond(ctx, targetObjects, rules.TargetCondition)
+	src, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
+		query.IgnoreLocalIndex, sourceObjects, rules.SourceCondition, true)
+	if err != nil {
+		return nil, err
+	}
+	tgt, err := kns.filterLevelObjectsByCondition(ctx, query.KNID, query.Branch,
+		query.IgnoreLocalIndex, targetObjects, rules.TargetCondition, true)
+	if err != nil {
+		return nil, err
+	}
 	if len(src) == 0 || len(tgt) == 0 {
 		return nil, nil
 	}
@@ -185,18 +185,80 @@ func (kns *knowledgeNetworkService) matchFilteredCrossJoinRelations(ctx context.
 	return relations, nil
 }
 
-func filterAndSortLevelObjectsByCond(ctx context.Context, objs []interfaces.LevelObject, c *cond.CondCfg) []interfaces.LevelObject {
+// filterLevelObjectsByCondition delegates LIKE evaluation to the backing resource,
+// whose collation may differ from Go's case-sensitive string matching.
+func (kns *knowledgeNetworkService) filterLevelObjectsByCondition(ctx context.Context,
+	knID, branch string, ignoreLocalIndex bool, objs []interfaces.LevelObject, c *cond.CondCfg,
+	skipInvalidInstances bool) ([]interfaces.LevelObject, error) {
 	out := make([]interfaces.LevelObject, 0, len(objs))
-	for _, lo := range objs {
-		if lo.ObjectType == nil {
-			continue
+	if cond.ContainsLikeCondition(c) {
+		byType := make(map[string][]interfaces.LevelObject)
+		for _, lo := range objs {
+			if lo.ObjectType != nil {
+				byType[lo.ObjectType.OTID] = append(byType[lo.ObjectType.OTID], lo)
+			}
 		}
-		ok, err := logics.EvaluateInstanceAgainstCondition(ctx, lo.ObjectData, c, lo.ObjectType)
-		if err != nil || !ok {
-			continue
+		matched := make(map[string]bool)
+		for typeID, group := range byType {
+			for start := 0; start < len(group); start += 50 {
+				end := min(start+50, len(group))
+				identities := make([]map[string]any, 0, end-start)
+				for _, lo := range group[start:end] {
+					identity := lo.ObjectUK
+					if len(identity) == 0 {
+						return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+							WithErrorDetails(fmt.Sprintf("instance %q has no identity for LIKE source filtering", lo.ObjectID))
+					}
+					identities = append(identities, identity)
+				}
+				objects, err := kns.ots.ScanObjectsByObjectTypeID(ctx, &interfaces.ObjectQueryBaseOnObjectType{
+					KNID: knID, Branch: branch, ObjectTypeID: typeID,
+					ActualCondition: &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{
+						logics.BuildInstanceIdentitiesCondition(identities), c,
+					}},
+					CommonQueryParameters: interfaces.CommonQueryParameters{IgnoreLocalIndex: ignoreLocalIndex},
+				}, end-start)
+				if err != nil {
+					return nil, err
+				}
+				if objects.Incomplete || len(objects.Datas) > end-start {
+					return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_InternalError).
+						WithErrorDetails(fmt.Sprintf("incomplete LIKE source filtering for object type %q", typeID))
+				}
+				for _, row := range objects.Datas {
+					id, ok := row[interfaces.SYSTEM_PROPERTY_INSTANCE_ID].(string)
+					if !ok || id == "" {
+						return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway, oerrors.OntologyQuery_InternalError).
+							WithErrorDetails("LIKE source filtering returned an instance without an ID")
+					}
+					matched[id] = true
+				}
+			}
 		}
-		out = append(out, lo)
+		for _, lo := range objs {
+			if matched[lo.ObjectID] {
+				out = append(out, lo)
+			}
+		}
+	} else {
+		for _, lo := range objs {
+			if lo.ObjectType == nil {
+				continue
+			}
+			ok, err := logics.EvaluateInstanceAgainstCondition(ctx, lo.ObjectData, c, lo.ObjectType)
+			if err != nil {
+				if skipInvalidInstances {
+					continue
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+					WithErrorDetails(fmt.Sprintf("filtered_cross_join evaluate current instance: %s", err.Error()))
+			}
+			if !ok {
+				continue
+			}
+			out = append(out, lo)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ObjectID < out[j].ObjectID })
-	return out
+	return out, nil
 }

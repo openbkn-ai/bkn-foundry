@@ -11,6 +11,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 )
 
 // Generation is the last stage and the only one that writes SQL text. Every
@@ -917,17 +919,21 @@ func likePattern(operator StringMatchOperator, value string) string {
 	}
 }
 
-// writeStringMatch writes STARTS WITH, ENDS WITH or CONTAINS as a LIKE. The
-// pattern is escaped for LIKE first and then written as any other string, so
+// writeStringMatch writes Cypher string matches and stored LIKE patterns. The
+// pattern is escaped for SQL first and then written as any other string, so
 // the quoting rules of the dialect apply to it unchanged. Whether the match
 // ignores case is up to the column's collation, as it is for =.
 func (g *generator) writeStringMatch(node PlanStringMatch) error {
 	switch node.Operator {
-	case StartsWith, EndsWith, Contains:
+	case StartsWith, EndsWith, Contains, LikePattern:
 	default:
 		return fmt.Errorf("cannot generate a %q string predicate", node.Operator)
 	}
-	pattern, err := g.stringLiteral(likePattern(node.Operator, node.Value))
+	value := likePattern(node.Operator, node.Value)
+	if node.Operator == LikePattern {
+		value = cond.SQLLikeToBangPattern(node.Value)
+	}
+	pattern, err := g.stringLiteral(value)
 	if err != nil {
 		return err
 	}

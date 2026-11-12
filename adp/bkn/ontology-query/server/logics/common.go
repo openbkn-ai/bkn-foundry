@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -799,9 +798,9 @@ func evaluateConditionRecursive(ctx context.Context,
 		return fieldExists && fieldValue != nil, nil
 	}
 
-	// For other operators, field must exist (except for != and not_like which can return true if field doesn't exist)
+	// Missing fields cannot satisfy LIKE or NOT LIKE.
 	if !fieldExists {
-		if condition.Operation == cond.OperationNotEq || condition.Operation == cond.OperationNotLike {
+		if condition.Operation == cond.OperationNotEq {
 			return true, nil
 		}
 		return false, nil
@@ -862,6 +861,9 @@ func evaluateConditionRecursive(ctx context.Context,
 		pattern, ok := condition.Value.(string)
 		if !ok {
 			return false, fmt.Errorf("not_like operation requires string value")
+		}
+		if fieldValue == nil {
+			return false, nil
 		}
 		result, err := evaluateLike(fieldValue, pattern)
 		if err != nil {
@@ -1029,19 +1031,13 @@ func evaluateBefore(fieldValue any, conditionValue any) (bool, error) {
 	return fieldTime.Before(condTime), nil
 }
 
-// evaluateLike checks if fieldValue matches the like pattern (pattern is wrapped as %pattern% for contains semantics)
+// evaluateLike matches the entire value against a complete SQL LIKE pattern.
 func evaluateLike(fieldValue any, pattern string) (bool, error) {
 	if fieldValue == nil {
 		return false, nil
 	}
 	fieldStr := fmt.Sprintf("%v", fieldValue)
-	// Like semantics: %pattern% means contains; use ReplaceLikeWildcards then wrap with .* for full match
-	regexPattern := common.ReplaceLikeWildcards(pattern)
-	re, err := regexp.Compile(regexPattern)
-	if err != nil {
-		return false, fmt.Errorf("like pattern invalid: %w", err)
-	}
-	return re.MatchString(fieldStr), nil
+	return common.MatchSQLLikePattern(fieldStr, pattern)
 }
 
 // evaluatePrefix checks if fieldValue has the given prefix

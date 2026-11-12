@@ -1009,3 +1009,23 @@ func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestActionLikePatternValidation(t *testing.T) {
+	for _, operation := range []string{cond.OperationLike, cond.OperationNotLike} {
+		for _, pattern := range []string{"apple", "%apple%", `a\%_`} {
+			cfg := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: "const", Value: pattern}
+			if err := validateActionCondition(context.Background(), cfg, "object"); err != nil {
+				t.Errorf("%s %q: %v", operation, pattern, err)
+			}
+		}
+		cfg := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: "const", Value: `apple\`}
+		if err := validateActionCondition(context.Background(), cfg, "object"); err == nil {
+			t.Errorf("%s accepted an incomplete LIKE escape", operation)
+		}
+		// Dynamic references name a parameter, not a pattern available at save time.
+		cfg.ValueFrom, cfg.Value = "input", `parameter\`
+		if err := validateActionCondition(context.Background(), cfg, "object"); err != nil {
+			t.Errorf("%s rejected a dynamic parameter name: %v", operation, err)
+		}
+	}
+}

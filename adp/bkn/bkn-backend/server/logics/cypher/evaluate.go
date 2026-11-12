@@ -322,6 +322,8 @@ func evaluatePredicate(predicate PlanPredicate, s scope) (truth, error) {
 			return truthOf(strings.HasSuffix(text, node.Value)), nil
 		case Contains:
 			return truthOf(strings.Contains(text, node.Value)), nil
+		case LikePattern:
+			return truthOf(matchesLikePattern(text, node.Value)), nil
 		default:
 			return truthUnknown, fmt.Errorf("cannot evaluate a %q string predicate", node.Operator)
 		}
@@ -363,6 +365,40 @@ func evaluatePredicate(predicate PlanPredicate, s scope) (truth, error) {
 	default:
 		return truthUnknown, fmt.Errorf("cannot evaluate a %T condition", predicate)
 	}
+}
+
+// matchesLikePattern applies complete SQL LIKE wildcards to Unicode code points.
+// The plan builder has already rejected an incomplete trailing escape.
+func matchesLikePattern(value, pattern string) bool {
+	text := []rune(value)
+	previous := make([]bool, len(text)+1)
+	previous[0] = true
+	escaped := false
+	for _, symbol := range pattern {
+		if !escaped && symbol == '\\' {
+			escaped = true
+			continue
+		}
+		current := make([]bool, len(text)+1)
+		switch {
+		case !escaped && symbol == '%':
+			current[0] = previous[0]
+			for index := 1; index <= len(text); index++ {
+				current[index] = previous[index] || current[index-1]
+			}
+		case !escaped && symbol == '_':
+			for index := 1; index <= len(text); index++ {
+				current[index] = previous[index-1]
+			}
+		default:
+			for index := 1; index <= len(text); index++ {
+				current[index] = previous[index-1] && text[index-1] == symbol
+			}
+		}
+		previous = current
+		escaped = false
+	}
+	return !escaped && previous[len(text)]
 }
 
 func evaluateLogical(node PlanLogical, s scope) (truth, error) {

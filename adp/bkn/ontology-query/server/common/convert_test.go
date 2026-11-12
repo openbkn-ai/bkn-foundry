@@ -355,71 +355,37 @@ func Test_AnyToString(t *testing.T) {
 	})
 }
 
-func Test_ReplaceLikeWildcards(t *testing.T) {
-	Convey("Test ReplaceLikeWildcards", t, func() {
-		Convey("成功 - 空字符串", func() {
-			result := ReplaceLikeWildcards("")
-			So(result, ShouldEqual, "")
+func TestSQLLikePattern(t *testing.T) {
+	tests := []struct {
+		pattern  string
+		wildcard string
+		value    string
+		matches  bool
+	}{
+		{"", "", "", true},
+		{"test", "test", "prefix-test", false},
+		{"%test%", "*test*", "prefix-test-suffix", true},
+		{"test_", "test?", "test中", true},
+		{`test\%`, "test%", "test%", true},
+		{`test\_`, "test_", "test_", true},
+		{`test\\`, `test\\`, `test\`, true},
+		{`test\a`, "testa", "testa", true},
+		{`a*b?`, `a\*b\?`, "a*b?", true},
+		{`%中_`, `*中?`, "前中A", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.pattern, func(t *testing.T) {
+			wildcard, err := SQLLikeToWildcard(tc.pattern)
+			if err != nil || wildcard != tc.wildcard {
+				t.Fatalf("wildcard = %q, %v; want %q", wildcard, err, tc.wildcard)
+			}
+			matches, err := MatchSQLLikePattern(tc.value, tc.pattern)
+			if err != nil || matches != tc.matches {
+				t.Fatalf("match = %v, %v; want %v", matches, err, tc.matches)
+			}
 		})
-
-		Convey("成功 - 普通字符串", func() {
-			result := ReplaceLikeWildcards("test")
-			So(result, ShouldEqual, "test")
-		})
-
-		Convey("成功 - %通配符", func() {
-			result := ReplaceLikeWildcards("test%")
-			So(result, ShouldEqual, "test.*")
-		})
-
-		Convey("成功 - _通配符", func() {
-			result := ReplaceLikeWildcards("test_")
-			So(result, ShouldEqual, "test.")
-		})
-
-		Convey("成功 - 多个%通配符", func() {
-			result := ReplaceLikeWildcards("%test%")
-			So(result, ShouldEqual, ".*test.*")
-		})
-
-		Convey("成功 - 多个_通配符", func() {
-			result := ReplaceLikeWildcards("test__")
-			So(result, ShouldEqual, "test..")
-		})
-
-		Convey("成功 - 转义%", func() {
-			result := ReplaceLikeWildcards("test\\%")
-			So(result, ShouldEqual, "test%")
-		})
-
-		Convey("成功 - 转义_", func() {
-			result := ReplaceLikeWildcards("test\\_")
-			So(result, ShouldEqual, "test_")
-		})
-
-		Convey("成功 - 转义\\", func() {
-			result := ReplaceLikeWildcards("test\\\\")
-			So(result, ShouldEqual, "test\\")
-		})
-
-		Convey("成功 - 转义普通字符", func() {
-			result := ReplaceLikeWildcards("test\\a")
-			So(result, ShouldEqual, "test\\a")
-		})
-
-		Convey("成功 - 末尾转义符", func() {
-			result := ReplaceLikeWildcards("test\\")
-			So(result, ShouldEqual, "test\\")
-		})
-
-		Convey("成功 - 复杂场景", func() {
-			result := ReplaceLikeWildcards("test%_\\%")
-			So(result, ShouldEqual, "test.*.%")
-		})
-
-		Convey("成功 - 转义后的%和_", func() {
-			result := ReplaceLikeWildcards("\\%\\_")
-			So(result, ShouldEqual, "%_")
-		})
-	})
+	}
+	if err := ValidateSQLLikePattern(`test\`); err == nil {
+		t.Fatal("expected dangling escape error")
+	}
 }

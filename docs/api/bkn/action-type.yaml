@@ -1676,7 +1676,7 @@ components:
             - like
           type: string
         value:
-          description: Filter value
+          description: Complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
           type: string
     condition_not_like:
       description: Not-like filter
@@ -1699,7 +1699,7 @@ components:
             - not_like
           type: string
         value:
-          description: Filter value
+          description: Complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
           type: string
     condition_regex:
       description: Regular expression filter

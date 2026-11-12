@@ -26,7 +26,7 @@ import (
 // The stored conditions use the platform's filter operations. Each one is
 // translated to the predicate vega-backend writes for it on a SQL source, so
 // the rows Cypher links are the rows the subgraph query links: == is =, != is
-// <>, like is a substring LIKE, prefix a leading one, range and between are
+// <>, like is a complete SQL LIKE pattern, prefix a leading one, range and between are
 // inclusive on both bounds, out_range is outside both. An operation with no
 // such translation is refused by name rather than approximated.
 
@@ -226,16 +226,24 @@ func (p *planner) translateCondition(condition *cond.CondCfg, table int) (PlanPr
 		if err != nil {
 			return nil, err
 		}
-		if operation == cond.OperationLike || operation == cond.OperationNotLike {
-			// like is a literal substring with the platform's escapes: \% and
-			// \_ stand for the characters, and a bare % is refused, as every
-			// other path refuses it.
-			if needle, err = cond.ParseLikeValue(operation, needle); err != nil {
-				return nil, fmt.Errorf("property %q: %w", property, err)
-			}
-		}
 		var predicate PlanPredicate = PlanStringMatch{
 			Table: table, Column: column, Property: property, Operator: operator, Value: needle,
+		}
+		if negated {
+			predicate = PlanNegation{Operand: predicate}
+		}
+		return predicate, nil
+	}
+	like := func(negated bool) (PlanPredicate, error) {
+		pattern, err := text()
+		if err != nil {
+			return nil, err
+		}
+		if err := cond.ValidateLikePattern(operation, pattern); err != nil {
+			return nil, fmt.Errorf("property %q: %w", property, err)
+		}
+		var predicate PlanPredicate = PlanStringMatch{
+			Table: table, Column: column, Property: property, Operator: LikePattern, Value: pattern,
 		}
 		if negated {
 			predicate = PlanNegation{Operand: predicate}
@@ -275,9 +283,9 @@ func (p *planner) translateCondition(condition *cond.CondCfg, table int) (PlanPr
 		return PlanMembership{Table: table, Column: column, Property: property, Values: values,
 			Negated: operation == cond.OperationNotIn}, nil
 	case cond.OperationLike:
-		return match(Contains, false)
+		return like(false)
 	case cond.OperationNotLike:
-		return match(Contains, true)
+		return like(true)
 	case cond.OperationPrefix:
 		return match(StartsWith, false)
 	case cond.OperationNotPrefix:

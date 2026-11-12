@@ -28,7 +28,7 @@ var ErrSemanticDescriptorTooLarge = errors.New("semantic query descriptor too la
 
 // semanticStringMatchOperators names the string predicates in the descriptor.
 var semanticStringMatchOperators = map[StringMatchOperator]string{
-	StartsWith: "starts_with", EndsWith: "ends_with", Contains: "contains",
+	StartsWith: "starts_with", EndsWith: "ends_with", Contains: "contains", LikePattern: "like",
 }
 
 var simpleJSONPathField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

@@ -17,7 +17,7 @@ import (
 //
 // A condition is pushed only when the data source gives exactly the answer the
 // SQL path would. vega-backend writes each filter operation as the matching
-// SQL predicate (== as =, != as <>, in as IN, like as LIKE '%v%', prefix as
+// SQL predicate (== as =, != as <>, in as IN, like as a complete LIKE pattern, prefix as
 // LIKE 'v%', null as IS NULL), so the comparison, the collation and the NULL
 // handling are the database's in both paths. Negation is pushed by inverting
 // the operator rather than by wrapping it: the API has no NOT, and under SQL's
@@ -203,17 +203,16 @@ func pushFilterNegated(predicate PlanPredicate, negated bool) (pushedFilter, boo
 			operation = "prefix"
 		case Contains:
 			operation = "like"
+		case LikePattern:
+			operation = "like"
 		default:
 			// ENDS WITH has no filter operation that writes LIKE '%v'.
 			return pushedFilter{}, false
 		}
 		value := node.Value
-		if operation == "like" {
-			// like matches its value as a literal substring, reading a
-			// backslash as an escape and refusing a bare %; escaping both keeps
-			// the literal match the SQL path makes. prefix takes the value as
-			// it is.
-			value = likeValueEscaper.Replace(value)
+		if node.Operator == Contains {
+			// Cypher CONTAINS receives literal text; Vega LIKE receives a complete pattern.
+			value = "%" + likeValueEscaper.Replace(value) + "%"
 		}
 		if negated {
 			operation = "not_" + operation
@@ -275,9 +274,8 @@ func pushJunction(operation string, operands []PlanPredicate, negated bool) (pus
 	}
 }
 
-// likeValueEscaper writes a literal substring in the escaped form vega-backend's
-// like and not_like accept.
-var likeValueEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`)
+// likeValueEscaper escapes Cypher's literal text before wrapping it as a LIKE pattern.
+var likeValueEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // maxSubConditions is the most operands vega-backend accepts in one and/or.
 const maxSubConditions = 100
