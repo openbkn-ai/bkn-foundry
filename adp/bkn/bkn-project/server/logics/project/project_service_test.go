@@ -147,10 +147,18 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
 			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
 				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_AlreadyExists))
-			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).
-				Return([]*interfaces.Release{{NetworkID: "orders", KNVersion: 2}}, nil)
-			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
-				Return(&interfaces.CreateBranchResult{}, nil)
+			f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{
+				LineageID: "orders", State: interfaces.RELEASE_STATE_PUBLISHED, Limit: 1,
+			}).Return([]*interfaces.Release{{NetworkID: "orders", KNVersion: 2}}, nil)
+			// The network may have changed since the lineage was made: main catches up before
+			// the new branch is cut from it.
+			gomock.InOrder(
+				f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", State: interfaces.RELEASE_STATE_PREPARED, Limit: 1}).Return([]*interfaces.Release{}, nil),
+				f.ls.EXPECT().CheckDrift(gomock.Any(), token, "orders", "orders", true, author).
+					Return(&interfaces.DriftResult{}, nil),
+				f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
+					Return(&interfaces.CreateBranchResult{}, nil),
+			)
 			var stored *interfaces.Project
 			f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, p *interfaces.Project) error { stored = p; return nil })
@@ -162,6 +170,43 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 			So(stored.BaselineNetworkID, ShouldEqual, "orders")
 			So(stored.CatalogIDs, ShouldNotBeNil)
 			So(entry.OtherProjects, ShouldEqual, 1)
+		})
+
+		Convey("A failed catch-up of main still creates the project, from main as it is\n", func() {
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
+			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_AlreadyExists))
+			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil).AnyTimes()
+			f.ls.EXPECT().CheckDrift(gomock.Any(), token, "orders", "orders", true, author).
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, perrors.BknProject_Project_InternalError))
+			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
+				Return(&interfaces.CreateBranchResult{}, nil)
+			f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).Return(nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 2}, nil)
+
+			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders"}, owner, author)
+
+			So(err, ShouldBeNil)
+		})
+
+		Convey("A release prepared and not published leaves main as it is\n", func() {
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{ID: "orders"}, nil)
+			f.kva.EXPECT().GetVersioning(gomock.Any(), token, "orders").Return(&interfaces.KNVersioning{Enabled: true}, nil)
+			f.ls.EXPECT().CreateLineage(gomock.Any(), token, "orders", author).
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_AlreadyExists))
+			f.ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", State: interfaces.RELEASE_STATE_PREPARED, Limit: 1}).
+				Return([]*interfaces.Release{{ProjectID: "other", State: interfaces.RELEASE_STATE_PREPARED}}, nil)
+			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{}, nil).AnyTimes()
+			f.ls.EXPECT().CheckDrift(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			f.ls.EXPECT().CreateBranch(gomock.Any(), "orders", gomock.Any(), interfaces.GIT_MAIN_BRANCH).
+				Return(&interfaces.CreateBranchResult{}, nil)
+			f.pa.EXPECT().CreateProject(gomock.Any(), gomock.Any()).Return(nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 2}, nil)
+
+			_, err := f.svc.CreateProject(ctx, token, interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders"}, owner, author)
+
+			So(err, ShouldBeNil)
 		})
 
 		Convey("A project of a new network creates the network first\n", func() {
