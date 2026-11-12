@@ -1,10 +1,10 @@
 ---
 openapi: 3.0.3
 info:
-  title: 上下文加载 · 行动召回与执行 API
+  title: 上下文加载 · 行动类定义查询与执行 API
   description: |
-    知识网络里的「行动」（Action）是绑定在对象类上的可执行能力。本文件是 Agent 侧的
-    完整闭环：
+    知识网络里的「行动」（Action）可以操作对象实例或关系，也可以独立调用工具。
+    本文件描述 Agent 侧的完整闭环：
 
     ```
     get_action_info      → 拿到行动的可执行定义与动态参数 schema
@@ -37,7 +37,7 @@ paths:
     post:
       tags:
         - Action
-      summary: 召回行动的可执行定义
+      summary: 查询行动类定义与执行参数
       operationId: getActionInfo
       x-contract-probe:
         readonly: true
@@ -46,7 +46,7 @@ paths:
           kn_id: '{cl_kn_id}'
           at_id: '{cl_at_id}'
       description: |
-        按行动类 ID（可选再加对象实例标识）召回行动。`action_type` 给出行动类的
+        按行动类 ID（可选再加明确目标身份）查询指定行动类。`action_type` 给出行动类的
         业务名称、说明、操作意图及对象/关系/独立工具操作配置；`_dynamic_tools` 是
         符合 Function Call 规范的底层工具定义。工具名和说明仍取自执行资源，调用方
         应使用 `action_type` 判断业务意图，使用 `_dynamic_tools.parameters` 填写参数。
@@ -464,10 +464,10 @@ components:
         fixed_params:
           description: |
             已确定的固定参数。含 `dynamic_params`（行动实例化后确定的参数）与
-            `_instance_identities`（当次召回带入的实例标识）。
+            `_instance_identities`（查询时传入的实例标识）。
         api_call_strategy:
           type: string
-          description: 结果处理策略，固定为 `kn_action_recall`。
+          description: 结果处理策略，历史枚举值固定为 `kn_action_recall`；该名称不表示本接口会发现候选行动类。
           example: kn_action_recall
 
     ExecuteActionRequest:

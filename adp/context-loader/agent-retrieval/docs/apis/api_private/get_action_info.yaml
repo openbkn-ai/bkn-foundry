@@ -1,6 +1,6 @@
 openapi: 3.0.2
 info:
-  title: 行动类定义与执行参数查询接口
+  title: 行动类定义查询接口
   version: 1.0.0
   description: |
     必须指定知识网络 ID 和行动类 ID，查询该行动类的业务语义与执行参数；可选传入明确目标进行预览。
@@ -9,11 +9,11 @@ info:
 
 servers:
   - url: http://agent-retrieval:30779
-    description: 行动召回服务
+    description: 行动类信息查询服务
 
 tags:
-  - name: action-recall
-    description: 行动召回相关接口
+  - name: action-info
+    description: 按行动类 ID 查询业务定义与执行参数，支持明确目标预览
 
 paths:
   /api/agent-retrieval/in/v1/kn/get_action_info:
@@ -25,7 +25,7 @@ paths:
         本接口不负责从对象实例发现候选行动类；旧文档中的“根据对象实例标识召回关联行动”不能作为这一能力的契约。
       operationId: getActionInfo
       tags:
-        - action-recall
+        - action-info
       parameters:
         - name: x-account-id
           in: header
