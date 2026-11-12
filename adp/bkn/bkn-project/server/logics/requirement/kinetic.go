@@ -17,6 +17,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 // The kinetic run analyses the confirmed concept model with the documents for the kinetic needs of
@@ -84,8 +85,10 @@ type messageKeptNeeds struct {
 	LogicNeeds []messageLogicNeed `json:"logic_needs"`
 }
 
+// The network's items go as kept needs too, after the specification's, so the Agent gives only
+// what they leave uncovered.
 func buildKineticMessage(language string, docs []*interfaces.RequirementDocument, draft *interfaces.Draft,
-	spec *interfaces.RequirementSpec) (string, error) {
+	spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem) (string, error) {
 	msg := kineticMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(spec.Concepts),
 		Rules: messageRulesOf(spec.Rules), Kept: messageKeptNeeds{LogicNeeds: []messageLogicNeed{}}}
 	msg.ObjectTypes, msg.RelationTypes, _ = messageOntologyOf(draft, true)
@@ -93,6 +96,7 @@ func buildKineticMessage(language string, docs []*interfaces.RequirementDocument
 		n.ID = keptPrefix + n.ID
 		msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, n)
 	}
+	msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, messageNetworkItemsOf(items)...)
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return "", err
@@ -281,6 +285,11 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
+	items, err := s.kineticNetworkItems(ctx, token, entry.KNID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get network items failed")
+		return nil, err
+	}
 	spec, version, read := emptySpec(), 1, (*interfaces.Requirement)(nil)
 	if ok {
 		spec, version, read = withLists(cloneSpec(&previous.Spec)), nextVersion(previous.Version, draft), previous
@@ -301,17 +310,19 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		kind: interfaces.REQUIREMENT_RUN_KINETIC, projectID: projectID, run: run, caller: caller,
 		format: kineticResponseFormat(), newOut: func() any { return &kineticOutput{} },
 		prepareMessage: func(context.Context) (string, error) {
-			return buildKineticMessage(project.NamingLanguage, docs, draft, spec)
+			return buildKineticMessage(project.NamingLanguage, docs, draft, spec, items)
 		},
 	}
 	p.check = func(_ context.Context, out any) {
 		const kind = interfaces.REQUIREMENT_RUN_KINETIC
 		checked := cloneSpec(spec)
 		checked.Rejected = rejectedOf(checked.Rejected, kind)
-		addLogicNeeds(checked, out.(*kineticOutput).LogicNeeds, interfaces.LOGIC_NEED_FROM_ANALYSIS, byID, draft, concepts,
-			func(k, text, reason string) {
+		addLogicNeeds(checked, uncovered(out.(*kineticOutput).LogicNeeds, items), interfaces.LOGIC_NEED_FROM_ANALYSIS,
+			byID, draft, concepts, func(k, text, reason string) {
 				checked.Rejected = append(checked.Rejected, &interfaces.RequirementRejected{Kind: k, Text: text, Reason: reason, Run: kind})
 			})
+		// What the network has covers the needs of its name: they are linked to it, not left new.
+		linkCovered(checked, items, caller, s.now())
 		needScenarios(checked)
 		spec = checked
 		p.inputs = requirementInputsOf(docs, project)
@@ -326,4 +337,25 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	s.run(func() { s.execute(runCtx, p) })
 	span.SetStatus(codes.Ok, "")
 	return s.startedRun(ctx, projectID)
+}
+
+// kineticNetworkItems are the items of the network the project started on, for the kinetic
+// analysis to build on; none on a network the project created. Lists that cannot be read leave
+// out their items: the analysis goes on with the rest.
+func (s *requirementService) kineticNetworkItems(ctx context.Context, token string, lineageID string) (
+	[]*interfaces.LogicNetworkItem, error) {
+	network, released, err := logics.LiveNetworkOf(ctx, s.rla, lineageID)
+	if err != nil {
+		return nil, internalError(ctx, "Get live network failed", err)
+	}
+	running := !released && s.runsVersion(ctx, token, network)
+	fromNetwork, err := s.startedOnNetwork(ctx, lineageID, released, running)
+	if err != nil {
+		return nil, internalError(ctx, "Get first release failed", err)
+	}
+	if !fromNetwork {
+		return nil, nil
+	}
+	items, _ := s.liveReader(ctx, token, network).networkItems(nil)
+	return items, nil
 }
