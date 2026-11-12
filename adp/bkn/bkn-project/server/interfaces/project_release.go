@@ -150,15 +150,19 @@ type ReleaseOrphans struct {
 	Orphans int64 `json:"orphans"`
 }
 
-// ReleaseTarget is the network the release creates and what it starts from.
+// ReleaseTarget is the network the release creates and what it starts from: BaseVersion, the
+// lineage's newest release, or before one the version the network runs (RunningVersion, with its
+// RunningLabel), 0 for a network without any.
 type ReleaseTarget struct {
-	Tag           string `json:"tag"`
-	NetworkID     string `json:"network_id"`
-	NetworkName   string `json:"network_name"`
-	LiveNetworkID string `json:"live_network_id"`
-	BaseVersion   string `json:"base_version"`
-	MainCommit    string `json:"main_commit"`
-	BranchCommit  string `json:"branch_commit"`
+	Tag            string `json:"tag"`
+	NetworkID      string `json:"network_id"`
+	NetworkName    string `json:"network_name"`
+	LiveNetworkID  string `json:"live_network_id"`
+	BaseVersion    string `json:"base_version"`
+	RunningVersion int    `json:"running_version"`
+	RunningLabel   string `json:"running_label"`
+	MainCommit     string `json:"main_commit"`
+	BranchCommit   string `json:"branch_commit"`
 }
 
 // ReleaseQuestions place the scenario questions of the knowledge layer, those answered from object

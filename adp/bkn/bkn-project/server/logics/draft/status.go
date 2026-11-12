@@ -19,10 +19,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
-
-// firstVersion is the version a lineage's first release is suggested.
-const firstVersion = "1.0.0"
 
 // waitSeconds is how soon to read the status again while drafting or a check runs.
 const waitSeconds = 5
@@ -80,11 +78,14 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		}
 		var newest *interfaces.Release
 		var running *interfaces.KNVersion
+		first := logics.FIRST_RELEASE_VERSION
 		if len(latest) > 0 {
 			newest = latest[0]
 			running = s.runningVersion(ctx, token, entry.KNID)
+		} else {
+			first = s.firstReleaseVersion(ctx, token, entry.KNID)
 		}
-		withRelease(status, entry.Project, newest, running, caller)
+		withRelease(status, entry.Project, newest, running, first, caller)
 	}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		status.Unreviewed = unreviewed(&draft.Items)
@@ -326,16 +327,30 @@ func (s *draftService) runningVersion(ctx context.Context, token string, knID st
 	return &interfaces.KNVersion{Version: versioning.RunningVersion}
 }
 
+// firstReleaseVersion is the version suggested for the lineage's first release: a network that
+// already has versions, as one a project started from, goes on from them.
+func (s *draftService) firstReleaseVersion(ctx context.Context, token string, knID string) string {
+	if s.kva == nil {
+		return logics.FIRST_RELEASE_VERSION
+	}
+	versions, err := s.kva.ListVersions(ctx, token, knID)
+	if err != nil {
+		return logics.FIRST_RELEASE_VERSION
+	}
+	return logics.FirstReleaseVersion(versions)
+}
+
 // withRelease reads a status against latest, the lineage's newest published release or nil before
 // any, and running, the version the network runs or nil when unknown. Until the project is
-// published, reviewing a release names the next version, which the client may change. The status
+// published, reviewing a release names the next version, first before any release, which the
+// client may change. The status
 // is published when latest is the project's and came after its current confirmation; the owner may
 // then roll it back. Once rolled back, the network runs another version: the status says so, and
 // the owner may publish again instead. What blocked the confirmation from being published no
 // longer does.
 func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, latest *interfaces.Release,
-	running *interfaces.KNVersion, caller interfaces.AccountInfo) {
-	version := nextVersion(latest)
+	running *interfaces.KNVersion, first string, caller interfaces.AccountInfo) {
+	version := nextVersion(latest, first)
 	for i := range s.NextActions {
 		if a := &s.NextActions[i]; a.Action == interfaces.ACTION_REVIEW_RELEASE {
 			a.Path += "?version=" + version
@@ -371,15 +386,15 @@ func withRelease(s *interfaces.ProjectStatus, project *interfaces.Project, lates
 	s.NextActions = actions
 }
 
-// nextVersion is the patch after latest's version, or 1.0.0 before the first release.
-func nextVersion(latest *interfaces.Release) string {
+// nextVersion is the patch after latest's version, or first before the first release.
+func nextVersion(latest *interfaces.Release, first string) string {
 	if latest == nil {
-		return firstVersion
+		return first
 	}
 	parts := strings.Split(latest.Version, ".")
 	patch, err := strconv.Atoi(parts[len(parts)-1])
 	if len(parts) != 3 || err != nil {
-		return firstVersion
+		return logics.FIRST_RELEASE_VERSION
 	}
 	return fmt.Sprintf("%s.%s.%d", parts[0], parts[1], patch+1)
 }
