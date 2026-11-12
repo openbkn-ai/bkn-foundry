@@ -39,7 +39,7 @@ var releaseZhCN = i18n.I18nMessages{
 		"BknProject.Release.InvalidRequestBody":  "请求体不合法 请求体必须是合法的 JSON。",
 		"BknProject.Release.InvalidAccepts":      "可接受项不合法 只能接受近似重名、部分未核对和索引未就绪。",
 		"BknProject.Release.NotProjectRelease":   "不是本项目发布的版本 只能切换到本项目发布的版本。",
-		"BknProject.Release.NotOwner":            "不是项目负责人 只有项目负责人可以准备和发布版本、切换运行版本或复制版本。",
+		"BknProject.Release.NotOwner":            "不是项目负责人 只有项目负责人可以管理这个项目的版本和发布。",
 		"BknProject.Release.ProjectArchived":     "项目已归档 请先取消归档，再发布。",
 		"BknProject.Release.ChecksFailed":        "发布检查未全部通过 未通过的检查见 error_details，处理后重新打开发布确认。",
 		"BknProject.Release.ReviewOutdated":      "发布确认已过期 打开发布确认之后，草稿或线上版本又变了，请重新打开发布确认。",
