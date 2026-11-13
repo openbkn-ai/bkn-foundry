@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -73,12 +74,20 @@ func (s *requirementService) askTwice(ctx context.Context, projectID string, cal
 	message string, format map[string]any, newOut func() any, taskID *string) (any, bool, string, error) {
 	out := newOut()
 	failure, err := s.askAgent(ctx, caller, message, format, out, taskID)
+	// An answer cut off at the model's output cap is no likelier whole asked again: bkn-agent has
+	// already asked for a shorter one.
+	if failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputTruncated) {
+		return out, false, failureOutputTooLong, err
+	}
 	retried := failure == failureOutputInvalid ||
 		failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputFailed)
 	if retried {
 		logger.Warnf("Requirement run of project %s asks the Agent again (%s): %v", projectID, failure, err)
 		out = newOut()
 		failure, err = s.askAgent(ctx, caller, message, format, out, taskID)
+		if failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputTruncated) {
+			failure = failureOutputTooLong
+		}
 	}
 	return out, retried, failure, err
 }
@@ -92,14 +101,58 @@ type partRun struct {
 	caller    interfaces.AccountInfo
 	format    map[string]any
 	newOut    func() any
-	// prepareMessage builds the message, in the background: it may read what is slow to read.
-	prepareMessage func(ctx context.Context) (string, error)
-	// check checks the answer, outside the write: it may write what the specification does not hold.
-	check func(ctx context.Context, out any)
+	// parts, of a run that reads its documents in parts, are their keys: the Agent is asked once
+	// per part, all side by side, and a part that fails leaves what the others found. A run without
+	// parts asks once, as part 0.
+	parts []string
+	// prepareMessage builds the message of a part, in the background: it may read what is slow to
+	// read.
+	prepareMessage func(ctx context.Context, part int) (string, error)
+	// check checks the answer of a part, outside the write: it may write what the specification
+	// does not hold. Parts are checked one at a time, in order.
+	check func(ctx context.Context, part int, out any)
 	// write writes what check kept into the specification as stored.
-	write func(req *interfaces.Requirement, out any)
+	write func(req *interfaces.Requirement)
 	// inputs are what the run read, recorded once it is ready.
 	inputs *interfaces.RequirementInputs
+}
+
+// partAnswer is what asking the Agent for one part came to.
+type partAnswer struct {
+	out     any
+	retried bool
+	failure string
+	err     error
+	taskID  string
+}
+
+// ask asks the Agent for every part of p, side by side when there are several: one after another
+// they would outlast the time a run is given.
+func (s *requirementService) ask(ctx context.Context, p *partRun) []partAnswer {
+	answers := make([]partAnswer, max(len(p.parts), 1))
+	askPart := func(i int) {
+		a := &answers[i]
+		message, err := p.prepareMessage(ctx, i)
+		if err != nil {
+			a.failure, a.err = failureAgentUnavailable, err
+			return
+		}
+		a.out, a.retried, a.failure, a.err = s.askTwice(ctx, p.projectID, p.caller, message, p.format, p.newOut, &a.taskID)
+	}
+	if len(answers) == 1 {
+		askPart(0)
+		return answers
+	}
+	var wg sync.WaitGroup
+	for i := range answers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			askPart(i)
+		}()
+	}
+	wg.Wait()
+	return answers
 }
 
 // startRun records a run of kind going over the specification as read at readUpdateTime (0 when
@@ -115,7 +168,7 @@ func (s *requirementService) startRun(ctx context.Context, projectID string, kin
 		// What the last run that ended ready read stays until another ends ready: a run that fails
 		// leaves its part as it was, and that part was extracted from these inputs.
 		if last := previous.Spec.Runs[kind]; last != nil {
-			run.Inputs = last.Inputs
+			run.Inputs, run.PendingParts = last.Inputs, last.PendingParts
 		}
 	}
 	started, err := s.ra.StartRun(ctx, projectID, kind, run, s.staleRunBefore(), readUpdateTime)
@@ -131,24 +184,35 @@ func (s *requirementService) startRun(ctx context.Context, projectID string, kin
 }
 
 // execute asks the Agent and records the outcome of the run: what it wrote, or why it failed,
-// leaving the specification as it was.
+// leaving the specification as it was. A run in parts that some parts failed writes what the
+// others found and records those it still has to read, for the next run to read only them, with
+// why they failed as its error.
 func (s *requirementService) execute(ctx context.Context, p *partRun) {
 	var taskID string
-	var out any
-	retried := false
-	message, err := p.prepareMessage(ctx)
-	failure := ""
-	if err != nil {
-		failure = failureAgentUnavailable
-	} else {
-		out, retried, failure, err = s.askTwice(ctx, p.projectID, p.caller, message, p.format, p.newOut, &taskID)
+	retried, failure, done := false, "", 0
+	var err error
+	pending := []string{}
+	for i, a := range s.ask(ctx, p) {
+		retried = retried || a.retried
+		if a.taskID != "" {
+			taskID = a.taskID
+		}
+		if a.failure != "" {
+			failure, err = a.failure, a.err
+			if i < len(p.parts) {
+				pending = append(pending, p.parts[i])
+			}
+			logger.Errorf("Requirement %s run of project %s failed on part %d of %d (%s, asked again: %t): %v",
+				p.kind, p.projectID, i+1, max(len(p.parts), 1), a.failure, a.retried, a.err)
+			continue
+		}
+		p.check(ctx, i, a.out)
+		done++
 	}
-	if failure == "" {
-		p.check(ctx, out)
-	}
-	if failure != "" {
-		logger.Errorf("Requirement %s run of project %s failed (%s, asked again: %t): %v", p.kind, p.projectID,
-			failure, retried, err)
+	lastFailure := failure
+	if done > 0 {
+		// What some parts found stands; the run says why the others failed.
+		failure = ""
 	}
 	finished, err := s.ra.FinishRun(ctx, p.projectID, p.kind, p.run.RunID, func(req *interfaces.Requirement) {
 		run := req.Spec.Runs[p.kind]
@@ -162,11 +226,16 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 			logger.Warnf("Requirement %s run of project %s ended after the specification changed; it writes nothing", p.kind, p.projectID)
 		}
 		if failure != "" {
+			// The parts still to read stay those of the last run that wrote.
 			run.Status, run.Error = interfaces.REQUIREMENT_RUN_FAILED, failure
 			return
 		}
-		p.write(req, out)
-		run.Status, run.Error, run.Inputs = interfaces.REQUIREMENT_RUN_READY, "", p.inputs
+		p.write(req)
+		run.Status, run.Error, run.Inputs, run.PendingParts = interfaces.REQUIREMENT_RUN_READY, "", p.inputs, nil
+		if len(pending) > 0 {
+			// Why the parts still to read failed, for the client to say what to do.
+			run.Error, run.PendingParts = lastFailure, pending
+		}
 	})
 	if err != nil {
 		logger.Errorf("Record requirement %s run of project %s failed: %v", p.kind, p.projectID, err)

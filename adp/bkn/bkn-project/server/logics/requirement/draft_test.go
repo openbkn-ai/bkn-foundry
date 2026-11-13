@@ -1030,23 +1030,22 @@ func Test_RequirementDrafting(t *testing.T) {
 			}
 		})
 
-		Convey("Drafting over documents needs their concepts extracted; without documents it needs none\n", func() {
-			// Never ended ready: a first run going or failed has no inputs.
-			running := withConcepts(&interfaces.Requirement{Version: 1})
-			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_RUNNING
-			running.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
+		Convey("Drafting over documents whose concepts were never extracted drafts from the model and the documents\n", func() {
+			// Never ended ready: a first run failed has no inputs. Drafting still starts; only the
+			// store refuses it while another run goes.
 			failed := withConcepts(&interfaces.Requirement{Version: 1})
 			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Status = interfaces.REQUIREMENT_RUN_FAILED
 			failed.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs = nil
-			for _, previous := range []*interfaces.Requirement{nil, {Version: 1}, running, failed} {
+			for _, previous := range []*interfaces.Requirement{nil, {Version: 1}, failed} {
 				ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 				ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
 				ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(previous, previous != nil, nil)
+				ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
-				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_ConceptsNotExtracted)
+				shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 			}
 
 			// A run that fails after one ended ready keeps its inputs: the concepts stand, drafting goes on.

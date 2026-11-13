@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -338,33 +339,53 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	if ok {
 		spec, version, read = withLists(cloneSpec(&previous.Spec)), nextVersion(previous.Version, draft), previous
 	}
-	keepForConcepts(spec, discardDecisions)
+	project := entry.Project
+	// The network's background is read and cited beside the documents; it neither starts a run
+	// nor counts toward their size, nor makes the specification stale.
+	cited := s.withBackground(ctx, token, entry, docs)
+	byID := documentsByID(cited)
+	// The documents are read in parts, each asked for on its own. When the last run that wrote
+	// could not read some parts and the documents are the ones it read, this run reads only those
+	// parts, over what the others gave; documents added, removed or changed since, or starting
+	// over, read them all again.
+	parts := splitDocuments(cited)
+	resumed := []documentPart{}
+	if last := spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]; last != nil && !discardDecisions && last.Inputs != nil &&
+		sameDocuments(last.Inputs.Documents, requirementInputsOf(docs, entry.Project).Documents) {
+		resumed = pendingParts(parts, last.PendingParts)
+	}
+	if len(resumed) > 0 {
+		parts = resumed
+	} else {
+		keepForConcepts(spec, discardDecisions)
+		spec.Rejected = rejectedOf(spec.Rejected, interfaces.REQUIREMENT_RUN_CONCEPTS)
+	}
 	run, err := s.startRun(ctx, projectID, interfaces.REQUIREMENT_RUN_CONCEPTS, caller, read)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start run failed")
 		return nil, err
 	}
-	project := entry.Project
 	catalogIDs := s.catalogsOf(ctx, token, entry, caller)
-	// The network's background is read and cited beside the documents; it neither starts a run
-	// nor counts toward their size, nor makes the specification stale.
-	cited := s.withBackground(ctx, token, entry, docs)
-	byID := documentsByID(cited)
 	p := &partRun{
 		kind: interfaces.REQUIREMENT_RUN_CONCEPTS, projectID: projectID, run: run, caller: caller,
 		format: conceptsResponseFormat(), newOut: func() any { return &conceptsOutput{} },
+		parts: partKeys(parts),
 	}
-	// Tables are clues, and what concepts are matched to: they are listed in the background, as the
-	// caller.
+	// Tables are clues, and what concepts are matched to: they are listed once in the background,
+	// as the caller.
+	var listed sync.Once
 	var tables []*interfaces.VegaTable
-	p.prepareMessage = func(ctx context.Context) (string, error) {
-		tables, _ = s.listTables(ctx, catalogIDs, caller)
-		return buildConceptsMessage(project.NamingLanguage, cited, tables, draft, spec)
+	p.prepareMessage = func(ctx context.Context, part int) (string, error) {
+		listed.Do(func() { tables, _ = s.listTables(ctx, catalogIDs, caller) })
+		return buildConceptsMessage(project.NamingLanguage, parts[part].docs, tables, draft, spec)
 	}
 	var types map[string]string
-	p.check = func(ctx context.Context, out any) {
+	p.check = func(ctx context.Context, _ int, out any) {
 		checked := cloneSpec(spec)
+		// Each part lists what it dropped after what the parts before it dropped.
+		earlier := runRejected(checked.Rejected, interfaces.REQUIREMENT_RUN_CONCEPTS)
 		types = buildConcepts(out.(*conceptsOutput), byID, draft, tables, checked)
+		checked.Rejected = withEarlierRejected(checked.Rejected, earlier, interfaces.REQUIREMENT_RUN_CONCEPTS)
 		spec = checked
 		// The Agent's type of a document is taken only while no one has typed it.
 		for _, d := range docs {
@@ -387,7 +408,7 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 		}
 		p.inputs = requirementInputsOf(docs, project)
 	}
-	p.write = func(req *interfaces.Requirement, _ any) {
+	p.write = func(req *interfaces.Requirement) {
 		runs := req.Spec.Runs
 		req.Spec = *spec
 		req.Spec.Runs = runs
@@ -397,4 +418,23 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	s.run(func() { s.execute(runCtx, p) })
 	span.SetStatus(codes.Ok, "")
 	return s.startedRun(ctx, projectID)
+}
+
+// runRejected are the items run dropped, in order.
+func runRejected(rejected []*interfaces.RequirementRejected, run string) []*interfaces.RequirementRejected {
+	out := []*interfaces.RequirementRejected{}
+	for _, r := range rejected {
+		if r.Run == run {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// withEarlierRejected puts back before the items run dropped now those it dropped earlier, which
+// checking an answer clears.
+func withEarlierRejected(rejected, earlier []*interfaces.RequirementRejected, run string) []*interfaces.RequirementRejected {
+	out := rejectedOf(rejected, run)
+	out = append(out, earlier...)
+	return append(out, runRejected(rejected, run)...)
 }
