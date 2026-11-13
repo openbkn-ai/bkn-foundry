@@ -169,7 +169,11 @@ func TestTraceArchiveBoundedMariaDB(t *testing.T) {
 	if _, err = restarted.RetryCleanup(ctx, job.ID); err == nil {
 		t.Fatal("blocked job accepted cleanup")
 	}
-	if _, err = restarted.Create(ctx, observabilityvo.ArchiveKindTrace); !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) || len(objects.counts) != 1 {
+	retried, retryErr := restarted.Create(ctx, observabilityvo.ArchiveKindTrace)
+	if retried.ID != job.ID {
+		t.Fatal("real MariaDB retry did not reuse durable blocker")
+	}
+	if err = retryErr; !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) || len(objects.counts) != 1 {
 		t.Fatalf("restart skipped blocked candidate: %v", err)
 	}
 	t.Logf("#2948: 37 outputs x400000 bytes; SQL aggregate=%d; safe prefix=1; blocked+suffix=2; persisted diagnosis survives restart; all 37 facts retained", blocked.Actual)

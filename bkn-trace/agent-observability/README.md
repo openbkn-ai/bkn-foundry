@@ -156,7 +156,10 @@ identifies the blocker, while `batch_progress.blocked` records `interaction_id`,
 retain the run/batch identity, prior cleaned count and the remaining selection.
 This adds optional JSON metadata to the existing column; no migration, new status,
 archive format or streaming object protocol is introduced. Legacy jobs still read
-normally. A blocked job is never eligible for `retry-cleanup` or download.
+normally. With no newly completed prefix, an identical blocker, cutoff and
+remaining selection reuse the latest failed job so repeated POSTs do not displace
+completed batches from the bounded history. A changed measurement or selection
+creates a new diagnostic. A blocked job is never eligible for `retry-cleanup` or download.
 
 POST still returns HTTP 409 `archive_incomplete_candidates`, `retryable=false`,
 with `required_action=review_oversized_interaction`. `error.details` identifies the

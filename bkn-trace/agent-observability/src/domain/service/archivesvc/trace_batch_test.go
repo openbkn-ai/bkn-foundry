@@ -101,6 +101,18 @@ func TestTraceArchivePersistsBlockageAfterSafePrefix(t *testing.T) {
 				t.Fatal("unverified blocked job allowed cleanup")
 			}
 			next, err := restarted.Create(context.Background(), observabilityvo.ArchiveKindTrace)
+			if next.ID != job.ID {
+				t.Fatal("identical blocker retry created a new history entry")
+			}
+			for i := 0; i < 25; i++ {
+				repeated, e := restarted.Create(context.Background(), observabilityvo.ArchiveKindTrace)
+				if !errors.Is(e, ErrArchivePayloadTooLarge) || repeated.ID != job.ID {
+					t.Fatal("repeat flooded archive history")
+				}
+			}
+			if len(s.store.List(observabilityvo.ArchiveKindTrace, 20)) != 2 {
+				t.Fatal("completed prefix displaced from bounded history")
+			}
 			if !errors.As(err, &budget) || next.BatchProgress.RunComplete || o.writes != 1 || s.purges != 1 || len(s.rows) != 2 {
 				t.Fatalf("restart bypassed blockage: %v", err)
 			}
@@ -176,5 +188,20 @@ func TestCleanupRetryStopsAtDurableBlockageInSameRun(t *testing.T) {
 	blocked, err := svc.RetryCleanup(context.Background(), first.ID)
 	if !errors.Is(err, ErrArchivePayloadTooLarge) || blocked.BatchProgress.Blocked == nil || blocked.BatchProgress.RunID != first.BatchProgress.RunID || blocked.BatchProgress.BatchNumber != 2 || blocked.BatchProgress.CleanedInRun != 1 || blocked.BatchProgress.RunComplete || o.writes != 1 || len(s.rows) != 2 {
 		t.Fatalf("cleanup continuation lost blocker or progress: %+v %v", blocked, err)
+	}
+}
+
+func TestChangedBlockageCreatesFreshDiagnostic(t *testing.T) {
+	s := newBatchSourceFixture(t, 1, 1)
+	s.rows[0].Payload = make([]byte, MaxTraceArchiveCandidateBytes+1)
+	svc := New(s.store, TraceBundleSource{Core: s}, &fakeObjectStore{}, Options{})
+	first, err := svc.Create(context.Background(), observabilityvo.ArchiveKindTrace)
+	if !errors.Is(err, ErrArchivePayloadTooLarge) {
+		t.Fatal(err)
+	}
+	s.rows[0].Payload = append(s.rows[0].Payload, 'x')
+	second, err := svc.Create(context.Background(), observabilityvo.ArchiveKindTrace)
+	if !errors.Is(err, ErrArchivePayloadTooLarge) || second.ID == first.ID || second.BatchProgress.Blocked.Actual != first.BatchProgress.Blocked.Actual+1 {
+		t.Fatalf("changed measurement reused stale blocker: %v", err)
 	}
 }

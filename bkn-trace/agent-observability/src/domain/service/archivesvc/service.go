@@ -189,6 +189,13 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 		if err != nil {
 			var blocked *PayloadBudgetError
 			if kind == observabilityvo.ArchiveKindTrace && errors.As(err, &blocked) {
+				// A retry with no new completed prefix can reuse the exact
+				// blocked selection, preserving useful history in the bounded list.
+				if runID == "" {
+					if previous, ok := service.store.Latest(kind); ok && sameBlockedSelection(previous, window, batch.EligibleCount, blocked) {
+						return previous, fmt.Errorf("freeze archive candidates: %w", err)
+					}
+				}
 				now := service.now().UTC()
 				if runID == "" {
 					runID = fmt.Sprintf("arc_%s_%d_%s", kind, now.UnixNano(), rand.Text())
@@ -234,6 +241,13 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 		}
 		cleaned = last.BatchProgress.CleanedInRun
 	}
+}
+
+func sameBlockedSelection(job Job, window observabilityvo.ArchiveRange, eligible int, blocked *PayloadBudgetError) bool {
+	p := job.BatchProgress
+	return job.Status == observabilityvo.ArchiveStatusFailed && job.ManifestRef == "" && job.CandidateCount == 0 &&
+		job.Range.From.Equal(window.From) && job.Range.To.Equal(window.To) && p != nil && p.Blocked != nil &&
+		!p.RunComplete && p.EligibleAtSelection == eligible && p.RemainingAtSelection == eligible && *p.Blocked == *blocked
 }
 
 func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candidates []Candidate) (Job, error) {
