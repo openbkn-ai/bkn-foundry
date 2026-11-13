@@ -30,7 +30,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.MergeKindMismatch":           "不能合并 对象只能合并到对象，关系只能合并到关系。",
 		"BknProject.Draft.NotReady":                    "草稿未就绪 只有起草完成的草稿才能修改。",
 		"BknProject.Draft.Stale":                       "草稿已被修改 加载之后草稿已被他人修改，请重新加载后再试。",
-		"BknProject.Draft.HasDecisions":                "草稿已有决定 重新起草会丢弃草稿上已做的决定和文档候选，确认丢弃后才能重新起草。",
+		"BknProject.Draft.HasDecisions":                "草稿已有决定 重新起草会丢弃草稿上已做的决定，确认丢弃后才能重新起草；知识库抽取的内容会保留。",
 		"BknProject.Draft.InvalidIdentity":             "唯一标识不合法 请给出该对象类的一个或多个不重复的属性，类型须为 string、text、integer 或 unsigned integer。",
 		"BknProject.Draft.RelationName":                "{{.object_type}}的{{.field}}",
 		"BknProject.Draft.InvalidIncrementalKey":       "更新字段不合法 请给出该对象类的一个属性，记录每次变化时它的值都会增大，类型须为 integer、unsigned integer、string、date、time、datetime 或 timestamp；传空值可清除。",

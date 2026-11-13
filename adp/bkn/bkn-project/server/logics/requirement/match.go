@@ -6,6 +6,7 @@ package requirement
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -99,6 +100,17 @@ func mappedObjectType(target *interfaces.RequirementMatchTarget, drafted *drafte
 	return nil
 }
 
+// mappedMatch is the person's match a mapping to a drafted item makes: the object type it names,
+// confirmed; nothing in the data when it is cleared or names a relation type.
+func mappedMatch(ref *interfaces.RequirementItemRef) *interfaces.RequirementMatch {
+	match := &interfaces.RequirementMatch{By: interfaces.REQUIREMENT_MATCH_BY_PERSON}
+	if ref != nil && ref.Kind == interfaces.REQUIREMENT_ITEM_OBJECT_TYPE {
+		match.Target = &interfaces.RequirementMatchTarget{Kind: interfaces.REQUIREMENT_MATCH_OBJECT_TYPE, ID: ref.ID}
+		match.Confirmed = true
+	}
+	return match
+}
+
 // sameTarget tells whether two targets name the same data.
 func sameTarget(a, b *interfaces.RequirementMatchTarget) bool {
 	return a != nil && b != nil && *a == *b
@@ -179,9 +191,14 @@ func (s *requirementService) checkTarget(ctx context.Context, drafted *draftedIt
 	if mappedObjectType(target, drafted) != nil {
 		return nil
 	}
-	tables, _ := s.listTables(ctx, s.catalogsOf(ctx, drafted.token, drafted.entry, caller), caller)
-	if !slices.ContainsFunc(tables, func(t *interfaces.VegaTable) bool { return t != nil && t.ID == target.ID }) {
-		return invalidItem(ctx, "table "+target.ID+" is not in the project's catalogs")
+	tables, unlisted := s.listTables(ctx, s.catalogsOf(ctx, drafted.token, drafted.entry, caller), caller)
+	if slices.ContainsFunc(tables, func(t *interfaces.VegaTable) bool { return t != nil && t.ID == target.ID }) {
+		return nil
 	}
-	return nil
+	// A catalog that could not be listed may hold it: that is no wrong choice of the person's.
+	if len(unlisted) > 0 {
+		return internalError(ctx, "List the tables of the project's catalogs failed",
+			fmt.Errorf("catalogs not listed: %s", strings.Join(unlisted, ", ")))
+	}
+	return invalidItem(ctx, "table "+target.ID+" is not in the project's catalogs")
 }

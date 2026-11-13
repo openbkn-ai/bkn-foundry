@@ -6,6 +6,7 @@ package requirement
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -130,6 +131,22 @@ func Test_MatchConcept(t *testing.T) {
 			So(saved.Spec.Concepts[1].Match, ShouldResemble, &interfaces.RequirementMatch{By: interfaces.REQUIREMENT_MATCH_BY_PERSON})
 		})
 
+		Convey("Mapping the concept by hand is the person's match too\n", func() {
+			read()
+			save()
+			_, err := svc.MapConcept(ctx, token, "p1", "c2", interfaces.RequirementMapping{UpdateTime: 7, MapsTo: &orderRef}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts[1].Match, ShouldResemble, &interfaces.RequirementMatch{
+				Target: &interfaces.RequirementMatchTarget{Kind: interfaces.REQUIREMENT_MATCH_OBJECT_TYPE, ID: orderRef.ID},
+				By:     interfaces.REQUIREMENT_MATCH_BY_PERSON, Confirmed: true})
+
+			read()
+			save()
+			_, err = svc.MapConcept(ctx, token, "p1", "c2", interfaces.RequirementMapping{UpdateTime: 7}, caller)
+			So(err, ShouldBeNil)
+			So(saved.Spec.Concepts[1].Match, ShouldResemble, &interfaces.RequirementMatch{By: interfaces.REQUIREMENT_MATCH_BY_PERSON})
+		})
+
 		Convey("Only a table of the catalogs or an object type of the draft is a target\n", func() {
 			read()
 			err := match(interfaces.RequirementMatchEdit{Target: &interfaces.RequirementMatchTarget{Kind: interfaces.REQUIREMENT_MATCH_TABLE, ID: "elsewhere"}})
@@ -139,6 +156,16 @@ func Test_MatchConcept(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
 			err = match(interfaces.RequirementMatchEdit{Target: &interfaces.RequirementMatchTarget{Kind: "relation_type", ID: "x"}})
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InvalidItem)
+		})
+
+		Convey("A table not found while a catalog could not be listed is no wrong choice\n", func() {
+			ctrl2 := gomock.NewController(t)
+			down := pmock.NewMockVegaAccess(ctrl2)
+			down.EXPECT().ListTables(gomock.Any(), gomock.Any(), "cat").Return(nil, errors.New("vega down"))
+			svc.va = down
+			read()
+			err := match(interfaces.RequirementMatchEdit{Target: &interfaces.RequirementMatchTarget{Kind: interfaces.REQUIREMENT_MATCH_TABLE, ID: "t_ship"}})
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Requirement_InternalError)
 		})
 	})
 }

@@ -30,7 +30,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Draft.MergeKindMismatch":           "Cannot Merge. An object merges only into an object, and a relation only into a relation.",
 		"BknProject.Draft.NotReady":                    "Draft Not Ready. Only a draft that finished drafting can be changed.",
 		"BknProject.Draft.Stale":                       "Draft Changed. Someone changed the draft after you loaded it; reload it and try again.",
-		"BknProject.Draft.HasDecisions":                "Draft Has Decisions. Drafting again discards existing decisions and document candidates; confirm discarding them to draft again.",
+		"BknProject.Draft.HasDecisions":                "Draft Has Decisions. Drafting again discards the decisions made on the draft; confirm discarding them to draft again. What a knowledge-base extraction drafted is kept.",
 		"BknProject.Draft.InvalidIdentity":             "Invalid Identity. Give one or more distinct properties of the object type, each of type string, text, integer or unsigned integer.",
 		"BknProject.Draft.RelationName":                "{{.field}} of {{.object_type}}",
 		"BknProject.Draft.InvalidIncrementalKey":       "Invalid Update Field. Give one property of the object type whose value grows whenever a record changes, of type integer, unsigned integer, string, date, time, datetime or timestamp, or an empty value to clear it.",

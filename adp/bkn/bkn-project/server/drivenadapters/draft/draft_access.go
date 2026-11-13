@@ -248,8 +248,8 @@ func (da *draftAccess) FailDrafting(ctx context.Context, reason string, updateTi
 	return result.RowsAffected()
 }
 
-// hasDecisions protects human decisions and document candidates from implicit
-// replacement by table redrafting. Unparseable items retain the legacy behavior.
+// hasDecisions protects human decisions from implicit replacement by table redrafting.
+// Unparseable items retain the legacy behavior.
 func hasDecisions(itemsJSON string) bool {
 	var items struct {
 		Decisions []struct {
