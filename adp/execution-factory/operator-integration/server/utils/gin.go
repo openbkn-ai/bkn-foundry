@@ -2,6 +2,8 @@ package utils
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 
@@ -9,6 +11,19 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 )
+
+// BindPreciseJSON preserves numbers in dynamic request fields without changing Gin's global decoder.
+func BindPreciseJSON(c *gin.Context, target any) error {
+	if c.Request.Body == nil {
+		return io.EOF
+	}
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	return binding.Validator.ValidateStruct(target)
+}
 
 // GetBindJSONRaw gets the original request body.
 func GetBindJSONRaw(c *gin.Context, req interface{}) (err error) {

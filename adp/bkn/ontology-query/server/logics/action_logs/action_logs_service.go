@@ -621,7 +621,7 @@ func mapToActionExecution(m map[string]any) (*interfaces.ActionExecution, error)
 	}
 
 	var exec interfaces.ActionExecution
-	if err := sonic.Unmarshal(data, &exec); err != nil {
+	if err := common.UnmarshalPreciseJSON(data, &exec); err != nil {
 		return nil, err
 	}
 

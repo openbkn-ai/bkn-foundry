@@ -6,6 +6,7 @@ package action_logs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -15,6 +16,22 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
+
+func TestDecodeStoredResultPreservesLargeIntegers(t *testing.T) {
+	result, err := decodeStoredResult(map[string]any{
+		"parameters": map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
+		"result":     map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, payload := range map[string]any{"parameters": result.Parameters, "result": result.Result} {
+		value := payload.(map[string]any)["payload"].(map[string]any)["large_integer"]
+		if value != json.Number("9007199254740993") {
+			t.Fatalf("%s large_integer = %#v (%T)", name, value, value)
+		}
+	}
+}
 
 func resultsOf(n int, status string) []interfaces.ObjectExecutionResult {
 	results := make([]interfaces.ObjectExecutionResult, 0, n)
@@ -104,6 +121,8 @@ func Test_QueryResults_PagesInOpenSearch(t *testing.T) {
 				return []interfaces.Hit{{Source: map[string]any{
 					"kn_id": "kn_1", "execution_id": "exec_1", "seq": 250,
 					"_instance_id": "i_250", "status": "failed", "error_message": "boom",
+					"parameters": map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
+					"result":     map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
 				}}}, nil
 			})
 		osa.EXPECT().Count(gomock.Any(), interfaces.ActionExecutionResultsIndex, map[string]any{"query": wantQuery}).
@@ -117,6 +136,8 @@ func Test_QueryResults_PagesInOpenSearch(t *testing.T) {
 		So(len(page.Entries), ShouldEqual, 1)
 		So(page.Entries[0].InstanceID, ShouldEqual, "i_250")
 		So(page.Entries[0].ErrorMessage, ShouldEqual, "boom")
+		So(page.Entries[0].Parameters["payload"].(map[string]any)["large_integer"], ShouldEqual, json.Number("9007199254740993"))
+		So(page.Entries[0].Result.(map[string]any)["payload"].(map[string]any)["large_integer"], ShouldEqual, json.Number("9007199254740993"))
 	})
 }
 
@@ -130,7 +151,10 @@ func Test_QueryResults_LegacyEmbeddedResults(t *testing.T) {
 			if i%3 == 0 {
 				status = "failed"
 			}
-			legacy = append(legacy, map[string]any{"_instance_id": fmt.Sprintf("i_%d", i), "status": status})
+			legacy = append(legacy, map[string]any{
+				"_instance_id": fmt.Sprintf("i_%d", i), "status": status,
+				"parameters": map[string]any{"large_integer": json.Number("9007199254740993")},
+			})
 		}
 		osa.EXPECT().SearchData(gomock.Any(), "ontology_action_executions_kn_1", gomock.Any()).
 			Return([]interfaces.Hit{{Source: map[string]any{"id": "exec_1", "status": "completed", "results": legacy}}}, nil)
@@ -142,6 +166,7 @@ func Test_QueryResults_LegacyEmbeddedResults(t *testing.T) {
 		So(page.TotalCount, ShouldEqual, 10)
 		So(len(page.Entries), ShouldEqual, 3)
 		So(page.Entries[0].InstanceID, ShouldEqual, "i_6")
+		So(page.Entries[0].Parameters["large_integer"], ShouldEqual, json.Number("9007199254740993"))
 	})
 }
 
@@ -180,9 +205,15 @@ func Test_GetExecution_ReadsResultsPageFromIndex(t *testing.T) {
 		svc.resultsIndexReady.Store(true)
 		osa.EXPECT().IndexExists(gomock.Any(), "ontology_action_executions_kn_1").Return(true, nil)
 		osa.EXPECT().SearchData(gomock.Any(), "ontology_action_executions_kn_1", gomock.Any()).
-			Return([]interfaces.Hit{{Source: map[string]any{"id": "exec_1", "status": "completed", "total_count": float64(8808)}}}, nil)
+			Return([]interfaces.Hit{{Source: map[string]any{
+				"id": "exec_1", "status": "completed", "total_count": float64(8808),
+				"action_type_snapshot": map[string]any{"parameters": []any{map[string]any{"value": json.Number("9007199254740993")}}},
+			}}}, nil)
 		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).
-			Return([]interfaces.Hit{{Source: map[string]any{"execution_id": "exec_1", "seq": 0, "status": "success"}}}, nil)
+			Return([]interfaces.Hit{{Source: map[string]any{
+				"execution_id": "exec_1", "seq": 0, "status": "success",
+				"result": map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
+			}}}, nil)
 		osa.EXPECT().Count(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).
 			Return([]byte(`{"count": 8808}`), nil)
 
@@ -193,5 +224,7 @@ func Test_GetExecution_ReadsResultsPageFromIndex(t *testing.T) {
 		So(exec.ResultsTotal, ShouldEqual, 8808)
 		So(exec.ResultsLimit, ShouldEqual, 10)
 		So(len(exec.Results), ShouldEqual, 1)
+		So(exec.ActionTypeSnapshot["parameters"].([]any)[0].(map[string]any)["value"], ShouldEqual, json.Number("9007199254740993"))
+		So(exec.Results[0].Result.(map[string]any)["payload"].(map[string]any)["large_integer"], ShouldEqual, json.Number("9007199254740993"))
 	})
 }

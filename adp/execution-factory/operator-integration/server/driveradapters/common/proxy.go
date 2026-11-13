@@ -78,7 +78,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		return
 	}
 	req := &interfaces.FunctionProxyExecuteCodeReq{}
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = utils.BindPreciseJSON(c, req); err != nil {
 		err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
 			fmt.Sprintf("invalid request body, err: %v", err))
 		rest.ReplyError(c, err)
@@ -390,7 +390,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	}
 	// Read request body.
 	event := map[string]any{}
-	if err = c.ShouldBindJSON(&event); err != nil {
+	if err = utils.BindPreciseJSON(c, &event); err != nil {
 		err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
 			fmt.Sprintf("invalid request body, err: %v", err))
 		rest.ReplyError(c, err)

@@ -547,6 +547,20 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			So(rawSnapshot["id"], ShouldEqual, atID)
 		})
 
+		Convey("preserves large integer constants in the action snapshot", func() {
+			mockHTTPClient.EXPECT().
+				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"at1","parameters":[{"name":"payload.large_integer","type":"integer","source":"body","value_from":"const","value":9007199254740993}]}]}`), nil)
+
+			result, snapshot, exists, err := oma.GetActionType(ctx, knID, branch, atID)
+			So(err, ShouldBeNil)
+			So(exists, ShouldBeTrue)
+			So(result.Parameters[0].Value, ShouldEqual, json.Number("9007199254740993"))
+			parameters := snapshot["parameters"].([]any)
+			value := parameters[0].(map[string]any)["value"]
+			So(value, ShouldEqual, json.Number("9007199254740993"))
+		})
+
 		Convey("失败 - HTTP 请求错误", func() {
 			accountInfo := interfaces.AccountInfo{
 				ID:   "account1",

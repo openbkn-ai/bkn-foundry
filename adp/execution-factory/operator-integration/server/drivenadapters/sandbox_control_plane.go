@@ -223,9 +223,9 @@ func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, session
 		return nil, err
 	}
 	resp := &interfaces.ExecuteCodeResp{}
-	err = utils.StringToObject(string(respData), resp)
+	err = utils.UnmarshalPreciseJSON(respData, resp)
 	if err != nil {
-		c.logger.WithContext(ctx).Errorf("ExecuteCodeSync failed, StringToObject failed, err: %v", err)
+		c.logger.WithContext(ctx).Errorf("ExecuteCodeSync failed, response decode failed, err: %v", err)
 		err = errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtSandboxControlPlaneFailed, err.Error())
 		return nil, err
 	}

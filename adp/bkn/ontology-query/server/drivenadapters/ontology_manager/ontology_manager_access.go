@@ -699,7 +699,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var rawResponse struct {
 		Entries []map[string]any `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &rawResponse); err != nil {
+	if err = common.UnmarshalPreciseJSON(result, &rawResponse); err != nil {
 		logger.Errorf("unmalshal raw action type info failed: %v\n", err)
 		// Still return the parsed struct, but leave raw data as nil.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)

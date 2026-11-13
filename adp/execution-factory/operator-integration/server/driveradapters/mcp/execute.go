@@ -63,7 +63,7 @@ func (h *mcpHandle) DebugTool(c *gin.Context) {
 
 	// Use map[string]any to receive the request body.
 	var body map[string]any
-	if err = c.ShouldBindJSON(&body); err != nil {
+	if err = utils.BindPreciseJSON(c, &body); err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
@@ -151,7 +151,7 @@ func (h *mcpHandle) CallMCPTool(c *gin.Context) {
 		return
 	}
 
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = utils.BindPreciseJSON(c, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
