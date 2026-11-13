@@ -125,6 +125,10 @@ type RequirementRun struct {
 	Inputs *RequirementInputs `json:"inputs,omitempty"`
 	// Stale, computed when read, says its inputs changed since.
 	Stale bool `json:"stale,omitempty"`
+	// PendingParts are the parts of the documents the last run that wrote could not read, by key:
+	// the next run reads only them, keeping what the others gave. A run going or failed keeps the
+	// last one's.
+	PendingParts []string `json:"pending_parts,omitempty"`
 }
 
 // Running tells whether the run is still going: running and started after staleBefore.

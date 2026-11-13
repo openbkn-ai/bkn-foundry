@@ -48,7 +48,8 @@ const maxMessageTables = 500
 const maxMessageProperties = 50
 
 // maxSpecScenarios, maxSpecConcepts, maxSpecQuestions and maxRunLogicNeeds bound the new items a
-// run keeps, the first ones the Agent gives: its answer is one JSON document, and the longer it is,
+// run keeps of one answer (the concepts run asks once per part of the documents), the first ones
+// the Agent gives: its answer is one JSON document, and the longer it is,
 // the likelier a model writes it wrong, runs out of time or out of output. The prompt states the
 // same bounds; kept items do not count. maxDraftConcepts bounds the concepts scenario drafting adds
 // to those extracted.
@@ -69,8 +70,12 @@ const (
 	draftDeadline = 2 * agentDeadline
 )
 
-// structuredOutputFailed is how bkn-agent names a failure to give its answer as the schema asks.
-const structuredOutputFailed = "StructuredOutputError"
+// structuredOutputFailed is how bkn-agent names a failure to give its answer as the schema asks;
+// structuredOutputTruncated, in that failure, an answer cut off at the model's output cap.
+const (
+	structuredOutputFailed    = "StructuredOutputError"
+	structuredOutputTruncated = "output truncated"
+)
 
 // taskReadTimeout bounds one read of the Agent's task, so a bkn-agent that takes the connection
 // and never answers cannot hold drafting past its deadline.
@@ -84,6 +89,11 @@ const (
 	failureAgentFailed      = "agent_failed"
 	failureAgentTimeout     = "agent_timeout"
 	failureOutputInvalid    = "output_invalid"
+	// failureOutputTooLong is an answer longer than the model writes at once.
+	failureOutputTooLong = "output_too_long"
+	// failurePartial is the error of a run that wrote what some parts of its documents gave, the
+	// others failing: they are its pending parts.
+	failurePartial = "partial"
 )
 
 // Kinds of rejected items, and the reason a choice is rejected besides its quotes.
@@ -1001,13 +1011,9 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Get requirement failed")
 		return nil, internalError(ctx, "Get requirement failed", err)
 	}
-	// The documents' concepts come first: questions rest on them. A run that ended ready once
-	// recorded its inputs, which a later run that fails keeps.
-	if len(docs) > 0 && (!ok || previous.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS] == nil ||
-		previous.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS].Inputs == nil) {
-		span.SetStatus(codes.Error, "Concepts not extracted")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_ConceptsNotExtracted)
-	}
+	// Concepts extracted from the documents are not needed: without them pass draft drafts from the
+	// confirmed model, the documents and the kinetic needs, adding the concepts its questions need,
+	// so a concepts run that failed never blocks the first draft of the scenarios.
 	// Drafting again keeps what people made theirs, unless they start over, and what the other runs
 	// wrote; concepts are mapped to the model before drafting reads them.
 	var prev *interfaces.Requirement
