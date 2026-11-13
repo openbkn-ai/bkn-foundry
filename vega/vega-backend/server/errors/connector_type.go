@@ -27,6 +27,7 @@ const (
 	VegaBackend_ConnectorType_TypeExists   = "VegaBackend.ConnectorType.TypeExists"
 	VegaBackend_ConnectorType_NameExists   = "VegaBackend.ConnectorType.NameExists"
 	VegaBackend_ConnectorType_TypeMismatch = "VegaBackend.ConnectorType.TypeMismatch"
+	VegaBackend_ConnectorType_InUse        = "VegaBackend.ConnectorType.InUse"
 
 	// 503 Service Unavailable
 	VegaBackend_ConnectorType_FieldConfigUnavailable = "VegaBackend.ConnectorType.FieldConfigUnavailable"
@@ -58,6 +59,7 @@ var ConnectorTypeErrCodeList = []string{
 	VegaBackend_ConnectorType_TypeExists,
 	VegaBackend_ConnectorType_NameExists,
 	VegaBackend_ConnectorType_TypeMismatch,
+	VegaBackend_ConnectorType_InUse,
 
 	// 503 Service Unavailable
 	VegaBackend_ConnectorType_FieldConfigUnavailable,

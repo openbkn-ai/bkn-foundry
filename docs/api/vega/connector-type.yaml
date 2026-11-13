@@ -214,7 +214,13 @@ paths:
           $ref: "#/components/responses/InternalServerError"
     delete:
       summary: Delete a connector type
-      description: Deletes the connector type identified by `type`. Built-in types with `mode=local` cannot be deleted and return 403.
+      description: |
+        Deletes the connector type identified by `type`.
+        Built-in types with `mode=local` cannot be deleted and return 403.
+        Any existing Catalog reference blocks deletion with 409
+        `VegaBackend.ConnectorType.InUse`, including disabled and internal Catalogs
+        and Catalogs the caller cannot view. No connector registration or permission
+        resource is removed when reference checking fails or a reference exists.
       responses:
         "204":
           description: Deleted successfully
@@ -228,6 +234,12 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: A Catalog still references this connector type (`VegaBackend.ConnectorType.InUse`).
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /connector-types/{type}/enable:
