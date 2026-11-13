@@ -38,6 +38,9 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
+	if !networkMissing {
+		s.pc.Resolve(ctx, token, caller, entry)
+	}
 	draft, exist, err := s.da.GetDraft(ctx, projectID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get draft failed")

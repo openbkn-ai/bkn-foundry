@@ -145,3 +145,18 @@ func (mr *MockBknBackendAccessMockRecorder) ListObjectTypeIDs(ctx, token, knID a
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectTypeIDs", reflect.TypeOf((*MockBknBackendAccess)(nil).ListObjectTypeIDs), ctx, token, knID)
 }
+
+// ListObjectTypeSources mocks base method.
+func (m *MockBknBackendAccess) ListObjectTypeSources(ctx context.Context, token, knID string) ([]*interfaces.KNObjectTypeSource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjectTypeSources", ctx, token, knID)
+	ret0, _ := ret[0].([]*interfaces.KNObjectTypeSource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListObjectTypeSources indicates an expected call of ListObjectTypeSources.
+func (mr *MockBknBackendAccessMockRecorder) ListObjectTypeSources(ctx, token, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectTypeSources", reflect.TypeOf((*MockBknBackendAccess)(nil).ListObjectTypeSources), ctx, token, knID)
+}

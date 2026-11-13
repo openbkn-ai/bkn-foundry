@@ -176,6 +176,23 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 				"limit": {strconv.Itoa(listPageSize)}})
 		})
 
+		Convey("ListObjectTypeSources reads each object type with the data it reads\n", func() {
+			reply = func(r *http.Request) (int, string) {
+				return http.StatusOK, `{"entries":[{"id":"order","name":"Order","data_source":{"type":"resource","id":"r1","name":"orders"}},
+					{"id":"note"}],"total_count":2}`
+			}
+
+			objectTypes, err := bba.ListObjectTypeSources(ctx, token, "kn 1")
+
+			So(err, ShouldBeNil)
+			So(objectTypes, ShouldResemble, []*interfaces.KNObjectTypeSource{
+				{ID: "order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r1"}},
+				{ID: "note"},
+			})
+			So(got[0].path, ShouldEqual, networkPath+"/object-types")
+			So(got[0].auth, ShouldEqual, token)
+		})
+
 		Convey("A list stops at its cap however many the network has\n", func() {
 			reply = func(r *http.Request) (int, string) {
 				return http.StatusOK, page("ot", offsetOf(r), listPageSize, 100000)

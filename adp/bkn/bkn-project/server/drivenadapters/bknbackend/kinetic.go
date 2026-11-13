@@ -184,21 +184,28 @@ func (bba *bknBackendAccess) ListActionTypes(ctx context.Context, token string, 
 
 // ListObjectTypeIDs calls GET /knowledge-networks/{kn_id}/object-types.
 func (bba *bknBackendAccess) ListObjectTypeIDs(ctx context.Context, token string, knID string) ([]string, error) {
-	ids := []string{}
+	objectTypes, err := bba.ListObjectTypeSources(ctx, token, knID)
+	ids := make([]string, 0, len(objectTypes))
+	for _, ot := range objectTypes {
+		ids = append(ids, ot.ID)
+	}
+	return ids, err
+}
+
+// ListObjectTypeSources calls GET /knowledge-networks/{kn_id}/object-types.
+func (bba *bknBackendAccess) ListObjectTypeSources(ctx context.Context, token string,
+	knID string) ([]*interfaces.KNObjectTypeSource, error) {
+	objectTypes := []*interfaces.KNObjectTypeSource{}
 	err := listPages(func(offset int) (int, int, error) {
 		var page struct {
-			Entries []struct {
-				ID string `json:"id"`
-			} `json:"entries"`
-			TotalCount int `json:"total_count"`
+			Entries    []*interfaces.KNObjectTypeSource `json:"entries"`
+			TotalCount int                              `json:"total_count"`
 		}
 		if err := bba.getJSON(ctx, "ListObjectTypes", token, knID, "/object-types", pageQuery(offset), &page); err != nil {
 			return 0, 0, err
 		}
-		for _, e := range page.Entries {
-			ids = append(ids, e.ID)
-		}
+		objectTypes = append(objectTypes, page.Entries...)
 		return len(page.Entries), page.TotalCount, nil
 	})
-	return ids, err
+	return objectTypes, err
 }

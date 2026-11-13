@@ -973,7 +973,9 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Get documents failed")
 		return nil, internalError(ctx, "Get documents failed", err)
 	}
-	if len(entry.CatalogIDs) == 0 {
+	// Tables are read from the catalogs the project reads; the inputs record those it keeps.
+	catalogIDs := s.catalogsOf(ctx, token, entry, caller)
+	if len(catalogIDs) == 0 {
 		span.SetStatus(codes.Error, "No catalogs")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_NoCatalogs)
 	}
@@ -1038,7 +1040,7 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	// Scenarios rest on what the network already does too: its kinetic items are read now, as the caller.
 	networkItems := s.scenarioNetworkItems(ctx, token, entry.KNID, base)
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, docs, cited, networkItems, caller) })
+	s.run(func() { s.draft(runCtx, req, project, catalogIDs, docs, cited, networkItems, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -1056,12 +1058,22 @@ func checkInputsSize(ctx context.Context, docs []*interfaces.RequirementDocument
 	return nil
 }
 
-// listTables lists the tables of the project's catalogs as the caller; they are clues, and a run
-// goes on without those it cannot read, which it returns.
-func (s *requirementService) listTables(ctx context.Context, project *interfaces.Project,
+// catalogsOf are the catalogs the project reads, as the caller sees them: on an existing network
+// those its object types read too. The entry keeps the catalogs stored.
+func (s *requirementService) catalogsOf(ctx context.Context, token string, entry *interfaces.ProjectEntry,
+	caller interfaces.AccountInfo) []string {
+	project := *entry.Project
+	read := &interfaces.ProjectEntry{Project: &project}
+	s.pc.Resolve(ctx, token, caller, read)
+	return read.CatalogIDs
+}
+
+// listTables lists the tables of the catalogs as the caller; they are clues, and a run goes on
+// without those it cannot read, which it returns.
+func (s *requirementService) listTables(ctx context.Context, catalogIDs []string,
 	caller interfaces.AccountInfo) ([]*interfaces.VegaTable, []string) {
 	tables, unlisted := []*interfaces.VegaTable{}, []string{}
-	for _, catalogID := range project.CatalogIDs {
+	for _, catalogID := range catalogIDs {
 		listed, err := s.va.ListTables(ctx, caller, catalogID)
 		if err != nil {
 			logger.Warnf("List tables of catalog %s for a requirement run failed: %v", catalogID, err)
@@ -1077,7 +1089,7 @@ func (s *requirementService) listTables(ctx context.Context, project *interfaces
 // What drafting started from stays when it fails. The Agent reads and cites cited, the documents
 // and the network's background; the run records the documents as its inputs.
 func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
-	docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument,
+	catalogIDs []string, docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument,
 	networkItems []*interfaces.LogicNetworkItem, caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
@@ -1092,7 +1104,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		finish(interfaces.REQUIREMENT_STATUS_FAILED, failure, &base, nil)
 	}
 
-	tables, unlisted := s.listTables(ctx, project, caller)
+	tables, unlisted := s.listTables(ctx, catalogIDs, caller)
 	// Scenarios rest on the adopted ontology: drafting does not run without it, nor leaves its
 	// questions unsigned.
 	draft, ok, err := s.da.GetDraft(ctx, req.ProjectID)

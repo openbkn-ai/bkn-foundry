@@ -79,6 +79,7 @@ func (s *draftService) Understand(ctx context.Context, token string, projectID s
 		span.SetStatus(codes.Error, "Not the owner")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Understand_NotOwner)
 	}
+	s.pc.Resolve(ctx, token, caller, entry)
 	if len(entry.CatalogIDs) == 0 {
 		span.SetStatus(codes.Error, "No catalogs")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Understand_NoCatalogs)
@@ -146,6 +147,7 @@ func (s *draftService) GetUnderstanding(ctx context.Context, token string, proje
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
+	s.pc.Resolve(ctx, token, caller, entry)
 	understanding := &interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{}}
 	for _, catalogID := range entry.CatalogIDs {
 		tasks, visible, err := s.va.ListSemanticTasks(ctx, caller, catalogID)

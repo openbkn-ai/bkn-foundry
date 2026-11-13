@@ -44,6 +44,10 @@ type ProjectEntry struct {
 	// OwnerName is the owner's display name, for people who may not list users; empty when the
 	// directory does not know it.
 	OwnerName string `json:"owner_name,omitempty"`
+	// NetworkCatalogIDs are the catalogs among CatalogIDs that the network's object types read:
+	// the project takes them from the network, which owns them. Set only on a project read for
+	// its catalogs, and only on a network the project did not create.
+	NetworkCatalogIDs []string `json:"network_catalog_ids,omitempty"`
 }
 
 type ProjectList struct {
@@ -76,8 +80,13 @@ type ProjectService interface {
 	// its network was deleted.
 	SetProjectArchived(ctx context.Context, token string, id string, archived bool,
 		caller AccountInfo) (*ProjectEntry, error)
+	// ResolveCatalogs sets the entry's catalogs to those the project reads, as the caller sees
+	// them: on a network the project did not create, the catalogs the network's object types read,
+	// then those the owner added that still exist.
+	ResolveCatalogs(ctx context.Context, token string, entry *ProjectEntry, caller AccountInfo)
 	// SetProjectCatalogs replaces the project's data catalogs; only its owner may, and not with a
-	// catalog that no longer exists (409).
+	// catalog that no longer exists (409). The catalogs the network reads are its own, not stored:
+	// they stay the project's whether they are given or not.
 	SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
 		caller AccountInfo) (*ProjectEntry, error)
 	// SetProjectNamingLanguage sets the language the project names its items in; only its owner
