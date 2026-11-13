@@ -542,7 +542,11 @@ func NewApp() (*App, error) {
 	ledgerService.SetDurableObserver(memoryRecordIntegrityObserver(sessionStore, sessionService.ReconcileEvidence))
 	archiveStore := archivesvc.NewMemoryStore()
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
-		archiveStore = archivestore.New(databaseStore.Database())
+		configuredStore, storeErr := archivestore.NewWithDSN(databaseStore.Database(), coreConfig.MariaDBDSN)
+		if storeErr != nil {
+			return nil, storeErr
+		}
+		archiveStore = configuredStore
 	}
 	archiveObjectStore := ossgatewayarchive.New(ossgatewayarchive.Config{
 		BaseURL: observabilityConfig.ArchiveObjectStoreURL, StorageID: observabilityConfig.ArchiveObjectStorageID,
@@ -558,7 +562,7 @@ func NewApp() (*App, error) {
 	if openSearchConfig.LogIndex != "" {
 		archiveSource.Log = opensearchconversationaudit.NewArchiveSource(openSearchClient, openSearchConfig.LogIndex)
 	}
-	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{}), evidenceHandler)
+	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{LogLimits: conf.ReadLogArchiveLimits}), evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
 		traceQueryService, evidenceService, sessionService, observabilityConfig.CursorSigningKey,
 	)

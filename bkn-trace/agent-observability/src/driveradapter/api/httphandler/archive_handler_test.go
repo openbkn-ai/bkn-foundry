@@ -42,6 +42,9 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 		code       string
 		authorized bool
 	}{
+		{"capacity", &archivesvc.Failure{Stage: "payload_bytes", Unit: "bytes", CandidateID: "large-log", Actual: 2048, Limit: 1024}, 409, "archive_capacity_exceeded", true},
+		{"config", archivesvc.ErrInvalidLogLimits, 503, "archive_configuration_invalid", true},
+		{"signed-url", fmt.Errorf("https://private.test/object?signature=secret"), 500, "archive_failed", true},
 		{"payload-budget", archivesvc.ErrArchivePayloadTooLarge, 409, "archive_incomplete_candidates", true},
 		{"incomplete", fmt.Errorf("internal detail: %w", archivesvc.ErrIncompleteCandidates), 409, "archive_incomplete_candidates", true},
 		{"busy", archivesvc.ErrArchiveBusy, 409, "archive_busy", true},
@@ -71,8 +74,25 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 			if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.code) {
 				t.Fatalf("unexpected response %d %s", rec.Code, rec.Body.String())
 			}
-			if strings.Contains(rec.Body.String(), "internal detail") {
+			if strings.Contains(rec.Body.String(), "internal detail") || strings.Contains(rec.Body.String(), "signature=secret") || strings.Contains(rec.Body.String(), "private.test") {
 				t.Fatal("internal error leaked")
+			}
+			if tc.name == "capacity" {
+				var body struct {
+					Error struct {
+						Retryable bool `json:"retryable"`
+						Details   struct {
+							Failure archivesvc.Failure `json:"failure"`
+						} `json:"details"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				f := body.Error.Details.Failure
+				if body.Error.Retryable || f.Stage != "payload_bytes" || f.CandidateID != "large-log" || f.Actual != 2048 || f.Limit != 1024 {
+					t.Fatalf("capacity details lost: %+v", body)
+				}
 			}
 			if tc.name == "payload-budget" && !strings.Contains(rec.Body.String(), "8 MiB") {
 				t.Fatal("missing archive budget explanation")

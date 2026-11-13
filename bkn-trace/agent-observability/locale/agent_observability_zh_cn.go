@@ -26,6 +26,8 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.trace span search returned incomplete results":                                                                                            "Span 查询返回不完整结果，请稍后重试",
 		"AgentObservability.Message.archive operation is already running":                                                                                                     "同类归档正在处理，请等待当前操作结束",
 
+		"AgentObservability.Message.log archive limits are invalid; ask the deployment owner to fix the configuration": "日志归档容量配置无效；请联系部署管理员修正配置",
+		"AgentObservability.Message.log archive stopped; inspect the recorded stage and job before retrying":           "日志归档已停止；请先检查记录的失败阶段和归档任务再重试",
 		archiveBlockedMessageID:              "Trace归档被超限交互阻断；源数据保留，此前已验证批次的进度仍保留",
 		archivePayloadBudgetMessageID:        "Trace归档超过载荷预算（每批最多100个交互、单包8 MiB、每批10 MiB）；本批尚未开始，此前已验证批次的进度仍保留",
 		archiveIncompleteCandidatesMessageID: "本批归档候选结果不完整或无法验证，本批尚未开始；此前批次的进度已保留",

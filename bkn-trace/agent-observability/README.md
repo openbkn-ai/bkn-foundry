@@ -1071,3 +1071,7 @@ MCP/HTTP、鉴权、LLM、真实业务工具、Evidence Kafka、租约回收器�
 资源规划方法和验收维度见
 [容量参考手册](https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/manual/bkn-trace-resources.md)。
 本记录不包含完整平台安装规格，不代表已完成生产 DDL、上线或现场 Trace 恢复验收。
+
+## Log archive capacity
+
+See [capacity, owner configuration and recovery](docs/log-archive-capacity.md) for the bounded log checkpoint workflow and HTTP contract.

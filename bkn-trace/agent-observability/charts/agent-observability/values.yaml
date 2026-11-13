@@ -166,6 +166,12 @@ observability:
     ossGatewayURL: ""
     storageID: ""
     prefix: observability-archive
+    logLimits:
+      maxCandidates: 10000
+      maxPayloadBytes: 10485760
+      # Optional owner-managed ConfigMap containing limits.json. Mount the
+      # directory (not subPath) so updates reach the next archive batch.
+      existingConfigMap: ""
   # Optional cluster-internal endpoint for one Safe publisher instance.
   # Example: http://safe-instance:3000/internal/audit/publish-status
   # New Safe version required; do not expose this endpoint through ingress.

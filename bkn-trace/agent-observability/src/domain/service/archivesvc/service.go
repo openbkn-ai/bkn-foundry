@@ -30,10 +30,18 @@ var (
 	ErrCleanupRequired      = errors.New("archive cleanup must be completed before another archive of this kind")
 )
 
+type FrozenLogDocument struct {
+	Index       string `json:"index"`
+	SeqNo       *int64 `json:"seq_no"`
+	PrimaryTerm *int64 `json:"primary_term"`
+	Routing     string `json:"routing,omitempty"`
+}
+
 type Candidate struct {
-	ID         string    `json:"id"`
-	OccurredAt time.Time `json:"occurred_at"`
-	Payload    []byte    `json:"payload"`
+	LogDocument *FrozenLogDocument `json:"log_document,omitempty"`
+	ID          string             `json:"id"`
+	OccurredAt  time.Time          `json:"occurred_at"`
+	Payload     []byte             `json:"payload"`
 }
 
 // BatchProgress records a completed or interrupted batch in one synchronous run.
@@ -41,6 +49,10 @@ type Candidate struct {
 // blocked selection) and is not a live collection count.
 // Cleaned counts include only batches whose frozen IDs were confirmed absent.
 type BatchProgress struct {
+	Stage                string              `json:"stage,omitempty"`
+	CheckpointPrepared   bool                `json:"checkpoint_prepared,omitempty"`
+	LogLimits            *LogLimits          `json:"log_limits,omitempty"`
+	Failure              *Failure            `json:"failure,omitempty"`
 	Blocked              *PayloadBudgetError `json:"blocked,omitempty"`
 	RunID                string              `json:"run_id"`
 	BatchNumber          int                 `json:"batch_number"`
@@ -115,11 +127,13 @@ type Store interface {
 }
 
 type Options struct {
-	Now      func() time.Time
-	Location *time.Location
+	LogLimits func(context.Context) (LogLimits, error)
+	Now       func() time.Time
+	Location  *time.Location
 }
 
 type Service struct {
+	logLimits   func(context.Context) (LogLimits, error)
 	mu          sync.Mutex
 	store       Store
 	source      Source
@@ -135,7 +149,7 @@ func New(store Store, source Source, objectStore ObjectStore, options Options) *
 	if options.Location == nil {
 		options.Location = time.Local
 	}
-	return &Service{store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location}
+	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location}
 }
 
 func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (job Job, err error) {
@@ -179,6 +193,19 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 		if err := ctx.Err(); err != nil {
 			return last, err
 		}
+		if kind == observabilityvo.ArchiveKindLog {
+			limits := DefaultLogLimits()
+			if service.logLimits != nil {
+				limits, err = service.logLimits(ctx)
+				if err != nil {
+					return last, fmt.Errorf("%w: configuration unavailable", ErrInvalidLogLimits)
+				}
+			}
+			if err = limits.Validate(); err != nil {
+				return last, err
+			}
+			ctx = WithLogLimits(ctx, limits)
+		}
 		var batch Batch
 		if source, ok := service.source.(BatchSource); ok {
 			batch, err = source.FreezeBatch(ctx, kind, window)
@@ -209,6 +236,9 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 					return last, fmt.Errorf("persist blocked archive: %w", saveErr)
 				}
 				return job, fmt.Errorf("freeze archive candidates: %w", err)
+			}
+			if kind == observabilityvo.ArchiveKindLog && !errors.Is(err, ErrIncompleteCandidates) {
+				return last, &OperationError{Stage: "freeze", Cause: err}
 			}
 			return last, fmt.Errorf("freeze archive candidates: %w", err)
 		}
@@ -251,7 +281,24 @@ func sameBlockedSelection(job Job, window observabilityvo.ArchiveRange, eligible
 }
 
 func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candidates []Candidate) (Job, error) {
-	if err := service.store.Create(job); err != nil {
+	var err error
+	if job.Kind == observabilityvo.ArchiveKindLog {
+		if preparer, ok := service.store.(LogCheckpointPreparer); ok {
+			job, err = preparer.PrepareLogCheckpoint(ctx, job, LogLimitsFromContext(ctx))
+		} else {
+			job, err = FitLogCheckpoint(job, LogLimitsFromContext(ctx), 8<<20)
+			if err == nil {
+				if job.BatchProgress != nil {
+					job.BatchProgress.CheckpointPrepared = false
+				}
+				err = service.store.Create(job)
+			}
+		}
+		if err != nil {
+			return Job{}, &OperationError{Stage: "prepare_checkpoint", Cause: err}
+		}
+		candidates = job.Candidates
+	} else if err = service.store.Create(job); err != nil {
 		return Job{}, err
 	}
 	manifestRef, err := service.objectStore.WriteAndVerify(ctx, job, candidates)
@@ -260,6 +307,18 @@ func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candida
 	}
 	if err != nil {
 		job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusFailed, err.Error(), service.now().UTC()
+		if job.Kind == observabilityvo.ArchiveKindLog {
+			job.ErrorMessage = "archive upload or readback verification failed; inspect objects under this job ID"
+		}
+		if job.Kind == observabilityvo.ArchiveKindLog && job.BatchProgress != nil {
+			stage := "upload_verify"
+			var operation *OperationError
+			if errors.As(err, &operation) {
+				stage = operation.Stage
+			}
+			job.BatchProgress.Stage = stage
+			job.BatchProgress.Failure = &Failure{Stage: stage}
+		}
 		_ = service.store.Update(job)
 		return job, err
 	}
@@ -267,9 +326,22 @@ func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candida
 	job.ManifestRef, job.Status, job.ErrorMessage, job.UpdatedAt = manifestRef, observabilityvo.ArchiveStatusCleanupIncomplete, "", service.now().UTC()
 	if job.BatchProgress != nil {
 		job.BatchProgress.VerifiedCount = job.CandidateCount
+		if job.Kind == observabilityvo.ArchiveKindLog {
+			job.BatchProgress.Stage = "cleanup"
+		}
 	}
 	if err := service.store.Update(job); err != nil {
-		return Job{}, err
+		if job.Kind != observabilityvo.ArchiveKindLog {
+			return Job{}, err
+		}
+		if job.BatchProgress != nil {
+			job.BatchProgress.Stage = "verified_checkpoint"
+			job.BatchProgress.Failure = &Failure{Stage: "verified_checkpoint"}
+		}
+		job.Status = observabilityvo.ArchiveStatusFailed
+		job.ErrorMessage = "archive object verified but checkpoint transition failed; source retained; inspect this job"
+		_ = service.store.Update(job)
+		return job, err
 	}
 	return service.cleanBatch(ctx, job)
 }
@@ -277,6 +349,13 @@ func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candida
 func (service *Service) cleanBatch(ctx context.Context, job Job) (Job, error) {
 	if err := service.source.Purge(ctx, job.Kind, job.Candidates); err != nil {
 		job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCleanupIncomplete, err.Error(), service.now().UTC()
+		if job.Kind == observabilityvo.ArchiveKindLog {
+			job.ErrorMessage = "archive cleanup incomplete; source versions may have changed; retry verified cleanup"
+		}
+		if job.Kind == observabilityvo.ArchiveKindLog && job.BatchProgress != nil {
+			job.BatchProgress.Stage = "cleanup"
+			job.BatchProgress.Failure = &Failure{Stage: "cleanup"}
+		}
 		if saveErr := service.store.Update(job); saveErr != nil {
 			return job, errors.Join(err, saveErr)
 		}
@@ -284,12 +363,31 @@ func (service *Service) cleanBatch(ctx context.Context, job Job) (Job, error) {
 	}
 	job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCompleted, "", service.now().UTC()
 	if job.BatchProgress != nil {
+		job.BatchProgress.Failure = nil
+		if job.Kind == observabilityvo.ArchiveKindLog {
+			job.BatchProgress.Stage = "completed"
+		}
+	}
+	if job.BatchProgress != nil {
 		job.BatchProgress.CleanedCount = job.CandidateCount
 		job.BatchProgress.CleanedInRun += job.CandidateCount
 		job.BatchProgress.RunComplete = job.BatchProgress.RemainingAtSelection == 0
 	}
 	if err := service.store.Update(job); err != nil {
-		return Job{}, err
+		if job.Kind != observabilityvo.ArchiveKindLog {
+			return Job{}, err
+		}
+		if job.BatchProgress != nil {
+			job.BatchProgress.Stage = "finalize"
+			job.BatchProgress.Failure = &Failure{Stage: "finalize"}
+			job.BatchProgress.CleanedInRun -= job.CandidateCount
+			job.BatchProgress.CleanedCount = 0
+			job.BatchProgress.RunComplete = false
+		}
+		job.Status = observabilityvo.ArchiveStatusCleanupIncomplete
+		job.ErrorMessage = "source cleanup finished but final status was not saved; retry verified cleanup"
+		_ = service.store.Update(job)
+		return job, err
 	}
 	return job, nil
 }
@@ -460,7 +558,7 @@ func storedJob(job Job) Job {
 		copy := *job.BatchProgress
 		job.BatchProgress = &copy
 	}
-	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete && !(job.BatchProgress != nil && job.BatchProgress.CheckpointPrepared && job.Status == observabilityvo.ArchiveStatusFailed) {
 		job.Candidates = nil
 	}
 	return job

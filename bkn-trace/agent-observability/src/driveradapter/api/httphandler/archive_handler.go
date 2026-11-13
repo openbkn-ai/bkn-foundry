@@ -60,6 +60,9 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 			return
 		}
 		job, err := handler.service.Create(r.Context(), kind)
+		if err != nil && writeLogArchiveFailure(w, r, job, err) {
+			return
+		}
 		if err != nil {
 			switch {
 			case errors.Is(err, archivesvc.ErrArchiveBusy):
@@ -135,6 +138,9 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	}
 	job, err := handler.service.RetryCleanup(r.Context(), parts[0])
 	if err != nil {
+		if writeLogArchiveFailure(w, r, job, err) {
+			return
+		}
 		if writeArchiveBlockage(w, r, job, err) {
 			return
 		}
@@ -142,6 +148,46 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
+}
+
+func writeLogArchiveFailure(w http.ResponseWriter, r *http.Request, job archivesvc.Job, err error) bool {
+	if errors.Is(err, archivesvc.ErrInvalidLogLimits) {
+		writeJSON(w, r, http.StatusServiceUnavailable, observabilityErrorEnvelope{Error: observabilityError{Code: "archive_configuration_invalid", Message: "log archive limits are invalid; ask the deployment owner to fix the configuration", RequiredAction: "fix_log_archive_configuration", RequestID: requestIDFromRequest(r), Details: struct {
+			JobID   string              `json:"archive_job_id,omitempty"`
+			Failure *archivesvc.Failure `json:"failure"`
+		}{job.ID, &archivesvc.Failure{Stage: "configuration"}}}})
+		return true
+	}
+	for _, known := range []error{archivesvc.ErrArchiveBusy, archivesvc.ErrArchivePayloadTooLarge, archivesvc.ErrIncompleteCandidates, archivesvc.ErrNothingToArchive, archivesvc.ErrCleanupRequired} {
+		if errors.Is(err, known) {
+			return false
+		}
+	}
+	var capacity *archivesvc.Failure
+	status := http.StatusInternalServerError
+	code := "archive_failed"
+	retryable := true
+	failure := capacity
+	var operation *archivesvc.OperationError
+	if !errors.Is(err, archivesvc.ErrIncompleteCandidates) && errors.As(err, &operation) {
+		failure = &archivesvc.Failure{Stage: operation.Stage}
+	}
+	if errors.As(err, &capacity) {
+		status = http.StatusConflict
+		code = "archive_capacity_exceeded"
+		retryable = false
+		failure = capacity
+	} else if job.Kind == observabilityvo.ArchiveKindLog && job.BatchProgress != nil && job.BatchProgress.Failure != nil {
+		failure = job.BatchProgress.Failure
+	}
+	if failure == nil {
+		return false
+	}
+	writeJSON(w, r, status, observabilityErrorEnvelope{Error: observabilityError{Code: code, Message: "log archive stopped; inspect the recorded stage and job before retrying", Retryable: retryable, RequiredAction: "inspect_log_archive", RequestID: requestIDFromRequest(r), Details: struct {
+		JobID   string              `json:"archive_job_id,omitempty"`
+		Failure *archivesvc.Failure `json:"failure"`
+	}{job.ID, failure}}})
+	return true
 }
 
 // Only advertise a persistent blocker after its failed job was saved. A failed
