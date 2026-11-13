@@ -1208,6 +1208,42 @@ func Test_GetStatus(t *testing.T) {
 			So(s.Hints, ShouldResemble, []interfaces.ProjectStatusHint{{Code: interfaces.HINT_CATALOGS_UNNAMED, Count: 2, Total: 2}})
 		})
 
+		Convey("On an existing network, only the tables drafting models count: none of them, no hint\n", func() {
+			gs := pmock.NewMockGitStore(ctrl)
+			svc.gs = gs
+			onNetwork := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1"}}}
+			// The network's object types read t_orders and t_regions, which have no description.
+			catalogTables["c1"] = []*interfaces.VegaTable{{ID: "t_orders", Name: "orders"}, {ID: "t_regions", Name: "regions"},
+				{ID: "t_new", Name: "shipments"}}
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/heads/project/p1").Return(existingNetwork(), nil).Times(2)
+			for _, c := range []struct {
+				description string
+				hints       []interfaces.ProjectStatusHint
+			}{{"", []interfaces.ProjectStatusHint{{Code: interfaces.HINT_CATALOGS_UNNAMED, Count: 1, Total: 1}}},
+				{"Shipments sent", []interfaces.ProjectStatusHint{}}} {
+				catalogTables["c1"][2].Description = c.description
+				ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(onNetwork, false, nil)
+				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+				ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+				s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(s.Hints, ShouldResemble, c.hints)
+			}
+
+			// What the network has cannot be read: the tables cannot be told apart, so no hint.
+			gs.EXPECT().ReadTree(gomock.Any(), "supply", "refs/heads/project/p1").Return(nil, errors.New("git down"))
+			catalogTables["c1"][2].Description = ""
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(onNetwork, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(s.Hints, ShouldBeEmpty)
+		})
+
 		Convey("A project the caller cannot see answers as the project service does\n", func() {
 			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).
 				Return(nil, false, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound))

@@ -409,7 +409,7 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 		bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
 			[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
 		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
-			[]*interfaces.KNCapability{{CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
+			[]*interfaces.KNCapability{{ID: "b1", CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
 		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(nil, nil)
 		bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(
 			[]*interfaces.KNObjectMetric{{ID: "m1", Name: "Late rate", OwnerObjectTypeID: "sales_order"}}, nil)

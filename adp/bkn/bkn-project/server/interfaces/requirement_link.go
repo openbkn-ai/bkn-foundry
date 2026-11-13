@@ -105,7 +105,9 @@ type LogicNeedsView struct {
 // Skill or an object metric. It is edited in the network, never in the project. NeedIDs are the
 // project's needs linked to it, the needs it covers.
 type LogicNetworkItem struct {
-	Type                string   `json:"type"`
+	Type string `json:"type"`
+	// Kind is the kind of need it implements: api for a function bound from an OpenAPI description.
+	Kind                string   `json:"kind"`
 	ID                  string   `json:"id"`
 	BoxID               string   `json:"box_id,omitempty"`
 	Name                string   `json:"name"`

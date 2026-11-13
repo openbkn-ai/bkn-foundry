@@ -112,6 +112,8 @@ type KNObjectMetric struct {
 // KNCapability is a capability bound to a network: a Skill, a function or API of a toolbox, or a
 // tool of an MCP server (BoxID is the toolbox or MCP server).
 type KNCapability struct {
+	// ID is the binding's: empty for a capability the model uses without the network mounting it.
+	ID             string `json:"id,omitempty"`
 	CapabilityType string `json:"capability_type"`
 	CapabilityID   string `json:"capability_id"`
 	BoxID          string `json:"box_id,omitempty"`

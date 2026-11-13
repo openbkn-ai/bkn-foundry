@@ -93,7 +93,7 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 	// Polled while drafting, which reads the catalogs itself.
 	// Before what is gone refuses the actions it stops, understanding among them.
 	if namingStages[status.Stage] {
-		s.withCatalogsHint(ctx, entry.Project, caller, status)
+		s.withCatalogsHint(ctx, entry, draft, caller, status)
 	}
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
 		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
@@ -118,9 +118,22 @@ var namingStages = map[string]bool{
 
 // withCatalogsHint reads, as the caller, the tables of the project's catalogs, and hints at
 // understanding them when more than unnamedTablesHintRatio of them have no description: only
-// semantic understanding or a person writes one. A read that fails gives no hint.
-func (s *draftService) withCatalogsHint(ctx context.Context, project *interfaces.Project,
-	caller interfaces.AccountInfo, status *interfaces.ProjectStatus) {
+// semantic understanding or a person writes one. Only the tables drafting models count: those the
+// network's existing object types read are modeled already, and named as the network names them.
+// A read that fails gives no hint.
+func (s *draftService) withCatalogsHint(ctx context.Context, entry *interfaces.ProjectEntry,
+	draft *interfaces.Draft, caller interfaces.AccountInfo, status *interfaces.ProjectStatus) {
+	project := entry.Project
+	var owned []string
+	if draft != nil {
+		owned = ownedPaths(draft.Items.Confirmation)
+	}
+	existing, err := s.existingItems(ctx, entry, owned)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read what the network of project %s has: %v", project.ID, err))
+		return
+	}
+	modeled := existingTableIDs(&existing)
 	total, unnamed := 0, 0
 	for _, catalogID := range project.CatalogIDs {
 		tables, err := s.va.ListTables(ctx, caller, catalogID)
@@ -129,6 +142,9 @@ func (s *draftService) withCatalogsHint(ctx context.Context, project *interfaces
 			return
 		}
 		for _, t := range tables {
+			if modeled[t.ID] {
+				continue
+			}
 			total++
 			if strings.TrimSpace(t.Description) == "" {
 				unnamed++

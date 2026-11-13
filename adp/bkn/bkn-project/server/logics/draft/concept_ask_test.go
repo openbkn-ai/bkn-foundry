@@ -45,7 +45,7 @@ func Test_UnderstoodConcepts(t *testing.T) {
 	Convey("Test naming table concepts by semantic understanding\n", t, func() {
 		ctx := context.Background()
 		draft := understoodDraft()
-		concepts := conceptsWith(ctx, "p1", draft, nil, false, understoodTables())
+		concepts := conceptsWith(ctx, "p1", draft, nil, false, understoodTables(), nil)
 
 		Convey("A table understood names its concept, the table's own name an alias and the source\n", func() {
 			c := conceptByKey(concepts, "object_types/erp_material")
@@ -68,14 +68,14 @@ func Test_UnderstoodConcepts(t *testing.T) {
 		Convey("A table discovered by vega 0.2.1 or later keeps its own name until understood\n", func() {
 			tables := understoodTables()
 			tables["r_vendor"].Name = "erp_vendor"
-			got := conceptsWith(ctx, "p1", draft, nil, false, tables)
+			got := conceptsWith(ctx, "p1", draft, nil, false, tables, nil)
 			So(conceptByKey(got, "object_types/erp_vendor").AI, ShouldBeFalse)
 			So(got.NotUnderstood, ShouldEqual, 1)
 		})
 
 		Convey("A name a person gave the object type stands\n", func() {
 			draft.Items.ObjectTypes[4].Name = "Material"
-			c := conceptByKey(conceptsWith(ctx, "p1", draft, nil, false, understoodTables()), "object_types/erp_material")
+			c := conceptByKey(conceptsWith(ctx, "p1", draft, nil, false, understoodTables(), nil), "object_types/erp_material")
 			So(c.Name, ShouldEqual, "Material")
 			So(c.Aliases, ShouldResemble, []string{"erp_material"})
 		})
@@ -93,7 +93,7 @@ func Test_CheckConceptRevision(t *testing.T) {
 		ctx := context.Background()
 		draft := understoodDraft()
 		draft.Items.DocumentConcepts = []*interfaces.DraftDocumentConcept{{ID: "c1", Name: "Ward", Verdict: interfaces.CONCEPT_VERDICT_PROPERTY}}
-		concepts := conceptsWith(ctx, "p1", draft, conceptRequirement(), true, understoodTables())
+		concepts := conceptsWith(ctx, "p1", draft, conceptRequirement(), true, understoodTables(), nil)
 		check := func(out conceptRevisionOutput) (*interfaces.DraftConceptRevision, string) {
 			return checkConceptRevision(ctx, &draft.Items, concepts, out)
 		}

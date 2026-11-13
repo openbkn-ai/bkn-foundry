@@ -76,7 +76,8 @@ func featureNotServed(err error) bool {
 
 // networkItems are the action types, functions, Skills and object metrics the live network has,
 // each with the needs linked to it; reason says some list could not be read, and what of the
-// others could is listed.
+// others could is listed. Functions and Skills are those the network mounts, as its statistics
+// count them: a tool its model only uses, as an action type runs one, is no capability of its own.
 func (r *liveReader) networkItems(needs []*interfaces.RequirementLogicNeed) ([]*interfaces.LogicNetworkItem, string) {
 	items := []*interfaces.LogicNetworkItem{}
 	reason := ""
@@ -89,8 +90,8 @@ func (r *liveReader) networkItems(needs []*interfaces.RequirementLogicNeed) ([]*
 		failed(err)
 	} else {
 		for _, a := range actionTypes {
-			items = append(items, &interfaces.LogicNetworkItem{Type: interfaces.LOGIC_LINK_ACTION_TYPE, ID: a.ID,
-				Name: a.Name, OwnerObjectTypeID: a.ObjectTypeID})
+			items = append(items, &interfaces.LogicNetworkItem{Type: interfaces.LOGIC_LINK_ACTION_TYPE,
+				Kind: interfaces.LOGIC_NEED_ACTION_TYPE, ID: a.ID, Name: a.Name, OwnerObjectTypeID: a.ObjectTypeID})
 		}
 	}
 	for _, linkType := range []string{interfaces.LOGIC_LINK_FUNCTION, interfaces.LOGIC_LINK_SKILL} {
@@ -100,7 +101,14 @@ func (r *liveReader) networkItems(needs []*interfaces.RequirementLogicNeed) ([]*
 			continue
 		}
 		for _, c := range capabilities {
-			items = append(items, &interfaces.LogicNetworkItem{Type: linkType, ID: c.CapabilityID, BoxID: c.BoxID,
+			if c.ID == "" {
+				continue
+			}
+			kind := networkNeedKind(linkType)
+			if c.MetadataType == capabilityMetadataType(interfaces.LOGIC_NEED_API) {
+				kind = interfaces.LOGIC_NEED_API
+			}
+			items = append(items, &interfaces.LogicNetworkItem{Type: linkType, Kind: kind, ID: c.CapabilityID, BoxID: c.BoxID,
 				Name: c.Name, Description: c.Description})
 		}
 	}
@@ -110,7 +118,8 @@ func (r *liveReader) networkItems(needs []*interfaces.RequirementLogicNeed) ([]*
 		}
 	} else {
 		for _, m := range metrics {
-			items = append(items, &interfaces.LogicNetworkItem{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: m.ID,
+			items = append(items, &interfaces.LogicNetworkItem{Type: interfaces.LOGIC_LINK_OBJECT_METRIC,
+				Kind: interfaces.LOGIC_NEED_METRIC, ID: m.ID,
 				Name: m.Name, Description: m.Description, OwnerObjectTypeID: m.OwnerObjectTypeID,
 				OwnerObjectTypeName: m.OwnerObjectTypeName})
 		}
@@ -157,7 +166,11 @@ func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem, model map[strin
 	out := []messageLogicNeed{}
 	for _, i := range order[:min(len(order), maxMessageNetworkItems)] {
 		item := items[i]
-		n := messageLogicNeed{ID: networkItemPrefix + strconv.Itoa(i+1), Kind: networkNeedKind(item.Type),
+		kind := item.Kind
+		if kind == "" {
+			kind = networkNeedKind(item.Type)
+		}
+		n := messageLogicNeed{ID: networkItemPrefix + strconv.Itoa(i+1), Kind: kind,
 			Name: item.Name, Definition: item.Description}
 		if item.OwnerObjectTypeID != "" {
 			n.ObjectTypeIDs = []string{item.OwnerObjectTypeID}
