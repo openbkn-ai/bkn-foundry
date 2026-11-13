@@ -36,6 +36,7 @@ const (
 	BknProject_Draft_Drafting                    = "BknProject.Draft.Drafting"
 	BknProject_Draft_ProjectArchived             = "BknProject.Draft.ProjectArchived"
 	BknProject_Draft_ExistingItem                = "BknProject.Draft.ExistingItem"
+	BknProject_Draft_CrossBindingMerge           = "BknProject.Draft.CrossBindingMerge"
 	BknProject_Draft_NotReady                    = "BknProject.Draft.NotReady"
 	BknProject_Draft_Stale                       = "BknProject.Draft.Stale"
 	BknProject_Draft_HasDecisions                = "BknProject.Draft.HasDecisions"
@@ -117,6 +118,7 @@ var (
 		BknProject_Draft_ItemNotFound,
 		BknProject_Draft_ProjectArchived,
 		BknProject_Draft_ExistingItem,
+		BknProject_Draft_CrossBindingMerge,
 		BknProject_Draft_NotReady,
 		BknProject_Draft_Stale,
 		BknProject_Draft_HasDecisions,

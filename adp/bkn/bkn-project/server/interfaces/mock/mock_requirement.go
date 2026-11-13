@@ -891,6 +891,21 @@ func (mr *MockRequirementServiceMockRecorder) MapConcept(ctx, token, projectID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MapConcept", reflect.TypeOf((*MockRequirementService)(nil).MapConcept), ctx, token, projectID, conceptID, mapping, caller)
 }
 
+// MatchConcept mocks base method.
+func (m *MockRequirementService) MatchConcept(ctx context.Context, token, projectID, conceptID string, edit interfaces.RequirementMatchEdit, caller interfaces.AccountInfo) (*interfaces.Requirement, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MatchConcept", ctx, token, projectID, conceptID, edit, caller)
+	ret0, _ := ret[0].(*interfaces.Requirement)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MatchConcept indicates an expected call of MatchConcept.
+func (mr *MockRequirementServiceMockRecorder) MatchConcept(ctx, token, projectID, conceptID, edit, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MatchConcept", reflect.TypeOf((*MockRequirementService)(nil).MatchConcept), ctx, token, projectID, conceptID, edit, caller)
+}
+
 // RecordTests mocks base method.
 func (m *MockRequirementService) RecordTests(ctx context.Context, caller interfaces.AccountInfo, projectID string, questionIDs []string) (map[string]*interfaces.ScenarioTest, error) {
 	m.ctrl.T.Helper()

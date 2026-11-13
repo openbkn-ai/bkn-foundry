@@ -243,7 +243,10 @@ type RequirementConcept struct {
 	Definition        string `json:"definition"`
 	NotOntologyReason string `json:"not_ontology_reason,omitempty"`
 	// MapsTo is the drafted item the concept is, when it is one.
-	MapsTo           *RequirementItemRef   `json:"maps_to,omitempty"`
+	MapsTo *RequirementItemRef `json:"maps_to,omitempty"`
+	// Match is the data the concept is matched to on the concepts page, as AI proposed it or a
+	// person set it; absent until either did.
+	Match            *RequirementMatch     `json:"match,omitempty"`
 	Citations        []RequirementCitation `json:"citations"`
 	SupplementReason string                `json:"supplement_reason,omitempty"`
 	// Source is documents for a concept the concepts run extracted, scenarios for one scenario
@@ -251,6 +254,39 @@ type RequirementConcept struct {
 	// extracted on their own.
 	Source string `json:"source,omitempty"`
 	Edited bool   `json:"edited"`
+}
+
+// What a requirement concept is matched to: a table of the project's catalogs, or an object type
+// of the draft, such as one a knowledge-base extraction drafted.
+const (
+	REQUIREMENT_MATCH_TABLE       = "table"
+	REQUIREMENT_MATCH_OBJECT_TYPE = "object_type"
+)
+
+// RequirementMatchTarget names what a requirement concept is matched to: Kind is
+// REQUIREMENT_MATCH_TABLE or REQUIREMENT_MATCH_OBJECT_TYPE, ID the table's or object type's.
+type RequirementMatchTarget struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+// RequirementMatch is the data a requirement concept is matched to. Target is absent when
+// nothing in the data is it; Basis says why either way. By is ai or person; Confirmed is set once
+// a person confirmed the match or chose it, Excluded once they left the concept out.
+type RequirementMatch struct {
+	Target    *RequirementMatchTarget `json:"target,omitempty"`
+	Basis     string                  `json:"basis,omitempty"`
+	By        string                  `json:"by"`
+	Confirmed bool                    `json:"confirmed,omitempty"`
+	Excluded  bool                    `json:"excluded,omitempty"`
+}
+
+// RequirementMatchEdit is the body of matching a requirement concept, on the specification read:
+// Target what it is matched to, null for nothing in the data yet; Excluded leaves it out instead.
+type RequirementMatchEdit struct {
+	UpdateTime int64                   `json:"update_time"`
+	Target     *RequirementMatchTarget `json:"target"`
+	Excluded   bool                    `json:"excluded"`
 }
 
 // Where a concept comes from.
@@ -872,6 +908,11 @@ type RequirementService interface {
 	// MapConcept sets or clears the drafted item a concept is; the needs of the questions that
 	// follow their concepts follow.
 	MapConcept(ctx context.Context, token string, projectID string, conceptID string, mapping RequirementMapping,
+		caller AccountInfo) (*Requirement, error)
+	// MatchConcept sets what data a concept is matched to, as a person confirms or chooses it, or
+	// leaves it out; a concept is never an item of its own. The drafted object type the match
+	// names becomes the concept's mapping.
+	MatchConcept(ctx context.Context, token string, projectID string, conceptID string, edit RequirementMatchEdit,
 		caller AccountInfo) (*Requirement, error)
 	// ResolveConflict records the owner's resolution of a conflict between documents, or that it
 	// was handed to the business to confirm.

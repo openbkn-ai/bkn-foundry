@@ -217,6 +217,9 @@ func (r *restHandler) DeleteRequirementItemByEx(c *gin.Context) {
 func (r *restHandler) MapRequirementConceptByEx(c *gin.Context) {
 	r.withExVisitor(c, r.MapRequirementConcept)
 }
+func (r *restHandler) MatchRequirementConceptByEx(c *gin.Context) {
+	r.withExVisitor(c, r.MatchRequirementConcept)
+}
 func (r *restHandler) ResolveRequirementConflictByEx(c *gin.Context) {
 	r.withExVisitor(c, r.ResolveRequirementConflict)
 }
@@ -394,6 +397,14 @@ func (r *restHandler) DeleteRequirementItem(c *gin.Context, visitor hydra.Visito
 func (r *restHandler) MapRequirementConcept(c *gin.Context, visitor hydra.Visitor) {
 	replySpec(c, http.StatusOK, func(ctx context.Context, mapping interfaces.RequirementMapping) (*interfaces.Requirement, error) {
 		return r.rqs.MapConcept(ctx, visitor.TokenID, c.Param("project_id"), c.Param("concept_id"), mapping,
+			visitorAccount(visitor))
+	})
+}
+
+// MatchRequirementConcept serves PUT /projects/{project_id}/requirements/concepts/{concept_id}/match.
+func (r *restHandler) MatchRequirementConcept(c *gin.Context, visitor hydra.Visitor) {
+	replySpec(c, http.StatusOK, func(ctx context.Context, edit interfaces.RequirementMatchEdit) (*interfaces.Requirement, error) {
+		return r.rqs.MatchConcept(ctx, visitor.TokenID, c.Param("project_id"), c.Param("concept_id"), edit,
 			visitorAccount(visitor))
 	})
 }
