@@ -575,7 +575,7 @@ func (h *toolBoxHandler) DebugTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	err = c.ShouldBindJSON(req)
+	err = utils.BindPreciseJSON(c, req)
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
@@ -612,7 +612,7 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	err = c.ShouldBindJSON(req)
+	err = utils.BindPreciseJSON(c, req)
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)

@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,37 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
+
+func TestForwarderPreservesLargeJSONIntegers(t *testing.T) {
+	f := newTestForwarder()
+	request := &interfaces.HTTPRequest{
+		HTTPRouter: interfaces.HTTPRouter{URL: "http://example.test/function", Method: http.MethodPost},
+		HTTPRequestParams: interfaces.HTTPRequestParams{
+			Body: map[string]any{"payload": map[string]any{"large_integer": json.Number("9007199254740993")}},
+		},
+	}
+	httpRequest, err := f.buildRequest(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readAll(t, httpRequest.Body); !strings.Contains(got, `"large_integer":9007199254740993`) {
+		t.Fatalf("forwarded body = %s", got)
+	}
+
+	response := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"payload":{"large_integer":9007199254740993}}`)),
+	}
+	parsed, err := f.processResponse(response, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := parsed.Body.(map[string]any)["payload"].(map[string]any)["large_integer"]
+	if value != json.Number("9007199254740993") {
+		t.Fatalf("result large_integer = %#v (%T)", value, value)
+	}
+}
 
 // newTestForwarder manually assembles the forwarder to avoid NewForwarder/NewClientPool from reading the configuration file.
 func newTestForwarder() *forwarder {

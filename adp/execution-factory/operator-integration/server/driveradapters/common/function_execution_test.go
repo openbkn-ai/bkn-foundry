@@ -6,6 +6,7 @@ package common
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,35 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+func TestFunctionExecuteProxyPreservesLargeIntegerEvent(t *testing.T) {
+	const version = "11111111-1111-4111-8111-111111111111"
+	ctrl := gomock.NewController(t)
+	service, metadata := mocks.NewMockIMetadataService(ctrl), mocks.NewMockIMetadataDB(ctrl)
+	service.EXPECT().CheckMetadataExists(gomock.Any(), interfaces.MetadataTypeFunc, version).Return(true, metadata, nil)
+	metadata.EXPECT().GetScriptType().Return(string(interfaces.ScriptTypePython))
+	metadata.EXPECT().GetCode().Return("def handler(event): return event")
+	metadata.EXPECT().GetDependencies().Return("")
+	metadata.EXPECT().GetDependenciesURL().Return("")
+	pool := functionTimeoutSessionPool{execute: func(req *interfaces.ExecuteCodeReq) *interfaces.ExecuteCodeResp {
+		value := req.Event["payload"].(map[string]any)["large_integer"]
+		if value != json.Number("9007199254740993") {
+			t.Fatalf("function event large_integer = %#v (%T)", value, value)
+		}
+		return &interfaces.ExecuteCodeResp{Status: "completed", ReturnValue: req.Event}
+	}}
+	handler := &unifiedProxyHandler{Logger: logger.DefaultLogger(), MetadataService: service, SessionPool: pool}
+	engine := gin.New()
+	engine.POST("/function/exec/:version", handler.FunctionExecuteProxy)
+	request := httptest.NewRequest(http.MethodPost, "/function/exec/"+version,
+		strings.NewReader(`{"payload":{"large_integer":9007199254740993}}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"large_integer":9007199254740993`) {
+		t.Fatalf("function response: %d %s", response.Code, response.Body.String())
+	}
+}
 
 func TestFunctionRuntimeProvesTheExactCodePassedToExecution(t *testing.T) {
 	const version = "11111111-1111-4111-8111-111111111111"

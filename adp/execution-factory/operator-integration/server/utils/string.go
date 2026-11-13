@@ -1,8 +1,30 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+
 	jsoniter "github.com/json-iterator/go"
 )
+
+// UnmarshalPreciseJSON preserves dynamic numbers and requires one complete JSON value.
+func UnmarshalPreciseJSON(data []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
 
 // ObjectToJSON converts objects to JSON strings.
 func ObjectToJSON(obj interface{}) string {

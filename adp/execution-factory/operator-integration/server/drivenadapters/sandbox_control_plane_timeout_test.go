@@ -2,6 +2,7 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -10,6 +11,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+func TestExecuteCodeSyncPreservesLargeIntegerReturnValue(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	executeHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	executeHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(http.StatusOK, []byte(`{"status":"completed","return_value":{"payload":{"large_integer":9007199254740993}}}`), nil)
+	client := &sandBoxControlPlaneClient{
+		baseURL: "http://sandbox/api/v1", logger: logger.DefaultLogger(),
+		httpClient: mocks.NewMockHTTPClient(ctrl), executeHTTPClient: executeHTTPClient,
+	}
+	response, err := client.ExecuteCodeSync(context.Background(), "s1", &interfaces.ExecuteCodeReq{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := response.ReturnValue.(map[string]any)["payload"].(map[string]any)["large_integer"]
+	if value != json.Number("9007199254740993") {
+		t.Fatalf("return_value large_integer = %#v (%T)", value, value)
+	}
+}
 
 func TestExecuteCodeSyncAllowsSandboxTimeoutResponse(t *testing.T) {
 	for _, tc := range []struct {

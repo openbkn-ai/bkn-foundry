@@ -8,6 +8,7 @@ package action_logs
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -88,6 +89,39 @@ func Test_mapToActionExecution(t *testing.T) {
 			So(exec, ShouldNotBeNil)
 			So(exec.ID, ShouldEqual, "")
 		})
+
+		Convey("preserves large integers in action snapshots", func() {
+			values := []any{
+				json.Number("9007199254740991"),
+				json.Number("9007199254740992"),
+				json.Number("9007199254740993"),
+				json.Number("-9007199254740993"),
+				json.Number("9223372036854775807"),
+				json.Number("-9223372036854775808"),
+			}
+			exec, err := mapToActionExecution(map[string]any{
+				"id": "exec_123",
+				"action_type_snapshot": map[string]any{
+					"parameters": []any{map[string]any{"value": map[string]any{
+						"large_values": values,
+						"zero":         json.Number("0"),
+						"decimal":      json.Number("1.25"),
+						"false_value":  false,
+						"empty":        []any{},
+						"text":         "中文",
+					}}},
+				},
+			})
+			So(err, ShouldBeNil)
+			parameters := exec.ActionTypeSnapshot["parameters"].([]any)
+			value := parameters[0].(map[string]any)["value"].(map[string]any)
+			So(value["large_values"], ShouldResemble, values)
+			So(value["zero"], ShouldEqual, json.Number("0"))
+			So(value["decimal"], ShouldEqual, json.Number("1.25"))
+			So(value["false_value"], ShouldEqual, false)
+			So(value["empty"], ShouldResemble, []any{})
+			So(value["text"], ShouldEqual, "中文")
+		})
 	})
 }
 
@@ -150,8 +184,9 @@ func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
 				captured, _ = q.(map[string]any)
 				return []interfaces.Hit{{Source: map[string]any{
-					"id":     "exec_123",
-					"status": "completed",
+					"id":             "exec_123",
+					"status":         "completed",
+					"dynamic_params": map[string]any{"large_integer": json.Number("9007199254740993")},
 				}}}, nil
 			})
 
@@ -160,6 +195,7 @@ func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		So(len(res.Entries), ShouldEqual, 1)
+		So(res.Entries[0].DynamicParams["large_integer"], ShouldEqual, json.Number("9007199254740993"))
 
 		source, ok := captured["_source"].(map[string]any)
 		So(ok, ShouldBeTrue)

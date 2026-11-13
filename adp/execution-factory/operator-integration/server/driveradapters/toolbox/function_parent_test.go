@@ -2,6 +2,7 @@ package toolbox
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,41 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+func TestToolExecutionPreservesLargeJSONIntegers(t *testing.T) {
+	for _, method := range []string{"debug", "execute"} {
+		t.Run(method, func(t *testing.T) {
+			service := mocks.NewMockIToolService(gomock.NewController(t))
+			check := func(_ context.Context, req *interfaces.ExecuteToolReq) (*interfaces.HTTPResponse, error) {
+				payload := req.Body.(map[string]any)["payload"].(map[string]any)
+				if got := payload["large_integer"]; got != json.Number("9007199254740993") {
+					t.Fatalf("large_integer = %#v (%T)", got, got)
+				}
+				return &interfaces.HTTPResponse{StatusCode: http.StatusOK}, nil
+			}
+			if method == "debug" {
+				service.EXPECT().DebugTool(gomock.Any(), gomock.Any()).DoAndReturn(check)
+			} else {
+				service.EXPECT().ExecuteTool(gomock.Any(), gomock.Any()).DoAndReturn(check)
+			}
+			handler := &toolBoxHandler{ToolService: service}
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"body":{"payload":{"large_integer":9007199254740993}}}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("user_id", "user_1")
+			c.Params = gin.Params{{Key: "box_id", Value: "box_1"}, {Key: "tool_id", Value: "tool_1"}}
+			if method == "debug" {
+				handler.DebugTool(c)
+			} else {
+				handler.ExecuteTool(c)
+			}
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
 
 func TestExecuteToolCapturesFunctionParentFromRequest(t *testing.T) {
 	ctrl := gomock.NewController(t)

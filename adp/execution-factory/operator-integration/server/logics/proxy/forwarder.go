@@ -504,7 +504,7 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*
 	var responseBody interface{}
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/json") {
-		if err := json.Unmarshal(body, &responseBody); err != nil {
+		if err := utils.UnmarshalPreciseJSON(body, &responseBody); err != nil {
 			// If parsing fails, use the original response body.
 			responseBody = string(body)
 		}
