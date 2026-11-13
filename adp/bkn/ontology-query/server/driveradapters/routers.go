@@ -34,6 +34,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
 	queryauthorization "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/query_authorization"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version"
 )
@@ -43,29 +44,31 @@ type RestHandler interface {
 }
 
 type restHandler struct {
-	appSetting *common.AppSetting
-	as         interfaces.AuthService
-	als        interfaces.ActionLogsService
-	ass        interfaces.ActionSchedulerService
-	ats        interfaces.ActionTypeService
-	kns        interfaces.KnowledgeNetworkService
-	oms        interfaces.ObjectMetricQueryServiceV1
-	ots        interfaces.ObjectTypeService
-	qas        interfaces.QueryAuthorizationService
-	oma        interfaces.OntologyManagerAccess
+	appSetting            *common.AppSetting
+	as                    interfaces.AuthService
+	als                   interfaces.ActionLogsService
+	ass                   interfaces.ActionSchedulerService
+	ats                   interfaces.ActionTypeService
+	kns                   interfaces.KnowledgeNetworkService
+	oms                   interfaces.ObjectMetricQueryServiceV1
+	ots                   interfaces.ObjectTypeService
+	qas                   interfaces.QueryAuthorizationService
+	actionReadPermissions interfaces.ActionExecutionPermissionService
+	oma                   interfaces.OntologyManagerAccess
 }
 
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	r := &restHandler{
-		appSetting: appSetting,
-		als:        action_logs.NewActionLogsService(appSetting),
-		as:         auth.NewAuthService(appSetting),
-		ass:        action_scheduler.NewActionSchedulerService(appSetting),
-		ats:        action_type.NewActionTypeService(appSetting),
-		kns:        knowledge_network.NewKnowledgeNetworkService(appSetting),
-		ots:        object_type.NewObjectTypeService(appSetting),
-		qas:        queryauthorization.NewQueryAuthorizationService(appSetting),
-		oma:        logics.OMA,
+		appSetting:            appSetting,
+		als:                   action_logs.NewActionLogsService(appSetting),
+		as:                    auth.NewAuthService(appSetting),
+		ass:                   action_scheduler.NewActionSchedulerService(appSetting),
+		ats:                   action_type.NewActionTypeService(appSetting),
+		kns:                   knowledge_network.NewKnowledgeNetworkService(appSetting),
+		ots:                   object_type.NewObjectTypeService(appSetting),
+		qas:                   queryauthorization.NewQueryAuthorizationService(appSetting),
+		actionReadPermissions: permission.NewPermissionService(appSetting),
+		oma:                   logics.OMA,
 	}
 	return r
 }
