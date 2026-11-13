@@ -172,7 +172,7 @@ func TestTraceArchiveSQLBudgetKeepsSafePrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	now := time.Now().UTC()
 	m.ExpectQuery(`SELECT COUNT\(\*\)`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 	m.ExpectQuery(`SELECT interaction_id .*LIMIT \?`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("small").AddRow("large").AddRow("suffix")).RowsWillBeClosed()
