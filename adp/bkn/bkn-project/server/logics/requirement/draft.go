@@ -514,15 +514,23 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 	return objectTypes, relationTypes, propertiesOmitted
 }
 
-// buildDraftMessage is the message of pass draft over base, the specification drafting adds to. It
-// also returns how many tables, and how many properties of object types, it left out.
+// buildDraftMessage is the message of pass draft over base, the specification drafting adds to,
+// with the kinetic items the network already has that no need of base stands for among its kinetic
+// needs. It also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
-	draft *interfaces.Draft, base *interfaces.RequirementSpec, kept *interfaces.RequirementSpec) (string, int, int, error) {
+	draft *interfaces.Draft, base *interfaces.RequirementSpec, kept *interfaces.RequirementSpec,
+	networkItems []*interfaces.LogicNetworkItem) (string, int, int, error) {
 	msg := draftMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(base.Concepts),
 		Rules: messageRulesOf(base.Rules), LogicNeeds: messageLogicNeedsOf(base.LogicNeeds), Kept: messageKeptOf(kept)}
 	var tablesOmitted, propertiesOmitted int
 	msg.Tables, tablesOmitted = messageTablesOf(tables)
 	msg.ObjectTypes, msg.RelationTypes, propertiesOmitted = messageOntologyOf(draft, true)
+	model := map[string]bool{}
+	for _, ot := range msg.ObjectTypes {
+		model[ot.ID] = true
+	}
+	fromNetwork, _ := messageNetworkItemsOf(networkItems, model)
+	msg.LogicNeeds = append(msg.LogicNeeds, fromNetwork...)
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return "", 0, 0, err
@@ -1029,8 +1037,10 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	project := entry.Project
 	// Scenarios may cite the network's background too; it is read now, with the caller's token.
 	cited := s.withBackground(ctx, token, entry, docs)
+	// Scenarios rest on what the network already does too: its kinetic items are read now, as the caller.
+	networkItems := s.scenarioNetworkItems(ctx, token, entry.KNID, base)
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, docs, cited, caller) })
+	s.run(func() { s.draft(runCtx, req, project, docs, cited, networkItems, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -1069,7 +1079,8 @@ func (s *requirementService) listTables(ctx context.Context, project *interfaces
 // What drafting started from stays when it fails. The Agent reads and cites cited, the documents
 // and the network's background; the run records the documents as its inputs.
 func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
-	docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument, caller interfaces.AccountInfo) {
+	docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument,
+	networkItems []*interfaces.LogicNetworkItem, caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
 		done.Status, done.Error, done.Spec, done.Inputs, done.UpdateTime = status, failure, *spec, inputs, s.now()
@@ -1091,7 +1102,8 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		fail(failureInterrupted, fmt.Errorf("read draft: %v", err))
 		return
 	}
-	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base)
+	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base,
+		networkItems)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return
@@ -1107,7 +1119,10 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 	}
 
 	spec := cloneSpec(&base)
-	buildSpec(answer.(*draftOutput), documentsByID(cited), draft, spec)
+	out := answer.(*draftOutput)
+	fromNetwork := needsOfNetworkItems(out, spec, networkItems, draft, caller, s.now())
+	buildSpec(out, documentsByID(cited), draft, spec)
+	leaveUnasked(spec, fromNetwork)
 	for _, q := range spec.Questions {
 		if q.DraftTime == 0 {
 			q.DraftTime = req.CreateTime
