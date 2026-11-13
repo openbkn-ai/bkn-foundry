@@ -154,6 +154,13 @@ func Test_RequirementMatches(t *testing.T) {
 			So(requirementByID(concepts, "k5"), ShouldBeNil)
 		})
 
+		Convey("A person takes a concept judged no part of the ontology back in: it waits for data\n", func() {
+			req := matchRequirement()
+			req.Spec.Concepts[3].Match = &interfaces.RequirementMatch{By: interfaces.REQUIREMENT_MATCH_BY_PERSON}
+			got := conceptsOf(context.Background(), "p1", matchDraft(), req, true)
+			So(requirementByID(got, "k4").State, ShouldEqual, interfaces.REQUIREMENT_MATCH_UNMATCHED)
+		})
+
 		Convey("Before drafting, AI's match names a table's candidate\n", func() {
 			before := &beforeDrafting{tables: []*interfaces.VegaTable{{ID: "r_items", Name: "items"}}}
 			got := projectConcepts(context.Background(), "p1", nil, matchRequirement(), true, nil, before, nil)

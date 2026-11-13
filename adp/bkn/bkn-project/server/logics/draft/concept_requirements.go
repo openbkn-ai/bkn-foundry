@@ -137,7 +137,8 @@ func requirementMatches(concepts []*interfaces.RequirementConcept, byKey map[str
 		switch {
 		case m != nil && m.Excluded:
 			entry.State = interfaces.REQUIREMENT_MATCH_EXCLUDED
-		case entry.Match == nil && rc.Category == "not_ontology":
+		case entry.Match == nil && rc.Category == "not_ontology" && (m == nil || m.By != interfaces.REQUIREMENT_MATCH_BY_PERSON):
+			// Judged no part of the ontology, until a person takes it back in.
 			entry.State = interfaces.REQUIREMENT_MATCH_EXCLUDED
 			if entry.Basis == "" {
 				entry.Basis = rc.NotOntologyReason
