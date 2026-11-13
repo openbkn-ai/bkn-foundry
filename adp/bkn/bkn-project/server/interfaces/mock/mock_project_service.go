@@ -102,6 +102,18 @@ func (mr *MockProjectServiceMockRecorder) ListProjects(ctx, token, archived, nam
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjects", reflect.TypeOf((*MockProjectService)(nil).ListProjects), ctx, token, archived, name, limit, offset, cursor)
 }
 
+// ResolveCatalogs mocks base method.
+func (m *MockProjectService) ResolveCatalogs(ctx context.Context, token string, entry *interfaces.ProjectEntry, caller interfaces.AccountInfo) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ResolveCatalogs", ctx, token, entry, caller)
+}
+
+// ResolveCatalogs indicates an expected call of ResolveCatalogs.
+func (mr *MockProjectServiceMockRecorder) ResolveCatalogs(ctx, token, entry, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveCatalogs", reflect.TypeOf((*MockProjectService)(nil).ResolveCatalogs), ctx, token, entry, caller)
+}
+
 // SetProjectArchived mocks base method.
 func (m *MockProjectService) SetProjectArchived(ctx context.Context, token, id string, archived bool, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
 	m.ctrl.T.Helper()

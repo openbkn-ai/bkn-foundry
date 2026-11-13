@@ -333,6 +333,7 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 		return nil, err
 	}
 	project := entry.Project
+	catalogIDs := s.catalogsOf(ctx, token, entry, caller)
 	// The network's background is read and cited beside the documents; it neither starts a run
 	// nor counts toward their size, nor makes the specification stale.
 	cited := s.withBackground(ctx, token, entry, docs)
@@ -343,7 +344,7 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	}
 	// Tables are clues: they are listed in the background, as the caller.
 	p.prepareMessage = func(ctx context.Context) (string, error) {
-		tables, _ := s.listTables(ctx, project, caller)
+		tables, _ := s.listTables(ctx, catalogIDs, caller)
 		return buildConceptsMessage(project.NamingLanguage, cited, tables, draft, spec)
 	}
 	var types map[string]string

@@ -20,6 +20,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 func Test_ProjectStatus(t *testing.T) {
@@ -947,6 +948,42 @@ func Test_GetStatus(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(action(s, interfaces.ACTION_SET_CATALOGS).Reason, ShouldEqual, interfaces.ACTION_REASON_NOT_OWNER)
 			So(len(s.NextActions), ShouldEqual, 2)
+		})
+
+		Convey("On an existing network the catalogs follow it: a gone catalog the project kept from before blocks nothing\n", func() {
+			// The sample was installed again: the network now reads catalog c-new, and c1 is gone.
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "supply").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "orders", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r-orders"}},
+			}, nil)
+			pcDA := pmock.NewMockDraftAccess(ctrl)
+			pcDA.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			pcVA := pmock.NewMockVegaAccess(ctrl)
+			pcVA.EXPECT().GetTables(gomock.Any(), caller, []string{"r-orders"}).
+				Return([]*interfaces.VegaTable{{ID: "r-orders", CatalogID: "c-new"}}, nil)
+			pcVA.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return([]string{"c1"}, nil)
+			svc.pc = &logics.ProjectCatalogs{BBA: bba, VA: pcVA, DA: pcDA}
+			stored := &interfaces.ProjectEntry{Project: &interfaces.Project{
+				ID: "p1", KNID: "supply", Branch: "project/p1", Owner: caller, CatalogIDs: []string{"c1"},
+			}}
+			// The project asks vega about the catalog the network reads, not the one it kept.
+			own := pmock.NewMockVegaAccess(ctrl)
+			own.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c-new"}).Return(nil, nil)
+			own.EXPECT().ListTables(gomock.Any(), caller, "c-new").Return(nil, nil)
+			svc.va = own
+			ps.EXPECT().GetProjectForStatus(gomock.Any(), token, "p1", caller).Return(stored, false, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+			So(s.DataSources.Catalogs.Total, ShouldEqual, 1)
+			for _, b := range s.Blockers {
+				So(b.Code, ShouldNotEqual, interfaces.BLOCKER_CATALOG_MISSING)
+			}
+			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Allowed, ShouldBeTrue)
 		})
 
 		Convey("A vega that does not answer is unreachable and blocks nothing\n", func() {

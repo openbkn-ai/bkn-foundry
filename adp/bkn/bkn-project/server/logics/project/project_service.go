@@ -49,11 +49,14 @@ type projectService struct {
 	kva interfaces.KNVersionAccess
 	ls  interfaces.LineageService
 	va  interfaces.VegaAccess
+	// pc reads the catalogs a project on an existing network takes from it.
+	pc *logics.ProjectCatalogs
 }
 
 func NewProjectService() interfaces.ProjectService {
 	psOnce.Do(func() {
-		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, kva: logics.KVA, ls: lineage.NewLineageService(), va: logics.VA}
+		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, kva: logics.KVA, ls: lineage.NewLineageService(), va: logics.VA,
+			pc: logics.NewProjectCatalogs()}
 	})
 	return ps
 }
@@ -310,12 +313,27 @@ func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, i
 		span.SetStatus(codes.Error, "Not the owner")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
 	}
+	// The catalogs the network reads are the project's anyway: only those the owner adds are stored.
+	var network []string
+	if s.pc != nil {
+		if network, err = s.pc.NetworkCatalogs(ctx, token, caller, project); err != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Read the catalogs the network of project %s reads: %v", id, err))
+		}
+		catalogIDs = slices.DeleteFunc(catalogIDs, func(c string) bool { return slices.Contains(network, c) })
+	}
 	if !slices.Equal(project.CatalogIDs, catalogIDs) {
 		// Drafting refuses a deleted catalog; setting it would only lead there.
 		missing, err := s.va.MissingCatalogs(ctx, caller, catalogIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Check catalogs failed")
 			return nil, internalError(ctx, "Check catalogs failed", err)
+		}
+		if len(network) > 0 {
+			// On an existing network a gone catalog the project kept from before is dropped, as
+			// reading the project drops it.
+			gone := missing
+			missing = slices.DeleteFunc(slices.Clone(gone), func(c string) bool { return slices.Contains(project.CatalogIDs, c) })
+			catalogIDs = slices.DeleteFunc(catalogIDs, func(c string) bool { return slices.Contains(gone, c) })
 		}
 		if len(missing) > 0 {
 			span.SetStatus(codes.Error, "Catalog missing")
@@ -334,8 +352,14 @@ func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, i
 		span.SetStatus(codes.Error, "Count projects failed")
 		return nil, internalError(ctx, "Count projects failed", err)
 	}
+	s.ResolveCatalogs(ctx, token, entries[0], caller)
 	span.SetStatus(codes.Ok, "")
 	return entries[0], nil
+}
+
+func (s *projectService) ResolveCatalogs(ctx context.Context, token string, entry *interfaces.ProjectEntry,
+	caller interfaces.AccountInfo) {
+	s.pc.Resolve(ctx, token, caller, entry)
 }
 
 func (s *projectService) SetProjectNamingLanguage(ctx context.Context, token string, id string, language string,
