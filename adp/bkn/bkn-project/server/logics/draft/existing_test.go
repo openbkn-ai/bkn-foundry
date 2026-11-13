@@ -22,6 +22,12 @@ const existingSupplies = "---\ntype: relation_type\nid: customers_regions\nname:
 	"| customers | regions | direct |\n\n### Mapping Rules\n\n| Source Property | Target Property |\n" +
 	"|-----------------|-----------------|\n| region | code |\n"
 
+// domainTerms is the term object type as the professional edition writes it on a branch.
+const domainTerms = "---\ntype: object_type\nid: bkn_domain_terms\nname: 领域术语\n---\n\n## ObjectType: 领域术语\n\n" +
+	"### Data Source\n\n| Type | ID | Name |\n|------|----|------|\n| resource | bkn_terms_0123 | bkn_terms_0123 |\n\n" +
+	"### Data Properties\n\n| Name | Display Name | Type | Mapped Field |\n|------|------|------|------|\n" +
+	"| term_id | Term ID | string | term_id |\n| text | Spelling | text | text |\n"
+
 func Test_ExistingOf(t *testing.T) {
 	Convey("Test reading what the network already has from the branch\n", t, func() {
 		files := map[string][]byte{
@@ -48,6 +54,35 @@ func Test_ExistingOf(t *testing.T) {
 			got := existingOf(files, []string{"object_types/customers.bkn"})
 			So(got.ObjectTypes, ShouldHaveLength, 1)
 			So(got.ObjectTypes[0].ID, ShouldEqual, "regions")
+		})
+
+		Convey("the table is named as the definition names it, not by its id\n", func() {
+			got := existingOf(map[string][]byte{
+				"object_types/regions.bkn": []byte(publishedRegions),
+				"object_types/codes.bkn": []byte("---\ntype: object_type\nid: codes\nname: Codes\n---\n\n## ObjectType: Codes\n\n" +
+					"### Data Source\n\n| Type | ID | Name |\n|------|----|------|\n| resource | t_codes | t_codes |\n"),
+			}, nil)
+			So(got.ObjectTypes[0].TableID, ShouldEqual, "t_codes")
+			So(got.ObjectTypes[0].TableName, ShouldBeEmpty)
+			So(got.ObjectTypes[1].TableName, ShouldEqual, "regions")
+		})
+
+		Convey("the system object types BKN-project writes for agents are no content of the network\n", func() {
+			with := map[string][]byte{"object_types/" + interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS + ".bkn": []byte(domainTerms)}
+			for p, data := range files {
+				with[p] = data
+			}
+			got := existingOf(with, nil)
+			So(got.ObjectTypes, ShouldHaveLength, 2)
+			for _, ot := range got.ObjectTypes {
+				So(ot.ID, ShouldNotEqual, interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS)
+			}
+			items := existingItemsOf(with, nil)
+			So(items.ObjectTypes, ShouldHaveLength, 2)
+			// A new network the project published has only the term object type: it has nothing.
+			alone := existingOf(map[string][]byte{"object_types/" + interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS + ".bkn": []byte(domainTerms)}, nil)
+			So(alone.ObjectTypes, ShouldBeEmpty)
+			So(existingItemsOf(map[string][]byte{"object_types/" + interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS + ".bkn": []byte(domainTerms)}, nil).ObjectTypes, ShouldBeEmpty)
 		})
 
 		Convey("a new network has nothing\n", func() {

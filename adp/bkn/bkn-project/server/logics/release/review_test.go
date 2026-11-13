@@ -769,3 +769,32 @@ func Test_MetricOwnersCheck(t *testing.T) {
 		})
 	})
 }
+
+func Test_ReleaseChanges(t *testing.T) {
+	Convey("Test the changes a release review lists\n", t, func() {
+		terms := "object_types/" + interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS + ".bkn"
+		branch := map[string][]byte{
+			"network.bkn":               []byte(networkBKN),
+			"object_types/supplier.bkn": objectTypeBKN("supplier", "Supplier", true),
+			terms:                       objectTypeBKN(interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS, "领域术语", true),
+		}
+
+		Convey("the term object type is published, but is no change a person reviews\n", func() {
+			diff := interfaces.PathDiff{Added: []string{"object_types/supplier.bkn", terms}, Changed: []string{"network.bkn"}}
+			got := releaseChanges(diff, branch, map[string][]byte{})
+			So(got.Added, ShouldResemble, []interfaces.ReleaseItem{
+				{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: "supplier", Name: "Supplier"}})
+			So(got.Changed, ShouldBeEmpty)
+			So(got.Other, ShouldEqual, 0)
+			risks := releaseRisks(got, diff, nil, branch, nil)
+			So(risks.OnlyAdditions, ShouldBeTrue)
+		})
+
+		Convey("nor is it when it changes or goes\n", func() {
+			diff := interfaces.PathDiff{Changed: []string{terms}, Removed: []string{terms}}
+			got := releaseChanges(diff, branch, branch)
+			So(got.Changed, ShouldBeEmpty)
+			So(got.Removed, ShouldBeEmpty)
+		})
+	})
+}

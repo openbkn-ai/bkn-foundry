@@ -116,6 +116,12 @@ func (s *draftService) Understand(ctx context.Context, token string, projectID s
 		}
 		submitted.Catalogs = append(submitted.Catalogs, catalog)
 	}
+	missing := goneCatalogs(ctx, s.va, caller, submitted.Catalogs, func(c interfaces.UnderstandSubmittedCatalog) (string, bool) {
+		return c.CatalogID, !c.Permitted
+	})
+	for i := range submitted.Catalogs {
+		submitted.Catalogs[i].Missing = missing[submitted.Catalogs[i].CatalogID]
+	}
 
 	background := context.WithoutCancel(ctx)
 	s.run(func() {
@@ -167,6 +173,38 @@ func (s *draftService) GetUnderstanding(ctx context.Context, token string, proje
 		}
 		understanding.Catalogs = append(understanding.Catalogs, catalog)
 	}
+	missing := goneCatalogs(ctx, s.va, caller, understanding.Catalogs, func(c interfaces.UnderstandingCatalog) (string, bool) {
+		return c.CatalogID, !c.Visible
+	})
+	for i := range understanding.Catalogs {
+		understanding.Catalogs[i].Missing = missing[understanding.Catalogs[i].CatalogID]
+	}
 	span.SetStatus(codes.Ok, "")
 	return understanding, nil
+}
+
+// goneCatalogs tells, of the catalogs whose tasks the caller may not see, those that no longer
+// exist: vega-backend refuses both alike when tasks are asked for, but a catalog that is gone is
+// not a missing permission. When vega-backend does not tell, none reads as gone.
+func goneCatalogs[C any](ctx context.Context, va interfaces.VegaAccess, caller interfaces.AccountInfo, catalogs []C,
+	hidden func(C) (string, bool)) map[string]bool {
+	ids := []string{}
+	for _, c := range catalogs {
+		if id, ok := hidden(c); ok {
+			ids = append(ids, id)
+		}
+	}
+	gone := map[string]bool{}
+	if len(ids) == 0 {
+		return gone
+	}
+	missing, err := va.MissingCatalogs(ctx, caller, ids)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read whether catalogs %v exist: %v", ids, err))
+		return gone
+	}
+	for _, id := range missing {
+		gone[id] = true
+	}
+	return gone
 }

@@ -437,7 +437,7 @@ func baselineCheck(behind *interfaces.ReleaseRefusal, preview *interfaces.Releas
 
 // releaseChanges names the object types and relation types of a diff: added and changed ones as the
 // branch has them, removed ones as main has them. network.bkn, which every release renames, is left
-// out; other definitions are counted.
+// out, as are the system object types BKN-project writes for agents; other definitions are counted.
 func releaseChanges(diff interfaces.PathDiff, branchFiles map[string][]byte,
 	mainFiles map[string][]byte) interfaces.ReleaseChanges {
 	changes := interfaces.ReleaseChanges{
@@ -458,7 +458,10 @@ func releaseChanges(diff interfaces.PathDiff, branchFiles map[string][]byte,
 			case kindOf(p) == "":
 				changes.Other++
 			default:
-				*list.into = append(*list.into, itemAt(p, list.files))
+				// A system object type is published as any, but is no change a person reviews.
+				if it := itemAt(p, list.files); !systemItem(it) {
+					*list.into = append(*list.into, it)
+				}
 			}
 		}
 		sortItems(*list.into)
@@ -551,6 +554,11 @@ func itemAt(p string, files map[string][]byte) interfaces.ReleaseItem {
 		it.Name = it.ID
 	}
 	return it
+}
+
+// systemItem tells whether it is a system object type, such as the domain term object type.
+func systemItem(it interfaces.ReleaseItem) bool {
+	return it.Kind == interfaces.RELEASE_ITEM_OBJECT_TYPE && interfaces.IsSystemObjectType(it.ID)
 }
 
 func sortItems(items []interfaces.ReleaseItem) {

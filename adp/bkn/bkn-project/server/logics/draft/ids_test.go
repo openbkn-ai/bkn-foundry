@@ -156,3 +156,13 @@ func Test_RegisteredIDs(t *testing.T) {
 		})
 	})
 }
+
+func Test_SystemObjectTypeIDTaken(t *testing.T) {
+	Convey("Test drafting never gives the id of a system object type\n", t, func() {
+		d := newDrafter(testSetting, sampleCounter()).withTaken(&interfaces.DraftItems{})
+		taken := map[string]bool{}
+		d.reserve(interfaces.ID_KIND_OBJECT_TYPES, "", taken)
+		got := d.itemID(interfaces.ID_KIND_OBJECT_TYPES, "t1", interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS, "ot", taken)
+		So(got, ShouldNotEqual, interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS)
+	})
+}
