@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'adp/bkn/**'
+      - 'infra/sandbox/runtime/sandbox_sdk/**'
       - '.github/workflows/ci-adp-bkn.yml'
 
 permissions:
@@ -81,3 +82,10 @@ jobs:
         env:
           I18N_MODE_UT: "true"
         run: go test -count=1 -gcflags="all=-l" ./...
+      - name: Managed Function real Sandbox SDK regression
+        env:
+          I18N_MODE_UT: "true"
+          BKN_ACTION_SDK_TEST: "true"
+        run: |
+          sudo install -d -m 1777 /workspace
+          go test -race -tags=integration ./logics/action_scheduler -run '^TestManagedActionFunctionRealSandboxSDK$' -count=1 -v

@@ -48,6 +48,7 @@ type actionTraceSession struct {
 	leaseToken       string
 	leaseEpoch       uint64
 	traceUnavailable bool
+	captureDisabled  bool
 }
 
 type actionTraceAPIError struct {
@@ -184,8 +185,14 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 // Operation as their parent, instead of an unregistered HTTP child identifier.
 func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 	run func(context.Context) (any, error)) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	session, ok := ctx.Value(actionTraceSessionKey{}).(*actionTraceSession)
 	if !ok || session == nil {
+		return run(ctx)
+	}
+	if session.captureDisabled {
 		return run(ctx)
 	}
 	if session.traceUnavailable {
@@ -221,11 +228,15 @@ func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 			"lease_token": session.leaseToken, "lease_epoch": session.leaseEpoch,
 		}, &ensured)
 	if err != nil {
+		if isActionTraceCaptureDisabled(err) && ctx.Err() == nil {
+			// Open created a real lifecycle with no parent Operation. Disabled
+			// capture skips registration, but SDK reads still require those IDs.
+			session.captureDisabled = true
+			return run(ctx)
+		}
 		if actionTraceMayDegrade(ctx, err) {
 			session.traceUnavailable = true
-			if !isActionTraceCaptureDisabled(err) {
-				logActionTraceDegraded(session.execution.ID, "register Function operation", err)
-			}
+			logActionTraceDegraded(session.execution.ID, "register Function operation", err)
 			return run(withoutManagedActionTrace(ctx))
 		}
 		return nil, fmt.Errorf("register managed action Function: %w", err)

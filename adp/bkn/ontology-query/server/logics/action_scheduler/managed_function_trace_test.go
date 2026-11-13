@@ -7,6 +7,8 @@ package action_scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -196,55 +198,80 @@ func TestManagedActionFunctionRejectsTraceRegistrationFailure(t *testing.T) {
 }
 
 func TestManagedActionFunctionRunsWhenTraceCaptureDisabled(t *testing.T) {
-	ensureCalls := 0
-	finishCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
-			_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
-		case strings.HasSuffix(r.URL.Path, "/interactions"):
-			_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
-		case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
-			ensureCalls++
-			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(`{"error":{"code":"capture_disabled"}}`))
-		case strings.HasSuffix(r.URL.Path, "/finish"):
-			finishCalls++
-			_, _ = w.Write([]byte(`{}`))
-		default:
-			t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
-	ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
-		ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
-	}, interfaces.CallerRuntimeCredential{Authorization: "Bearer token", ApplicationPrincipalID: "app-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for ordinal := range 2 {
-		result, err := client.Run(withActionInvocation(ctx, ordinal), "function-1", func(runCtx context.Context) (any, error) {
-			traceContext, _ := common.GetTraceContextFromCtx(runCtx)
-			if traceContext.ConversationID != "" || traceContext.InteractionID != "" || traceContext.OperationID != "" {
-				t.Errorf("unregistered managed Trace context reached Function: %#v", traceContext)
+	for _, failure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failure=%t", failure), func(t *testing.T) {
+			runErr := error(nil)
+			outcome := "handed_off"
+			if failure {
+				runErr = errors.New("business query refused")
+				outcome = "failed"
 			}
-			caller, ok := interfaces.CallerRuntimeCredentialFromContext(runCtx)
-			if !ok || caller.Authorization != "Bearer token" || caller.ApplicationPrincipalID != "app-1" ||
-				caller.ConversationID != "" || caller.InteractionID != "" || caller.ParentOperationID != "" {
-				t.Errorf("Function received incorrect untraced credential: %#v", caller)
+			ensureCalls := 0
+			finishCalls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
+					_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
+				case strings.HasSuffix(r.URL.Path, "/interactions"):
+					_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
+				case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+					ensureCalls++
+					w.WriteHeader(http.StatusConflict)
+					_, _ = w.Write([]byte(`{"error":{"code":"capture_disabled"}}`))
+				case strings.HasSuffix(r.URL.Path, "/finish"):
+					var body struct {
+						Outcome string `json:"outcome"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Outcome != outcome {
+						t.Errorf("incorrect lifecycle terminal outcome: %+v, %v", body, err)
+					}
+					finishCalls++
+					_, _ = w.Write([]byte(`{}`))
+				default:
+					t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+			ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+				ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+			}, interfaces.CallerRuntimeCredential{Authorization: "Bearer token", ApplicationPrincipalID: "app-1"})
+			if err != nil {
+				t.Fatal(err)
 			}
-			return "ok", nil
+			for ordinal := range 2 {
+				result, err := client.Run(withActionInvocation(ctx, ordinal), "function-1", func(runCtx context.Context) (any, error) {
+					traceContext, _ := common.GetTraceContextFromCtx(runCtx)
+					if traceContext.ConversationID != "conv_action" || traceContext.InteractionID != "int_action" || traceContext.OperationID != "" {
+						t.Errorf("disabled capture lost its managed lifecycle or supplied an unregistered operation: %#v", traceContext)
+					}
+					caller, ok := interfaces.CallerRuntimeCredentialFromContext(runCtx)
+					if !ok || caller.Authorization != "Bearer token" || caller.ApplicationPrincipalID != "app-1" ||
+						caller.ConversationID != "conv_action" || caller.InteractionID != "int_action" || caller.ParentOperationID != "" {
+						t.Errorf("Function received incorrect lifecycle-only credential: %#v", caller)
+					}
+					return "ok", runErr
+				})
+				if !errors.Is(err, runErr) || result != "ok" {
+					t.Fatalf("Function execution %d: result=%#v err=%v", ordinal, result, err)
+				}
+			}
+			cancelled, cancel := context.WithCancel(ctx)
+			cancel()
+			_, err = client.Run(cancelled, "function-1", func(context.Context) (any, error) {
+				t.Error("cancelled invocation ran after capture-disabled state was cached")
+				return nil, nil
+			})
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled invocation: %v", err)
+			}
+			finish(outcome)
+			if ensureCalls != 1 || finishCalls != 1 {
+				t.Fatalf("Trace Core requests: ensure=%d finish=%d", ensureCalls, finishCalls)
+			}
 		})
-		if err != nil || result != "ok" {
-			t.Fatalf("Function execution %d: result=%#v err=%v", ordinal, result, err)
-		}
-	}
-	finish("handed_off")
-	if ensureCalls != 1 || finishCalls != 1 {
-		t.Fatalf("Trace Core requests: ensure=%d finish=%d", ensureCalls, finishCalls)
 	}
 }
 

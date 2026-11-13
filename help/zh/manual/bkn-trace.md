@@ -1,5 +1,13 @@
 # 🔭 BKN Trace
 
+## 关闭采集时的 Function 行动
+
+关闭 Trace/Evidence 采集不取消 Function 行动内部 SDK 查询所需的托管生命周期。
+已鉴权、已授权的异步 Function 行动仍创建自己真实的 Conversation 和 Interaction，
+并使用原调用者的运行凭据。采集关闭时不注册 Function Operation，也不补造父 Operation ID；
+SDK 保留会话和交互 ID，业务查询仍经过原有授权。成功、失败均结束本次交互，取消和语义拒绝
+仍会阻止执行。Trace 基础设施故障是另一种降级状态，不能当作已确认关闭采集。
+
 ## 📖 概述
 
 **BKN Trace** 提供**全链路可观测**：接收 OTLP 链路、导出到检索后端，并通过 **agent-observability** 服务查询与智能体及平台活动关联的 Span。每一次智能体对话都会生成完整的执行链路，记录从用户输入到最终回复的每一步决策与操作。

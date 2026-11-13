@@ -101,6 +101,31 @@ func TestFunctionToolCarriesCallerInteraction(t *testing.T) {
 	}
 }
 
+// Capture-off Function calls retain the lifecycle without inventing a parent.
+func TestFunctionToolCarriesLifecycleWithoutRecordedParent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &agentOperatorAccess{httpClient: httpClient, appSetting: &commonSettingForProxyTest}
+	ctx := common.SetTraceContextToCtx(actionProxyContext(interfaces.ProxyTargetTypeFunction, "box-fn"), common.TraceContext{
+		ConversationID: "conv_lifecycle", InteractionID: "int_lifecycle",
+	})
+	ctx = interfaces.WithCallerRuntimeCredential(ctx, interfaces.CallerRuntimeCredential{
+		Authorization: "Bearer caller-token", ConversationID: "conv_lifecycle", InteractionID: "int_lifecycle",
+	})
+	httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://operator/tool-box/box-fn/proxy/fn-1", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string, _ any) (int, []byte, error) {
+			if headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != "proxy-1" || headers["Authorization"] != "Bearer caller-token" ||
+				headers[common.HeaderBKNConversationID] != "conv_lifecycle" || headers[common.HeaderBKNInteractionID] != "int_lifecycle" ||
+				headers[common.HeaderBKNParentOperationID] != "" {
+				t.Error("Function transport lost the lifecycle or supplied an unregistered parent")
+			}
+			return http.StatusOK, []byte(`{"status_code":200,"body":{"rows":1}}`), nil
+		})
+	if _, err := access.ExecuteToolAsProxy(ctx, "box-fn", "fn-1", interfaces.ToolExecutionRequest{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // An OpenAPI Tool is a third party: the caller's credential never leaves for it.
 func TestOpenAPIToolNeverCarriesCallerCredential(t *testing.T) {
 	ctrl := gomock.NewController(t)

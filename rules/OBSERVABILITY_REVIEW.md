@@ -26,6 +26,7 @@ Review 时逐条回答：
 
 - 允许进入 Trace 的入口是 Context Loader MCP 的业务工具调用，以及上述异步 Function 行动；必须能关联调用主体和业务上下文。
 - Function 行动的托管交互只覆盖该次行动的函数调用及其 SDK 子查询，执行结束后必须关闭；行动发起时的授权和取消状态须先检查，不能因记录 Trace 绕过执行门禁。
+- 关闭采集时仍保留 Function 行动已建立的真实 Conversation/Interaction 及原调用者凭据；`capture_disabled` 仅阻止 Operation 等采集写入，不得按基础设施故障清空这些生命周期 ID，也不得补造父 Operation。
 - 除上述函数行动外，通用 HTTP、页面读取、平台内部调用、MCP `initialize`/`tools/list`/信息发现、健康检查、日志/Trace/审计查询和授权判定不得创建 Trace。
 - Context Loader 生命周期调用只建立/结束同一次 MCP 业务调用的上下文，不单列用户可见 Trace。
 - 不得用普通 OTLP span、HTTP middleware 或日志字段补造越界 Trace。
