@@ -15,6 +15,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
 
@@ -157,6 +158,36 @@ func Test_Understand(t *testing.T) {
 				interfaces.UNDERSTAND_NOT_STARTED: 1, "completed": 3, "running": 1, "failed": 1, "pending": 1})
 			// Without task_manage the progress is unknown, not "nothing started".
 			So(got.Catalogs[1], ShouldResemble, interfaces.UnderstandingCatalog{CatalogID: "c2", Counts: map[string]int{}})
+		})
+
+		Convey("A table the catalog describes, or the network's object types read, says so\n", func() {
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			da := pmock.NewMockDraftAccess(ctrl)
+			withNetwork := &draftService{setting: testSetting, va: va, ps: ps,
+				pc: &logics.ProjectCatalogs{BBA: bba, VA: va, DA: da}}
+			entry := project("", "c1")
+			entry.KNID = "kn1"
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
+			// Resolving the catalogs and naming the tables both read the network's object types.
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "order", Name: "Order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r_orders"}},
+			}, nil).Times(2)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{
+				{ID: "r_orders", CatalogID: "c1"}}, nil)
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c1").Return(nil, true, nil)
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{
+				{ID: "r_orders", Name: "orders"}, {ID: "r_parts", Name: "parts", Description: "Parts bought"},
+				{ID: "r_codes", Name: "codes", Description: " "}}, nil)
+
+			got, err := withNetwork.GetUnderstanding(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(got.Catalogs[0].Tables, ShouldResemble, []interfaces.UnderstandingTable{
+				{ResourceID: "r_orders", Name: "orders", Status: interfaces.UNDERSTAND_NOT_STARTED, NetworkObjectTypes: []string{"Order"}},
+				{ResourceID: "r_parts", Name: "parts", Status: interfaces.UNDERSTAND_NOT_STARTED, Described: true},
+				{ResourceID: "r_codes", Name: "codes", Status: interfaces.UNDERSTAND_NOT_STARTED},
+			})
 		})
 
 		Convey("A catalog that is gone reads as gone, not as one the caller may not run tasks on\n", func() {

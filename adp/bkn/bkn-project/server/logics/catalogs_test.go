@@ -33,6 +33,34 @@ func Test_ProjectCatalogs(t *testing.T) {
 			return &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", CatalogIDs: stored}}
 		}
 
+		Convey("TableReaders names the object types reading each table, leaving out what reads no table\n", func() {
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "purchase_order", Name: "Purchase order", DataSource: resource("r-po")},
+				{ID: "po_view", DataSource: resource("r-po")},
+				{ID: interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS, Name: "Terms", DataSource: resource("r-term")},
+				{ID: "note", Name: "Note"},
+				{ID: "rate", Name: "Rate", DataSource: &interfaces.KNDataSource{Type: "api", ID: "a1"}},
+			}, nil)
+
+			readers, err := pc.TableReaders(ctx, "t", entry().Project)
+
+			So(err, ShouldBeNil)
+			// One without a name is named by its id.
+			So(readers, ShouldResemble, map[string][]string{"r-po": {"Purchase order", "po_view"}})
+		})
+
+		Convey("TableReaders reads none when the network cannot be read, or without a network\n", func() {
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return(nil, errors.New("down"))
+			readers, err := pc.TableReaders(ctx, "t", entry().Project)
+			So(err, ShouldNotBeNil)
+			So(readers, ShouldBeEmpty)
+
+			var none *ProjectCatalogs
+			readers, err = none.TableReaders(ctx, "t", entry().Project)
+			So(err, ShouldBeNil)
+			So(readers, ShouldBeEmpty)
+		})
+
 		Convey("After the network's catalog is installed again, the project reads the new one and drops the old silently\n", func() {
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
 				{ID: "purchase_order", DataSource: resource("r-po")},

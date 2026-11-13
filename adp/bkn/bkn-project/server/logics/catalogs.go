@@ -92,6 +92,35 @@ func (pc *ProjectCatalogs) NetworkCatalogs(ctx context.Context, token string, ca
 	return catalogs, nil
 }
 
+// TableReaders names, by the resource id of each table, the object types of the network that read
+// it now, in the order the network lists them; system object types are left out. A nil
+// ProjectCatalogs, or a project without a network, reads none.
+func (pc *ProjectCatalogs) TableReaders(ctx context.Context, token string, project *interfaces.Project) (map[string][]string, error) {
+	readers := map[string][]string{}
+	if pc == nil || pc.BBA == nil || project == nil || project.KNID == "" {
+		return readers, nil
+	}
+	objectTypes, err := pc.BBA.ListObjectTypeSources(ctx, token, project.KNID)
+	if err != nil {
+		return readers, fmt.Errorf("list object types of network %s: %w", project.KNID, err)
+	}
+	for _, ot := range objectTypes {
+		source := ot.DataSource
+		if interfaces.IsSystemObjectType(ot.ID) || source == nil || source.ID == "" ||
+			source.Type != "" && source.Type != interfaces.KN_DATA_SOURCE_RESOURCE {
+			continue
+		}
+		name := ot.Name
+		if name == "" {
+			name = ot.ID
+		}
+		if !slices.Contains(readers[source.ID], name) {
+			readers[source.ID] = append(readers[source.ID], name)
+		}
+	}
+	return readers, nil
+}
+
 // objectTypeOfPath is the id of the object type a definition path holds, object_types/<id>.bkn.
 func objectTypeOfPath(path string) (string, bool) {
 	id, ok := strings.CutPrefix(path, "object_types/")

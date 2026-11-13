@@ -186,7 +186,7 @@ func Test_BknBackendAccess_Kinetic(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(objectTypes, ShouldResemble, []*interfaces.KNObjectTypeSource{
-				{ID: "order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r1"}},
+				{ID: "order", Name: "Order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r1"}},
 				{ID: "note"},
 			})
 			So(got[0].path, ShouldEqual, networkPath+"/object-types")
