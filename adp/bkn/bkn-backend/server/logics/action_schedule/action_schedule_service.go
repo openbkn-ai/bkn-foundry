@@ -26,6 +26,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 var (
@@ -38,6 +39,7 @@ type actionScheduleService struct {
 	asa        interfaces.ActionScheduleAccess
 	ata        interfaces.ActionTypeAccess
 	aea        interfaces.ActionExecutionAccess
+	ps         interfaces.PermissionService
 	//db         interface{ Begin() (interface{}, error) }
 
 	cronParser cron.Parser
@@ -51,6 +53,7 @@ func NewActionScheduleService(appSetting *common.AppSetting) interfaces.ActionSc
 			asa:        logics.ASA,
 			ata:        logics.ATA,
 			aea:        logics.AEA,
+			ps:         permission.NewPermissionService(appSetting),
 			// Standard 5-field cron parser (minute, hour, day of month, month, day of week)
 			cronParser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow),
 		}
@@ -386,6 +389,16 @@ func (s *actionScheduleService) DeleteSchedules(ctx context.Context, knID, branc
 			otellog.LogError(ctx, "Schedule does not belong to request scope", httpErr)
 			return httpErr
 		}
+	}
+
+	if s.ps == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_InternalError_CheckPermissionFailed)
+	}
+	if err := s.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.RESOURCE_TYPE_KN, ID: knID,
+	}, []string{interfaces.OPERATION_TYPE_MODIFY}); err != nil {
+		return err
 	}
 
 	if err := s.asa.DeleteSchedules(ctx, nil, scheduleIDs); err != nil {

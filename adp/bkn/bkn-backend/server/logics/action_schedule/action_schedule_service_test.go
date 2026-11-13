@@ -9,6 +9,7 @@ package action_schedule
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -372,10 +373,15 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 		branch := interfaces.MAIN_BRANCH
 
 		Convey("Success deleting schedules\n", func() {
+			ps := bmock.NewMockPermissionService(mockCtrl)
+			svc.ps = ps
 			asa.EXPECT().GetSchedules(gomock.Any(), []string{"s1", "s2"}).Return(map[string]*interfaces.ActionSchedule{
 				"s1": {ID: "s1", KNID: knID, Branch: branch},
 				"s2": {ID: "s2", KNID: knID, Branch: branch},
 			}, nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN, ID: knID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			asa.EXPECT().DeleteSchedules(gomock.Any(), nil, []string{"s1", "s2"}).Return(nil)
 
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s1", "s2"})
@@ -385,6 +391,34 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 		Convey("Success with empty IDs (no-op)\n", func() {
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{})
 			So(err, ShouldBeNil)
+		})
+
+		for _, targetBranch := range []string{interfaces.MAIN_BRANCH, "draft"} {
+			Convey("Permission denial prevents deletion on "+targetBranch+"\n", func() {
+				ps := bmock.NewMockPermissionService(mockCtrl)
+				svc.ps = ps
+				asa.EXPECT().GetSchedules(gomock.Any(), []string{"s1", "s2"}).Return(map[string]*interfaces.ActionSchedule{
+					"s1": {ID: "s1", KNID: knID, Branch: targetBranch},
+					"s2": {ID: "s2", KNID: knID, Branch: targetBranch},
+				}, nil)
+				denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+				ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+					Type: interfaces.RESOURCE_TYPE_KN, ID: knID,
+				}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(denied)
+				err := svc.DeleteSchedules(ctx, knID, targetBranch, []string{"s1", "s2"})
+				So(err, ShouldEqual, denied)
+			})
+		}
+
+		Convey("Permission service failure prevents deletion\n", func() {
+			ps := bmock.NewMockPermissionService(mockCtrl)
+			svc.ps = ps
+			asa.EXPECT().GetSchedules(gomock.Any(), []string{"s1"}).Return(map[string]*interfaces.ActionSchedule{
+				"s1": {ID: "s1", KNID: knID, Branch: branch},
+			}, nil)
+			checkErr := errors.New("safe unavailable")
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(checkErr)
+			So(svc.DeleteSchedules(ctx, knID, branch, []string{"s1"}), ShouldEqual, checkErr)
 		})
 
 		Convey("Failed when GetSchedules returns error\n", func() {
@@ -417,9 +451,14 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 		})
 
 		Convey("Failed when DeleteSchedules access returns error\n", func() {
+			ps := bmock.NewMockPermissionService(mockCtrl)
+			svc.ps = ps
 			asa.EXPECT().GetSchedules(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ActionSchedule{
 				"s1": {ID: "s1", KNID: knID, Branch: branch},
 			}, nil)
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.RESOURCE_TYPE_KN, ID: knID,
+			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
 			asa.EXPECT().DeleteSchedules(gomock.Any(), nil, gomock.Any()).Return(errors.New("db error"))
 
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s1"})
