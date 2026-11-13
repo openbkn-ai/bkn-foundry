@@ -15,7 +15,6 @@ import (
 // MariaDBCatalogBuilder MariaDB Catalog payload构建器
 type MariaDBCatalogBuilder struct {
 	config        setup.MariaDBConfig
-	testConfig    *setup.TestConfig
 	connectorType string
 }
 
@@ -27,21 +26,13 @@ func NewMariaDBCatalogBuilder(config setup.MariaDBConfig) *MariaDBCatalogBuilder
 	}
 }
 
-// SetTestConfig 设置测试配置（用于密码加密等）
-func (b *MariaDBCatalogBuilder) SetTestConfig(config *setup.TestConfig) {
-	b.testConfig = config
-}
-
 // GetConnectorType 返回connector类型
 func (b *MariaDBCatalogBuilder) GetConnectorType() string {
 	return b.connectorType
 }
 
-// GetEncryptedPassword 获取加密后的密码
-func (b *MariaDBCatalogBuilder) GetEncryptedPassword() string {
-	if b.testConfig != nil {
-		return b.testConfig.EncryptString(b.config.Password)
-	}
+// GetPassword 获取明文密码，由服务端负责存储加密
+func (b *MariaDBCatalogBuilder) GetPassword() string {
 	return b.config.Password
 }
 
@@ -54,7 +45,7 @@ func (b *MariaDBCatalogBuilder) BuildCreatePayload() map[string]any {
 			"host":     b.config.Host,
 			"port":     b.config.Port,
 			"username": b.config.Username,
-			"password": b.GetEncryptedPassword(),
+			"password": b.GetPassword(),
 			"database": b.config.Database,
 		},
 	}
@@ -65,7 +56,6 @@ func (b *MariaDBCatalogBuilder) BuildCreatePayload() map[string]any {
 // OpenSearchCatalogBuilder OpenSearch Catalog payload构建器
 type OpenSearchCatalogBuilder struct {
 	config        setup.OpenSearchConfig
-	testConfig    *setup.TestConfig
 	connectorType string
 }
 
@@ -77,21 +67,13 @@ func NewOpenSearchCatalogBuilder(config setup.OpenSearchConfig) *OpenSearchCatal
 	}
 }
 
-// SetTestConfig 设置测试配置（用于密码加密等）
-func (b *OpenSearchCatalogBuilder) SetTestConfig(config *setup.TestConfig) {
-	b.testConfig = config
-}
-
 // GetConnectorType 返回connector类型
 func (b *OpenSearchCatalogBuilder) GetConnectorType() string {
 	return b.connectorType
 }
 
-// GetEncryptedPassword 获取加密后的密码
-func (b *OpenSearchCatalogBuilder) GetEncryptedPassword() string {
-	if b.testConfig != nil {
-		return b.testConfig.EncryptString(b.config.Password)
-	}
+// GetPassword 获取明文密码，由服务端负责存储加密
+func (b *OpenSearchCatalogBuilder) GetPassword() string {
 	return b.config.Password
 }
 
@@ -104,7 +86,7 @@ func (b *OpenSearchCatalogBuilder) BuildCreatePayload() map[string]any {
 			"host":     b.config.Host,
 			"port":     b.config.Port,
 			"username": b.config.Username,
-			"password": b.GetEncryptedPassword(),
+			"password": b.GetPassword(),
 			"use_ssl":  b.config.UseSSL,
 		},
 	}
@@ -117,11 +99,9 @@ func NewCatalogPayloadBuilder(connectorType string, config *setup.TestConfig) Ca
 	switch connectorType {
 	case "mariadb":
 		b := NewMariaDBCatalogBuilder(config.TargetMariaDB)
-		b.SetTestConfig(config)
 		return b
 	case "opensearch":
 		b := NewOpenSearchCatalogBuilder(config.TargetOpenSearch)
-		b.SetTestConfig(config)
 		return b
 	default:
 		return nil

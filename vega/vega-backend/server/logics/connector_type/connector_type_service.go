@@ -33,6 +33,7 @@ var (
 type connectorTypeService struct {
 	appSetting *common.AppSetting
 	cta        interfaces.ConnectorTypeAccess
+	ca         interfaces.CatalogAccess
 	cf         interfaces.ConnectorFactory
 	ps         interfaces.PermissionService
 }
@@ -43,6 +44,7 @@ func NewConnectorTypeService(appSetting *common.AppSetting) interfaces.Connector
 		ctService = &connectorTypeService{
 			appSetting: appSetting,
 			cta:        logics.CTA,
+			ca:         logics.CA,
 			cf:         factory.NewConnectorFactory(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
 		}
@@ -291,6 +293,20 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 	}, []string{interfaces.OPERATION_TYPE_DELETE})
 	if err != nil {
 		return err
+	}
+
+	// References block deletion regardless of catalog visibility, state or implementation availability.
+	refs, err := cts.ca.ListPermissionRefs(ctx, interfaces.CatalogsQueryParams{
+		ConnectorType:  tp,
+		IncludeBuiltin: true,
+	})
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Check catalog references failed")
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed)
+	}
+	if len(refs) > 0 {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_ConnectorType_InUse)
 	}
 
 	if err := cts.cta.DeleteByType(ctx, tp); err != nil {

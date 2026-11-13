@@ -45,8 +45,8 @@ var BUILD_TASK_SORT = map[string]struct{}{
 }
 
 var ConnectorClassMapping = map[string]string{
-	ConnectorTypeMySQL:      "io.debezium.connector.mysql.MySqlConnector",
-	ConnectorTypePostgreSQL: "io.debezium.connector.postgresql.PostgresConnector",
+	"mysql":      "io.debezium.connector.mysql.MySqlConnector",
+	"postgresql": "io.debezium.connector.postgresql.PostgresConnector",
 }
 
 // BuildTask represents a build task entity.

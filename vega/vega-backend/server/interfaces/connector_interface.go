@@ -28,14 +28,18 @@ type Connector interface {
 	GetMode() string
 	// GetCategory returns the supported resource category, such as table or index.
 	GetCategory() string
+	// SupportDiscover reports static discovery support without source I/O.
+	SupportDiscover() bool
 
 	// GetEnabled returns whether the connector is enabled.
 	GetEnabled() bool
 	// SetEnabled sets whether the connector is enabled.
 	SetEnabled(bool)
 
-	// GetSensitiveFields returns configuration field names that require protection, such as passwords.
-	GetSensitiveFields() []string
+	// GetSensitiveFields returns sensitive field names for cfg.
+	// Names have no path prefix, such as password or app_secret; consumers check the top level before options.
+	// Errors from connector methods must never contain sensitive configuration values.
+	GetSensitiveFields(cfg ConnectorConfig) ([]string, error)
 	// GetFieldConfig returns configuration field definitions for form generation and validation.
 	GetFieldConfig() map[string]ConnectorFieldConfig
 

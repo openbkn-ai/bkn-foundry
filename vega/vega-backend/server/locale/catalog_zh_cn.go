@@ -33,7 +33,7 @@ var catalogZhCN = i18n.I18nMessages{
 		"VegaBackend.Catalog.InternalError.DeleteFailed":                  "删除目录失败。请联系管理员",
 		"VegaBackend.Catalog.InternalError.TestConnectionFailed":          "测试目录连接失败。请联系管理员",
 		"VegaBackend.Catalog.InternalError.EncryptFailed":                 "加密失败。请联系管理员",
-		"VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted": "敏感字段未正确加密。请使用公钥加密敏感字段后再提交",
+		"VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted": "存储的敏感字段格式不正确或解密失败",
 		"VegaBackend.Catalog.UpdateConflict":                              "目录配置在读取后已被更新。请重新加载目录配置后再提交修改",
 	},
 }

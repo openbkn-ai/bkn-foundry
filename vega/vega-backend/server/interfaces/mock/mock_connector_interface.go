@@ -157,17 +157,18 @@ func (mr *MockConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockConnector) GetSensitiveFields() []string {
+func (m *MockConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -223,6 +224,20 @@ func (m *MockConnector) SetEnabled(arg0 bool) {
 func (mr *MockConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -494,17 +509,18 @@ func (mr *MockTableConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockTableConnector) GetSensitiveFields() []string {
+func (m *MockTableConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockTableConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockTableConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockTableConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockTableConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetTableMeta mocks base method.
@@ -648,6 +664,20 @@ func (m *MockTableConnector) SetEnabled(arg0 bool) {
 func (mr *MockTableConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockTableConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockTableConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockTableConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockTableConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -816,17 +846,18 @@ func (mr *MockFileConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockFileConnector) GetSensitiveFields() []string {
+func (m *MockFileConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockFileConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockFileConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockFileConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockFileConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -882,6 +913,20 @@ func (m *MockFileConnector) SetEnabled(arg0 bool) {
 func (mr *MockFileConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockFileConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockFileConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockFileConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockFileConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -1065,17 +1110,18 @@ func (mr *MockFilesetConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockFilesetConnector) GetSensitiveFields() []string {
+func (m *MockFilesetConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockFilesetConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockFilesetConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockFilesetConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockFilesetConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -1160,6 +1206,20 @@ func (m *MockFilesetConnector) SetEnabled(arg0 bool) {
 func (mr *MockFilesetConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockFilesetConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockFilesetConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockFilesetConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockFilesetConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -1342,17 +1402,18 @@ func (mr *MockTopicConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockTopicConnector) GetSensitiveFields() []string {
+func (m *MockTopicConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockTopicConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockTopicConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockTopicConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockTopicConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -1408,6 +1469,20 @@ func (m *MockTopicConnector) SetEnabled(arg0 bool) {
 func (mr *MockTopicConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockTopicConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockTopicConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockTopicConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockTopicConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -1576,17 +1651,18 @@ func (mr *MockMetricConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockMetricConnector) GetSensitiveFields() []string {
+func (m *MockMetricConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockMetricConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockMetricConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockMetricConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockMetricConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -1642,6 +1718,20 @@ func (m *MockMetricConnector) SetEnabled(arg0 bool) {
 func (mr *MockMetricConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockMetricConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockMetricConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockMetricConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockMetricConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -2030,17 +2120,18 @@ func (mr *MockIndexConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockIndexConnector) GetSensitiveFields() []string {
+func (m *MockIndexConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockIndexConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockIndexConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockIndexConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -2154,6 +2245,20 @@ func (m *MockIndexConnector) SetEnabled(arg0 bool) {
 func (mr *MockIndexConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockIndexConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockIndexConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockIndexConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockIndexConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.
@@ -2380,17 +2485,18 @@ func (mr *MockAPIConnectorMockRecorder) GetName() *gomock.Call {
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockAPIConnector) GetSensitiveFields() []string {
+func (m *MockAPIConnector) GetSensitiveFields(cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields")
+	ret := m.ctrl.Call(m, "GetSensitiveFields", cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockAPIConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
+func (mr *MockAPIConnectorMockRecorder) GetSensitiveFields(cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockAPIConnector)(nil).GetSensitiveFields))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockAPIConnector)(nil).GetSensitiveFields), cfg)
 }
 
 // GetType mocks base method.
@@ -2446,6 +2552,20 @@ func (m *MockAPIConnector) SetEnabled(arg0 bool) {
 func (mr *MockAPIConnectorMockRecorder) SetEnabled(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockAPIConnector)(nil).SetEnabled), arg0)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockAPIConnector) SupportDiscover() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockAPIConnectorMockRecorder) SupportDiscover() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockAPIConnector)(nil).SupportDiscover))
 }
 
 // TestConnection mocks base method.

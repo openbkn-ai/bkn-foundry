@@ -8,6 +8,27 @@ info:
     Catalog 是一个数据源连接的抽象，对应一个物理数据源（MySQL / SQL Server / OpenSearch / S3 等）
     或逻辑目录（虚拟视图）。资源（`Resource`）按 catalog 归属注册。
 
+    **HTTP API 连接器（`connector_type: http`，专业版及以上）**
+
+    EE 提供通用 HTTP API 连接器；首次使用时通过既有连接器类型注册入口创建并启用
+    `type=http`、`mode=local`、`category=api` 的类型记录。社区版或未装配实现时不能使用。
+    该 Catalog 仍是 `physical`，持久化只读 category=api；类别由服务端从连接器取得，逻辑 Catalog 的 category 为空字符串。
+
+    创建和显式配置更新先做本地配置校验，再沿用物理 Catalog 流程执行连接测试；
+    成功保存为 `healthy`，连接失败默认不保存，`allow_unhealthy=true` 时可保存为 `unhealthy`。
+    连接测试、显式预检和周期健康检查共用连接器 TestConnection，HTTP API 实现仅做 TCP/TLS 探测，
+    不登录、不发送 HTTP 请求、不验证凭据或业务访问权限。
+    API Catalog 沿用物理目录的健康检查计划：默认继承平台计划，也可显式启用、修改或禁用。
+    HTTP API 连接测试只验证目标 TCP 连通性，HTTPS 额外完成使用默认信任链和主机名校验的 TLS 握手；
+    不发送 HTTP 请求、不登录、不验证凭据或业务权限。健康结果仅代表该传输层可达性，
+    不能作为 read Resource 业务验证结果。实际认证与 read Resource 的业务验证随后续 Resource 执行交付。
+    通用 HTTP 连接器声明 SupportDiscover=false，不支持发现任务或发现计划；探查入口依据连接器声明的能力校验，不按名称 http 或类别 api 一律拒绝。配置结构见 `HTTPAPIConnectorConfig`。
+    连接器固定配置字段名按定义精确区分大小写；大小写变体按未知字段忽略，不参与解码。`variables` 的动态成员名及驱动 options 的成员名和值保持原样，不递归改名。
+    Token、API Key 和其他自定义参数及凭据统一存入 `variables`，
+    `sensitive_variables` 直接列出其中需要保护的成员名，例如 `["app_secret"]`。模板仍直接使用 `{{ app_secret }}`。同名顶层字段和 variables 成员同时存在时，加密、解密及普通读取隐藏均处理两处，不能因顶层字段存在而漏处理变量。
+    调用方提交敏感明文，不预先加密；创建或显式更新时，敏感值以大小写任意形式的 `enc:` 开头均返回 400，该限制不受 Crypto 开关影响。启用平台 Crypto 后，后端使用 AES-256-GCM 加密独立存储副本，保存 `ENC:Base64(nonce + 含认证标签的密文)`；nonce 由后端生成，与密文同字段保存，无需额外数据库列。
+    显式关闭 Crypto 时沿用明文保存策略。开关只控制新写入：读取明文时保持原值，读取带 ENC: 标记的密文时始终使用原 AES 密钥解密；关闭后仍需保留该密钥，缺钥、编码错误或认证失败时明确报错，不回退为明文。不兼容 RSA 密文，不进行数据迁移。新配置的连接测试直接使用明文，不进行存储加解密，也不修改原请求。
+
     **SQL Server 连接器（`connector_type: sqlserver`）**
 
     ```json
@@ -17,7 +38,7 @@ info:
         "host": "sqlserver.example.com",
         "port": 1433,
         "username": "vega_reader",
-        "password": "<encrypted-password>",
+        "password": "<password>",
         "database": "sales",
         "schemas": ["dbo", "reporting"],
         "options": {
@@ -201,14 +222,15 @@ paths:
         创建一个新的 catalog。`name` 全局唯一，已存在时返回 409。
         `connector_type` 必须是已注册且 enabled 的连接器类型。
 
-        物理 Catalog 会在持久化前执行一次连接测试。默认连接失败返回 400，且不会创建 Catalog；
+        物理 Catalog（包括 HTTP API）的 category 由服务端从连接器取得，调用方不配置；逻辑 Catalog 保存空字符串。物理 Catalog 在持久化前执行一次连接测试。默认连接失败返回 400，且不会创建 Catalog；
         可传 `allow_unhealthy=true` 保存该 Catalog，并将其健康状态记为 `unhealthy`。
+        HTTP API 的成功仅表示 TCP/TLS 可达；`allow_unhealthy` 不豁免本地配置或版本校验。
       parameters:
         - name: allow_unhealthy
           in: query
           description: |
             是否在物理 Catalog 的连接测试失败时仍继续创建。默认 `false`；为 `true` 时创建成功，
-            但初始健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+            但初始健康状态为 `unhealthy`。配置校验、敏感明文使用 enc: 保留前缀（忽略大小写）或连接器创建失败仍返回 400；存储加密失败返回 500，allow_unhealthy 不豁免加密失败。
           schema:
             type: boolean
             default: false
@@ -330,7 +352,8 @@ paths:
         如需启用/禁用，使用 `POST /catalogs/{id}/enable` 或 `POST /catalogs/{id}/disable`。
 
         `connector_config` 是全量更新的例外：省略或传 `null` 时保留已存连接配置及敏感字段，
-        不执行敏感字段解密、连接器创建或连接测试，健康状态及检查结果保持不变。
+        非 API 类别不执行敏感字段解密、连接器创建或连接测试，健康状态及检查结果保持不变。
+        API 身份由 Catalog 已保存的 category=api 判定，不依赖类型名称 http；API 类别即使省略配置，仍解密已存配置并通过本地实例创建校验实现、版本和配置，且不访问上游。
         因此只修改名称、标签或描述不要求数据源当前可连接，也不需要 `allow_unhealthy=true`。
         其他字段仍遵循上述全量更新约定，并继续校验 `expected_update_time`。
 
@@ -338,14 +361,16 @@ paths:
         `{}` 是显式空配置，仍须通过连接器配置校验，不等同于省略。
         修改影响发现范围的字段后，旧 Resource 会在下一次 discover 对齐时标记为 `stale`。
 
-        修改物理 Catalog 配置时会先执行连接测试。默认连接失败返回 400，且不会持久化更新；
+        显式修改物理 Catalog 配置时会先执行连接测试。默认连接失败返回 400，且不会持久化更新；
         可传 `allow_unhealthy=true` 保存更新，并将健康状态记为 `unhealthy`。
+        HTTP API 配置更新也执行 TCP/TLS 连接测试；省略配置的元数据更新仅本地校验已存实例，
+        不新增网络探测并保留已有健康状态及结果。
       parameters:
         - name: allow_unhealthy
           in: query
           description: |
             是否在物理 Catalog 的连接测试失败时仍继续更新。默认 `false`；为 `true` 时更新成功，
-            但健康状态为 `unhealthy`。配置校验、敏感字段解密或连接器创建失败仍返回 400。
+            但健康状态为 `unhealthy`。配置校验、敏感明文使用 enc: 保留前缀（忽略大小写）或连接器创建失败仍返回 400；存储加密失败返回 500，allow_unhealthy 不豁免加密失败。
           schema:
             type: boolean
             default: false
@@ -433,6 +458,9 @@ paths:
       description: |
         使用请求中的 `connector_type` 与 `connector_config` 执行一次同步连接测试。
         本接口不创建或更新 Catalog，也不持久化健康状态；适用于创建或编辑表单保存前的“测试连接”。
+        HTTP API 类型与其他物理连接器共用显式测试接口，但仅执行目标 TCP/TLS 可达性探测；
+        与创建、配置更新及周期健康检查一致，不发送 HTTP 请求、不登录、不验证凭据或 read Resource。
+        TCP/TLS 可达不代表认证或业务读取成功。
 
         探测结果通过响应体 `success` 字段返回；目标不可达不视为 HTTP 错误：
         - 连通 → 200 `{ success: true, message }`
@@ -504,6 +532,9 @@ paths:
         以当前持久化的 `connector_config` 真实建立一次到数据源的连接，验证连通性。
         与 `health-status`（异步定时检查的最近结果）不同，本端点是**同步实时探测**。
         调用者必须拥有目标 Catalog 的 `modify` 权限。
+        HTTP API 类型与创建、配置更新和周期健康检查共用相同连接器测试；HTTP 仅建立 TCP 连接，
+        HTTPS 另验证默认信任链与目标主机名并完成 TLS 握手。不发送 HTTP 请求、不登录、不验证凭据或业务 API。
+        成功统一返回 `Connection test succeeded.`，表示对应连接器 TestConnection 通过；通用 HTTP 连接器的实际检查范围仍仅为 TCP/TLS，read Resource 业务验证由后续执行能力提供。
 
         探测结果通过响应体 `success` 字段返回；连不通**不**视为 HTTP 错误：
         - 连通 → 200 `{ success: true, message }`
@@ -668,6 +699,7 @@ components:
         - id
         - name
         - type
+        - category
         - enabled
         - connector_type
       properties:
@@ -699,6 +731,11 @@ components:
           enum:
             - physical
             - logical
+        category:
+          description: 服务端创建时从连接器填充并持久化的只读类别，如 table、index、api；逻辑 Catalog 为空字符串。创建后不可修改。
+          type: string
+          maxLength: 32
+          readOnly: true
         enabled:
           description: 是否启用
           type: boolean
@@ -706,13 +743,16 @@ components:
           description: 是否为内置 Catalog
           type: boolean
         connector_type:
-          description: 连接器类型标识（参见 connector-type.yaml）；SQL Server 使用 `sqlserver`
+          description: 连接器类型标识（参见 connector-type.yaml）；SQL Server 使用 `sqlserver`，专业版 HTTP API 使用 `http`
           type: string
           examples:
             - sqlserver
         connector_config:
-          description: 连接器配置（结构由 ConnectorType.field_config 决定）
-          type: object
+          description: |
+            连接器配置（结构由 ConnectorType.field_config 决定）。普通读取不返回敏感字段；
+            静态敏感字段定义的读取不受许可证档位限制；连接器未装配、无法取得字段定义时，
+            普通和受保护的配置读取均返回不可用错误，不返回未过滤的配置。逻辑 Catalog 无连接配置时可为 null。
+          type: [object, "null"]
           additionalProperties: true
         metadata:
           description: 扩展元信息；关系型 Catalog 探查后可包含 schemas 快照
@@ -755,6 +795,55 @@ components:
           type: array
           items:
             type: string
+    HTTPAPIConnectorConfig:
+      description: |
+        专业版 http 连接器的通用顶层配置由 field_config 声明：base_url、options、variables、sensitive_variables 和可选 login_request。
+        timeout_seconds 和 max_response_mib 位于 options；创建和显式配置更新沿用物理连接器测试流程，当前仅探测 TCP/TLS 可达性。
+        Token/API Key 等凭据统一放入 variables，并通过 sensitive_variables 声明保护；请求通过 Header/参数模板自行注入，例如 Authorization: Bearer {{ token }}。
+        不定义 auth_type 或顶层 token，不自动注入 Bearer Header。login_request 包含 request、response 和 success_rule，Cookie 由后续执行阶段的 HTTP Client/CookieJar 自动管理。
+        调用方提交敏感明文，创建或显式更新时拒绝以 enc: 开头的敏感值（忽略大小写）；Crypto 启用时后端加密存储，显式关闭时沿用明文保存。固定字段精确区分大小写，未知配置键（包括大小写变体）忽略，不作为可引用变量；variables 的动态成员名和值保持原样；不提供旧字段兼容或迁移。
+      type: object
+      additionalProperties: true
+      required: [base_url]
+      properties:
+        base_url:
+          type: string
+          format: uri
+          description: HTTP/HTTPS 服务根地址；不得包含内嵌用户凭据、Query 或 fragment。
+        options:
+          type: object
+          description: HTTP 连接与执行参数；省略时使用默认值，未知选项忽略。不得作为模板变量引用，不包含凭据。
+          additionalProperties: true
+          properties:
+            timeout_seconds:
+              type: integer
+              minimum: 1
+              description: 整次调用预算（秒）；省略时初始默认 30 秒，运行时受平台硬上限约束。
+            max_response_mib:
+              type: integer
+              minimum: 1
+              description: 单个解压后响应上限（MiB）；省略时初始默认 10 MiB，运行时受平台硬上限约束。
+        variables:
+          type: object
+          description: 自定义参数及凭据，包含 Token/API Key；模板仅引用此对象的成员，如 {{ token }}。名称须以字母开头，后续只含字母、数字或下划线，不得与当前通用顶层字段或系统/模板保留名冲突。被列入 sensitive_variables 的值必须为字符串。
+          additionalProperties: true
+          propertyNames:
+            allOf:
+              - pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+              - not:
+                  enum: [base_url, options, variables, sensitive_variables, login_request]
+        sensitive_variables:
+          type: array
+          description: |
+            variables 中需要保护的直接成员名，省略视为空；如 token/app_secret 需由此声明。成员须存在且为字符串，不接受变量路径。普通读取隐藏对应值，Crypto 只决定新写入是否加密；受保护读取按原值处理明文，并使用同一 AES 密钥解密 ENC:Base64(nonce + 含认证标签的密文)。调用方不预先加密；保存时禁止以 enc: 开头的敏感明文（忽略大小写）。同名顶层字段和 variables 成员均受保护。
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+        login_request:
+          type: object
+          description: 可选登录定义，包含 request、response 和 success_rule；模板仅引用 variables。后续执行阶段在业务请求前登录，Cookie 在本次调用内自动传递；当前只做配置校验。
+          additionalProperties: true
     CatalogRequest:
       description: |
         catalog 创建 / 更新请求体。
@@ -799,23 +888,24 @@ components:
           description: 是否启用；未传按 false 处理。PUT 不允许切换该字段，启停切换请使用专用 enable/disable 接口。
           type: boolean
         connector_type:
-          description: 连接器类型标识；必须是已注册且 enabled 的类型，SQL Server 使用 `sqlserver`
+          description: 连接器类型标识；必须是已注册且 enabled 的类型，SQL Server 使用 `sqlserver`，专业版 HTTP API 使用 `http`
           type: string
           examples:
             - sqlserver
         connector_config:
           description: |
-            连接器配置；字段由 ConnectorType.field_config 决定。
+            连接器配置；固定字段由 ConnectorType.field_config 定义并精确区分大小写，大小写变体按未知字段忽略；动态变量名及字段值保持原样。敏感值按明文提交，保存时禁止以 enc: 开头（忽略大小写）；后端按平台 Crypto 设置加密存储，原请求不改写。
             PUT 时省略或 null 表示保留已存配置、敏感字段和健康状态，并跳过连接测试；
             显式对象（包括 {}）按完整配置校验和替换，不合并已存字段。
-            POST 时物理 Catalog 仍必须提供满足连接器要求的配置。
+            POST 时物理 Catalog 仍必须提供满足连接器要求的配置。HTTP API 结构见 HTTPAPIConnectorConfig；
+            省略配置的 PUT 仍对已存配置做本地校验，但不访问上游。
           type: [object, "null"]
           additionalProperties: true
           examples:
             - host: sqlserver.example.com
               port: 1433
               username: vega_reader
-              password: <encrypted-password>
+              password: <password>
               database: sales
               schemas: [dbo, reporting]
               options:
@@ -831,9 +921,11 @@ components:
           properties:
             health_check_schedule:
               description: |
-                可选的健康检查计划组合创建参数。仅 physical Catalog 支持；缺失或 `null` 时创建
+                可选的健康检查计划组合创建参数。physical Catalog（包括 HTTP API）缺失或 `null` 时创建
                 `mode=inherit` 的计划。提供对象时 `mode` 必填；仅 `mode=enabled` 时 `cron_expr` 必填；
-                创建失败时整个 Catalog 创建请求回滚。
+                创建失败时整个 Catalog 创建请求回滚。API Catalog 的检查只执行 TCP/TLS 可达性探测，
+                不发送 HTTP 请求、不登录、不验证凭据或业务读取。保存计划本身不立即执行周期任务；
+                Catalog 创建及显式连接配置更新仍按正常流程同步执行 TestConnection。
               oneOf:
                 - $ref: "catalog-health-check-schedule.yaml#/components/schemas/CatalogHealthCheckScheduleRequest"
                 - type: "null"
@@ -847,6 +939,7 @@ components:
         - id
         - name
         - type
+        - category
         - enabled
         - connector_type
       properties:
@@ -868,6 +961,11 @@ components:
           description: catalog 类型
           type: string
           enum: [physical, logical]
+        category:
+          description: 服务端创建时从连接器填充并持久化的只读类别，如 table、index、api；逻辑 Catalog 为空字符串。创建后不可修改。
+          type: string
+          maxLength: 32
+          readOnly: true
         enabled:
           description: 是否启用
           type: boolean
@@ -945,14 +1043,14 @@ components:
           examples:
             - sqlserver
         connector_config:
-          description: 用于本次探测的连接器配置；字段由 ConnectorType.field_config 决定
+          description: 用于本次探测的明文连接器配置；字段由 ConnectorType.field_config 决定。本次调用不落库，不对输入执行 Encrypt 或 Decrypt，不改写请求
           type: object
           additionalProperties: true
           examples:
             - host: sqlserver.example.com
               port: 1433
               username: vega_reader
-              password: <encrypted-password>
+              password: <password>
               database: sales
               schemas: [dbo, reporting]
               options:
@@ -977,11 +1075,11 @@ components:
             - offline
             - unchecked
         last_check_time:
-          description: 最近一次检查时间（毫秒时间戳）
+          description: 最近一次检查时间（毫秒时间戳）；通用 HTTP 连接器对应最近一次 TCP/TLS 可达性探测
           type: integer
           format: int64
         health_check_result:
-          description: 检查详情；通过连接测试接口探测失败时，保留经过敏感配置值脱敏和长度限制的连接器错误信息。创建或更新时指定 `allow_unhealthy=true` 而连接失败，仍记录固定文案 `Connection test failed.`。
+          description: 检查详情；成功统一记录 `Connection test succeeded.`，表示对应连接器 TestConnection 通过，实际检查范围由连接器定义。通用 HTTP 连接器仅检查 TCP/TLS，不验证认证或业务请求。失败时保留经过敏感配置值脱敏和长度限制的连接器错误信息。创建或更新时指定 `allow_unhealthy=true` 而连接失败，仍记录固定文案 `Connection test failed.`。
           type: string
     TestConnectionResult:
       description: 连接测试结果

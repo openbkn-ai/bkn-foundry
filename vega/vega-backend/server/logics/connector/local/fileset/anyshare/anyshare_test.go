@@ -25,11 +25,13 @@ func TestAnyShareConnectorMetadata(t *testing.T) {
 	t.Run("any share connector metadata", func(t *testing.T) {
 		connector := &AnyShareConnector{}
 
-		assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetType())
-		assert.Equal(t, interfaces.ConnectorTypeAnyShare, connector.GetName())
+		assert.Equal(t, "anyshare", connector.GetType())
+		assert.Equal(t, "anyshare", connector.GetName())
 		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
 		assert.Equal(t, interfaces.ConnectorCategoryFileset, connector.GetCategory())
-		assert.Equal(t, []string{"token", "app_secret"}, connector.GetSensitiveFields())
+		protectedFields, metadataErr := connector.GetSensitiveFields(nil)
+		require.NoError(t, metadataErr)
+		assert.Equal(t, []string{"token", "app_secret"}, protectedFields)
 
 		assert.False(t, connector.GetEnabled())
 		connector.SetEnabled(true)
@@ -57,6 +59,32 @@ func TestAnyShareConnectorMetadata(t *testing.T) {
 }
 
 func TestAnyShareConnectorNew(t *testing.T) {
+	t.Run("rejects weak string conversion without changing config", func(t *testing.T) {
+		for _, field := range []string{"port", "auth_type", "doc_lib_type"} {
+			t.Run(field, func(t *testing.T) {
+				cfg := interfaces.ConnectorConfig{"protocol": "https", "host": "share.example.com", "port": 443, "auth_type": 1, "doc_lib_type": 1, "token": "fixture"}
+				cfg[field] = "1"
+				instance, err := (&AnyShareConnector{}).New(cfg)
+				require.Error(t, err)
+				assert.Nil(t, instance)
+				assert.NotContains(t, err.Error(), "fixture")
+				assert.Equal(t, "1", cfg[field])
+				assert.Equal(t, "fixture", cfg["token"])
+			})
+		}
+	})
+	t.Run("fixed config fields require exact case", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"protocol": "https", "host": "share.example.com", "port": 443, "auth_type": 1, "doc_lib_type": 1, "Token": "case-fixture"}
+		instance, err := (&AnyShareConnector{}).New(cfg)
+		require.Error(t, err)
+		assert.Nil(t, instance)
+		cfg["token"] = "canonical-fixture"
+		cfg["Token"] = map[string]any{"ignored": true}
+		instance, err = (&AnyShareConnector{}).New(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "canonical-fixture", instance.(*AnyShareConnector).config.Token)
+		assert.Equal(t, 443, instance.(*AnyShareConnector).config.Port)
+	})
 	builder := &AnyShareConnector{}
 
 	t.Run("token config success", func(t *testing.T) {
@@ -182,6 +210,18 @@ func TestAnyShareConnectorNew(t *testing.T) {
 }
 
 func TestAnyShareConnectorConnectAndMetadata(t *testing.T) {
+	t.Run("authentication errors exclude untrusted response contents", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		connector.connected = false
+		connector.config.AuthType = authTypeAppSecret
+		connector.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusUnauthorized, `{"error":"private-response-fixture"}`), nil
+		})}
+		err := connector.Connect(context.Background())
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "private-response-fixture")
+	})
+
 	t.Run("token auth does not call remote server", func(t *testing.T) {
 		connector := &AnyShareConnector{
 			config: &anyshareConfig{
@@ -200,7 +240,7 @@ func TestAnyShareConnectorConnectAndMetadata(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, connector.connected)
 		assert.Equal(t, "Bearer existing", connector.authHeader)
-		assert.Equal(t, interfaces.ConnectorTypeAnyShare, metadata["connector"])
+		assert.Equal(t, "anyshare", metadata["connector"])
 		assert.Equal(t, true, metadata["paths_configured"])
 	})
 

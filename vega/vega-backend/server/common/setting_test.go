@@ -5,8 +5,13 @@
 package common
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,71 +182,77 @@ func TestNormalizeBknSafeURL(t *testing.T) {
 }
 
 func TestLoadCryptoKeys(t *testing.T) {
-	t.Run("skips when disabled", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		appSetting.CryptoSetting.Enabled = false
-
-		require.NoError(t, loadCryptoKeys())
-	})
-
-	t.Run("requires paths when enabled", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
+	t.Run("requires a mounted key when enabled", func(t *testing.T) {
+		resetAppSetting(t, nil)
 		appSetting.CryptoSetting.Enabled = true
-
-		require.ErrorContains(t, loadCryptoKeys(), "privateKeyPath is required")
+		require.ErrorContains(t, loadCryptoKeys(), "aesKeyPath is required")
+		appSetting.CryptoSetting.AESKeyPath = filepath.Join(t.TempDir(), "missing-key")
+		require.ErrorContains(t, loadCryptoKeys(), "failed to read AES key file")
 	})
-
-	t.Run("requires public key path when enabled", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		appSetting.CryptoSetting = CryptoSetting{
-			Enabled:        true,
-			PrivateKeyPath: "private.pem",
+	t.Run("disabled writes allow an absent key and clear stale in-memory bytes", func(t *testing.T) {
+		for _, path := range []string{"", filepath.Join(t.TempDir(), "unmounted-key")} {
+			resetAppSetting(t, nil)
+			appSetting.CryptoSetting = CryptoSetting{AESKeyPath: path, AESKey: []byte("previous-key")}
+			require.NoError(t, loadCryptoKeys())
+			assert.Empty(t, appSetting.CryptoSetting.AESKey)
 		}
-
-		require.ErrorContains(t, loadCryptoKeys(), "publicKeyPath is required")
 	})
-
-	t.Run("returns private key read error", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		appSetting.CryptoSetting = CryptoSetting{
-			Enabled:        true,
-			PrivateKeyPath: filepath.Join(t.TempDir(), "missing-private.pem"),
-			PublicKeyPath:  "public.pem",
-		}
-
-		require.ErrorContains(t, loadCryptoKeys(), "failed to read private key file")
-	})
-
-	t.Run("returns public key read error", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		dir := t.TempDir()
-		privateKeyPath := filepath.Join(dir, "private.pem")
-		require.NoError(t, os.WriteFile(privateKeyPath, []byte("private-key"), 0600))
-		appSetting.CryptoSetting = CryptoSetting{
-			Enabled:        true,
-			PrivateKeyPath: privateKeyPath,
-			PublicKeyPath:  filepath.Join(dir, "missing-public.pem"),
-		}
-
-		require.ErrorContains(t, loadCryptoKeys(), "failed to read public key file")
-	})
-
-	t.Run("loads private and public keys", func(t *testing.T) {
-		resetAppSetting(t, map[string]map[string]any{})
-		dir := t.TempDir()
-		privateKeyPath := filepath.Join(dir, "private.pem")
-		publicKeyPath := filepath.Join(dir, "public.pem")
-		require.NoError(t, os.WriteFile(privateKeyPath, []byte("private-key"), 0600))
-		require.NoError(t, os.WriteFile(publicKeyPath, []byte("public-key"), 0600))
-		appSetting.CryptoSetting = CryptoSetting{
-			Enabled:        true,
-			PrivateKeyPath: privateKeyPath,
-			PublicKeyPath:  publicKeyPath,
-		}
-
+	t.Run("loads decoded AES key independently of the write switch", func(t *testing.T) {
+		resetAppSetting(t, nil)
+		key := []byte(strings.Repeat("k", 32))
+		path := filepath.Join(t.TempDir(), "aes-key")
+		require.NoError(t, os.WriteFile(path, []byte("\n"+base64.StdEncoding.EncodeToString(key)+"\n"), 0600))
+		appSetting.CryptoSetting = CryptoSetting{Enabled: true, AESKeyPath: path}
 		require.NoError(t, loadCryptoKeys())
-		assert.Equal(t, "private-key", appSetting.CryptoSetting.PrivateKey)
-		assert.Equal(t, "public-key", appSetting.CryptoSetting.PublicKey)
+		assert.Equal(t, key, appSetting.CryptoSetting.AESKey)
+		appSetting.CryptoSetting.Enabled = false
+		appSetting.CryptoSetting.AESKey = nil
+		require.NoError(t, loadCryptoKeys())
+		assert.Equal(t, key, appSetting.CryptoSetting.AESKey)
+	})
+	t.Run("rejects malformed keys and retains the last successfully decoded key", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			for _, size := range []int{-1, 0, 16, 24, 31, 33} {
+				t.Run(fmt.Sprintf("enabled=%t/size=%d", enabled, size), func(t *testing.T) {
+					resetAppSetting(t, nil)
+					previous := []byte(strings.Repeat("p", 32))
+					path := filepath.Join(t.TempDir(), "aes-key")
+					content := "invalid-base64!"
+					if size >= 0 {
+						content = base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", size)))
+					}
+					require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+					appSetting.CryptoSetting = CryptoSetting{Enabled: enabled, AESKeyPath: path, AESKey: previous}
+					err := loadCryptoKeys()
+					require.Error(t, err)
+					if content != "" {
+						assert.NotContains(t, err.Error(), content)
+					}
+					assert.Equal(t, previous, appSetting.CryptoSetting.AESKey)
+				})
+			}
+		}
+	})
+	t.Run("disabled writes do not ignore file read errors", func(t *testing.T) {
+		resetAppSetting(t, nil)
+		appSetting.CryptoSetting.AESKeyPath = t.TempDir()
+		require.ErrorContains(t, loadCryptoKeys(), "failed to read AES key file")
+	})
+	t.Run("key bytes cannot be configured or serialized", func(t *testing.T) {
+		vp := viper.New()
+		vp.SetConfigType("yaml")
+		require.NoError(t, vp.ReadConfig(strings.NewReader("crypto:\n  enabled: false\n  aesKeyPath: /mounted/aes-key\n  aesKey: [1, 2, 3]\n")))
+		var setting AppSetting
+		require.NoError(t, vp.Unmarshal(&setting))
+		assert.Empty(t, setting.CryptoSetting.AESKey)
+		assert.Equal(t, "/mounted/aes-key", setting.CryptoSetting.AESKeyPath)
+		setting.CryptoSetting.AESKey = []byte(strings.Repeat("k", 32))
+		encoded, err := json.Marshal(setting.CryptoSetting)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), "AESKey\"")
+		var decoded CryptoSetting
+		require.NoError(t, json.Unmarshal([]byte(`{"AESKey":[1,2,3]}`), &decoded))
+		assert.Empty(t, decoded.AESKey)
 	})
 }
 
@@ -254,5 +265,77 @@ func resetAppSetting(t *testing.T, depServices map[string]map[string]any) {
 	}
 	t.Cleanup(func() {
 		appSetting = old
+	})
+}
+
+func TestLoadServiceCIDRPrefixes(t *testing.T) {
+	t.Run("preserves strings and normalizes IPv4 and IPv6 prefixes", func(t *testing.T) {
+		resetAppSetting(t, nil)
+		raw := []string{"10.96.1.7/12", "fd00:1234::abcd/108"}
+		appSetting.HTTPAPI.ServiceCIDRs = raw
+		require.NoError(t, loadServiceCIDRPrefixes())
+		assert.Equal(t, raw, appSetting.HTTPAPI.ServiceCIDRs)
+		assert.Equal(t, []netip.Prefix{
+			netip.MustParsePrefix("10.96.0.0/12"),
+			netip.MustParsePrefix("fd00:1234::/108"),
+		}, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+	})
+	t.Run("reload replaces prefixes only after validation succeeds", func(t *testing.T) {
+		resetAppSetting(t, nil)
+		appSetting.HTTPAPI.ServiceCIDRs = []string{"10.96.1.7/12"}
+		require.NoError(t, loadServiceCIDRPrefixes())
+		appSetting.HTTPAPI.ServiceCIDRs = []string{"fd00:1234::abcd/108"}
+		require.NoError(t, loadServiceCIDRPrefixes())
+		previous := []netip.Prefix{netip.MustParsePrefix("fd00:1234::/108")}
+		assert.Equal(t, previous, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+		appSetting.HTTPAPI.ServiceCIDRs = []string{"10.96.0.0/12", "invalid"}
+		require.ErrorContains(t, loadServiceCIDRPrefixes(), "serviceCIDRs[1]")
+		assert.Equal(t, previous, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+		appSetting.HTTPAPI.ServiceCIDRs = nil
+		require.NoError(t, loadServiceCIDRPrefixes())
+		assert.Empty(t, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+	})
+	t.Run("defaults to no Service CIDRs", func(t *testing.T) {
+		resetAppSetting(t, nil)
+		require.NoError(t, loadServiceCIDRPrefixes())
+		assert.Empty(t, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+	})
+	for _, value := range []string{"not-a-cidr", "", "10.96.0.1", "10.96.0.0/33", "fd00:1234::/129"} {
+		t.Run("rejects invalid CIDR "+value, func(t *testing.T) {
+			resetAppSetting(t, nil)
+			appSetting.HTTPAPI.ServiceCIDRs = []string{value}
+			require.ErrorContains(t, loadServiceCIDRPrefixes(), "serviceCIDRs[0]")
+			assert.Empty(t, appSetting.HTTPAPI.ServiceCIDRPrefixes)
+		})
+	}
+}
+
+func TestHTTPAPIConfig(t *testing.T) {
+	t.Run("uses standard Viper string slice compatibility", func(t *testing.T) {
+		for _, input := range []string{"10.96.1.7/12", "10.96.1.7/12,fd00:1234::abcd/108"} {
+			vp := viper.New()
+			vp.Set("httpAPI", map[string]any{"serviceCIDRs": input})
+			setting := &AppSetting{}
+			require.NoError(t, vp.Unmarshal(setting))
+			assert.Equal(t, strings.Split(input, ","), setting.HTTPAPI.ServiceCIDRs)
+			assert.Empty(t, setting.HTTPAPI.ServiceCIDRPrefixes)
+		}
+	})
+	t.Run("runtime prefixes are not decoded or serialized", func(t *testing.T) {
+		vp := viper.New()
+		vp.SetConfigType("yaml")
+		require.NoError(t, vp.ReadConfig(strings.NewReader("httpAPI:\n  serviceCIDRs: [10.96.1.7/12]\n  serviceCIDRPrefixes: [0.0.0.0/0]\n")))
+		setting := &AppSetting{}
+		require.NoError(t, vp.Unmarshal(setting))
+		assert.Equal(t, []string{"10.96.1.7/12"}, setting.HTTPAPI.ServiceCIDRs)
+		assert.Empty(t, setting.HTTPAPI.ServiceCIDRPrefixes)
+		setting.HTTPAPI.ServiceCIDRPrefixes = []netip.Prefix{netip.MustParsePrefix("10.96.0.0/12")}
+		encoded, err := json.Marshal(setting.HTTPAPI)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), "ServiceCIDRPrefixes")
+		assert.NotContains(t, string(encoded), "serviceCIDRPrefixes")
+		var decoded HTTPAPIConfig
+		require.NoError(t, json.Unmarshal([]byte(`{"serviceCIDRs":["10.96.1.7/12"],"serviceCIDRPrefixes":["0.0.0.0/0"]}`), &decoded))
+		assert.Empty(t, decoded.ServiceCIDRPrefixes)
 	})
 }

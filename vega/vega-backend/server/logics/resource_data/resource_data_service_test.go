@@ -375,8 +375,8 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			factory := mock_interfaces.NewMockConnectorFactory(ctrl)
 			connector := mock_interfaces.NewMockTableConnector(ctrl)
 			resource := &interfaces.Resource{ID: "resource", Enabled: true, CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "value", Type: interfaces.DataType_String}}}
-			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
-			factory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(connector, nil)
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "mariadb"}, nil)
+			factory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 			connector.EXPECT().Connect(gomock.Any()).Return(nil)
 			connector.EXPECT().Close(gomock.Any()).Return(nil)
 			var cause error = interfaces.NewOutputFieldError(tc.reason, "value")
@@ -420,8 +420,8 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			ValueFrom: interfaces.ValueFrom_Const, Value: "example"}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: fixed, FixedFilterCondCfg: fixed}
 		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
-			Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
-		factory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).Return(connector, nil)
+			Return(&interfaces.Catalog{Enabled: true, ConnectorType: "opensearch"}, nil)
+		factory.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		cause := interfaces.NewConditionBuildError("text field has no keyword feature")
@@ -490,7 +490,7 @@ func TestQuerySourcePageProjectsAggregateOutput(t *testing.T) {
 			for _, selected := range [][]string{nil, {}, {"region"}, {"total"}, {"region", "total"}} {
 				ctrl := gomock.NewController(t)
 				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "mariadb"}, nil)
 				rds := &resourceDataService{cs: catalogs}
 				resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "region", Type: interfaces.DataType_String}, {Name: "total", Type: interfaces.DataType_Binary}}}
 				params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "region"}}, Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, OutputFields: selected}
@@ -505,7 +505,7 @@ func TestQuerySourcePageProjectsAggregateOutput(t *testing.T) {
 					factory := mock_interfaces.NewMockConnectorFactory(ctrl)
 					connector := mock_interfaces.NewMockTableConnector(ctrl)
 					rds.cf = factory
-					factory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(connector, nil)
+					factory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 					connector.EXPECT().Connect(gomock.Any()).Return(nil)
 					connector.EXPECT().Close(gomock.Any()).Return(nil)
 					connector.EXPECT().ExecuteQuery(gomock.Any(), resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: 42}, nil)
@@ -1259,7 +1259,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		}}
 		resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
 		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
-			Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+			Return(&interfaces.Catalog{Enabled: true, ConnectorType: "opensearch"}, nil)
 		result, err := (&resourceDataService{rs: resources, cs: catalogs, cf: connectors, lim: indexes}).QueryWithPaging(t.Context(), resource, params)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
@@ -2193,8 +2193,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		resource := newResource(interfaces.ResourceCategoryTable)
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(mockConn, nil)
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: "mariadb"}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
@@ -2219,8 +2219,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		resource := newResource(interfaces.ResourceCategoryTable)
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMariaDB, gomock.Any()).Return(mockConn, nil)
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: "mariadb"}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).
@@ -2315,8 +2315,8 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		resource := newResource(interfaces.ResourceCategoryTable)
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeHANA}, nil)
-		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeHANA, gomock.Any()).Return(mockConn, nil)
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: "hana"}, nil)
+		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), "hana", gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, &codedQueryError{258})
@@ -2457,8 +2457,8 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
 			params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, NeedTotal: true,
 				FilterCondCfg: &interfaces.FilterCondCfg{Field: "wide", Operation: op, Value: bounds}}
-			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
-			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeDoris, gomock.Any()).Return(conn, nil)
+			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "doris"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "doris", gomock.Any()).Return(conn, nil)
 			conn.EXPECT().Connect(gomock.Any()).Return(nil)
 			conn.EXPECT().Close(gomock.Any()).Return(nil)
 			conn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, prepared *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
@@ -2479,7 +2479,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			assert.Equal(t, bounds[1], rows[0]["wide"])
 		}
 	})
-	for _, connectorType := range []string{interfaces.ConnectorTypeDoris, interfaces.ConnectorTypeMariaDB} {
+	for _, connectorType := range []string{"doris", "mariadb"} {
 		for _, indexed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s indexed=%v", connectorType, indexed), func(t *testing.T) {
 				ctrl := gomock.NewController(t)
@@ -2488,7 +2488,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 				lim := newResourceDataLocalIndexManagerMock(ctrl)
 				service := &resourceDataService{cs: cs, cf: cf, lim: lim}
 				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_String, OriginalType: "VARCHAR", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
-				if connectorType == interfaces.ConnectorTypeDoris {
+				if connectorType == "doris" {
 					resource.SchemaDefinition[0].Type = interfaces.DataType_LargeInteger
 					resource.SchemaDefinition[0].OriginalType = "LARGEINT"
 				}
@@ -2505,7 +2505,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 					actual, ok := prepared.ActualFilterCond.(*filter_condition.EqualCond)
 					require.True(t, ok)
 					assert.Equal(t, wantValue, actual.Value)
-					if connectorType == interfaces.ConnectorTypeDoris && !indexed {
+					if connectorType == "doris" && !indexed {
 						assert.Equal(t, interfaces.DataType_LargeInteger, actual.Lfield.Type)
 					} else {
 						assert.Equal(t, interfaces.DataType_String, actual.Lfield.Type)
@@ -2539,7 +2539,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, int64(1), total)
 				assert.Equal(t, wantRows, rows)
-				if connectorType == interfaces.ConnectorTypeDoris {
+				if connectorType == "doris" {
 					assert.Equal(t, "+00100", params.FilterCondCfg.Value)
 				}
 				if indexed {
@@ -2557,7 +2557,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			cs := mock_interfaces.NewMockCatalogService(ctrl)
 			service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: newResourceDataLocalIndexManagerMock(ctrl)}
 			resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}, {Name: "payload", Type: interfaces.DataType_Json}}}
-			cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
+			cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "doris"}, nil)
 			rowsResult20, err := service.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
 			var rows []map[string]any
 			var total int64
@@ -2582,7 +2582,7 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 				cs := mock_interfaces.NewMockCatalogService(ctrl)
 				service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: newResourceDataLocalIndexManagerMock(ctrl), ds: mock_interfaces.NewMockDatasetService(ctrl)}
 				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: category, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
-				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL}, nil)
+				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "postgresql"}, nil)
 				cfg := &interfaces.FilterCondCfg{Field: "payload.id", Operation: "eq", ValueFrom: "const", Value: "1"}
 				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 				if stored {

@@ -73,12 +73,12 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := vmock.NewMockTableConnector(ctrl)
-		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(connector, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().DecodeTableMeta(gomock.Any()).Return(nil, errors.New("incomplete table metadata"))
 		worker := &streamingBuildWorker{cf: cf, bts: bts, rs: rs, cs: cs, lim: vmock.NewMockLocalIndexManager(ctrl)}
 		task := &interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending}
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "`app`.`orders`"}, nil)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{ID: "c1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL, ConnectorCfg: interfaces.ConnectorConfig{"databases": []string{"app"}}}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{ID: "c1", Enabled: true, ConnectorType: "mysql", ConnectorCfg: interfaces.ConnectorConfig{"databases": []string{"app"}}}, nil)
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "incomplete table metadata").Return(true, nil)
 		require.NoError(t, worker.Run(context.Background(), task))
 	})
@@ -97,7 +97,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{
 			ID:            "c1",
 			Enabled:       true,
-			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorType: "postgresql",
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, nil)
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "PostgreSQL streaming build requires connector_config.database").
@@ -110,7 +110,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 func TestStreamingDatabase(t *testing.T) {
 	t.Run("returns PostgreSQL connection database", func(t *testing.T) {
 		database, err := streamingDatabase(&interfaces.Catalog{
-			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorType: "postgresql",
 			ConnectorCfg:  interfaces.ConnectorConfig{"database": "app"},
 		})
 
@@ -120,7 +120,7 @@ func TestStreamingDatabase(t *testing.T) {
 
 	t.Run("rejects PostgreSQL without connection database", func(t *testing.T) {
 		_, err := streamingDatabase(&interfaces.Catalog{
-			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorType: "postgresql",
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		})
 
@@ -129,7 +129,7 @@ func TestStreamingDatabase(t *testing.T) {
 
 	t.Run("returns MySQL database include list from databases", func(t *testing.T) {
 		database, err := streamingDatabase(&interfaces.Catalog{
-			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorType: "mysql",
 			ConnectorCfg:  interfaces.ConnectorConfig{"databases": []any{"app", "analytics"}},
 		})
 
@@ -139,7 +139,7 @@ func TestStreamingDatabase(t *testing.T) {
 
 	t.Run("rejects MySQL instance-level catalog", func(t *testing.T) {
 		_, err := streamingDatabase(&interfaces.Catalog{
-			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorType: "mysql",
 			ConnectorCfg:  interfaces.ConnectorConfig{"databases": []any{}},
 		})
 
@@ -312,7 +312,7 @@ func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 	t.Run("uses database include list for MySQL", func(t *testing.T) {
 		config := worker.buildConnectorConfig("build-c1", &interfaces.Catalog{
 			ID:            "c1",
-			ConnectorType: interfaces.ConnectorTypeMySQL,
+			ConnectorType: "mysql",
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, "app,analytics", "")
 
@@ -322,7 +322,7 @@ func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 	t.Run("uses connection database for PostgreSQL", func(t *testing.T) {
 		config := worker.buildConnectorConfig("build-c1", &interfaces.Catalog{
 			ID:            "c1",
-			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorType: "postgresql",
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, "app", "")
 
@@ -459,8 +459,8 @@ func TestStreamingBuildWorkerBuildTableName(t *testing.T) {
 	for _, tc := range []struct {
 		name, connectorType, database, schema, want string
 	}{
-		{"MySQL", interfaces.ConnectorTypeMySQL, "app", "app", "app.orders"},
-		{"PostgreSQL", interfaces.ConnectorTypePostgreSQL, "app", "sales", "sales.orders"},
+		{"MySQL", "mysql", "app", "app", "app.orders"},
+		{"PostgreSQL", "postgresql", "app", "sales", "sales.orders"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

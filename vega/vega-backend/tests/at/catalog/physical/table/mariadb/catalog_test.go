@@ -32,7 +32,6 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0
@@ -162,7 +161,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -178,7 +177,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"host":      mariadbConfig.Host,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -194,7 +193,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"host":      mariadbConfig.Host,
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -282,7 +281,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      1,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -299,7 +298,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      65535,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -316,7 +315,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{strings.Repeat("d", 64)},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -333,7 +332,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{strings.Repeat("d", 65)},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -356,7 +355,7 @@ func TestMariaDBCatalogCreate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			}
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
@@ -400,7 +399,6 @@ func TestMariaDBCatalogRead(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0
@@ -510,7 +508,6 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0
@@ -543,7 +540,7 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 					"options": map[string]any{
 						"charset": "utf8mb4",
 					},
@@ -569,7 +566,7 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			})
 			updateResp := client.PUT("/api/vega-backend/v1/catalogs/"+catalogID, updatePayload)
@@ -595,7 +592,7 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			})
 			updateResp := client.PUT("/api/vega-backend/v1/catalogs/"+catalogID, updatePayload)
@@ -618,7 +615,7 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 					"port":      65536,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			})
 			updateResp := client.PUT("/api/vega-backend/v1/catalogs/"+catalogID, updatePayload)
@@ -641,7 +638,7 @@ func TestMariaDBCatalogUpdate(t *testing.T) {
 					"port":      mariadbConfig.Port,
 					"databases": []string{mariadbConfig.Database},
 					"username":  mariadbConfig.Username,
-					"password":  builder.GetEncryptedPassword(),
+					"password":  builder.GetPassword(),
 				},
 			})
 			updateResp := client.PUT("/api/vega-backend/v1/catalogs/"+catalogID, updatePayload)
@@ -662,7 +659,6 @@ func TestMariaDBCatalogDelete(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0
@@ -720,7 +716,6 @@ func TestMariaDBCatalogDiscover(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0
@@ -1041,7 +1036,7 @@ func TestMariaDBCatalogDiscover(t *testing.T) {
 		// 			"port":      mariadbConfig.Port,
 		// 			"databases": []string{mariadbConfig.Database},
 		// 			"username":  mariadbConfig.Username,
-		// 			"password":  builder.GetEncryptedPassword(),
+		// 			"password":  builder.GetPassword(),
 		// 			"options": map[string]any{
 		// 				"timeout": "1s",
 		// 			},
@@ -1139,7 +1134,6 @@ func TestMariaDBSpecificOptions(t *testing.T) {
 		So(config.TargetMariaDB.Host, ShouldNotBeEmpty)
 
 		builder := NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		tableSize := 1
 		recordSize := 0

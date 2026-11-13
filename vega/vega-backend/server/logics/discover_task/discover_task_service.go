@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/user_mgmt"
@@ -42,6 +43,7 @@ const discoverTaskDispatchBuffer = 1
 type discoverTaskService struct {
 	appSetting *common.AppSetting
 	cs         interfaces.CatalogService
+	cf         interfaces.ConnectorFactory
 	dta        interfaces.DiscoverTaskAccess
 	rs         interfaces.ResourceService
 	ums        interfaces.UserMgmtService
@@ -55,6 +57,7 @@ func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTa
 		dtService = &discoverTaskService{
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			dta:        logics.DTA,
 			rs:         resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting)),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -105,7 +108,7 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	}
 
 	// 探查任务是对目录的写操作（#269）。
-	allowed, _, err := dts.cs.CheckCatalogPermission(ctx, req.CatalogID,
+	allowed, catalog, err := dts.cs.CheckCatalogPermission(ctx, req.CatalogID,
 		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
@@ -114,6 +117,19 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	if !allowed {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+	}
+
+	if catalog == nil {
+		return "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if catalog.Type != interfaces.CatalogTypeLogical {
+		supported, err := dts.cf.SupportDiscover(catalog.ConnectorType)
+		if err != nil {
+			return "", err
+		}
+		if !supported {
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("connector does not support discovery")
+		}
 	}
 
 	// 在持久化和通知调度前校验单资源纯计数能力，所有创建入口共用此检查。

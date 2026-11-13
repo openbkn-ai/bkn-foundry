@@ -67,9 +67,14 @@ type ConnectorFactory interface {
 	// connector type.
 	GetConnectorFieldConfig(ctx context.Context, ct *ConnectorType) (map[string]ConnectorFieldConfig, error)
 
-	// GetSensitiveFields returns the sensitive fields declared by a connector
-	// type that is available under the current entitlement.
-	GetSensitiveFields(tp string) []string
+	// SupportDiscover returns the assembled connector's static discovery support.
+	// It does not create an instance or depend on execution entitlement or enabled state.
+	SupportDiscover(tp string) (bool, error)
+
+	// GetSensitiveFields returns unqualified sensitive field names for an assembled connector,
+	// independently of execution entitlement. cfg is passed directly to the assembled builder without source I/O.
+	// An empty list is valid; an unknown type or invalid configuration metadata returns an error.
+	GetSensitiveFields(tp string, cfg ConnectorConfig) ([]string, error)
 
 	// ValidateBuildSchema delegates source-specific build validation to the registered connector without creating an instance or opening a source connection.
 	ValidateBuildSchema(tp string, resource *Resource) error

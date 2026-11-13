@@ -10,6 +10,7 @@ package mariadb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -18,8 +19,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -84,7 +84,7 @@ func NewMariaDBConnector() interfaces.TableConnector {
 // NewMySQLConnector creates an independent MySQL connector builder backed by
 // the MariaDB-compatible implementation.
 func NewMySQLConnector() interfaces.TableConnector {
-	return &MariaDBConnector{connectorType: interfaces.ConnectorTypeMySQL}
+	return &MariaDBConnector{connectorType: "mysql"}
 }
 
 // ValidateBuildSchema adds no source-specific restrictions to the common build rules.
@@ -98,7 +98,7 @@ func (c *MariaDBConnector) GetType() string {
 	if c.connectorType != "" {
 		return c.connectorType
 	}
-	return interfaces.ConnectorTypeMariaDB
+	return "mariadb"
 }
 
 // GetName returns the connector name.
@@ -116,6 +116,11 @@ func (c *MariaDBConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryTable
 }
 
+// SupportDiscover reports the connector's existing discovery capability.
+func (c *MariaDBConnector) SupportDiscover() bool {
+	return true
+}
+
 // GetEnabled reports whether the connector builder is enabled.
 func (c *MariaDBConnector) GetEnabled() bool {
 	return c.enabled
@@ -127,8 +132,8 @@ func (c *MariaDBConnector) SetEnabled(enabled bool) {
 }
 
 // GetSensitiveFields identifies the credential fields that must be protected.
-func (c *MariaDBConnector) GetSensitiveFields() []string {
-	return []string{"password"}
+func (c *MariaDBConnector) GetSensitiveFields(_ interfaces.ConnectorConfig) ([]string, error) {
+	return []string{"password"}, nil
 }
 
 // GetFieldConfig describes the fields shared by the MariaDB and MySQL connectors.
@@ -147,8 +152,8 @@ func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorField
 // Database scope limits discovery and validation; the DSN does not select a database.
 func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var mCfg mariadbConfig
-	if err := mapstructure.Decode(cfg, &mCfg); err != nil {
-		return nil, fmt.Errorf("failed to decode mariadb config: %w", err)
+	if err := common.DecodeMapToStruct(cfg, &mCfg); err != nil {
+		return nil, errors.New("failed to decode mariadb config")
 	}
 
 	mCfg.Host = strings.TrimSpace(mCfg.Host)
@@ -279,12 +284,12 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 
 	db, err := sql.Open("mysql", c.connectionString())
 	if err != nil {
-		return err
+		return connectionError(ctx, "mariadb connection failed", err)
 	}
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return err
+		return connectionError(ctx, "mariadb connection failed", err)
 	}
 
 	c.db = db
@@ -309,7 +314,7 @@ func (c *MariaDBConnector) Ping(ctx context.Context) error {
 		return err
 	}
 
-	return c.db.PingContext(ctx)
+	return connectionError(ctx, "mariadb ping failed", c.db.PingContext(ctx))
 }
 
 // TestConnection checks connectivity and visibility of every configured database.
@@ -346,7 +351,7 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to list databases: %w", err)
+		return connectionError(ctx, "failed to list databases", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -354,7 +359,7 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 	for rows.Next() {
 		var dbName sql.NullString
 		if err := rows.Scan(&dbName); err != nil {
-			return fmt.Errorf("failed to scan database name: %w", err)
+			return connectionError(ctx, "failed to scan database name", err)
 		}
 		if !dbName.Valid {
 			return fmt.Errorf("required schema metadata contains NULL")
@@ -362,7 +367,7 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 		found[dbName.String] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("failed to iterate databases: %w", err)
+		return connectionError(ctx, "failed to iterate databases", err)
 	}
 
 	// Match exact source names rather than relying on case-insensitive SQL collation.
@@ -374,4 +379,24 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// connectionError preserves safe failure classifications without exposing driver messages or connection strings.
+func connectionError(ctx context.Context, operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s: %w", operation, ctx.Err())
+	}
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, cause) {
+			return fmt.Errorf("%s: %w", operation, cause)
+		}
+	}
+	var sourceError *mysql.MySQLError
+	if errors.As(err, &sourceError) {
+		return fmt.Errorf("%s: %w", operation, &mysql.MySQLError{Number: sourceError.Number, Message: "source rejected the connection request"})
+	}
+	return errors.New(operation)
 }

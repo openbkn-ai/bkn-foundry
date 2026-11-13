@@ -8,9 +8,7 @@ package setup
 
 import (
 	"fmt"
-	"os"
 
-	bkncrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/spf13/viper"
 )
 
@@ -19,10 +17,6 @@ type TestConfig struct {
 	VegaBackend      VegaBackendConfig `mapstructure:"vega_backend"`
 	TargetMariaDB    MariaDBConfig     `mapstructure:"target_mariadb"`
 	TargetOpenSearch OpenSearchConfig  `mapstructure:"target_opensearch"`
-	Crypto           CryptoConfig      `mapstructure:"crypto"`
-
-	// Cipher 运行时初始化的加密器（非配置文件字段）
-	Cipher bkncrypto.Cipher `mapstructure:"-"`
 }
 
 // VegaBackendConfig VEGA Backend服务配置
@@ -46,12 +40,6 @@ type OpenSearchConfig struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	UseSSL   bool   `mapstructure:"use_ssl"`
-}
-
-// CryptoConfig RSA加密配置
-type CryptoConfig struct {
-	PublicKeyPath  string `mapstructure:"public_key_path"`
-	PrivateKeyPath string `mapstructure:"private_key_path"`
 }
 
 // LoadTestConfig 加载测试配置
@@ -92,39 +80,5 @@ func LoadTestConfig() (*TestConfig, error) {
 		return nil, fmt.Errorf("配置错误: target_mariadb.host 不能为空")
 	}
 
-	// 初始化RSA加密器（用于加密敏感字段）
-	if config.Crypto.PublicKeyPath != "" {
-		publicKeyContent, err := os.ReadFile(config.Crypto.PublicKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("读取公钥文件失败: %w", err)
-		}
-		privateKey := ""
-		if config.Crypto.PrivateKeyPath != "" {
-			privateKeyContent, err := os.ReadFile(config.Crypto.PrivateKeyPath)
-			if err != nil {
-				return nil, fmt.Errorf("读取私钥文件失败: %w", err)
-			}
-			privateKey = string(privateKeyContent)
-		}
-		cipher, err := bkncrypto.NewRSACipher(privateKey, string(publicKeyContent))
-		if err != nil {
-			return nil, fmt.Errorf("初始化RSA加密器失败: %w", err)
-		}
-		config.Cipher = cipher
-	}
-
 	return &config, nil
-}
-
-// EncryptString 使用测试配置中的加密器加密字符串
-// 如果加密器未初始化，直接返回原文
-func (c *TestConfig) EncryptString(plaintext string) string {
-	if c.Cipher == nil || plaintext == "" {
-		return plaintext
-	}
-	encrypted, err := c.Cipher.Encrypt(plaintext)
-	if err != nil {
-		panic(fmt.Sprintf("加密失败: %v", err))
-	}
-	return encrypted
 }

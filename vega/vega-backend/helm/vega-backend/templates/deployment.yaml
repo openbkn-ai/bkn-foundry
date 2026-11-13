@@ -132,7 +132,7 @@ spec:
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm
             mountPath: /opt/vega-backend/config
-          {{- if .Values.config.crypto.enabled }}
+          {{- if or .Values.config.crypto.enabled .Values.config.crypto.aesKey }}
           - name: {{ .Values.moduleName }}-secret
             mountPath: /opt/vega-backend/secret-config
             readOnly: true
@@ -142,13 +142,11 @@ spec:
       - name: {{ .Values.moduleName }}-cm
         configMap:
           name: {{ .Values.moduleName }}-cm
-      {{- if .Values.config.crypto.enabled }}
+      {{- if or .Values.config.crypto.enabled .Values.config.crypto.aesKey }}
       - name: {{ .Values.moduleName }}-secret
         secret:
           secretName: {{ .Values.moduleName }}-secret
           items:
-            - key: rsa_public_key.pem
-              path: rsa_public_key.pem
-            - key: rsa_private_key_pkcs8.pem
-              path: rsa_private_key_pkcs8.pem
+            - key: aes_key
+              path: aes_key
       {{- end }}
