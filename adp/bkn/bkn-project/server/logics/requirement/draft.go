@@ -319,6 +319,8 @@ type draftMessage struct {
 	Rules         []messageRule         `json:"rules"`
 	LogicNeeds    []messageLogicNeed    `json:"logic_needs"`
 	Kept          *messageKept          `json:"kept,omitempty"`
+	// Supplement is the owner's supplement note, absent when none was written.
+	Supplement string `json:"supplement,omitempty"`
 }
 
 // messageConcept is a concept of the specification, by its own id.
@@ -521,9 +523,10 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 // needs. It also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
 	draft *interfaces.Draft, base *interfaces.RequirementSpec, kept *interfaces.RequirementSpec,
-	networkItems []*interfaces.LogicNetworkItem) (string, int, int, error) {
+	networkItems []*interfaces.LogicNetworkItem, supplement string) (string, int, int, error) {
 	msg := draftMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(base.Concepts),
-		Rules: messageRulesOf(base.Rules), LogicNeeds: messageLogicNeedsOf(base.LogicNeeds), Kept: messageKeptOf(kept)}
+		Rules: messageRulesOf(base.Rules), LogicNeeds: messageLogicNeedsOf(base.LogicNeeds), Kept: messageKeptOf(kept),
+		Supplement: supplement}
 	var tablesOmitted, propertiesOmitted int
 	msg.Tables, tablesOmitted = messageTablesOf(tables)
 	msg.ObjectTypes, msg.RelationTypes, propertiesOmitted = messageOntologyOf(draft, true)
@@ -1039,8 +1042,9 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	cited := s.withBackground(ctx, token, entry, docs)
 	// Scenarios rest on what the network already does too: its kinetic items are read now, as the caller.
 	networkItems := s.scenarioNetworkItems(ctx, token, entry.KNID, base)
+	supplement := s.supplementOf(ctx, projectID)
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, catalogIDs, docs, cited, networkItems, caller) })
+	s.run(func() { s.draft(runCtx, req, project, catalogIDs, docs, cited, networkItems, supplement, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -1090,7 +1094,7 @@ func (s *requirementService) listTables(ctx context.Context, catalogIDs []string
 // and the network's background; the run records the documents as its inputs.
 func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
 	catalogIDs []string, docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument,
-	networkItems []*interfaces.LogicNetworkItem, caller interfaces.AccountInfo) {
+	networkItems []*interfaces.LogicNetworkItem, supplement string, caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
 		done.Status, done.Error, done.Spec, done.Inputs, done.UpdateTime = status, failure, *spec, inputs, s.now()
@@ -1113,7 +1117,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		return
 	}
 	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base,
-		networkItems)
+		networkItems, supplement)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return

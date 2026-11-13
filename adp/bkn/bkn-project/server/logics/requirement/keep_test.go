@@ -356,7 +356,7 @@ func Test_BuildSpecKeeps(t *testing.T) {
 
 		Convey("The message names the kept items by prefixed ids, and the concepts, rules and needs by their own\n", func() {
 			spec := base()
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), spec, spec, nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), spec, spec, nil, "")
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -372,7 +372,7 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			So(body.LogicNeeds[0], ShouldResemble, messageLogicNeed{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Headcount",
 				Definition: "employees per department"})
 
-			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), emptySpec(), emptySpec(), nil)
+			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), emptySpec(), emptySpec(), nil, "")
 			So(message, ShouldNotContainSubstring, `"kept"`)
 		})
 	})
@@ -384,6 +384,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
@@ -464,6 +465,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 1000 }, newID: func() string { return "run2" }}
 		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
@@ -483,6 +485,7 @@ func Test_RedraftKeeps(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)

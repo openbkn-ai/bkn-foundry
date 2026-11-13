@@ -54,15 +54,18 @@ const (
 	BknProject_Requirement_InputsTooLarge      = "BknProject.Requirement.InputsTooLarge"
 	BknProject_Requirement_InvalidTest         = "BknProject.Requirement.InvalidTest"
 	BknProject_Requirement_NoDocuments         = "BknProject.Requirement.NoDocuments"
+	BknProject_Requirement_InvalidSupplement   = "BknProject.Requirement.InvalidSupplement"
+	BknProject_Requirement_InvalidQuestion     = "BknProject.Requirement.InvalidQuestion"
 
 	// 403
 	BknProject_Requirement_NotOwner = "BknProject.Requirement.NotOwner"
 
 	// 404
-	BknProject_Requirement_NotFound         = "BknProject.Requirement.NotFound"
-	BknProject_Requirement_DocumentNotFound = "BknProject.Requirement.DocumentNotFound"
-	BknProject_Requirement_ItemNotFound     = "BknProject.Requirement.ItemNotFound"
-	BknProject_Requirement_TestNotFound     = "BknProject.Requirement.TestNotFound"
+	BknProject_Requirement_NotFound             = "BknProject.Requirement.NotFound"
+	BknProject_Requirement_DocumentNotFound     = "BknProject.Requirement.DocumentNotFound"
+	BknProject_Requirement_ItemNotFound         = "BknProject.Requirement.ItemNotFound"
+	BknProject_Requirement_TestNotFound         = "BknProject.Requirement.TestNotFound"
+	BknProject_Requirement_ConversationNotFound = "BknProject.Requirement.ConversationNotFound"
 
 	// 409
 	BknProject_Requirement_Drafting             = "BknProject.Requirement.Drafting"
@@ -73,6 +76,9 @@ const (
 	BknProject_Requirement_ProjectArchived      = "BknProject.Requirement.ProjectArchived"
 	BknProject_Requirement_ModelNotConfirmed    = "BknProject.Requirement.ModelNotConfirmed"
 	BknProject_Requirement_ConceptsNotExtracted = "BknProject.Requirement.ConceptsNotExtracted"
+	BknProject_Requirement_AskPending           = "BknProject.Requirement.AskPending"
+	BknProject_Requirement_ProposalChanged      = "BknProject.Requirement.ProposalChanged"
+	BknProject_Requirement_ProposalDecided      = "BknProject.Requirement.ProposalDecided"
 
 	// 500
 	BknProject_Requirement_InternalError = "BknProject.Requirement.InternalError"
@@ -125,6 +131,12 @@ var (
 		BknProject_Requirement_ModelNotConfirmed,
 		BknProject_Requirement_ConceptsNotExtracted,
 		BknProject_Requirement_ImplementationUnavailable,
+		BknProject_Requirement_InvalidSupplement,
+		BknProject_Requirement_InvalidQuestion,
+		BknProject_Requirement_ConversationNotFound,
+		BknProject_Requirement_AskPending,
+		BknProject_Requirement_ProposalChanged,
+		BknProject_Requirement_ProposalDecided,
 		BknProject_Requirement_InvalidExportTarget,
 	}
 )

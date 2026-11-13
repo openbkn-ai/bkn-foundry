@@ -224,6 +224,7 @@ func Test_AnalyseKinetic(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
 		rla := pmock.NewMockReleaseAccess(ctrl)
@@ -390,6 +391,7 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
 		rla := pmock.NewMockReleaseAccess(ctrl)
@@ -413,6 +415,9 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(nil, nil)
 		bba.EXPECT().ListObjectMetrics(gomock.Any(), token, "kn1", "").Return(
 			[]*interfaces.KNObjectMetric{{ID: "m1", Name: "Late rate", OwnerObjectTypeID: "sales_order"}}, nil)
+		// The network's description is read beside the documents.
+		bba.EXPECT().GetKN(gomock.Any(), token, "kn1").Return(&interfaces.KnowledgeNetwork{ID: "kn1", Name: "Orders",
+			Comment: "Plans orders by kit availability."}, nil)
 		st := &runStore{req: &interfaces.Requirement{ProjectID: "p1", Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY,
 			UpdateTime: 7, Spec: interfaces.RequirementSpec{
 				LogicNeeds: []*interfaces.RequirementLogicNeed{
@@ -450,6 +455,8 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 				})
 				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
+				So(msg.Documents[len(msg.Documents)-1].ID, ShouldEqual, interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID)
+				So(msg.Documents[len(msg.Documents)-1].Blocks[0].Text, ShouldContainSubstring, "kit availability")
 				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
 			})
 

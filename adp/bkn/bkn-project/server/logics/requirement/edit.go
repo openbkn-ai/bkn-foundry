@@ -560,70 +560,7 @@ func (s *requirementService) EditItem(ctx context.Context, token string, project
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "EditRequirementItem")
 	defer span.End()
 
-	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
-			switch kind {
-			case interfaces.REQUIREMENT_KIND_SCENARIOS:
-				i, ok := find(spec.Scenarios, itemID, scenarioID)
-				if !ok {
-					return notFound(ctx)
-				}
-				if err := onlyFields(ctx, edit, kind); err != nil {
-					return err
-				}
-				spec.Scenarios[i].Edited, spec.Scenarios[i].Accepted = true, true
-				return applyScenario(ctx, spec.Scenarios[i], edit)
-			case interfaces.REQUIREMENT_KIND_CONCEPTS:
-				i, ok := find(spec.Concepts, itemID, conceptID)
-				if !ok {
-					return notFound(ctx)
-				}
-				if err := onlyFields(ctx, edit, kind); err != nil {
-					return err
-				}
-				spec.Concepts[i].Edited = true
-				return applyConcept(ctx, spec.Concepts[i], edit)
-			case interfaces.REQUIREMENT_KIND_QUESTIONS:
-				i, ok := find(spec.Questions, itemID, questionID)
-				if !ok {
-					return notFound(ctx)
-				}
-				if err := onlyFields(ctx, edit, kind); err != nil {
-					return err
-				}
-				spec.Questions[i].Edited, spec.Questions[i].Accepted = true, true
-				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
-					return err
-				}
-				if err := applyQuestion(ctx, spec.Questions[i], edit, spec, drafted); err != nil {
-					return err
-				}
-				// Changed as the ontology is now.
-				spec.Questions[i].OntologySignature = ontologySignature(drafted.draft, spec.Questions[i])
-				return nil
-			case interfaces.REQUIREMENT_KIND_RULES:
-				i, ok := find(spec.Rules, itemID, ruleID)
-				if !ok {
-					return notFound(ctx)
-				}
-				if err := onlyFields(ctx, edit, kind); err != nil {
-					return err
-				}
-				spec.Rules[i].Edited = true
-				return applyRule(ctx, spec.Rules[i], edit)
-			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
-				i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
-				if !ok {
-					return notFound(ctx)
-				}
-				if err := onlyFields(ctx, edit, kind); err != nil {
-					return err
-				}
-				spec.LogicNeeds[i].Edited, spec.LogicNeeds[i].Accepted = true, true
-				return applyLogicNeed(ctx, spec, spec.LogicNeeds[i], edit, drafted)
-			}
-			return notFound(ctx)
-		})
+	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller, s.editChange(ctx, projectID, kind, itemID, edit))
 	if err != nil {
 		span.SetStatus(codes.Error, "Edit item failed")
 		return nil, err
@@ -637,79 +574,7 @@ func (s *requirementService) AddItem(ctx context.Context, token string, projectI
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AddRequirementItem")
 	defer span.End()
 
-	empty := []interfaces.RequirementCitation{}
-	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller,
-		func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
-			if !slices.Contains(itemKinds, kind) {
-				return notFound(ctx)
-			}
-			if err := onlyFields(ctx, edit, kind); err != nil {
-				return err
-			}
-			switch kind {
-			case interfaces.REQUIREMENT_KIND_SCENARIOS:
-				if edit.Name == nil {
-					return invalidItem(ctx, "name is empty")
-				}
-				s := &interfaces.RequirementScenario{ID: nextID(spec, "s", spec.Scenarios, scenarioID), Knowledge: []string{},
-					Citations: empty, Edited: true, Accepted: true}
-				if err := applyScenario(ctx, s, edit); err != nil {
-					return err
-				}
-				spec.Scenarios = append(spec.Scenarios, s)
-			case interfaces.REQUIREMENT_KIND_CONCEPTS:
-				if edit.Term == nil {
-					return invalidItem(ctx, "term is empty")
-				}
-				c := &interfaces.RequirementConcept{ID: nextID(spec, "c", spec.Concepts, conceptID), Category: "object",
-					Citations: empty, Source: interfaces.REQUIREMENT_CONCEPT_FROM_PERSON, Edited: true}
-				if err := applyConcept(ctx, c, edit); err != nil {
-					return err
-				}
-				spec.Concepts = append(spec.Concepts, c)
-			case interfaces.REQUIREMENT_KIND_QUESTIONS:
-				if edit.Text == nil {
-					return invalidItem(ctx, "text is empty")
-				}
-				q := &interfaces.RequirementQuestion{ID: nextID(spec, "q", spec.Questions, questionID), ScenarioIDs: []string{},
-					Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
-					Basis: interfaces.RequirementBasis{ConceptIDs: []string{}}, LogicNeedIDs: []string{},
-					Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
-					Citations: empty, Edited: true, Accepted: true}
-				if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
-					return err
-				}
-				if err := applyQuestion(ctx, q, edit, spec, drafted); err != nil {
-					return err
-				}
-				q.OntologySignature = ontologySignature(drafted.draft, q)
-				spec.Questions = append(spec.Questions, q)
-			case interfaces.REQUIREMENT_KIND_RULES:
-				if edit.Statement == nil {
-					return invalidItem(ctx, "statement is empty")
-				}
-				r := &interfaces.RequirementRule{ID: nextID(spec, "r", spec.Rules, ruleID), CompilesTo: "other",
-					Citations: empty, Edited: true}
-				if err := applyRule(ctx, r, edit); err != nil {
-					return err
-				}
-				spec.Rules = append(spec.Rules, r)
-			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
-				if edit.LogicKind == nil || edit.Name == nil {
-					return invalidItem(ctx, "logic_kind or name is empty")
-				}
-				n := &interfaces.RequirementLogicNeed{ID: nextID(spec, "n", spec.LogicNeeds, logicNeedID),
-					ObjectTypeIDs: []string{}, Properties: []interfaces.RequirementPropertyRef{}, ConceptIDs: []string{},
-					ScenarioIDs: []string{}, Citations: empty, Source: interfaces.LOGIC_NEED_FROM_PERSON, Edited: true, Accepted: true}
-				spec.LogicNeeds = append(spec.LogicNeeds, n)
-				if err := applyLogicNeed(ctx, spec, n, edit, drafted); err != nil {
-					return err
-				}
-			default:
-				return notFound(ctx)
-			}
-			return nil
-		})
+	req, err := s.update(ctx, token, projectID, edit.UpdateTime, caller, s.addChange(ctx, projectID, kind, edit, nil))
 	if err != nil {
 		span.SetStatus(codes.Error, "Add item failed")
 		return nil, err
@@ -723,72 +588,7 @@ func (s *requirementService) DeleteItem(ctx context.Context, token string, proje
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteRequirementItem")
 	defer span.End()
 
-	req, err := s.update(ctx, token, projectID, updateTime, caller,
-		func(spec *interfaces.RequirementSpec, _ *draftedItems) error {
-			switch kind {
-			case interfaces.REQUIREMENT_KIND_SCENARIOS:
-				i, ok := find(spec.Scenarios, itemID, scenarioID)
-				if !ok {
-					return notFound(ctx)
-				}
-				recordIDs(spec, "s", spec.Scenarios, scenarioID)
-				spec.Scenarios = slices.Delete(spec.Scenarios, i, i+1)
-				for _, q := range spec.Questions {
-					q.ScenarioIDs = slices.DeleteFunc(q.ScenarioIDs, func(id string) bool { return id == itemID })
-				}
-			case interfaces.REQUIREMENT_KIND_CONCEPTS:
-				i, ok := find(spec.Concepts, itemID, conceptID)
-				if !ok {
-					return notFound(ctx)
-				}
-				recordIDs(spec, "c", spec.Concepts, conceptID)
-				spec.Concepts = slices.Delete(spec.Concepts, i, i+1)
-				for _, q := range spec.Questions {
-					q.Basis.ConceptIDs = slices.DeleteFunc(q.Basis.ConceptIDs, func(id string) bool { return id == itemID })
-					// A question that loses an input is no longer known to be asked about
-					// only the rest: its inputs are unknown until drafted again or set.
-					if q.Inputs != nil && slices.ContainsFunc(*q.Inputs,
-						func(in interfaces.RequirementInput) bool { return in.ConceptID == itemID }) {
-						q.Inputs = nil
-					}
-				}
-				for _, n := range spec.LogicNeeds {
-					n.ConceptIDs = slices.DeleteFunc(n.ConceptIDs, func(id string) bool { return id == itemID })
-				}
-				followConcepts(spec)
-			case interfaces.REQUIREMENT_KIND_QUESTIONS:
-				i, ok := find(spec.Questions, itemID, questionID)
-				if !ok {
-					return notFound(ctx)
-				}
-				recordIDs(spec, "q", spec.Questions, questionID)
-				spec.Questions = slices.Delete(spec.Questions, i, i+1)
-				needScenarios(spec)
-			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
-				i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
-				if !ok {
-					return notFound(ctx)
-				}
-				recordIDs(spec, "n", spec.LogicNeeds, logicNeedID)
-				spec.LogicNeeds = slices.Delete(spec.LogicNeeds, i, i+1)
-				// Its questions no longer rest on it; one left resting on nothing is noted when read.
-				for _, q := range spec.Questions {
-					q.LogicNeedIDs = slices.DeleteFunc(q.LogicNeedIDs, func(id string) bool { return id == itemID })
-				}
-				// Nor is an action type carried out by it any longer.
-				followExecutors(spec)
-			case interfaces.REQUIREMENT_KIND_RULES:
-				i, ok := find(spec.Rules, itemID, ruleID)
-				if !ok {
-					return notFound(ctx)
-				}
-				recordIDs(spec, "r", spec.Rules, ruleID)
-				spec.Rules = slices.Delete(spec.Rules, i, i+1)
-			default:
-				return notFound(ctx)
-			}
-			return nil
-		})
+	req, err := s.update(ctx, token, projectID, updateTime, caller, deleteChange(ctx, kind, itemID))
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete item failed")
 		return nil, err
@@ -956,4 +756,232 @@ func (s *requirementService) ReviewItems(ctx context.Context, token string, proj
 	}
 	span.SetStatus(codes.Ok, "")
 	return req, nil
+}
+
+// editChange changes one item of kind as a person edits it.
+func (s *requirementService) editChange(ctx context.Context, projectID string, kind string, itemID string,
+	edit interfaces.RequirementItemEdit) change {
+	return func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
+		switch kind {
+		case interfaces.REQUIREMENT_KIND_SCENARIOS:
+			i, ok := find(spec.Scenarios, itemID, scenarioID)
+			if !ok {
+				return notFound(ctx)
+			}
+			if err := onlyFields(ctx, edit, kind); err != nil {
+				return err
+			}
+			spec.Scenarios[i].Edited, spec.Scenarios[i].Accepted = true, true
+			return applyScenario(ctx, spec.Scenarios[i], edit)
+		case interfaces.REQUIREMENT_KIND_CONCEPTS:
+			i, ok := find(spec.Concepts, itemID, conceptID)
+			if !ok {
+				return notFound(ctx)
+			}
+			if err := onlyFields(ctx, edit, kind); err != nil {
+				return err
+			}
+			spec.Concepts[i].Edited = true
+			return applyConcept(ctx, spec.Concepts[i], edit)
+		case interfaces.REQUIREMENT_KIND_QUESTIONS:
+			i, ok := find(spec.Questions, itemID, questionID)
+			if !ok {
+				return notFound(ctx)
+			}
+			if err := onlyFields(ctx, edit, kind); err != nil {
+				return err
+			}
+			spec.Questions[i].Edited, spec.Questions[i].Accepted = true, true
+			if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
+				return err
+			}
+			if err := applyQuestion(ctx, spec.Questions[i], edit, spec, drafted); err != nil {
+				return err
+			}
+			// Changed as the ontology is now.
+			spec.Questions[i].OntologySignature = ontologySignature(drafted.draft, spec.Questions[i])
+			return nil
+		case interfaces.REQUIREMENT_KIND_RULES:
+			i, ok := find(spec.Rules, itemID, ruleID)
+			if !ok {
+				return notFound(ctx)
+			}
+			if err := onlyFields(ctx, edit, kind); err != nil {
+				return err
+			}
+			spec.Rules[i].Edited = true
+			return applyRule(ctx, spec.Rules[i], edit)
+		case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+			i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
+			if !ok {
+				return notFound(ctx)
+			}
+			if err := onlyFields(ctx, edit, kind); err != nil {
+				return err
+			}
+			spec.LogicNeeds[i].Edited, spec.LogicNeeds[i].Accepted = true, true
+			return applyLogicNeed(ctx, spec, spec.LogicNeeds[i], edit, drafted)
+		}
+		return notFound(ctx)
+	}
+}
+
+// addChange adds an item of kind a person writes; added, when set, takes its id.
+func (s *requirementService) addChange(ctx context.Context, projectID string, kind string,
+	edit interfaces.RequirementItemEdit, added *string) change {
+	empty := []interfaces.RequirementCitation{}
+	return func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
+		if !slices.Contains(itemKinds, kind) {
+			return notFound(ctx)
+		}
+		if err := onlyFields(ctx, edit, kind); err != nil {
+			return err
+		}
+		switch kind {
+		case interfaces.REQUIREMENT_KIND_SCENARIOS:
+			if edit.Name == nil {
+				return invalidItem(ctx, "name is empty")
+			}
+			s := &interfaces.RequirementScenario{ID: nextID(spec, "s", spec.Scenarios, scenarioID), Knowledge: []string{},
+				Citations: empty, Edited: true, Accepted: true}
+			if err := applyScenario(ctx, s, edit); err != nil {
+				return err
+			}
+			spec.Scenarios = append(spec.Scenarios, s)
+		case interfaces.REQUIREMENT_KIND_CONCEPTS:
+			if edit.Term == nil {
+				return invalidItem(ctx, "term is empty")
+			}
+			c := &interfaces.RequirementConcept{ID: nextID(spec, "c", spec.Concepts, conceptID), Category: "object",
+				Citations: empty, Source: interfaces.REQUIREMENT_CONCEPT_FROM_PERSON, Edited: true}
+			if err := applyConcept(ctx, c, edit); err != nil {
+				return err
+			}
+			spec.Concepts = append(spec.Concepts, c)
+		case interfaces.REQUIREMENT_KIND_QUESTIONS:
+			if edit.Text == nil {
+				return invalidItem(ctx, "text is empty")
+			}
+			q := &interfaces.RequirementQuestion{ID: nextID(spec, "q", spec.Questions, questionID), ScenarioIDs: []string{},
+				Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				Basis: interfaces.RequirementBasis{ConceptIDs: []string{}}, LogicNeedIDs: []string{},
+				Needs: []interfaces.RequirementItemRef{}, NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
+				Citations: empty, Edited: true, Accepted: true}
+			if err := s.exampleDocuments(ctx, projectID, edit, drafted); err != nil {
+				return err
+			}
+			if err := applyQuestion(ctx, q, edit, spec, drafted); err != nil {
+				return err
+			}
+			q.OntologySignature = ontologySignature(drafted.draft, q)
+			spec.Questions = append(spec.Questions, q)
+		case interfaces.REQUIREMENT_KIND_RULES:
+			if edit.Statement == nil {
+				return invalidItem(ctx, "statement is empty")
+			}
+			r := &interfaces.RequirementRule{ID: nextID(spec, "r", spec.Rules, ruleID), CompilesTo: "other",
+				Citations: empty, Edited: true}
+			if err := applyRule(ctx, r, edit); err != nil {
+				return err
+			}
+			spec.Rules = append(spec.Rules, r)
+		case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+			if edit.LogicKind == nil || edit.Name == nil {
+				return invalidItem(ctx, "logic_kind or name is empty")
+			}
+			n := &interfaces.RequirementLogicNeed{ID: nextID(spec, "n", spec.LogicNeeds, logicNeedID),
+				ObjectTypeIDs: []string{}, Properties: []interfaces.RequirementPropertyRef{}, ConceptIDs: []string{},
+				ScenarioIDs: []string{}, Citations: empty, Source: interfaces.LOGIC_NEED_FROM_PERSON, Edited: true, Accepted: true}
+			spec.LogicNeeds = append(spec.LogicNeeds, n)
+			if err := applyLogicNeed(ctx, spec, n, edit, drafted); err != nil {
+				return err
+			}
+		default:
+			return notFound(ctx)
+		}
+		if added != nil {
+			switch kind {
+			case interfaces.REQUIREMENT_KIND_SCENARIOS:
+				*added = spec.Scenarios[len(spec.Scenarios)-1].ID
+			case interfaces.REQUIREMENT_KIND_CONCEPTS:
+				*added = spec.Concepts[len(spec.Concepts)-1].ID
+			case interfaces.REQUIREMENT_KIND_QUESTIONS:
+				*added = spec.Questions[len(spec.Questions)-1].ID
+			case interfaces.REQUIREMENT_KIND_RULES:
+				*added = spec.Rules[len(spec.Rules)-1].ID
+			case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+				*added = spec.LogicNeeds[len(spec.LogicNeeds)-1].ID
+			}
+		}
+		return nil
+	}
+}
+
+// deleteChange removes one item of kind, and what refers to it.
+func deleteChange(ctx context.Context, kind string, itemID string) change {
+	return func(spec *interfaces.RequirementSpec, _ *draftedItems) error {
+		switch kind {
+		case interfaces.REQUIREMENT_KIND_SCENARIOS:
+			i, ok := find(spec.Scenarios, itemID, scenarioID)
+			if !ok {
+				return notFound(ctx)
+			}
+			recordIDs(spec, "s", spec.Scenarios, scenarioID)
+			spec.Scenarios = slices.Delete(spec.Scenarios, i, i+1)
+			for _, q := range spec.Questions {
+				q.ScenarioIDs = slices.DeleteFunc(q.ScenarioIDs, func(id string) bool { return id == itemID })
+			}
+		case interfaces.REQUIREMENT_KIND_CONCEPTS:
+			i, ok := find(spec.Concepts, itemID, conceptID)
+			if !ok {
+				return notFound(ctx)
+			}
+			recordIDs(spec, "c", spec.Concepts, conceptID)
+			spec.Concepts = slices.Delete(spec.Concepts, i, i+1)
+			for _, q := range spec.Questions {
+				q.Basis.ConceptIDs = slices.DeleteFunc(q.Basis.ConceptIDs, func(id string) bool { return id == itemID })
+				// A question that loses an input is no longer known to be asked about
+				// only the rest: its inputs are unknown until drafted again or set.
+				if q.Inputs != nil && slices.ContainsFunc(*q.Inputs,
+					func(in interfaces.RequirementInput) bool { return in.ConceptID == itemID }) {
+					q.Inputs = nil
+				}
+			}
+			for _, n := range spec.LogicNeeds {
+				n.ConceptIDs = slices.DeleteFunc(n.ConceptIDs, func(id string) bool { return id == itemID })
+			}
+			followConcepts(spec)
+		case interfaces.REQUIREMENT_KIND_QUESTIONS:
+			i, ok := find(spec.Questions, itemID, questionID)
+			if !ok {
+				return notFound(ctx)
+			}
+			recordIDs(spec, "q", spec.Questions, questionID)
+			spec.Questions = slices.Delete(spec.Questions, i, i+1)
+			needScenarios(spec)
+		case interfaces.REQUIREMENT_KIND_LOGIC_NEEDS:
+			i, ok := find(spec.LogicNeeds, itemID, logicNeedID)
+			if !ok {
+				return notFound(ctx)
+			}
+			recordIDs(spec, "n", spec.LogicNeeds, logicNeedID)
+			spec.LogicNeeds = slices.Delete(spec.LogicNeeds, i, i+1)
+			// Its questions no longer rest on it; one left resting on nothing is noted when read.
+			for _, q := range spec.Questions {
+				q.LogicNeedIDs = slices.DeleteFunc(q.LogicNeedIDs, func(id string) bool { return id == itemID })
+			}
+			// Nor is an action type carried out by it any longer.
+			followExecutors(spec)
+		case interfaces.REQUIREMENT_KIND_RULES:
+			i, ok := find(spec.Rules, itemID, ruleID)
+			if !ok {
+				return notFound(ctx)
+			}
+			recordIDs(spec, "r", spec.Rules, ruleID)
+			spec.Rules = slices.Delete(spec.Rules, i, i+1)
+		default:
+			return notFound(ctx)
+		}
+		return nil
+	}
 }

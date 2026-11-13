@@ -575,7 +575,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				tables[i] = &interfaces.VegaTable{Name: fmt.Sprintf("t%d", i)}
 			}
 
-			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil, emptySpec(), emptySpec(), nil)
+			message, omitted, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_ZH_CN, nil, tables, nil, emptySpec(), emptySpec(), nil, "")
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -591,7 +591,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				Properties: []*interfaces.DraftProperty{{Name: "code", DisplayName: "Code", Type: "string"}, {Name: "made", Type: "date"}},
 			}}}}
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil, "")
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -619,7 +619,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 				},
 			}}
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil, "")
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -640,7 +640,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 			draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "maybe",
 				Source: "sales_order", Target: "candidate"})
 
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil)
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil, "")
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -660,7 +660,7 @@ func Test_BuildDraftMessage(t *testing.T) {
 			draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
 				{ID: "ot1", Name: "Item", PrimaryKeys: []string{"id"}, Properties: props, Adopted: true}}}}
 
-			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil)
+			message, _, omitted, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, draft, emptySpec(), emptySpec(), nil, "")
 
 			So(err, ShouldBeNil)
 			So(omitted, ShouldEqual, 5)
@@ -683,6 +683,7 @@ func Test_RequirementDrafting(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
@@ -1144,6 +1145,7 @@ func Test_GetRequirement(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		// The ontology is read to mark what changed; tests of it are in stale_test.go.
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()

@@ -23,6 +23,7 @@ func Test_ScenarioQuestions(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ra: ra, da: da}
 		ctx := context.Background()

@@ -82,6 +82,8 @@ type kineticMessage struct {
 	Concepts      []messageConcept      `json:"concepts"`
 	Rules         []messageRule         `json:"rules"`
 	Kept          messageKeptNeeds      `json:"kept"`
+	// Supplement is the owner's supplement note, absent when none was written.
+	Supplement string `json:"supplement,omitempty"`
 	// NetworkItemsOmitted counts the network's items past maxMessageNetworkItems, not in kept.
 	NetworkItemsOmitted int `json:"network_items_omitted,omitempty"`
 }
@@ -93,9 +95,9 @@ type messageKeptNeeds struct {
 // The network's items go as kept needs too, after the specification's, so the Agent gives only
 // what they leave uncovered.
 func buildKineticMessage(language string, docs []*interfaces.RequirementDocument, draft *interfaces.Draft,
-	spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem) (string, error) {
+	spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem, supplement string) (string, error) {
 	msg := kineticMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(spec.Concepts),
-		Rules: messageRulesOf(spec.Rules), Kept: messageKeptNeeds{LogicNeeds: []messageLogicNeed{}}}
+		Rules: messageRulesOf(spec.Rules), Kept: messageKeptNeeds{LogicNeeds: []messageLogicNeed{}}, Supplement: supplement}
 	msg.ObjectTypes, msg.RelationTypes, _ = messageOntologyOf(draft, true)
 	for _, n := range messageLogicNeedsOf(spec.LogicNeeds) {
 		n.ID = keptPrefix + n.ID
@@ -120,7 +122,9 @@ func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) {
 	recordAllIDs(spec, spec)
 	_, needs := questionRefs(spec.Questions)
 	spec.LogicNeeds = slices.DeleteFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
-		analysed := n.Source == interfaces.LOGIC_NEED_FROM_ANALYSIS || n.Source == interfaces.LOGIC_NEED_FROM_SCENARIOS
+		// One adopted from Ask AI is accepted: it stays, as one a person accepted, unless they start over.
+		analysed := n.Source == interfaces.LOGIC_NEED_FROM_ANALYSIS || n.Source == interfaces.LOGIC_NEED_FROM_SCENARIOS ||
+			n.Source == interfaces.REQUIREMENT_SOURCE_ASK
 		return analysed && !needs[n.ID] && n.Link == nil && (discard || !n.Accepted && !n.Edited)
 	})
 }
@@ -308,7 +312,11 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		return nil, err
 	}
 	project := entry.Project
-	byID := documentsByID(docs)
+	// The network's description and SKILL.md are read and cited beside the documents, as scenario
+	// drafting reads them; the supplement note as it is now.
+	cited := s.withBackground(ctx, token, entry, docs)
+	supplement := s.supplementOf(ctx, projectID)
+	byID := documentsByID(cited)
 	concepts := map[string]string{}
 	for _, c := range spec.Concepts {
 		concepts[c.ID], concepts[keptPrefix+c.ID] = c.ID, c.ID
@@ -317,7 +325,7 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		kind: interfaces.REQUIREMENT_RUN_KINETIC, projectID: projectID, run: run, caller: caller,
 		format: kineticResponseFormat(), newOut: func() any { return &kineticOutput{} },
 		prepareMessage: func(context.Context) (string, error) {
-			return buildKineticMessage(project.NamingLanguage, docs, draft, spec, items)
+			return buildKineticMessage(project.NamingLanguage, cited, draft, spec, items, supplement)
 		},
 	}
 	p.check = func(_ context.Context, out any) {

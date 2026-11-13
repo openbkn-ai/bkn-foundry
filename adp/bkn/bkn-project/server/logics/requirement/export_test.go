@@ -199,6 +199,7 @@ func Test_ExportRequirement(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		svc := &requirementService{ps: ps, ra: ra}
 		ctx := context.Background()
 		entry := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}

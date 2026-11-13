@@ -115,6 +115,7 @@ func Test_GetRequirementMarksOntologyChanges(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, da: da}
 		draft := shipmentOntology()

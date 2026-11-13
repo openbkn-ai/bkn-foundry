@@ -233,6 +233,11 @@ func (ra *requirementAccess) GetRequirement(ctx context.Context, projectID strin
 		span.SetStatus(codes.Error, "Query data failed")
 		return nil, false, err
 	}
+	// A row that holds only the supplement note has no specification yet.
+	if req.Status == "" {
+		span.SetStatus(codes.Ok, "")
+		return nil, false, nil
+	}
 	span.SetStatus(codes.Ok, "")
 	return req, true, nil
 }
