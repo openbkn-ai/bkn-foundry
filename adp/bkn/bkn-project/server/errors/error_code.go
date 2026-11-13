@@ -16,6 +16,7 @@ const (
 	// 400
 	BknProject_InvalidParameter_Limit  = "BknProject.InvalidParameter.Limit"
 	BknProject_InvalidParameter_Cursor = "BknProject.InvalidParameter.Cursor"
+	BknProject_InvalidParameter_Offset = "BknProject.InvalidParameter.Offset"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 		// 400
 		BknProject_InvalidParameter_Limit,
 		BknProject_InvalidParameter_Cursor,
+		BknProject_InvalidParameter_Offset,
 	}
 )
 

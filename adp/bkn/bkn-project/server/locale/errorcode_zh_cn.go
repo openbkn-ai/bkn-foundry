@@ -11,6 +11,7 @@ var errorcodeZhCN = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknProject.InvalidParameter.Limit":                  "分页数量不合法 请检查参数是否正确。",
 		"BknProject.InvalidParameter.Cursor":                 "分页游标不合法 请原样传入上一页返回的 next_cursor。",
+		"BknProject.InvalidParameter.Offset":                 "分页偏移不合法 请传入非负整数，且不要与 cursor 同时传入。",
 		"BknProject.Validation.Detail.AuthenticationFailed":  "认证失败。",
 		"BknProject.Validation.Detail.LimitOutOfRange":       "limit 必须是 1 到 {{.max}} 之间的整数。",
 		"BknProject.Validation.Detail.DependencyUnavailable": "数据库不可达。",
