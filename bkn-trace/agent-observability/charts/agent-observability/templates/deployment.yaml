@@ -322,6 +322,15 @@ spec:
             - name: BKN_TRACE_ADMISSION_STORAGE_POOL_THRESHOLD
               value: {{ .Values.observability.admissionBudget.storagePoolThreshold | quote }}
             {{- $archive := default (dict) .Values.observability.archive }}
+            {{- $logLimits := default (dict) $archive.logLimits }}
+            - name: BKN_OBSERVABILITY_LOG_ARCHIVE_MAX_CANDIDATES
+              value: {{ if hasKey $logLimits "maxCandidates" }}{{ $logLimits.maxCandidates | int64 | quote }}{{ else }}"10000"{{ end }}
+            - name: BKN_OBSERVABILITY_LOG_ARCHIVE_MAX_PAYLOAD_BYTES
+              value: {{ if hasKey $logLimits "maxPayloadBytes" }}{{ $logLimits.maxPayloadBytes | int64 | quote }}{{ else }}"10485760"{{ end }}
+            {{- if $logLimits.existingConfigMap }}
+            - name: BKN_OBSERVABILITY_LOG_ARCHIVE_LIMITS_FILE
+              value: /etc/bkn-trace/log-archive/limits.json
+            {{- end }}
             {{- if and $archive.ossGatewayURL $archive.storageID }}
             - name: BKN_OBSERVABILITY_ARCHIVE_OSS_GATEWAY_URL
               value: {{ $archive.ossGatewayURL | quote }}
@@ -344,6 +353,12 @@ spec:
             - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_INTERVAL
               value: {{ .Values.observability.sourceCoverage.interval | quote }}
             {{- end }}
+          {{- if $logLimits.existingConfigMap }}
+          volumeMounts:
+            - name: log-archive-limits
+              mountPath: /etc/bkn-trace/log-archive
+              readOnly: true
+          {{- end }}
           startupProbe:
             httpGet:
               path: /health/live
@@ -367,6 +382,12 @@ spec:
             timeoutSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if $logLimits.existingConfigMap }}
+      volumes:
+        - name: log-archive-limits
+          configMap:
+            name: {{ $logLimits.existingConfigMap | quote }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

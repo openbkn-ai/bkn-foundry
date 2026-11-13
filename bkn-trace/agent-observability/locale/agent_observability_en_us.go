@@ -36,6 +36,8 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.trace span search returned incomplete results":                                                                                            "trace span search returned incomplete results",
 		"AgentObservability.Message.archive operation is already running":                                                                                                     "archive operation is already running",
 
+		"AgentObservability.Message.log archive limits are invalid; ask the deployment owner to fix the configuration": "log archive limits are invalid; ask the deployment owner to fix the configuration",
+		"AgentObservability.Message.log archive stopped; inspect the recorded stage and job before retrying":           "log archive stopped; inspect the recorded stage and job before retrying",
 		archiveBlockedMessageID:              "trace archive is blocked by an oversized interaction; source retained; earlier verified batches remain recorded",
 		archivePayloadBudgetMessageID:        "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded",
 		archiveIncompleteCandidatesMessageID: "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded",

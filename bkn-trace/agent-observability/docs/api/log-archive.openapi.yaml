@@ -1,0 +1,167 @@
+# Copyright (c) 2026 OpenBKN
+# SPDX-License-Identifier: LicenseRef-OpenBKN
+# Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+# Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+
+openapi: 3.0.3
+info:
+  title: BKN Observability log archive
+  version: 0.2.2
+  description: >-
+    Log-specific archive contract. The lifecycle and object format are unchanged.
+    Complete frozen checkpoints are saved before upload. Only a verified manifest
+    committed to the job permits source cleanup. Runtime limits are owner-managed,
+    never supplied by an archive request. Trace archival is a separate population.
+servers:
+  - url: /api/observability/v1
+security:
+  - bearerAuth: []
+paths:
+  /log-archive-jobs:
+    post:
+      summary: Archive eligible logs in successive bounded batches
+      description: >-
+        Requires observability archive management capability. The 30-day cutoff
+        is server-selected and fixed for this run. A completed prefix remains
+        recorded when a later batch stops. A 201 job may require cleanup; check
+        status and batch_progress.run_complete rather than assuming full success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, maxProperties: 0 }
+      responses:
+        '201': { description: Last completed or cleanup-incomplete batch, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409':
+          description: >-
+            Includes archive_capacity_exceeded (retryable=false) with stage,
+            candidate identity, measured bytes, effective limit and optional
+            at_least=true. No source is deleted for an unprepared candidate.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '500':
+          description: >-
+            archive_failed. Details identify the recorded job and failure stage
+            when available. An object may already exist; inspect the job before
+            retrying. Source cleanup is forbidden until verification is durable.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+        '503':
+          description: >-
+            archive_configuration_invalid (retryable=false) requires the deployment
+            owner to fix limits. Previously completed batches remain recorded.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    get:
+      summary: List the latest 20 log archive jobs
+      responses:
+        '200': { description: Bounded job history, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Job' } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /archive-jobs/{job_id}:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Read persisted archive progress
+      responses:
+        '200': { description: Job including optional log progress fields, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /archive-jobs/{job_id}/retry-cleanup:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    post:
+      summary: Reverify a cleanup-incomplete batch and resume frozen cleanup
+      description: >-
+        Failed/unverified jobs cannot authorize cleanup. The stored batch keeps its
+        frozen limits and identities; new limits apply only to subsequent batches.
+        Legacy log checkpoints first match archived content, then delete with the
+        current verified document version. Changed sources remain hot for review.
+      responses:
+        '200': { description: Current job state, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /archive-jobs/{job_id}/download:
+    parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Stream verified archive data through the application
+      responses:
+        '200': { description: JSONL data, content: { application/x-ndjson: { schema: { type: string, format: binary } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  responses:
+    Error:
+      description: Existing observability error envelope; no credentials or signed URLs
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+  schemas:
+    Failure:
+      type: object
+      required: [stage]
+      properties:
+        stage: { type: string, example: checkpoint_bytes }
+        candidate_id: { type: string }
+        actual: { type: integer, format: int64 }
+        limit: { type: integer, format: int64 }
+        unit: { type: string, example: bytes }
+        at_least: { type: boolean, description: Actual is only a measured lower bound for a bounded read }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable, request_id]
+          properties:
+            code: { type: string, example: archive_capacity_exceeded }
+            message: { type: string }
+            retryable: { type: boolean }
+            request_id: { type: string }
+            required_action: { type: string }
+            details:
+              type: object
+              properties:
+                archive_job_id: { type: string, description: Present only when there is a recorded job }
+                failure: { $ref: '#/components/schemas/Failure' }
+    Job:
+      type: object
+      required: [archive_job_id, archive_kind, status, candidate_count]
+      properties:
+        archive_job_id: { type: string }
+        archive_kind: { type: string, enum: [log, trace] }
+        status: { type: string, enum: [failed, cleanup_incomplete, completed] }
+        candidate_count: { type: integer }
+        manifest_ref: { type: string }
+        error_message: { type: string }
+        range:
+          type: object
+          properties:
+            from: { type: string, format: date-time, nullable: true }
+            to: { type: string, format: date-time }
+        batch_progress:
+          type: object
+          additionalProperties: true
+          description: Optional new fields; old jobs without them remain readable
+          properties:
+            run_id: { type: string }
+            batch_number: { type: integer }
+            eligible_at_selection: { type: integer }
+            verified_count: { type: integer }
+            cleaned_count: { type: integer }
+            cleaned_in_run: { type: integer }
+            remaining_at_selection: { type: integer }
+            run_complete: { type: boolean }
+            stage: { type: string, example: prepared }
+            checkpoint_prepared: { type: boolean }
+            failure: { $ref: '#/components/schemas/Failure' }
+            log_limits:
+              type: object
+              properties:
+                max_candidates: { type: integer, minimum: 1, maximum: 10000 }
+                max_payload_bytes: { type: integer, minimum: 1024, maximum: 67108864 }

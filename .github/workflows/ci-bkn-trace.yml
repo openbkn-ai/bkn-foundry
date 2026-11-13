@@ -87,6 +87,10 @@ jobs:
         env:
           BKN_TRACE_ARCHIVE_BATCH_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
         run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^TestTraceArchive(BoundedMariaDB|CheckpointFitsMariaDBPacket|ConcurrentSQLWritesMariaDB|PreservesExtendedIntegrityMariaDB)$' -count=1 -v
+      - name: Log archive packet capacity integration test
+        env:
+          BKN_LOG_ARCHIVE_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true
+        run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/archivestore -run '^TestLogArchiveCapacityMariaDB$' -count=1 -v
       - name: Durable answer transaction and recovery integration test
         env:
           BKN_TRACE_DURABLE_ANSWER_ADMIN_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
@@ -123,6 +127,10 @@ jobs:
         env:
           BKN_FROZEN_ARCHIVE_TEST_URL: http://127.0.0.1:9200
         run: go test -tags=integration ./src/drivenadapter/httpaccess/opensearchtraceaccess -run '^TestArchiveFrozenSafetyRealOpenSearch$' -count=1 -v
+      - name: Log archive frozen version and legacy recovery integration test
+        env:
+          BKN_LOG_ARCHIVE_TEST_OS: http://127.0.0.1:9200
+        run: go test -tags=integration ./src/drivenadapter/httpaccess/opensearchconversationaudit -run '^TestLogArchiveFrozenVersionsRealOpenSearch$' -count=1 -v
       - name: Build
         run: make build
       - uses: azure/setup-helm@v4

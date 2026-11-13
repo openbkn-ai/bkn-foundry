@@ -102,7 +102,7 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 	content := bytes.Join(lines, nil)
 	dataKey := fmt.Sprintf("%s/%s/data.jsonl", client.config.Prefix, job.ID)
 	if err := client.upload(ctx, dataKey, content); err != nil {
-		return "", err
+		return "", archiveObjectFailure(job.Kind, "data_upload", err)
 	}
 	digest := sha256.Sum256(content)
 	manifest := map[string]any{"archive_job_id": job.ID, "archive_kind": job.Kind, "candidate_count": len(candidates), "data_key": dataKey, "sha256": hex.EncodeToString(digest[:])}
@@ -112,10 +112,10 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 	}
 	manifestKey := fmt.Sprintf("%s/%s/manifest.json", client.config.Prefix, job.ID)
 	if err := client.upload(ctx, manifestKey, manifestBody); err != nil {
-		return "", err
+		return "", archiveObjectFailure(job.Kind, "manifest_upload", err)
 	}
 	var verified []byte
-	if job.Kind == observabilityvo.ArchiveKindTrace {
+	if job.Kind == observabilityvo.ArchiveKindTrace || job.Kind == observabilityvo.ArchiveKindLog {
 		var body io.ReadCloser
 		body, err = client.Read(ctx, dataKey)
 		if err == nil {
@@ -129,11 +129,11 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 		verified, err = client.download(ctx, dataKey)
 	}
 	if err != nil {
-		return "", err
+		return "", archiveObjectFailure(job.Kind, "readback_verify", err)
 	}
 	actual := sha256.Sum256(verified)
 	if actual != digest {
-		return "", fmt.Errorf("archive bundle checksum mismatch")
+		return "", archiveObjectFailure(job.Kind, "readback_verify", fmt.Errorf("archive bundle checksum mismatch"))
 	}
 	return manifestKey, nil
 }
@@ -266,4 +266,11 @@ func (client *Client) signed(ctx context.Context, method, signedURL string, head
 		return fmt.Errorf("write archive bundle: %s", response.Status)
 	}
 	return nil
+}
+
+func archiveObjectFailure(kind observabilityvo.ArchiveKind, stage string, err error) error {
+	if kind == observabilityvo.ArchiveKindLog {
+		return &archivesvc.OperationError{Stage: stage, Cause: err}
+	}
+	return err
 }
