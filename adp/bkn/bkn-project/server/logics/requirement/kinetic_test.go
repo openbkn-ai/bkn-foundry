@@ -407,7 +407,7 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
 		kva.EXPECT().GetVersioning(gomock.Any(), token, "kn1").Return(&interfaces.KNVersioning{Enabled: true, RunningVersion: 3}, nil)
 		bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
-			[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
+			[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", Comment: "Holds an order", ObjectTypeID: "sales_order"}}, nil)
 		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
 			[]*interfaces.KNCapability{{ID: "b1", CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
 		bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(nil, nil)
@@ -421,12 +421,17 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 						ConceptIDs: []string{}, ScenarioIDs: []string{}},
 					{ID: "n2", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", Source: interfaces.LOGIC_NEED_FROM_PERSON,
 						Edited: true, ConceptIDs: []string{}, ScenarioIDs: []string{}},
+					// A step of what a function of the network computes, by another name.
+					{ID: "n3", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window days", Source: interfaces.LOGIC_NEED_FROM_DOCUMENTS,
+						ConceptIDs: []string{}, ScenarioIDs: []string{}},
 				},
-				LastIDs: map[string]int{"n": 2}}}}
+				LastIDs: map[string]int{"n": 3}}}}
 		st.expect(ra)
 		output := `{"logic_needs":[
 			{"id":"kept-network-2","kind":"function","name":"Window check","definition":"d","object_type_ids":["sales_order"],"citations":[]},
 			{"id":"x","kind":"function","name":"window_check","definition":"","citations":[],"supplement_reason":"r"},
+			{"id":"kept-n3","kind":"function","name":"Window days","definition":"","citations":[],"covered_by":"kept-network-2"},
+			{"id":"z","kind":"function","name":"Working days in window","definition":"","citations":[],"supplement_reason":"r","covered_by":"kept-network-2"},
 			{"id":"y","kind":"metric","name":"On-time rate","definition":"","citations":[],"supplement_reason":"r"}]}`
 		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
@@ -436,9 +441,12 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 				So(msg.Kept.LogicNeeds, ShouldResemble, []messageLogicNeed{
 					{ID: "kept-n1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "hold-order"},
 					{ID: "kept-n2", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate"},
-					// Those on the model's object types first.
-					{ID: "kept-network-1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"}},
-					{ID: "kept-network-3", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", ObjectTypeIDs: []string{"sales_order"}},
+					{ID: "kept-n3", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window days"},
+					// Those on the model's object types first, each with its description and object type.
+					{ID: "kept-network-1", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", Definition: "Holds an order",
+						ObjectTypeIDs: []string{"sales_order"}, OwnerObjectType: "Sales order"},
+					{ID: "kept-network-3", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Late rate", ObjectTypeIDs: []string{"sales_order"},
+						OwnerObjectType: "Sales order"},
 					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 				})
 				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
@@ -449,10 +457,13 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		spec := st.req.Spec
-		// Only the gap is a new need: what the network has is not given again.
-		So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3"})
-		So(spec.LogicNeeds[2].Name, ShouldEqual, "On-time rate")
-		So(spec.LogicNeeds[2].Link, ShouldBeNil)
+		// Only the gap is a new need: what the network has, or covers, is not given again.
+		So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4"})
+		So(spec.LogicNeeds[3].Name, ShouldEqual, "On-time rate")
+		So(spec.LogicNeeds[3].Link, ShouldBeNil)
+		// The stated need the Agent says a function covers is linked to it.
+		So(spec.LogicNeeds[2].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION,
+			ID: "f1", BoxID: "box1", By: caller, At: 1000})
 		// The stated need the network covers is linked to it; the one a person changed is left to them.
 		So(spec.LogicNeeds[0].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_ACTION_TYPE,
 			ID: "a1", By: caller, At: 1000})

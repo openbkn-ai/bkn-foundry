@@ -5,6 +5,7 @@
 package requirement
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -91,7 +92,8 @@ func (r *liveReader) networkItems(needs []*interfaces.RequirementLogicNeed) ([]*
 	} else {
 		for _, a := range actionTypes {
 			items = append(items, &interfaces.LogicNetworkItem{Type: interfaces.LOGIC_LINK_ACTION_TYPE,
-				Kind: interfaces.LOGIC_NEED_ACTION_TYPE, ID: a.ID, Name: a.Name, OwnerObjectTypeID: a.ObjectTypeID})
+				Kind: interfaces.LOGIC_NEED_ACTION_TYPE, ID: a.ID, Name: a.Name, Description: a.Comment,
+				OwnerObjectTypeID: a.ObjectTypeID})
 		}
 	}
 	for _, linkType := range []string{interfaces.LOGIC_LINK_FUNCTION, interfaces.LOGIC_LINK_SKILL} {
@@ -151,14 +153,25 @@ func networkNeedKind(linkType string) string {
 	return ""
 }
 
+// modelNames are the names of the object types of the model, by their ids.
+func modelNames(objectTypes []messageObjectType) map[string]string {
+	names := map[string]string{}
+	for _, ot := range objectTypes {
+		names[ot.ID] = ot.Name
+	}
+	return names
+}
+
 // messageNetworkItemsOf gives the network's items to the kinetic analysis as kept needs, by
-// networkItemPrefix and their place: the Agent builds on them and never repeats them. At most
-// maxMessageNetworkItems go, those on an object type of model first; it counts those left out.
-func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem, model map[string]bool) ([]messageLogicNeed, int) {
+// networkItemPrefix and their place, each with its description and the object type it belongs to:
+// the Agent builds on them and never repeats them. At most maxMessageNetworkItems go, those on an
+// object type of model, the names of its object types by their ids, first; it counts those left out.
+func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem, model map[string]string) ([]messageLogicNeed, int) {
 	order := make([]int, 0, len(items))
 	for pass := range 2 {
 		for i, item := range items {
-			if model[item.OwnerObjectTypeID] == (pass == 0) {
+			_, onModel := model[item.OwnerObjectTypeID]
+			if onModel == (pass == 0) {
 				order = append(order, i)
 			}
 		}
@@ -174,10 +187,20 @@ func messageNetworkItemsOf(items []*interfaces.LogicNetworkItem, model map[strin
 			Name: item.Name, Definition: item.Description}
 		if item.OwnerObjectTypeID != "" {
 			n.ObjectTypeIDs = []string{item.OwnerObjectTypeID}
+			n.OwnerObjectType = cmp.Or(item.OwnerObjectTypeName, model[item.OwnerObjectTypeID])
 		}
 		out = append(out, n)
 	}
 	return out, len(items) - len(out)
+}
+
+// networkItemOf is the network's item a kept-network- id gives, by its place; nil for another id.
+func networkItemOf(items []*interfaces.LogicNetworkItem, id string) *interfaces.LogicNetworkItem {
+	place, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(id), networkItemPrefix))
+	if !strings.HasPrefix(strings.TrimSpace(id), networkItemPrefix) || err != nil || place < 1 || place > len(items) {
+		return nil
+	}
+	return items[place-1]
 }
 
 // coveringItems are the network's items a need of kind named name is covered by: those of the kind
@@ -214,34 +237,47 @@ func coveringItem(items []*interfaces.LogicNetworkItem, need *interfaces.Require
 }
 
 // uncovered leaves out of proposed the needs the network's items already cover: one the Agent
-// gives again by an item's id, and a new one of the same kind and name as an item. A kept need
-// given again stays, to be linked with the rest.
-func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) []agentLogicNeed {
+// gives again by an item's id, one it says an item covers, and a new one of the same kind and name
+// as an item. A kept need given again stays, to be linked with the rest; covered gives, by their
+// ids, the kept needs the Agent said an item covers, with that item.
+func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) (
+	[]agentLogicNeed, map[string]*interfaces.LogicNetworkItem) {
+	covered := map[string]*interfaces.LogicNetworkItem{}
 	if len(items) == 0 {
-		return proposed
+		return proposed, covered
 	}
 	out := []agentLogicNeed{}
 	for _, p := range proposed {
 		id := strings.TrimSpace(p.ID)
+		by := networkItemOf(items, p.CoveredBy)
+		kept := strings.HasPrefix(id, keptPrefix) && !strings.HasPrefix(id, networkItemPrefix)
+		if kept && by != nil {
+			covered[strings.TrimPrefix(id, keptPrefix)] = by
+		}
 		switch {
 		case strings.HasPrefix(id, networkItemPrefix):
-		case !strings.HasPrefix(id, keptPrefix) && len(coveringItems(items, p.Kind, p.Name)) > 0:
+		case !kept && (by != nil || len(coveringItems(items, p.Kind, p.Name)) > 0):
 		default:
 			out = append(out, p)
 		}
 	}
-	return out
+	return out, covered
 }
 
 // linkCovered links each need no one linked or changed to the network's item that covers it, by
-// caller at now.
+// caller at now: the one covered gives for it by its id, when that item is of the kind of
+// implementation the need links to, or the one of its name.
 func linkCovered(spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem,
-	caller interfaces.AccountInfo, now int64) {
+	covered map[string]*interfaces.LogicNetworkItem, caller interfaces.AccountInfo, now int64) {
 	for _, n := range spec.LogicNeeds {
 		if n.Link != nil || n.Edited {
 			continue
 		}
-		if item := coveringItem(items, n); item != nil {
+		item := covered[n.ID]
+		if item == nil || item.Type != interfaces.LogicLinkTypeOf(n.Kind) {
+			item = coveringItem(items, n)
+		}
+		if item != nil {
 			n.Link = &interfaces.RequirementLogicLink{Type: item.Type, ID: item.ID, BoxID: item.BoxID, By: caller, At: now}
 		}
 	}

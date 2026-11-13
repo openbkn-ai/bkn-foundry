@@ -125,11 +125,13 @@ type KNCapability struct {
 
 // KNActionType is what bkn-project reads of an action type of a network.
 type KNActionType struct {
-	ID           string             `json:"id"`
-	Name         string             `json:"name"`
-	ObjectTypeID string             `json:"object_type_id"`
-	ActionType   string             `json:"action_type"`
-	Source       KNActionTypeSource `json:"action_source"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ObjectTypeID string `json:"object_type_id"`
+	// Comment is the action type's description.
+	Comment    string             `json:"comment,omitempty"`
+	ActionType string             `json:"action_type"`
+	Source     KNActionTypeSource `json:"action_source"`
 }
 
 // KNActionTypeSource is the tool an action type runs: a toolbox tool or an MCP tool.
