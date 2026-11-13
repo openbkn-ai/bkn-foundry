@@ -11,6 +11,7 @@ var errorcodeEnUS = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknProject.InvalidParameter.Limit":                  "Invalid Pagination Limit. Please check whether the parameter is correct.",
 		"BknProject.InvalidParameter.Cursor":                 "Invalid Pagination Cursor. Please pass the next_cursor of the previous page unchanged.",
+		"BknProject.InvalidParameter.Offset":                 "Invalid Pagination Offset. Please pass a non-negative integer, and not together with cursor.",
 		"BknProject.Validation.Detail.AuthenticationFailed":  "Authentication failed.",
 		"BknProject.Validation.Detail.LimitOutOfRange":       "limit must be an integer from 1 to {{.max}}.",
 		"BknProject.Validation.Detail.DependencyUnavailable": "The database is not reachable.",

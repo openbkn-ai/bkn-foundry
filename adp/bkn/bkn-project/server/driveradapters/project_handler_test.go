@@ -68,7 +68,7 @@ func Test_ProjectRestHandler(t *testing.T) {
 		})
 
 		Convey("List passes the filters, limit and cursor\n", func() {
-			ps.EXPECT().ListProjects(gomock.Any(), "Bearer t", "all", "ord", 5, "c1").
+			ps.EXPECT().ListProjects(gomock.Any(), "Bearer t", "all", "ord", 5, 0, "c1").
 				Return(&interfaces.ProjectList{Entries: []*interfaces.ProjectEntry{entry}, Total: 1}, nil)
 
 			w := serve(handler, http.MethodGet, base+"?archived=all&name=ord&limit=5&cursor=c1")
@@ -79,7 +79,7 @@ func Test_ProjectRestHandler(t *testing.T) {
 		})
 
 		Convey("List uses the default limit and rejects one out of range\n", func() {
-			ps.EXPECT().ListProjects(gomock.Any(), "Bearer t", "", "", interfaces.DEFAULT_PROJECT_LIMIT, "").
+			ps.EXPECT().ListProjects(gomock.Any(), "Bearer t", "", "", interfaces.DEFAULT_PROJECT_LIMIT, 0, "").
 				Return(&interfaces.ProjectList{Entries: []*interfaces.ProjectEntry{}}, nil)
 
 			So(serve(handler, http.MethodGet, base).Result().StatusCode, ShouldEqual, http.StatusOK)
@@ -87,6 +87,20 @@ func Test_ProjectRestHandler(t *testing.T) {
 			w := serve(handler, http.MethodGet, base+"?limit=101")
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_InvalidParameter_Limit)
+		})
+
+		Convey("List passes the offset of a page by number and rejects one that is not a count\n", func() {
+			ps.EXPECT().ListProjects(gomock.Any(), "Bearer t", "false", "", 12, 24, "").
+				Return(&interfaces.ProjectList{Entries: []*interfaces.ProjectEntry{entry}, Total: 30}, nil)
+
+			So(serve(handler, http.MethodGet, base+"?archived=false&limit=12&offset=24").Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+
+			for _, offset := range []string{"-1", "x"} {
+				w := serve(handler, http.MethodGet, base+"?offset="+offset)
+				So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+				So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_InvalidParameter_Offset)
+			}
 		})
 
 		Convey("Get replies the project, or the service's not found\n", func() {

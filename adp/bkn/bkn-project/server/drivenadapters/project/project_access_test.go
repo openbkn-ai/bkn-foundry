@@ -144,6 +144,19 @@ func Test_ProjectAccess(t *testing.T) {
 			So(projects[1].KNID, ShouldEqual, "parts")
 		})
 
+		Convey("ListProjects skips the offset of a page by number\n", func() {
+			smock.ExpectQuery(regexp.QuoteMeta(selectProjects +
+				"WHERE f_kn_id IN (?) ORDER BY f_create_time DESC, f_id DESC LIMIT 13 OFFSET 24")).
+				WithArgs("orders").
+				WillReturnRows(sqlmock.NewRows(projectColumns).AddRow(projectRow("p1", "orders", 3)...))
+
+			projects, err := pa.ListProjects(ctx, interfaces.ProjectsQuery{KNIDs: []string{"orders"}, Offset: 24, Limit: 13})
+
+			So(err, ShouldBeNil)
+			So(len(projects), ShouldEqual, 1)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("ListProjects selects nothing for no visible network, without a query\n", func() {
 			projects, err := pa.ListProjects(ctx, interfaces.ProjectsQuery{Limit: 3})
 

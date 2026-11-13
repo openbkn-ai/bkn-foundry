@@ -62,9 +62,10 @@ type ProjectService interface {
 	CreateProject(ctx context.Context, token string, req CreateProjectRequest, owner AccountInfo,
 		author GitAuthor) (*ProjectEntry, error)
 	// ListProjects lists the visible projects newest first. archived is "false" (the default
-	// when empty), "true" or "all"; name matches names containing it.
+	// when empty), "true" or "all"; name matches names containing it. A page starts after
+	// cursor, or after skipping offset projects for a page by number; the two do not combine.
 	ListProjects(ctx context.Context, token string, archived string, name string, limit int,
-		cursor string) (*ProjectList, error)
+		offset int, cursor string) (*ProjectList, error)
 	// GetProject returns a visible project, and 404 for one the caller cannot see.
 	GetProject(ctx context.Context, token string, id string) (*ProjectEntry, error)
 	// GetProjectForStatus is GetProject, but returns its owner a project whose network bkn-backend
