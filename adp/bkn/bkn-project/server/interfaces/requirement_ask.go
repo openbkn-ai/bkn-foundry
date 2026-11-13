@@ -171,7 +171,8 @@ type RequirementAskRequest struct {
 }
 
 // RequirementProposalsDecision adopts and declines proposals of one turn, adopting over the
-// specification as read at UpdateTime.
+// specification as read at UpdateTime. UpdateTime is 0 when the project had no specification, as when asked
+// before any analysis: adopting then writes an empty one first.
 type RequirementProposalsDecision struct {
 	UpdateTime int64 `json:"update_time"`
 	Adopt      []int `json:"adopt"`

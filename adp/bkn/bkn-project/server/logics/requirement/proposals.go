@@ -204,6 +204,13 @@ func (s *requirementService) DecideProposals(ctx context.Context, token string, 
 				return nil, invalidItem(ctx, p.NetworkItem.Type+" "+p.NetworkItem.ID+" is "+impl.Reason+" in the live network")
 			}
 		}
+		// Asked before any analysis, the list starts from nothing: adopting writes it, empty, first.
+		if decision.UpdateTime == 0 {
+			if decision.UpdateTime, err = s.startEmpty(ctx, projectID, caller); err != nil {
+				span.SetStatus(codes.Error, "Start requirement failed")
+				return nil, err
+			}
+		}
 		req, err = s.update(ctx, token, projectID, decision.UpdateTime, caller,
 			func(spec *interfaces.RequirementSpec, drafted *draftedItems) error {
 				changed := []int{}
@@ -261,4 +268,29 @@ func (s *requirementService) DecideProposals(ctx context.Context, token string, 
 	}
 	span.SetStatus(codes.Ok, "")
 	return &interfaces.RequirementProposalsResult{Conversation: c, Requirement: req}, nil
+}
+
+// startEmpty writes an empty ready specification as the project's, for proposals asked before it
+// had any, and returns its update time. A project with one already is stale: its list was read
+// since, so the proposals are adopted over it only as read.
+func (s *requirementService) startEmpty(ctx context.Context, projectID string,
+	caller interfaces.AccountInfo) (int64, error) {
+	if _, ok, err := s.ra.GetRequirement(ctx, projectID); err != nil {
+		return 0, internalError(ctx, "Get requirement failed", err)
+	} else if ok {
+		return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_MissingUpdateTime)
+	}
+	now := s.now()
+	spec := emptySpec()
+	spec.Runs = map[string]*interfaces.RequirementRun{}
+	req := &interfaces.Requirement{ProjectID: projectID, Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY,
+		Spec: *spec, Drafter: caller, CreateTime: now, UpdateTime: now}
+	started, err := s.ra.StartEmpty(ctx, req)
+	if err != nil {
+		return 0, internalError(ctx, "Start requirement failed", err)
+	}
+	if !started {
+		return 0, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_Stale)
+	}
+	return now, nil
 }
