@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -123,6 +124,43 @@ func Test_ConceptsBeforeDrafting(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got.NotUnderstood, ShouldEqual, 1)
+
+			// A completed preview wrote nothing, and understanding submits the table again: counted.
+			tasks = []*interfaces.VegaSemanticTask{
+				{ResourceID: "r_customers", Status: semanticCompleted, ApplyMode: interfaces.VEGA_SEMANTIC_APPLY_DRY_RUN},
+				{ResourceID: "t_orders", Status: semanticCompleted},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{}, nil)
+			got, err = svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.NotUnderstood, ShouldEqual, 1)
+		})
+
+		Convey("A table described too long to name it keeps its name and is counted until understanding completed\n", func() {
+			// The only table of its catalog that keeps its name; its description has no clause short enough.
+			long := &interfaces.VegaTable{ID: "r_log", CatalogID: "c2", Name: "public.log", SourceSchema: "public",
+				SourceName: "log", Description: strings.Repeat("记录", 40)}
+			draft := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, UpdateTime: readTime,
+				Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "log", Name: "log",
+					Adopted: true, Table: interfaces.DraftTable{ResourceID: "r_log", Name: "public.log"}}}}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).Times(2)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_log"}).Return([]*interfaces.VegaTable{long}, nil).Times(2)
+			var c2 []*interfaces.VegaSemanticTask
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c2").DoAndReturn(
+				func(context.Context, interfaces.VegaAccount, string) ([]*interfaces.VegaSemanticTask, bool, error) {
+					return c2, true, nil
+				}).Times(2)
+
+			got, err := svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.Concepts[0].Name, ShouldEqual, "log")
+			So(got.NotUnderstood, ShouldEqual, 1)
+
+			c2 = []*interfaces.VegaSemanticTask{{ResourceID: "r_log", Status: semanticCompleted}}
+			got, err = svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.NotUnderstood, ShouldEqual, 0)
 		})
 
 		Convey("While drafting runs, the candidates stay listed\n", func() {

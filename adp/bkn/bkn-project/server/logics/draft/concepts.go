@@ -181,15 +181,11 @@ func understandConcept(c *interfaces.DraftConcept, ot *interfaces.DraftObjectTyp
 	language string) bool {
 	physical := physicalName(table)
 	c.Sources[0].Name = physical
-	if unnamedTable(table) {
+	if keepsTableName(table) {
 		return false
 	}
 	if ot.Name == physical {
-		name, _ := pickName(language, physical, givenName(table), firstClause(table.Description))
-		if name == physical {
-			return false
-		}
-		c.Name = name
+		c.Name, _ = pickName(language, physical, givenName(table), firstClause(table.Description))
 		if table.Description != "" {
 			c.Description = table.Description
 		}
@@ -235,18 +231,23 @@ func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft
 	return projectConcepts(ctx, projectID, draft, req, found, tables, nil, understood)
 }
 
-// unnamedTable tells whether nothing names a table but its own name: semantic understanding, or a
-// person, gave it no business name and no description. Unnamed, a table keeps the name discovery
-// gave it: its physical name, with its schema before vega 0.2.1.
-func unnamedTable(table *interfaces.VegaTable) bool {
-	given := givenName(table)
-	return (given == "" || given == physicalName(table)) && strings.TrimSpace(table.Description) == ""
+// keepsTableName tells whether drafting would name a table's object type by the table's own name:
+// semantic understanding, or a person, gave it no business name, and no description whose first
+// clause names it. Unnamed, a table keeps the name discovery gave it: its physical name, with its
+// schema before vega 0.2.1. Which candidate wins depends on the naming language, whether there is
+// one does not.
+func keepsTableName(table *interfaces.VegaTable) bool {
+	physical := physicalName(table)
+	name, _ := pickName("", physical, givenName(table), firstClause(table.Description))
+	return name == physical
 }
 
 // understoodTables are those of tables whose newest semantic understanding completed, as the
 // modeling page counts the catalogs' understanding: one it left as it was, unsure what to call it,
-// would be left so again, so it is not one to understand first. Only the catalogs of unnamed
-// tables are read; one whose tasks the caller cannot see, or that cannot be read, adds none.
+// would be left so again, so it is not one to understand first. A completed preview (dry_run)
+// wrote nothing and is submitted again, as understanding them does. Only the catalogs of tables
+// that keep their own name are read; one whose tasks the caller cannot see, or that cannot be
+// read, adds none.
 func (s *draftService) understoodTables(ctx context.Context, caller interfaces.AccountInfo,
 	tables []*interfaces.VegaTable) map[string]bool {
 	understood := map[string]bool{}
@@ -255,7 +256,7 @@ func (s *draftService) understoodTables(ctx context.Context, caller interfaces.A
 	}
 	catalogs := []string{}
 	for _, table := range tables {
-		if table != nil && table.CatalogID != "" && unnamedTable(table) && !slices.Contains(catalogs, table.CatalogID) {
+		if table != nil && table.CatalogID != "" && keepsTableName(table) && !slices.Contains(catalogs, table.CatalogID) {
 			catalogs = append(catalogs, table.CatalogID)
 		}
 	}
@@ -269,7 +270,7 @@ func (s *draftService) understoodTables(ctx context.Context, caller interfaces.A
 			continue
 		}
 		for id, task := range newestTasks(tasks) {
-			if task.Status == semanticCompleted {
+			if task.Status == semanticCompleted && task.ApplyMode != interfaces.VEGA_SEMANTIC_APPLY_DRY_RUN {
 				understood[id] = true
 			}
 		}
