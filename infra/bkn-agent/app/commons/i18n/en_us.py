@@ -338,6 +338,12 @@ error_messages = {
         "detail": "This agent is not in chat mode.",
         "solution": "Call a task agent through /run (M3).",
     },
+    "BknAgent.Task.IdempotencyConflict": {
+        "code": "BknAgent.Task.IdempotencyConflict",
+        "description": "This task key was already used with different input.",
+        "detail": "This task key was already used with different input.",
+        "solution": "Reuse the original input or use a new task key.",
+    },
     "BknAgent.Task.ModeMismatch": {
         "code": "BknAgent.ParamError.Mode",
         "description": "This agent is not in one-shot mode.",

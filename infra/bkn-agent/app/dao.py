@@ -1,4 +1,5 @@
 import hashlib
+import json
 import time
 import uuid
 from typing import Optional
@@ -490,6 +491,32 @@ async def create_task(
     session.add(row)
     await session.commit()
     return _task_out(row)
+
+
+async def create_idempotent_task(
+    session: AsyncSession,
+    agent_id: str,
+    task_input: dict,
+    account_id: str,
+    account_type: str,
+    key: str,
+    request_hash: str,
+) -> tuple[TaskOut, bool]:
+    """Reuse one durable task per caller/key; the PK arbitrates concurrent starts."""
+    identity = json.dumps([account_type, account_id, agent_id, key], separators=(",", ":"))
+    task_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "openbkn:agent-task:" + identity))
+    task = await get_task(session, task_id, account_id=account_id)
+    created = False
+    if task is None:
+        stored_input = {**task_input, "request_hash": request_hash, "idempotency_key": key}
+        created = await reserve_execution(session, task_id, agent_id, stored_input, account_id, None)
+        task = await get_task(session, task_id, account_id=account_id)
+    if (
+        task is None or task.agent_id != agent_id
+        or (task.input or {}).get("request_hash") != request_hash
+    ):
+        raise err(409, "BknAgent.Task.IdempotencyConflict")
+    return task, created
 
 
 async def get_task(
@@ -1030,7 +1057,7 @@ async def reserve_execution(
     agent_id: str,
     task_input: dict,
     account_id: str,
-    thread_id: str,
+    thread_id: Optional[str],
 ) -> bool:
     """The existing primary key is the cross-request idempotency boundary."""
     from sqlalchemy.exc import IntegrityError

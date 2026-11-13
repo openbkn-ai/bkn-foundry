@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, Request
+import hashlib
+import json
+
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
+from app.commons.locale import get_effective_locale
 from app.core import llm, runner
 from app.db import get_session
 from app.errors import bad_request, not_found
@@ -53,13 +57,17 @@ async def invoke(
 @router.post("/run", response_model=TaskOut)
 async def run(
     req: RunRequest,
+    head_request: Request,
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
+    idempotency_key: str | None = Header(default=None, min_length=1, max_length=200),
 ):
     agent = await dao.get_agent(session, req.agent_id)
     if not agent:
         raise not_found("agent", req.agent_id)
-    if agent.mode != "task":
+    if agent.mode == "chat" and agent.status != "published":
+        raise not_found("agent", req.agent_id)
+    if agent.mode not in ("task", "chat"):
         raise bad_request("BknAgent.Task.ModeMismatch", agent_id=req.agent_id, mode=agent.mode)
 
     agent, execution = await dao.task_agent(session, agent, req.agent_version)
@@ -72,8 +80,31 @@ async def run(
         "agent_version": req.agent_version,
         "execution": execution,
     }
-    task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
-    runner.submit_task(task.task_id, agent, task_input, account.account_id, account.account_type)
+    created = True
+    if idempotency_key is None:
+        task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
+    else:
+        material = {
+            "request": req.model_dump(mode="json"),
+            "locale": get_effective_locale(),
+            "thinking_mode": head_request.headers.get("x-bkn-agent-thinking-mode", ""),
+        }
+        request_hash = hashlib.sha256(
+            json.dumps(material, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
+        task_input["request_context"] = {
+            "locale": material["locale"], "thinking_mode": material["thinking_mode"],
+        }
+        task, created = await dao.create_idempotent_task(
+            session, agent.agent_id, task_input, account.account_id,
+            account.account_type, idempotency_key, request_hash,
+        )
+    if created:
+        thinking_token = llm.set_thinking_mode(head_request.headers.get("x-bkn-agent-thinking-mode", ""))
+        try:
+            runner.submit_task(task.task_id, agent, task_input, account.account_id, account.account_type)
+        finally:
+            llm.reset_thinking_mode(thinking_token)
     return task
 
 
