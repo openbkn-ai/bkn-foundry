@@ -185,7 +185,8 @@ func (s *requirementService) startRun(ctx context.Context, projectID string, kin
 
 // execute asks the Agent and records the outcome of the run: what it wrote, or why it failed,
 // leaving the specification as it was. A run in parts that some parts failed writes what the
-// others found and records those it still has to read, for the next run to read only them.
+// others found and records those it still has to read, for the next run to read only them, with
+// why they failed as its error.
 func (s *requirementService) execute(ctx context.Context, p *partRun) {
 	var taskID string
 	retried, failure, done := false, "", 0
@@ -208,6 +209,7 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 		p.check(ctx, i, a.out)
 		done++
 	}
+	lastFailure := failure
 	if done > 0 {
 		// What some parts found stands; the run says why the others failed.
 		failure = ""
@@ -231,7 +233,8 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 		p.write(req)
 		run.Status, run.Error, run.Inputs, run.PendingParts = interfaces.REQUIREMENT_RUN_READY, "", p.inputs, nil
 		if len(pending) > 0 {
-			run.Error, run.PendingParts = failurePartial, pending
+			// Why the parts still to read failed, for the client to say what to do.
+			run.Error, run.PendingParts = lastFailure, pending
 		}
 	})
 	if err != nil {

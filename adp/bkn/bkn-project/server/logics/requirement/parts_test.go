@@ -117,7 +117,8 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		run := st.req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
 		// What the part that answered gave is written; the run names the part still to read.
 		So(run.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_READY)
-		So(run.Error, ShouldEqual, failurePartial)
+		// Why the part still to read failed.
+		So(run.Error, ShouldEqual, failureAgentUnavailable)
 		So(run.PendingParts, ShouldHaveLength, 1)
 		So(run.Inputs, ShouldNotBeNil)
 		So(ids(st.req.Spec.Concepts, conceptID), ShouldResemble, []string{"c1"})
@@ -154,7 +155,8 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		pending := partKeys(splitDocuments(docs))[1:]
 		st := &runStore{req: &interfaces.Requirement{ProjectID: "p1", Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY,
 			Spec: interfaces.RequirementSpec{Runs: map[string]*interfaces.RequirementRun{interfaces.REQUIREMENT_RUN_CONCEPTS: {
-				Status: interfaces.REQUIREMENT_RUN_READY, Error: failurePartial, PendingParts: pending}}}}}
+				Status: interfaces.REQUIREMENT_RUN_READY, Error: failureAgentTimeout, PendingParts: pending,
+				Inputs: requirementInputsOf(docs, owned.Project)}}}}}
 		st.expect(ra)
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
@@ -173,5 +175,43 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		So(run.Error, ShouldEqual, failureOutputTooLong)
 		So(run.Retried, ShouldBeFalse)
 		So(run.PendingParts, ShouldResemble, pending)
+	})
+
+	Convey("Documents added or changed since the run that left parts to read are all read again\n", t, func() {
+		defer withPartRunes(170)()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
+		da := pmock.NewMockDraftAccess(ctrl)
+		va := pmock.NewMockVegaAccess(ctrl)
+		ba := pmock.NewMockBknAgentAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, va: va, ba: ba,
+			now: func() int64 { return 1000 }, newID: func() string { return "run1" },
+			run: func(fn func()) { fn() }, sleep: func(time.Duration) {}}
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
+		docs := testDocuments()
+		pending := partKeys(splitDocuments(docs))[1:]
+		// The run that left a part read only the first document.
+		read := requirementInputsOf(docs[:1], owned.Project)
+		st := &runStore{req: &interfaces.Requirement{ProjectID: "p1", Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY,
+			Spec: interfaces.RequirementSpec{Runs: map[string]*interfaces.RequirementRun{interfaces.REQUIREMENT_RUN_CONCEPTS: {
+				Status: interfaces.REQUIREMENT_RUN_READY, Error: failureAgentTimeout, PendingParts: pending, Inputs: read}}}}}
+		st.expect(ra)
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{}, nil)
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+			Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{}`}, nil).Times(2)
+
+		_, err := svc.ExtractConcepts(context.Background(), token, "p1", caller, false)
+
+		So(err, ShouldBeNil)
+		run := st.req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
+		So(run.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_READY)
+		So(run.PendingParts, ShouldBeEmpty)
+		So(run.Inputs.Documents, ShouldHaveLength, 2)
 	})
 }

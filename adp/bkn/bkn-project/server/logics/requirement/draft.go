@@ -91,9 +91,6 @@ const (
 	failureOutputInvalid    = "output_invalid"
 	// failureOutputTooLong is an answer longer than the model writes at once.
 	failureOutputTooLong = "output_too_long"
-	// failurePartial is the error of a run that wrote what some parts of its documents gave, the
-	// others failing: they are its pending parts.
-	failurePartial = "partial"
 )
 
 // Kinds of rejected items, and the reason a choice is rejected besides its quotes.

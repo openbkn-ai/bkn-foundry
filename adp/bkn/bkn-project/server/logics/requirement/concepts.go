@@ -345,11 +345,13 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	cited := s.withBackground(ctx, token, entry, docs)
 	byID := documentsByID(cited)
 	// The documents are read in parts, each asked for on its own. When the last run that wrote
-	// could not read some parts and they are still as they were, this run reads only those, over
-	// what the others gave; starting over reads them all again.
+	// could not read some parts and the documents are the ones it read, this run reads only those
+	// parts, over what the others gave; documents added, removed or changed since, or starting
+	// over, read them all again.
 	parts := splitDocuments(cited)
 	resumed := []documentPart{}
-	if last := spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]; last != nil && !discardDecisions {
+	if last := spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]; last != nil && !discardDecisions && last.Inputs != nil &&
+		sameDocuments(last.Inputs.Documents, requirementInputsOf(docs, entry.Project).Documents) {
 		resumed = pendingParts(parts, last.PendingParts)
 	}
 	if len(resumed) > 0 {

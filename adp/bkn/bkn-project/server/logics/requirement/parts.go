@@ -83,6 +83,14 @@ func pendingParts(parts []documentPart, pending []string) []documentPart {
 	return out
 }
 
+// sameDocuments tells whether two runs read the same documents, by id and content: the type the
+// concepts run suggests for a document does not make it another.
+func sameDocuments(a, b []interfaces.RequirementInputDocument) bool {
+	return slices.EqualFunc(a, b, func(x, y interfaces.RequirementInputDocument) bool {
+		return x.ID == y.ID && x.SHA256 == y.SHA256
+	})
+}
+
 // partKeys are the keys of parts, in order.
 func partKeys(parts []documentPart) []string {
 	keys := make([]string, 0, len(parts))

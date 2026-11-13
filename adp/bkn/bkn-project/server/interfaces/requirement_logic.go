@@ -112,7 +112,8 @@ const (
 // concept model. Only one run of a project goes at a time, scenario drafting included.
 type RequirementRun struct {
 	Status string `json:"status"`
-	// Error is why it failed, as a code for the client to word.
+	// Error is why it failed, as a code for the client to word; of a ready run with pending parts,
+	// why those parts failed.
 	Error       string      `json:"error,omitempty"`
 	RunID       string      `json:"run_id"`
 	AgentTaskID string      `json:"agent_task_id,omitempty"`
