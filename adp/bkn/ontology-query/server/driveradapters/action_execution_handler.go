@@ -198,6 +198,9 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor, 
 		attr.Key("kn_id").String(knID),
 		attr.Key("execution_id").String(executionID),
 	)
+	if !includeProxyContext && !r.authorizeActionLogRead(ctx, c, span, knID) {
+		return
+	}
 
 	// Get execution
 	result, err := r.ass.GetExecution(ctx, knID, executionID)
@@ -220,6 +223,30 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor, 
 		result = redactActionExecutionProxyContext(result)
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func (r *restHandler) authorizeActionLogRead(ctx context.Context, c *gin.Context, span trace.Span, knID string) bool {
+	var err error
+	if r.actionReadPermissions == nil {
+		err = fmt.Errorf("action log permission service is not configured")
+	} else {
+		err = r.actionReadPermissions.RequirePermissions(ctx, []interfaces.PermissionRequirement{{
+			ResourceType: interfaces.PermissionResourceTypeKnowledgeNetwork,
+			ResourceID:   knID,
+			Operation:    interfaces.PermissionOperationViewDetail,
+		}})
+	}
+	if err == nil {
+		return true
+	}
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) {
+		httpErr = httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
+	}
+	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+	rest.ReplyError(c, httpErr)
+	return false
 }
 
 // QueryActionLogsByIn handles query action logs request (internal)
@@ -262,6 +289,9 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	// Get path parameters
 	knID := c.Param("kn_id")
 	span.SetAttributes(attr.Key("kn_id").String(knID))
+	if !includeProxyContext && !r.authorizeActionLogRead(ctx, c, span, knID) {
+		return
+	}
 
 	// Bind query parameters
 	query := interfaces.ActionLogQuery{}
@@ -387,6 +417,9 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		attr.Key("kn_id").String(knID),
 		attr.Key("log_id").String(logID),
 	)
+	if !includeProxyContext && !r.authorizeActionLogRead(ctx, c, span, knID) {
+		return
+	}
 
 	// Bind query parameters for results pagination
 	query := interfaces.ActionLogDetailQuery{}
@@ -464,7 +497,7 @@ func normalizeActionLogKeyword(keyword string) (string, error) {
 func (r *restHandler) QueryActionLogResultsByIn(c *gin.Context) {
 	logger.Debug("Handler QueryActionLogResultsByIn Start")
 	visitor := visitor.GenerateVisitor(c)
-	r.QueryActionLogResults(c, visitor)
+	r.QueryActionLogResults(c, visitor, true)
 }
 
 // QueryActionLogResultsByEx handles the results page request of one execution (external)
@@ -477,12 +510,12 @@ func (r *restHandler) QueryActionLogResultsByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.QueryActionLogResults(c, visitor)
+	r.QueryActionLogResults(c, visitor, false)
 }
 
 // QueryActionLogResults returns one page of an execution's per-instance results, filtered and
 // paginated by the storage layer rather than in memory.
-func (r *restHandler) QueryActionLogResults(c *gin.Context, visitor hydra.Visitor) {
+func (r *restHandler) QueryActionLogResults(c *gin.Context, visitor hydra.Visitor, internal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
@@ -504,6 +537,9 @@ func (r *restHandler) QueryActionLogResults(c *gin.Context, visitor hydra.Visito
 		attr.Key("kn_id").String(query.KNID),
 		attr.Key("log_id").String(query.LogID),
 	)
+	if !internal && !r.authorizeActionLogRead(ctx, c, span, query.KNID) {
+		return
+	}
 
 	if err := normalizeActionResultsQuery(&query); err != nil {
 		replyActionResultsError(ctx, c, span, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter, err.Error())
