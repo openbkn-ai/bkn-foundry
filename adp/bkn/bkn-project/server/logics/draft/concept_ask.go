@@ -53,8 +53,9 @@ const conceptAskTask = "kind is concepts: the engineer reviews the concepts extr
 	"each with its key, name, aliases, definition, verdict (object, event, property, values, relation, " +
 	"kinetic or none, not included), state, item (the kind of draft item it is, when it is one), the " +
 	"revisions it takes, and its sources (table:<name>, document or requirement:<term>). A table's own " +
-	"name, such as erp_material, is no business name: name such concepts in business words. Answer in the " +
-	"language named in the message. Then give revisions, only those the question asks for or the answer " +
+	"name, such as erp_material, is no business name: name such concepts in business words. Write the answer " +
+	"and every name, definition and reason in the language named in the message, whatever language the " +
+	"concepts and their sources are in. Then give revisions, only those the question asks for or the answer " +
 	"shows are needed: define (key, a clearer business name and definition), verdict (key and the verdict " +
 	"it should have), merge (key and into, the concept it is the same as), split (key and parts, the " +
 	"concepts it holds, the first being what it stays), add (name, definition and verdict of a concept " +

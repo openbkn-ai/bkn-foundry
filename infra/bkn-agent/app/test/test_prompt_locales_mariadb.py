@@ -82,9 +82,9 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         with db.cursor() as cursor:
-            # Both install paths reach the official Ask AI v6.
+            # Both install paths reach the official Ask AI v7.
             cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_current=1")
-            assert cursor.fetchone() == (6,)
+            assert cursor.fetchone() == (7,)
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)

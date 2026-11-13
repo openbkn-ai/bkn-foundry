@@ -221,6 +221,24 @@ func Test_ConceptAskAndRevise(t *testing.T) {
 			So(answer.Dropped, ShouldResemble, []interfaces.DraftAskDropped{{Field: "verdict", Reason: askDroppedVerdictNotFit}})
 		})
 
+		Convey("Ask AI on an English project asks for the answer, names, definitions and reasons in English\n", func() {
+			if draft.Items.Inputs == nil {
+				draft.Items.Inputs = &interfaces.DraftInputs{}
+			}
+			draft.Items.Inputs.NamingLanguage = interfaces.NAMING_LANGUAGE_EN_US
+			ba.EXPECT().Chat(gomock.Any(), caller, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(ctx context.Context, account interfaces.AccountInfo, req *interfaces.BknAgentChatRequest,
+					on func(interfaces.BknAgentChatEvent)) error {
+					var message map[string]any
+					So(json.Unmarshal([]byte(req.Message), &message), ShouldBeNil)
+					So(message["language"], ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
+					So(message["task"], ShouldContainSubstring, "every name, definition and reason in the language named in the message")
+					return revised()(ctx, account, req, on)
+				})
+			_, err := svc.AskConcepts(ctx, token, "p1", interfaces.DraftConceptAskRequest{Question: "Name them"}, caller, nil)
+			So(err, ShouldBeNil)
+		})
+
 		Convey("Adopting a definition renames the item, recorded as editing it\n", func() {
 			write()
 			got, err := revise("define", interfaces.DraftConceptRevision{Key: "object_types/erp_vendor", Name: "供应商"})
