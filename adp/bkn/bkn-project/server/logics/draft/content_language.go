@@ -366,7 +366,7 @@ func applyNames(items *interfaces.DraftItems, language string, targets map[strin
 			old := *target.name
 			*target.name = name
 			if target.aliases != nil && len(*target.aliases) < interfaces.DRAFT_ALIASES_MAX &&
-				utf8.RuneCountInString(old) <= maxAliasRunes && !strings.ContainsAny(old, ",，") &&
+				utf8.RuneCountInString(old) <= maxAliasRunes && !strings.ContainsAny(old, ",\uff0c") &&
 				!slices.Contains(*target.aliases, old) {
 				*target.aliases = append(*target.aliases, old)
 			}
