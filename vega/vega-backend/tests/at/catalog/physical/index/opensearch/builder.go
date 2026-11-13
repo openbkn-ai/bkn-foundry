@@ -13,8 +13,7 @@ import (
 
 // OpenSearchPayloadBuilder OpenSearch catalog payload构建器
 type OpenSearchPayloadBuilder struct {
-	config     setup.OpenSearchConfig
-	testConfig *setup.TestConfig
+	config setup.OpenSearchConfig
 }
 
 // NewOpenSearchPayloadBuilder 创建OpenSearch payload构建器
@@ -22,22 +21,9 @@ func NewOpenSearchPayloadBuilder(config setup.OpenSearchConfig) *OpenSearchPaylo
 	return &OpenSearchPayloadBuilder{config: config}
 }
 
-// SetTestConfig 设置测试配置（包含加密器）
-func (b *OpenSearchPayloadBuilder) SetTestConfig(tc *setup.TestConfig) {
-	b.testConfig = tc
-}
-
-// encryptPassword 加密密码
-func (b *OpenSearchPayloadBuilder) encryptPassword(password string) string {
-	if b.testConfig != nil {
-		return b.testConfig.EncryptString(password)
-	}
-	return password
-}
-
-// GetEncryptedPassword 返回加密后的正确密码
-func (b *OpenSearchPayloadBuilder) GetEncryptedPassword() string {
-	return b.encryptPassword(b.config.Password)
+// GetPassword 返回正确密码，由服务端负责存储加密
+func (b *OpenSearchPayloadBuilder) GetPassword() string {
+	return b.config.Password
 }
 
 // GetConnectorType 返回connector类型
@@ -54,7 +40,7 @@ func (b *OpenSearchPayloadBuilder) BuildCreatePayload() map[string]any {
 			"host":     b.config.Host,
 			"port":     b.config.Port,
 			"username": b.config.Username,
-			"password": b.encryptPassword(b.config.Password),
+			"password": b.config.Password,
 			"use_ssl":  b.config.UseSSL,
 		},
 	}
@@ -90,7 +76,7 @@ func (b *OpenSearchPayloadBuilder) BuildCreatePayloadWithOptions(options map[str
 func (b *OpenSearchPayloadBuilder) BuildCreatePayloadWithWrongCredentials() map[string]any {
 	payload := b.BuildCreatePayload()
 	connectorConfig := payload["connector_config"].(map[string]any)
-	connectorConfig["password"] = b.encryptPassword("wrong_password_123")
+	connectorConfig["password"] = "wrong_password_123"
 	return payload
 }
 
@@ -131,7 +117,7 @@ func (b *OpenSearchPayloadBuilder) BuildCreatePayloadWithInvalidPort() map[strin
 			"host":     b.config.Host,
 			"port":     "not_a_number",
 			"username": b.config.Username,
-			"password": b.encryptPassword(b.config.Password),
+			"password": b.config.Password,
 			"use_ssl":  b.config.UseSSL,
 		},
 	}
@@ -165,7 +151,7 @@ func (b *OpenSearchPayloadBuilder) BuildCreatePayloadWithOutOfRangePort() map[st
 			"host":     b.config.Host,
 			"port":     99999, // 超出有效端口范围
 			"username": b.config.Username,
-			"password": b.encryptPassword(b.config.Password),
+			"password": b.config.Password,
 			"use_ssl":  b.config.UseSSL,
 		},
 	}

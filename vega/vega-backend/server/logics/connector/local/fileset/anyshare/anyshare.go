@@ -10,6 +10,7 @@ package anyshare
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,8 +19,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/mitchellh/mapstructure"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/fileset"
 )
@@ -139,12 +140,12 @@ func (c *AnyShareConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
 
 // GetType returns the data source type.
 func (c *AnyShareConnector) GetType() string {
-	return interfaces.ConnectorTypeAnyShare
+	return "anyshare"
 }
 
 // GetName returns the connector name.
 func (c *AnyShareConnector) GetName() string {
-	return interfaces.ConnectorTypeAnyShare
+	return "anyshare"
 }
 
 // GetMode returns the connector mode.
@@ -155,6 +156,11 @@ func (c *AnyShareConnector) GetMode() string {
 // GetCategory returns the connector category.
 func (c *AnyShareConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryFileset
+}
+
+// SupportDiscover reports the connector's existing discovery capability.
+func (c *AnyShareConnector) SupportDiscover() bool {
+	return true
 }
 
 // GetEnabled returns the enabled status.
@@ -168,8 +174,8 @@ func (c *AnyShareConnector) SetEnabled(enabled bool) {
 }
 
 // GetSensitiveFields returns sensitive field names.
-func (c *AnyShareConnector) GetSensitiveFields() []string {
-	return []string{"token", "app_secret"}
+func (c *AnyShareConnector) GetSensitiveFields(_ interfaces.ConnectorConfig) ([]string, error) {
+	return []string{"token", "app_secret"}, nil
 }
 
 // GetFieldConfig returns connector form fields.
@@ -190,15 +196,8 @@ func (c *AnyShareConnector) GetFieldConfig() map[string]interfaces.ConnectorFiel
 // New creates a configured connector instance.
 func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var ac anyshareConfig
-	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &ac,
-		WeaklyTypedInput: true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("decode anyshare config: %w", err)
-	}
-	if err := dec.Decode(cfg); err != nil {
-		return nil, fmt.Errorf("decode anyshare config: %w", err)
+	if err := common.DecodeMapToStruct(cfg, &ac); err != nil {
+		return nil, errors.New("decode anyshare config failed")
 	}
 	if ac.Protocol != "http" && ac.Protocol != "https" {
 		return nil, fmt.Errorf("anyshare protocol must be http or https")
@@ -298,27 +297,27 @@ func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context) (string, error)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.config.AppID, c.config.AppSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("oauth2 token request: %w", err)
+		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	var tr tokenResponse
 	if err := sonic.Unmarshal(body, &tr); err != nil {
-		return "", fmt.Errorf("oauth2 token decode: %w", err)
+		return "", errors.New("oauth2 token response decode failed")
 	}
 	if tr.Error != "" || tr.AccessToken == "" {
-		return "", fmt.Errorf("oauth2 token error: %s (status=%d body=%s)", tr.Error, resp.StatusCode, truncateForLog(body))
+		return "", fmt.Errorf("oauth2 token request rejected: HTTP %d", resp.StatusCode)
 	}
 	return tr.AccessToken, nil
 }
@@ -353,7 +352,7 @@ func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
 		for _, p := range c.config.Paths {
 			docInfo, err := c.getDocIDByPath(ctx, p)
 			if err != nil {
-				return fmt.Errorf("failed to validate path %q: %w", p, err)
+				return connectionError(ctx, "failed to validate configured path", err)
 			}
 			// Check if the path points to the file (size!) = -1 indicates file
 			if docInfo.Size != -1 {
@@ -363,19 +362,19 @@ func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
 			// Obtain detailed document information and determine the path type
 			detail, err := c.getDocItemDetail(ctx, docInfo.DocID, "doc_lib")
 			if err != nil {
-				return fmt.Errorf("failed to get doc item detail for path %q: %w", p, err)
+				return connectionError(ctx, "failed to get configured path detail", err)
 			}
 
 			// Determine whether the path type is consistent with the configuration
 			if err := c.validateDocLibType(detail.DocLib); err != nil {
-				return fmt.Errorf("path %q validation failed: %w", p, err)
+				return errors.New("configured path library type validation failed")
 			}
 		}
 		return nil
 	}
 	// When no paths are configured, it is judged through getEntryDocLib
 	_, err := c.getEntryDocLib(ctx)
-	return err
+	return connectionError(ctx, "anyshare connection test failed", err)
 }
 
 // validateDocLibType verifies whether the document library type is consistent with the configuration
@@ -412,7 +411,7 @@ func (c *AnyShareConnector) GetMetadata(ctx context.Context) (map[string]any, er
 		return nil, err
 	}
 	return map[string]any{
-		"connector":        interfaces.ConnectorTypeAnyShare,
+		"connector":        "anyshare",
 		"host":             c.config.Host,
 		"port":             c.config.Port,
 		"doc_lib_type":     c.config.DocLibType,
@@ -454,4 +453,20 @@ func (c *AnyShareConnector) ValidateFilterability(resource *interfaces.Resource)
 		}
 	}
 	return nil
+}
+
+// connectionError keeps cancellation semantics without exposing untrusted response contents.
+func connectionError(ctx context.Context, operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s: %w", operation, ctx.Err())
+	}
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, cause) {
+			return fmt.Errorf("%s: %w", operation, cause)
+		}
+	}
+	return errors.New(operation)
 }

@@ -47,7 +47,6 @@ func TestMariaDBResourceRead(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		builder = mariadb.NewMariaDBPayloadBuilder(config.TargetMariaDB)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 

@@ -140,6 +140,10 @@ config:
     workerEnabled: true
     timeout: 30s
     cronExpr: "0 * * * *"
+  httpAPI:
+    # Deployment-owned Service CIDRs blocked by HTTP API outbound probes.
+    # Empty keeps only the connector's fixed address restrictions.
+    serviceCIDRs: []
   indexCleanup:
     workerEnabled: true
     interval: 1h
@@ -152,13 +156,13 @@ config:
     discoverWorkerCount: 1
     batchWorkerCount: 1
     streamingWorkerCount: 1
-  # RSA 公钥配置
+  # enabled 仅控制新写入；关闭后读取已存 AES 密文仍需提供同一把密钥。
   crypto:
     enabled: false
-    publicKey: ""  # RSA 公钥内容，通过 --set-file crypto.publicKey=./config/rsa_public_key.pem 注入  
-    privateKey: ""  # RSA 私钥内容，通过 --set-file crypto.privateKey=./config/rsa_private_key_pkcs8.pem 注入
-    privateKeyPath: /opt/vega-backend/secret-config/rsa_private_key_pkcs8.pem
-    publicKeyPath: /opt/vega-backend/secret-config/rsa_public_key.pem
+    # Base64 编码的 32 字节随机密钥，经 Secret 挂载；不配置时默认不创建 Secret。
+    # 开启时必填；关闭但保留密钥时仍创建并挂载 Secret，以读取已存密文。
+    aesKey: ""  # 通过 --set-file config.crypto.aesKey=./config/aes_key 注入
+    aesKeyPath: /opt/vega-backend/secret-config/aes_key
 
 
 # 资源配置

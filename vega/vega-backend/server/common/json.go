@@ -12,9 +12,27 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/mitchellh/mapstructure"
 )
 
 var precisionJSON = sonic.Config{UseNumber: true}.Froze()
+
+// DecodeMapToStruct 精确匹配结构体字段名，并为每次解码创建绑定到独立结果的 Decoder。
+// 动态 map 的成员名和值保持不变，未知结构体字段沿用默认忽略行为。
+func DecodeMapToStruct(input, result any) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:    result,
+		MatchName: exactMapField,
+	})
+	if err != nil {
+		return err
+	}
+	return decoder.Decode(input)
+}
+
+func exactMapField(mapKey, fieldName string) bool {
+	return mapKey == fieldName
+}
 
 // DecodePreciseJSON preserves number literals in dynamic JSON fields.
 func DecodePreciseJSON(reader io.Reader, target any) error {

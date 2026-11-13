@@ -426,23 +426,95 @@ func TestConnectorTypeServiceCheckExistByName(t *testing.T) {
 }
 
 func TestConnectorTypeServiceDeleteByType(t *testing.T) {
-	t.Run("deletes registration and permission resource", func(t *testing.T) {
-		service, cta, ps := newTestConnectorTypeService(t)
-		connectorFactory := vmock.NewMockConnectorFactory(gomock.NewController(t))
-		service.cf = connectorFactory
+	params := interfaces.CatalogsQueryParams{ConnectorType: "remote-api", IncludeBuiltin: true}
 
+	t.Run("referenced types cannot be deleted even without catalog visibility", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		service.ca = ca
+		service.cf = vmock.NewMockConnectorFactory(ctrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 			ID:   "remote-api",
 		}, []string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
-		cta.EXPECT().DeleteByType(gomock.Any(), "remote-api").Return(nil)
-		connectorFactory.EXPECT().DeleteConnector("remote-api")
-		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{"remote-api"}).
-			Return(nil)
+		ca.EXPECT().ListPermissionRefs(gomock.Any(), params).
+			Return([]interfaces.CatalogPermissionRef{{CatalogID: "hidden-catalog"}}, nil)
 
 		err := service.DeleteByType(context.Background(), "remote-api")
 
-		require.NoError(t, err)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_ConnectorType_InUse, httpErr.ErrorCode)
+		assert.NotContains(t, err.Error(), "hidden-catalog")
+	})
+
+	t.Run("failed reference checks do not delete registration or permissions", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		service.ca = ca
+		service.cf = vmock.NewMockConnectorFactory(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(nil, errors.New("reference query failed"))
+
+		err := service.DeleteByType(context.Background(), "remote-api")
+
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed, httpErr.ErrorCode)
+		assert.NotContains(t, err.Error(), "reference query failed")
+	})
+
+	t.Run("permission refusal precedes reference checks", func(t *testing.T) {
+		service, _, ps := newTestConnectorTypeService(t)
+		ctrl := gomock.NewController(t)
+		service.ca = vmock.NewMockCatalogAccess(ctrl)
+		service.cf = vmock.NewMockConnectorFactory(ctrl)
+		denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(denied)
+
+		require.ErrorIs(t, service.DeleteByType(context.Background(), "remote-api"), denied)
+	})
+
+	t.Run("deletes unreferenced registration before cache and permission cleanup", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
+		service.ca, service.cf = ca, connectorFactory
+		gomock.InOrder(
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
+				ID:   "remote-api",
+			}, []string{interfaces.OPERATION_TYPE_DELETE}).Return(nil),
+			ca.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(nil, nil),
+			cta.EXPECT().DeleteByType(gomock.Any(), "remote-api").Return(nil),
+			connectorFactory.EXPECT().DeleteConnector("remote-api"),
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{"remote-api"}).Return(nil),
+		)
+
+		require.NoError(t, service.DeleteByType(context.Background(), "remote-api"))
+	})
+
+	t.Run("failed database deletion does not unregister the connector", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		service.ca = ca
+		service.cf = vmock.NewMockConnectorFactory(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().ListPermissionRefs(gomock.Any(), params).Return(nil, nil)
+		cta.EXPECT().DeleteByType(gomock.Any(), "remote-api").Return(errors.New("deletion failed"))
+
+		err := service.DeleteByType(context.Background(), "remote-api")
+
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed, httpErr.ErrorCode)
 	})
 }
 

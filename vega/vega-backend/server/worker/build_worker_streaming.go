@@ -129,7 +129,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 		}
 		return nil
 	}
-	if catalog.ConnectorType != interfaces.ConnectorTypeMySQL && catalog.ConnectorType != interfaces.ConnectorTypePostgreSQL {
+	if catalog.ConnectorType != "mysql" && catalog.ConnectorType != "postgresql" {
 		logger.Errorf("Streaming build only supports MySQL and PostgreSQL connectors. Unsupported connector type: %s", catalog.ConnectorType)
 		_, err = sbw.bts.InternalMarkFailed(ctx, nil, buildTaskInfo.ID, "unsupported connector type")
 		if err != nil {
@@ -484,13 +484,13 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 		connectorBody["config"].(map[string]any)["schema.history.internal.producer.sasl.jaas.config"] = jaasConfig
 	}
 	switch catalog.ConnectorType {
-	case interfaces.ConnectorTypeMySQL:
+	case "mysql":
 		connectorBody["config"].(map[string]any)["database.server.id"] = fmt.Sprintf("%d", getServerID(connectorName))
 		connectorBody["config"].(map[string]any)["database.server.name"] = getServerName(fmt.Sprintf("%v", catalog.ConnectorCfg["host"]))
 		connectorBody["config"].(map[string]any)["database.include.list"] = database
 		connectorBody["config"].(map[string]any)["schema.history.internal.store.only.captured.databases.ddl"] = true
 		//connectorBody["config"].(map[string]any)["schema.history.internal.store.only.captured.tables.ddl"] = true
-	case interfaces.ConnectorTypePostgreSQL:
+	case "postgresql":
 		connectorBody["config"].(map[string]any)["database.dbname"] = database
 		//connectorBody["config"].(map[string]any)["schema.include.list"] = "public" // It is generally not used. table.include.list contains schema information
 		connectorBody["config"].(map[string]any)["plugin.name"] = "pgoutput"
@@ -502,13 +502,13 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 // streamingDatabase returns the Debezium capture database configuration for a catalog.
 func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	switch catalog.ConnectorType {
-	case interfaces.ConnectorTypePostgreSQL:
+	case "postgresql":
 		database, ok := catalog.ConnectorCfg["database"].(string)
 		if !ok || strings.TrimSpace(database) == "" {
 			return "", fmt.Errorf("PostgreSQL streaming build requires connector_config.database")
 		}
 		return database, nil
-	case interfaces.ConnectorTypeMySQL:
+	case "mysql":
 		value, ok := catalog.ConnectorCfg["databases"]
 		if !ok {
 			return "", fmt.Errorf("MySQL streaming build requires a non-empty connector_config.databases")

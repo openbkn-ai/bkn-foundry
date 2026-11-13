@@ -36,7 +36,9 @@ func TestRemoteConnectorMetadataAndConfig(t *testing.T) {
 		assert.Equal(t, interfaces.ConnectorModeRemote, connector.GetMode())
 		assert.Equal(t, interfaces.ConnectorCategoryAPI, connector.GetCategory())
 		assert.True(t, connector.GetEnabled())
-		assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+		protectedFields, metadataErr := connector.GetSensitiveFields(nil)
+		require.NoError(t, metadataErr)
+		assert.Equal(t, []string{"password"}, protectedFields)
 		assert.Equal(t, connectorType.FieldConfig, connector.GetFieldConfig())
 
 		connector.SetEnabled(false)

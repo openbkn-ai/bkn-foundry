@@ -29,19 +29,6 @@ var (
 	}
 )
 
-// Connector type constant definition
-const (
-	ConnectorTypeMySQL      string = "mysql"
-	ConnectorTypeMariaDB    string = "mariadb"
-	ConnectorTypePostgreSQL string = "postgresql"
-	ConnectorTypeSQLServer  string = "sqlserver"
-	ConnectorTypeOpenSearch string = "opensearch"
-	ConnectorTypeOracle     string = "oracle"
-	ConnectorTypeDoris      string = "doris"
-	ConnectorTypeHANA       string = "hana"
-	ConnectorTypeAnyShare   string = "anyshare"
-)
-
 // ConnectorFieldConfig is custom connector configuration metadata, not a JSON Schema.
 // Type and Description use the familiar Schema keyword meanings; Name, the field-level
 // Required boolean, and Encrypted are custom metadata. Standard JSON Schema requires

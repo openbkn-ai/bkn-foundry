@@ -22,8 +22,7 @@ import (
 
 // MariaDBPayloadBuilder MariaDB catalog payload构建器
 type MariaDBPayloadBuilder struct {
-	config     setup.MariaDBConfig
-	testConfig *setup.TestConfig
+	config setup.MariaDBConfig
 }
 
 // NewMariaDBPayloadBuilder 创建MariaDB payload构建器
@@ -31,22 +30,9 @@ func NewMariaDBPayloadBuilder(config setup.MariaDBConfig) *MariaDBPayloadBuilder
 	return &MariaDBPayloadBuilder{config: config}
 }
 
-// SetTestConfig 设置测试配置（包含加密器）
-func (b *MariaDBPayloadBuilder) SetTestConfig(tc *setup.TestConfig) {
-	b.testConfig = tc
-}
-
-// encryptPassword 加密密码
-func (b *MariaDBPayloadBuilder) encryptPassword(password string) string {
-	if b.testConfig != nil {
-		return b.testConfig.EncryptString(password)
-	}
-	return password
-}
-
-// GetEncryptedPassword 返回加密后的正确密码
-func (b *MariaDBPayloadBuilder) GetEncryptedPassword() string {
-	return b.encryptPassword(b.config.Password)
+// GetPassword 返回正确密码，由服务端负责存储加密
+func (b *MariaDBPayloadBuilder) GetPassword() string {
+	return b.config.Password
 }
 
 // GetConnectorType 返回connector类型
@@ -64,7 +50,7 @@ func (b *MariaDBPayloadBuilder) BuildCreatePayload() map[string]any {
 			"port":      b.config.Port,
 			"databases": []string{b.config.Database},
 			"username":  b.config.Username,
-			"password":  b.encryptPassword(b.config.Password),
+			"password":  b.config.Password,
 		},
 	}
 }
@@ -96,7 +82,7 @@ func (b *MariaDBPayloadBuilder) BuildCreatePayloadWithOptions(options map[string
 func (b *MariaDBPayloadBuilder) BuildCreatePayloadWithWrongCredentials() map[string]any {
 	payload := b.BuildCreatePayload()
 	connectorConfig := payload["connector_config"].(map[string]any)
-	connectorConfig["password"] = b.encryptPassword("wrong_password_123")
+	connectorConfig["password"] = "wrong_password_123"
 	return payload
 }
 
@@ -128,7 +114,7 @@ func (b *MariaDBPayloadBuilder) BuildCreatePayloadWithoutDatabase() map[string]a
 			"host":     b.config.Host,
 			"port":     b.config.Port,
 			"username": b.config.Username,
-			"password": b.encryptPassword(b.config.Password),
+			"password": b.config.Password,
 		},
 	}
 }
@@ -145,7 +131,7 @@ func (b *MariaDBPayloadBuilder) BuildCreatePayloadWithInvalidPort() map[string]a
 			"port":      "not_a_number",
 			"databases": []string{b.config.Database},
 			"username":  b.config.Username,
-			"password":  b.encryptPassword(b.config.Password),
+			"password":  b.config.Password,
 		},
 	}
 }

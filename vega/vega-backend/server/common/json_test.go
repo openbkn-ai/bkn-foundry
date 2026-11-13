@@ -108,3 +108,68 @@ func TestJSONSourceValueText(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeMapToStruct(t *testing.T) {
+	type fixtureOptions struct {
+		Timeout int `mapstructure:"timeout"`
+	}
+	type fixtureConfig struct {
+		Label     string         `mapstructure:"label"`
+		Port      int            `mapstructure:"port"`
+		Options   fixtureOptions `mapstructure:"options"`
+		Variables map[string]any `mapstructure:"variables"`
+	}
+
+	t.Run("only exact fixed fields decode and dynamic names remain distinct", func(t *testing.T) {
+		input := map[string]any{
+			"label": "canonical", "Label": map[string]any{"ignored": true},
+			"port": 443, "PORT": map[string]any{"ignored": true},
+			"options":   map[string]any{"timeout": 30, "Timeout": "ignored"},
+			"variables": map[string]any{"AppID": "UpperValue", "appid": "lowerValue"},
+			"Unknown":   "ignored",
+		}
+		var result fixtureConfig
+		require.NoError(t, DecodeMapToStruct(input, &result))
+		assert.Equal(t, "canonical", result.Label)
+		assert.Equal(t, 443, result.Port)
+		assert.Equal(t, 30, result.Options.Timeout)
+		assert.Equal(t, map[string]any{"AppID": "UpperValue", "appid": "lowerValue"}, result.Variables)
+		assert.Contains(t, input, "Label")
+		assert.Contains(t, input["options"], "Timeout")
+	})
+
+	t.Run("case variants alone cannot populate fixed fields", func(t *testing.T) {
+		result := fixtureConfig{Label: "default", Options: fixtureOptions{Timeout: 30}}
+		require.NoError(t, DecodeMapToStruct(map[string]any{
+			"Label": "ignored", "PORT": 443,
+			"options":   map[string]any{"Timeout": 5},
+			"Variables": map[string]any{"AppID": "ignored"},
+		}, &result))
+		assert.Equal(t, "default", result.Label)
+		assert.Zero(t, result.Port)
+		assert.Equal(t, 30, result.Options.Timeout)
+		assert.Nil(t, result.Variables)
+	})
+
+	t.Run("each call binds its own output", func(t *testing.T) {
+		var first, second fixtureConfig
+		require.NoError(t, DecodeMapToStruct(map[string]any{"label": "first"}, &first))
+		require.NoError(t, DecodeMapToStruct(map[string]any{"label": "second"}, &second))
+		assert.Equal(t, "first", first.Label)
+		assert.Equal(t, "second", second.Label)
+	})
+
+	t.Run("string numbers are not weakly converted", func(t *testing.T) {
+		var result fixtureConfig
+		input := map[string]any{"port": "443"}
+		require.Error(t, DecodeMapToStruct(input, &result))
+		assert.Zero(t, result.Port)
+		assert.Equal(t, "443", input["port"])
+		require.NoError(t, DecodeMapToStruct(map[string]any{"port": 443}, &result))
+		assert.Equal(t, 443, result.Port)
+	})
+
+	t.Run("invalid output is rejected", func(t *testing.T) {
+		require.Error(t, DecodeMapToStruct(map[string]any{}, fixtureConfig{}))
+	})
+}
