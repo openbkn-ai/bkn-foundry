@@ -27,7 +27,7 @@ import (
 func extractedFrom(out *conceptsOutput, docs map[string]*interfaces.RequirementDocument,
 	draft *interfaces.Draft) (*interfaces.RequirementSpec, map[string]string) {
 	spec := emptySpec()
-	types := buildConcepts(out, docs, draft, spec)
+	types := buildConcepts(out, docs, draft, nil, spec)
 	return spec, types
 }
 
@@ -213,7 +213,7 @@ func Test_BuildConcepts(t *testing.T) {
 					Citations: quote}},
 			}
 
-			buildConcepts(out, docs, draft, spec)
+			buildConcepts(out, docs, draft, nil, spec)
 
 			So(ids(spec.Concepts, conceptID), ShouldResemble, []string{"c3", "c6"})
 			So(spec.Concepts[0].Category, ShouldEqual, "property")

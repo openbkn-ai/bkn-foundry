@@ -324,11 +324,11 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	p := &partRun{
 		kind: interfaces.REQUIREMENT_RUN_KINETIC, projectID: projectID, run: run, caller: caller,
 		format: kineticResponseFormat(), newOut: func() any { return &kineticOutput{} },
-		prepareMessage: func(context.Context) (string, error) {
+		prepareMessage: func(context.Context, int) (string, error) {
 			return buildKineticMessage(project.NamingLanguage, cited, draft, spec, items, supplement)
 		},
 	}
-	p.check = func(_ context.Context, out any) {
+	p.check = func(_ context.Context, _ int, out any) {
 		const kind = interfaces.REQUIREMENT_RUN_KINETIC
 		checked := cloneSpec(spec)
 		checked.Rejected = rejectedOf(checked.Rejected, kind)
@@ -344,7 +344,7 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		spec = checked
 		p.inputs = requirementInputsOf(docs, project)
 	}
-	p.write = func(req *interfaces.Requirement, _ any) {
+	p.write = func(req *interfaces.Requirement) {
 		runs := req.Spec.Runs
 		req.Spec = *spec
 		req.Spec.Runs = runs

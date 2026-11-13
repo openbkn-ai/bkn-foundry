@@ -313,7 +313,7 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 	found bool, tables map[string]*interfaces.VegaTable, before *beforeDrafting,
 	understood map[string]bool) *interfaces.DraftConcepts {
 	result := &interfaces.DraftConcepts{ProjectID: projectID, Concepts: []interfaces.DraftConcept{},
-		Counts: map[string]int{}}
+		Counts: map[string]int{}, Requirements: []interfaces.DraftRequirementConcept{}}
 	items := &interfaces.DraftItems{}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		items, result.DraftUpdateTime = &draft.Items, draft.UpdateTime
@@ -331,6 +331,11 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 	if before != nil && result.DraftUpdateTime == 0 && before.language != "" {
 		language = before.language
 	}
+	var catalogTables []*interfaces.VegaTable
+	if before != nil && result.DraftUpdateTime == 0 {
+		catalogTables = before.tables
+	}
+	bind := newConceptBindings(items, catalogTables)
 
 	byKey := map[string]*interfaces.DraftConcept{}
 	order := []string{}
@@ -370,6 +375,11 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 		default:
 			documentConcept(&c, ot.Document)
 		}
+		c.Binding = bind.objectType(ot)
+		if c.Binding.Kind == interfaces.CONCEPT_BINDING_TABLE && !ot.Existing && len(c.Sources) > 0 {
+			// Named by the table as the concept's source names it.
+			c.Binding.Name = c.Sources[0].Name
+		}
 		add(c)
 	}
 	if before != nil && result.DraftUpdateTime == 0 {
@@ -382,7 +392,8 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			physical := physicalName(table)
 			c := interfaces.DraftConcept{Key: tableConceptKey(table.ID), Name: physical, Aliases: []string{},
 				Suggested: interfaces.CONCEPT_VERDICT_OBJECT, SuggestedBecause: interfaces.CONCEPT_BECAUSE_TABLE,
-				Sources: []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE, ID: table.ID, Name: physical}}}
+				Sources: []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE, ID: table.ID, Name: physical}},
+				Binding: &interfaces.DraftConceptBinding{Kind: interfaces.CONCEPT_BINDING_TABLE, ID: table.ID, Name: physical}}
 			if !understandConcept(&c, &interfaces.DraftObjectType{Name: physical}, table, language) && !understood[table.ID] {
 				result.NotUnderstood++
 			}
@@ -412,6 +423,7 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 					ID: source.Table.ResourceID, Name: source.Table.Name}}
 			}
 		}
+		c.Binding = bind.relationType(rt)
 		add(c)
 	}
 	for _, vt := range items.ValueTypes {
@@ -419,6 +431,8 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			Description: vt.Description, Suggested: interfaces.CONCEPT_VERDICT_VALUES, SuggestedBecause: "code_table",
 			Sources: []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: vt.CodeTable.ResourceID, Name: vt.CodeTable.Name}},
+			Binding: &interfaces.DraftConceptBinding{Kind: interfaces.CONCEPT_BINDING_TABLE, ID: vt.CodeTable.ResourceID,
+				Name: vt.CodeTable.Name},
 			Item: &interfaces.DraftConceptItem{Kind: interfaces.DRAFT_KIND_VALUE_TYPES, ID: vt.ID, Adopted: vt.Adopted}})
 	}
 	// What the document samples hold that drafting modeled no item for, with drafting's reason.
@@ -432,7 +446,8 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_DOCUMENT}}
 		}
 		add(interfaces.DraftConcept{Key: documentConceptKey(dc.ID), Name: dc.Name, Description: dc.Description,
-			Suggested: dc.Verdict, SuggestedBecause: "document_concept", Reason: dc.Reason, Sources: sources})
+			Suggested: dc.Verdict, SuggestedBecause: "document_concept", Reason: dc.Reason, Sources: sources,
+			Binding: &interfaces.DraftConceptBinding{Kind: interfaces.CONCEPT_BINDING_DATASET}})
 	}
 
 	if found && req != nil && req.Status == interfaces.REQUIREMENT_STATUS_READY {
@@ -470,9 +485,12 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			source := interfaces.DraftConceptSource{Kind: interfaces.CONCEPT_SOURCE_REQUIREMENT, ID: rc.ID,
 				Name: rc.Term, DocumentIDs: documents}
 			key := ""
-			if rc.MapsTo != nil {
+			if matched := matchedKey(rc.Match, byKey, order); matched != "" {
+				// Matched to the data that holds it, as AI proposed or a person chose.
+				key = matched
+			} else if rc.MapsTo != nil {
 				key = itemKey(kinds[rc.MapsTo.Kind], rc.MapsTo.ID)
-			} else if rc.Category == "object" || rc.Category == "event" || rc.Category == "relation" {
+			} else if rc.Match == nil && (rc.Category == "object" || rc.Category == "event" || rc.Category == "relation") {
 				// Named like an item, as the specification maps them: a property, kinetic or
 				// not-included concept is one only by an explicit mapping.
 				key = byName[normalized(rc.Term)]
@@ -509,6 +527,7 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 		}
 		if from := byKey[a.definition.From]; from != nil {
 			c.Sources = append(c.Sources, from.Sources...)
+			c.Binding = from.Binding
 		}
 		add(c)
 	}
@@ -560,6 +579,9 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 		result.Counts["verdict:"+c.Verdict]++
 		result.Concepts = append(result.Concepts, *c)
 	}
+	if found && req != nil && req.Status == interfaces.REQUIREMENT_STATUS_READY {
+		result.Requirements = requirementMatches(req.Spec.Concepts, byKey, order, mergedInto)
+	}
 	rank := map[string]int{interfaces.CONCEPT_STATE_PENDING: 0, interfaces.CONCEPT_STATE_BLOCKED: 1,
 		interfaces.CONCEPT_STATE_JUDGED: 2, interfaces.CONCEPT_STATE_IN_MODEL: 3}
 	slices.SortStableFunc(result.Concepts, func(a, b interfaces.DraftConcept) int {
@@ -608,7 +630,10 @@ func judgeConcept(ctx context.Context, items *interfaces.DraftItems, c *interfac
 	}
 	// Unjudged, the verdict is what drafting did: an item it left out is not included, as
 	// accepting the suggestions records it, until a person judges it otherwise.
-	if c.Judged == nil && c.Item != nil && !c.Item.Adopted && adoptsAs(c.Item.Kind, c.Verdict) {
+	// What a knowledge-base extraction proposes waits for a person as proposed: it was never left
+	// out by drafting.
+	if c.Judged == nil && c.Item != nil && !c.Item.Adopted && adoptsAs(c.Item.Kind, c.Verdict) &&
+		(c.Binding == nil || c.Binding.Kind != interfaces.CONCEPT_BINDING_DATASET) {
 		c.Verdict = interfaces.CONCEPT_VERDICT_NONE
 	}
 	switch {
@@ -919,6 +944,16 @@ func (s *draftService) MergeConcept(ctx context.Context, token string, projectID
 		if len(from.Merged) > 0 {
 			span.SetStatus(codes.Error, "Concept holds merged concepts")
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody)
+		}
+		// An object merges into an object, a relation into a relation: never across.
+		if from.Item != nil && into.Item != nil && from.Item.Kind != into.Item.Kind {
+			span.SetStatus(codes.Error, "Concepts of different kinds")
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MergeKindMismatch)
+		}
+		// A table's concept and a knowledge-base extraction's are never one: that needs a custom view.
+		if crossBinding(from, into) {
+			span.SetStatus(codes.Error, "Concepts bound to different data")
+			return nil, crossBindingMerge(ctx)
 		}
 		decision.Action, decision.After = interfaces.DRAFT_DECISION_MERGE, req.Into
 	}

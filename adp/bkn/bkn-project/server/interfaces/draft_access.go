@@ -12,8 +12,9 @@ type DraftAccess interface {
 	GetDraft(ctx context.Context, projectID string) (*Draft, bool, error)
 	// StartDraft writes draft, in the drafting state, as the project's draft unless the project
 	// is drafting already; it reports whether it did. A draft drafting since before staleBefore
-	// is taken over: its drafting has ended without being recorded. A draft with decisions or document candidates is
-	// replaced only when discardDecisions is set; otherwise it returns ErrDraftHasDecisions.
+	// is taken over: its drafting has ended without being recorded. A draft with decisions is
+	// replaced only when discardDecisions is set; otherwise it returns ErrDraftHasDecisions. What a
+	// knowledge-base extraction drafted is carried over into draft either way.
 	StartDraft(ctx context.Context, draft *Draft, staleBefore int64, discardDecisions bool) (bool, error)
 	// UpdateDraft writes the items and update time of a ready draft whose update time is still
 	// readUpdateTime; it reports whether it did, and false means someone changed it meanwhile.
