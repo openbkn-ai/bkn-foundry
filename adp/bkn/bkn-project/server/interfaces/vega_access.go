@@ -137,6 +137,8 @@ func (e *VegaError) Error() string {
 //go:generate mockgen -source ../interfaces/vega_access.go -destination ../interfaces/mock/mock_vega_access.go
 type VegaAccess interface {
 	// MissingCatalogs returns the catalogs that no longer exist, in their order.
+	// CatalogNames returns the names of the catalogs the account can read, by id; others are left out.
+	CatalogNames(ctx context.Context, account VegaAccount, catalogIDs []string) (map[string]string, error)
 	MissingCatalogs(ctx context.Context, account VegaAccount, catalogIDs []string) ([]string, error)
 	// MissingTables returns the table resources that no longer exist, in their order. A table the
 	// account may not see is not missing.

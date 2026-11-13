@@ -114,6 +114,7 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetBknAgentAccess(pmock.NewMockBknAgentAccess(ctrl))
 	logics.SetRequirementAccess(pmock.NewMockRequirementAccess(ctrl))
 	logics.SetRegressionAccess(pmock.NewMockRegressionAccess(ctrl))
+	logics.SetAdminAccess(pmock.NewMockAdminAccess(ctrl))
 
 	handler := driveradapters.NewRestHandler(&common.AppSetting{}, pinger{})
 

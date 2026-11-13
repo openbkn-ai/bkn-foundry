@@ -147,6 +147,16 @@ func Test_GitStore(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("DeleteBranch removes a project branch, never main; a gone branch is no error\n", func() {
+			So(gs.CreateBranch(ctx, "orders", "project/p9", "main"), ShouldBeNil)
+			So(gs.DeleteBranch(ctx, "orders", "project/p9"), ShouldBeNil)
+			_, err := gs.ResolveRef(ctx, "orders", "project/p9")
+			So(err, ShouldNotBeNil)
+			So(gs.DeleteBranch(ctx, "orders", "project/p9"), ShouldBeNil)
+			So(gs.CreateBranch(ctx, "orders", "project/p9", "main"), ShouldBeNil)
+			So(gs.DeleteBranch(ctx, "orders", "main"), ShouldNotBeNil)
+		})
+
 		Convey("CreateBranch, Tag, Diff and MergeBase follow the history\n", func() {
 			So(gs.Tag(ctx, "orders", "v1.0.0", "main"), ShouldBeNil)
 			So(gs.Tag(ctx, "orders", "v1.0.0", "main"), ShouldNotBeNil)

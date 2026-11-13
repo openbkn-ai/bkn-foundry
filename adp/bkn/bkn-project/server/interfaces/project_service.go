@@ -20,10 +20,10 @@ type CreateProjectRequest struct {
 	EnableVersioning bool `json:"enable_versioning"`
 }
 
-// NewKNRequest names the network a project creates; bkn-backend makes up an id when ID is empty.
-// SetProjectNamingLanguageRequest sets the language a project names its items in.
-type SetProjectNamingLanguageRequest struct {
-	NamingLanguage string `json:"naming_language"`
+// RenameProjectRequest is the body of PATCH /projects/{id}. A project's content language is set
+// when it is created and never changes: what was generated in it would mix languages.
+type RenameProjectRequest struct {
+	Name string `json:"name"`
 }
 
 // SetProjectCatalogsRequest replaces the data catalogs a project drafts from.
@@ -31,6 +31,7 @@ type SetProjectCatalogsRequest struct {
 	CatalogIDs []string `json:"catalog_ids"`
 }
 
+// NewKNRequest names the network a project creates; bkn-backend makes up an id when ID is empty.
 type NewKNRequest struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -44,6 +45,9 @@ type ProjectEntry struct {
 	// OwnerName is the owner's display name, for people who may not list users; empty when the
 	// directory does not know it.
 	OwnerName string `json:"owner_name,omitempty"`
+	// CanManage tells whether the caller may rename and delete the project: its owner or an
+	// administrator.
+	CanManage bool `json:"can_manage"`
 	// NetworkCatalogIDs are the catalogs among CatalogIDs that the network's object types read:
 	// the project takes them from the network, which owns them. Set only on a project read for
 	// its catalogs, and only on a network the project did not create.
@@ -89,8 +93,20 @@ type ProjectService interface {
 	// they stay the project's whether they are given or not.
 	SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
 		caller AccountInfo) (*ProjectEntry, error)
-	// SetProjectNamingLanguage sets the language the project names its items in; only its owner
-	// may. Drafts made before keep their names until drafted again.
-	SetProjectNamingLanguage(ctx context.Context, token string, id string, language string,
-		caller AccountInfo) (*ProjectEntry, error)
+	// RenameProject renames a visible project; only its owner or an administrator may.
+	RenameProject(ctx context.Context, token string, id string, name string, caller AccountInfo) (*ProjectEntry, error)
+	// DeleteProject deletes what a project owns: its working material, its edition data and its
+	// branch. A prepared release that is not published is withdrawn from the network's draft. The
+	// network and its published versions stay. Only the owner or an administrator may.
+	DeleteProject(ctx context.Context, token string, id string, caller AccountInfo) error
+	// MarkManageable sets CanManage of each entry for the caller.
+	MarkManageable(ctx context.Context, token string, caller AccountInfo, entries ...*ProjectEntry)
+	// ExportProject packs a visible project into a project package, returned with its file name.
+	ExportProject(ctx context.Context, token string, id string, caller AccountInfo) ([]byte, string, error)
+	// PreviewPackage reads what a project package holds, for choosing where to import it.
+	PreviewPackage(ctx context.Context, pkg []byte) (*ProjectPackagePreview, error)
+	// ImportPackage creates a project from a package: its content language, requirement documents,
+	// specification and draft, unconfirmed.
+	ImportPackage(ctx context.Context, token string, pkg []byte, options ImportProjectOptions, owner AccountInfo,
+		author GitAuthor) (*ProjectEntry, error)
 }

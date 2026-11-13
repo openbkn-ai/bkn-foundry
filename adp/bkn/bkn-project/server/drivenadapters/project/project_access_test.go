@@ -95,15 +95,6 @@ func Test_ProjectAccess(t *testing.T) {
 			So(project.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
 		})
 
-		Convey("SetProjectNamingLanguage stores the language and the update time\n", func() {
-			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_naming_language = ?, f_update_time = ? WHERE f_id = ?")).
-				WithArgs("en-US", int64(9), "p1").
-				WillReturnResult(sqlmock.NewResult(0, 1))
-
-			So(pa.SetProjectNamingLanguage(ctx, "p1", interfaces.NAMING_LANGUAGE_EN_US, 9), ShouldBeNil)
-			So(smock.ExpectationsWereMet(), ShouldBeNil)
-		})
-
 		Convey("GetProject reports a missing project\n", func() {
 			smock.ExpectQuery("FROM t_bkn_project_project").WillReturnRows(sqlmock.NewRows(projectColumns))
 
@@ -297,3 +288,58 @@ func (archivingProbe) Archiving(ctx context.Context, tx *sql.Tx, projectID strin
 	return err
 }
 func (archivingProbe) Archived(context.Context, string, string, interfaces.AccountInfo) {}
+
+// deletingProbe deletes one row of its own in the delete transaction.
+type deletingProbe struct{ archivingProbe }
+
+func (deletingProbe) Deleted(context.Context, string, string, interfaces.AccountInfo) {}
+func (deletingProbe) DeletingRows(ctx context.Context, tx *sql.Tx, projectID string) error {
+	_, err := tx.ExecContext(ctx, "DELETE FROM edition_rows WHERE f_project_id=?", projectID)
+	return err
+}
+
+func Test_ProjectAccessManage(t *testing.T) {
+	Convey("Renaming and deleting projects\n", t, func() {
+		db, smock, err := sqlmock.New()
+		So(err, ShouldBeNil)
+		defer func() { _ = db.Close() }()
+		pa := &projectAccess{db: db}
+		ctx := context.Background()
+
+		Convey("RenameProject stores the name and the update time\n", func() {
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_project SET f_name = ?, f_update_time = ? WHERE f_id = ?")).
+				WithArgs("New", int64(9), "p1").WillReturnResult(sqlmock.NewResult(0, 1))
+
+			So(pa.RenameProject(ctx, "p1", "New", 9), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("DeleteProject deletes the project's rows, its prepared releases and the edition's in one transaction\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: deletingProbe{}})()
+			smock.ExpectBegin()
+			for _, table := range projectOwnedTables {
+				smock.ExpectExec(regexp.QuoteMeta("DELETE FROM " + table + " WHERE f_project_id = ?")).
+					WithArgs("p1").WillReturnResult(sqlmock.NewResult(0, 1))
+			}
+			smock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_bkn_project_release WHERE f_project_id = ? AND f_state = ?")).
+				WithArgs("p1", "prepared").WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectExec(regexp.QuoteMeta("DELETE FROM edition_rows WHERE f_project_id=?")).
+				WithArgs("p1").WillReturnResult(sqlmock.NewResult(0, 2))
+			smock.ExpectExec(regexp.QuoteMeta("DELETE FROM t_bkn_project_project WHERE f_id = ?")).
+				WithArgs("p1").WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			So(pa.DeleteProject(ctx, "p1"), ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("A failed delete rolls everything back\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec("DELETE FROM t_bkn_project_draft").WillReturnError(errors.New("db down"))
+			smock.ExpectRollback()
+
+			So(pa.DeleteProject(ctx, "p1"), ShouldNotBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+	})
+}

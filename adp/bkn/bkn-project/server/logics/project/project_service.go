@@ -51,12 +51,17 @@ type projectService struct {
 	va  interfaces.VegaAccess
 	// pc reads the catalogs a project on an existing network takes from it.
 	pc *logics.ProjectCatalogs
+	// Managing projects: who administers, the lineage branches, and the material a package carries.
+	adm interfaces.AdminAccess
+	gs  interfaces.GitStore
+	da  interfaces.DraftAccess
+	rqa interfaces.RequirementAccess
 }
 
 func NewProjectService() interfaces.ProjectService {
 	psOnce.Do(func() {
 		ps = &projectService{pa: logics.PA, ra: logics.RA, bba: logics.BBA, kva: logics.KVA, ls: lineage.NewLineageService(), va: logics.VA,
-			pc: logics.NewProjectCatalogs()}
+			pc: logics.NewProjectCatalogs(), adm: logics.ADM, gs: logics.GS, da: logics.DA, rqa: logics.RQA}
 	})
 	return ps
 }
@@ -360,42 +365,6 @@ func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, i
 func (s *projectService) ResolveCatalogs(ctx context.Context, token string, entry *interfaces.ProjectEntry,
 	caller interfaces.AccountInfo) {
 	s.pc.Resolve(ctx, token, caller, entry)
-}
-
-func (s *projectService) SetProjectNamingLanguage(ctx context.Context, token string, id string, language string,
-	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SetProjectNamingLanguage")
-	defer span.End()
-
-	if !interfaces.IsNamingLanguage(language) {
-		span.SetStatus(codes.Error, "Invalid naming language")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNamingLanguage)
-	}
-	project, err := s.visibleProject(ctx, token, id)
-	if err != nil {
-		span.SetStatus(codes.Error, "Get project failed")
-		return nil, err
-	}
-	if project.Owner != caller {
-		span.SetStatus(codes.Error, "Not the owner")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
-	}
-	// The draft keeps its names; drafting again names in the new language.
-	if project.NamingLanguage != language {
-		project.NamingLanguage = language
-		project.UpdateTime = time.Now().UnixMilli()
-		if err = s.pa.SetProjectNamingLanguage(ctx, id, language, project.UpdateTime); err != nil {
-			span.SetStatus(codes.Error, "Set naming language failed")
-			return nil, internalError(ctx, "Set naming language failed", err)
-		}
-	}
-	entries, err := s.withOtherProjects(ctx, []*interfaces.Project{project})
-	if err != nil {
-		span.SetStatus(codes.Error, "Count projects failed")
-		return nil, internalError(ctx, "Count projects failed", err)
-	}
-	span.SetStatus(codes.Ok, "")
-	return entries[0], nil
 }
 
 // visibleProject returns the project when the caller can see its network. A
