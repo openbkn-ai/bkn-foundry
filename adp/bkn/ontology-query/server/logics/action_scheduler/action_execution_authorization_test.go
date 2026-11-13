@@ -7,6 +7,7 @@ package action_scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
@@ -33,6 +34,40 @@ func TestRelationAuthorizationPreservesKNVersionError(t *testing.T) {
 	})
 	if err != want {
 		t.Fatalf("relation version error = %v, want original %v", err, want)
+	}
+}
+
+func TestCheckActionExecutionPreservesModelPermissionDenial(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			models := omock.NewMockOntologyManagerAccess(ctrl)
+			denied := httperrors.NewHTTPError(context.Background(), status, httperrors.PublicError_Forbidden)
+			models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").
+				Return(interfaces.ActionType{}, nil, false, fmt.Errorf("get action type failed: %w", denied))
+			service := &actionSchedulerService{omAccess: models}
+			err := service.CheckActionExecution(context.Background(), &interfaces.ActionExecutionRequest{
+				KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
+			})
+			if err != denied || err.(*httperrors.HTTPError).HTTPCode != status {
+				t.Fatalf("CheckActionExecution() = %v, want original denial %v", err, denied)
+			}
+		})
+	}
+}
+
+func TestCheckActionExecutionReportsModelOutage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").
+		Return(interfaces.ActionType{}, nil, false, errors.New("model service unavailable"))
+	service := &actionSchedulerService{omAccess: models}
+	err := service.CheckActionExecution(context.Background(), &interfaces.ActionExecutionRequest{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
+	})
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusServiceUnavailable {
+		t.Fatalf("CheckActionExecution() = %v, want 503", err)
 	}
 }
 
