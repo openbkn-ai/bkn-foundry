@@ -207,7 +207,7 @@ RETURN toUpper(s.supplier_name) AS supplier,
 
 - Like CASE and coalesce, they may be written in RETURN, WITH, ORDER BY, either side of a comparison and the argument of an aggregate. An argument may be a property, an aggregate, a computed value or another call.
 - `round`, `abs`, `toInteger` and `toFloat` take numbers, and `toUpper` and `toLower` take strings; another type returns 400. Write `toString(x)` first to change the case of a number.
-- A decimal value, including a `sum()` over one, comes back as a string such as `"13833141.000000"`; `toFloat(...)` or `round(..., n)` gives a number instead. `abs` keeps the type.
+- Numeric columns, including DECIMAL values and `sum()` over them, return JSON numbers with exact decimal digits. Text columns remain strings. Use an exact numeric decoder for values beyond IEEE 754 precision; conversion to binary floating point can lose precision.
 - `toInteger` gives an integer, so a division by its result still needs a 1.0 under the rule for dividing two integers.
 - Which way a value exactly halfway, such as 2.5, rounds is up to the data source.
 

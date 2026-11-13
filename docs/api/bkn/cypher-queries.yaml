@@ -282,9 +282,10 @@ components:
             giving a number), abs(x), toInteger(x) (truncated toward zero), toFloat(x),
             toUpper(s), toLower(s) and toString(x) may stand wherever CASE and coalesce may.
             round, abs, toInteger and toFloat take numbers, and toUpper and toLower strings;
-            another type is refused with 400. A decimal, including a sum() over one, comes
-            back as a string such as "13833141.000000"; toFloat(...) or round(..., n) gives a
-            number instead. Queries using them always run on the SQL path.
+            another type is refused with 400. Numeric columns, including DECIMAL and sum() over
+            DECIMAL, return JSON numbers with their exact decimal digits (without a float64
+            conversion). Text columns remain strings. Clients must use an exact numeric decoder
+            for values outside IEEE 754 precision. Queries using these functions always run on the SQL path.
 
             CASE and coalesce compute a value wherever arithmetic may stand: in RETURN, WITH,
             ORDER BY, either side of a comparison and the argument of an aggregate, as in
