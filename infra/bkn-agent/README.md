@@ -70,6 +70,22 @@ The contract is frozen in `docs/api/bkn-agent/bkn-agent.yaml` (OpenAPI 3.1, #212
 
 `/api/bkn-agent/v1/` provides Agent CRUD, `POST /chat` (SSE), `POST /run` plus `GET /tasks/{id}`, `POST /invoke/{agent_id}` (synchronous; responds only at a terminal state), `GET /threads/{id}` (conversation history), Prompt management and caller overrides (`/prompts`, `/agents/{id}/prompt`), and import/export (`/export`, `/import`). Import/export includes the Agent definition and current Prompt version, preserves the original ID through idempotent upsert, records the same name under a different ID as a failure without aborting, and warns about missing cross-environment references.
 
+### Reusing asynchronous tasks
+
+`POST /run` supports task Agents and published chat Agents as stateless single
+turns, using the same execution runner as `/invoke`. It accepts an optional `Idempotency-Key` header (1–200 characters).
+For the same caller type, caller ID, Agent ID and key, concurrent or repeated
+requests return the same stored task, including its terminal output. Only the
+successful primary-key reservation submits work. A changed request body, locale
+or thinking-mode header with that key returns HTTP 409
+`BknAgent.Task.IdempotencyConflict`. Without the header, each request continues
+to create a new task. Task reads retain caller authorization.
+
+The task input records the server-derived locale and thinking mode as
+`request_context` for consumers validating recovered results. No additional
+queue or task table is created. Existing Agent restart handling still marks
+unfinished work failed; an explicit retry uses a new key.
+
 ## Context budget on the public execution surface
 
 Public execution (`/executions`) applies the merged Agent `limits` to what each model call sees. It changes only the copy sent to the model; stored conversation history retains complete tool results. The defaults in `app/core/agent_settings.py` are:

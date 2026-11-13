@@ -346,6 +346,12 @@ error_messages = {
         "detail": "该 agent 不是对话模式",
         "solution": "task agent 走 /run（M3）。",
     },
+    "BknAgent.Task.IdempotencyConflict": {
+        "code": "BknAgent.Task.IdempotencyConflict",
+        "description": "该任务键已用于不同的输入。",
+        "detail": "该任务键已用于不同的输入。",
+        "solution": "复用原始输入，或使用新的任务键。",
+    },
     "BknAgent.Task.ModeMismatch": {
         "code": "BknAgent.ParamError.Mode",
         "description": "该 agent 不是一次性模式",

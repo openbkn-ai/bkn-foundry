@@ -1148,12 +1148,23 @@ paths:
       - BknAgent
       summary: Run
       operationId: run_api_bkn_agent_v1_run_post
+      parameters:
+      - name: idempotency-key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 200
+          - type: 'null'
+          title: Idempotency-Key
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RunRequest'
-        required: true
       responses:
         '200':
           description: Successful Response
