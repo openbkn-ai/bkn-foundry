@@ -50,7 +50,16 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   when it has no candidate: a name people read beats an abbreviation. The
   candidates in the other language, never the physical name, become `aliases` of object
   types, properties and relation types, leaving out those BKN refuses: one
-  holding a comma, or another property's name or display name. Ids come from physical
+  holding a comma, or another property's name or display name. The catalog's names
+  and descriptions are one copy shared by every project using it, and may be in the
+  other language (read by script: a Han character is Chinese, a Latin letter English):
+  then drafting runs the bkn-agent task Agent `bkn-project-draft-naming` to write the
+  names and descriptions of the object types, properties, relation types and value
+  types the new tables drafted in the project's naming language, the catalog's name
+  kept as an alias; the catalog itself is not changed. Items still named by their
+  physical name, and items the network already has, stay as they are; without the
+  Agent, or when it fails, the catalog's names stay. Relation types drafted from a
+  referring field are named again from the new names. Ids come from physical
   table and field names only, never from names semantic understanding wrote, so
   they do not change with language or with understanding run again: words
   joined by `_`, camelCase split (`customerId` gives `customer_id`). A physical

@@ -185,8 +185,17 @@ func understandConcept(c *interfaces.DraftConcept, ot *interfaces.DraftObjectTyp
 		return false
 	}
 	if ot.Name == physical {
-		c.Name, _ = pickName(language, physical, givenName(table), firstClause(table.Description))
-		if table.Description != "" {
+		// What the catalog says in the other language names no new item: drafting names it again in
+		// the project's language, and the catalog's name stays an alias.
+		name, _ := pickName(language, physical, givenName(table), firstClause(table.Description))
+		if language != "" && inOtherLanguage(language, name) {
+			if !slices.Contains(c.Aliases, name) {
+				c.Aliases = append(c.Aliases, name)
+			}
+		} else {
+			c.Name = name
+		}
+		if table.Description != "" && (language == "" || !inOtherLanguage(language, table.Description)) {
 			c.Description = table.Description
 		}
 	}
