@@ -217,6 +217,45 @@ def test_fallback_without_json_object_asks_plainly():
     assert m.plain == 1
 
 
+def test_fallback_without_json_object_in_other_words_asks_plainly():
+    """A thinking-mode qwen refuses json_object without naming response_format."""
+
+    class _Refused(Exception):
+        status_code = 400
+
+    m = _JsonMode([('{"greeting": "hi"}', "stop")])
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                raise _Refused("Json mode response is not supported when enable_thinking is true")
+
+        return _Bound()
+
+    m.bind = bind
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "hi"}
+    assert m.plain == 1
+
+
+def test_fallback_network_failure_is_not_hidden():
+    class _Down(Exception):
+        pass
+
+    m = _JsonMode([('{"greeting": "hi"}', "stop")])
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                raise _Down("connection reset")
+
+        return _Bound()
+
+    m.bind = bind
+    with pytest.raises(_Down):
+        asyncio.run(structured_extract(m, [], SCHEMA))
+
+
 def test_fallback_accepts_raw_newline_in_string():
     m = _JsonMode([('{"greeting": "a' + chr(10) + 'b"}', "stop")])
     out = asyncio.run(structured_extract(m, [], SCHEMA))

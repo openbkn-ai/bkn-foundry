@@ -62,8 +62,12 @@ def _truncated(resp: Any) -> bool:
     return metadata.get("finish_reason") == "length"
 
 
-def _response_format_refused(error: Exception) -> bool:
-    """Whether a provider refused the request for its response_format."""
+def _request_refused(error: Exception) -> bool:
+    """Whether the provider refused the request itself (a 4xx), as one without
+    json_object does in its own words; a network failure or a timeout is not."""
+    status = getattr(error, "status_code", None)
+    if isinstance(status, int):
+        return 400 <= status < 500
     return "response_format" in str(error)
 
 
@@ -190,7 +194,7 @@ async def structured_extract_with_path(
             try:
                 resp = await model.bind(response_format={"type": "json_object"}).ainvoke(msgs)
             except Exception as e:  # The provider has no json_object either
-                if not _response_format_refused(e):
+                if not _request_refused(e):
                     raise
                 logger.warning("[Structured] json_object unavailable; plain prompt: %s", e)
                 json_mode = False
