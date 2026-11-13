@@ -123,6 +123,7 @@ func (r *restHandler) GetProject(c *gin.Context, visitor hydra.Visitor) {
 		replyError(c, span, err)
 		return
 	}
+	r.ps.ResolveCatalogs(ctx, visitor.TokenID, entry, visitorAccount(visitor))
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)

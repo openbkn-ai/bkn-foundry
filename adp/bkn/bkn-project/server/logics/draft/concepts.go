@@ -744,6 +744,7 @@ func (s *draftService) GetConcepts(ctx context.Context, token string, projectID 
 	}
 	var concepts *interfaces.DraftConcepts
 	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY {
+		s.pc.Resolve(ctx, token, caller, entry)
 		concepts, err = s.conceptsBeforeDrafting(ctx, projectID, entry, draft, caller)
 	} else {
 		concepts, err = s.readConcepts(ctx, projectID, draft, caller)

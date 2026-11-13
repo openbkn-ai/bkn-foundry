@@ -20,6 +20,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 const token = "Bearer t"
@@ -600,6 +601,32 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(entry.CatalogIDs, ShouldResemble, []string{"c2", "c3"})
 			So(entry.UpdateTime, ShouldBeGreaterThan, 1)
+		})
+
+		Convey("On an existing network only the catalogs the owner adds are stored; a gone one kept from before is dropped\n", func() {
+			old := stored()
+			old.CatalogIDs = []string{"c-old"}
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(old, true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			// The network's object types read catalog c-net, read every time.
+			f.bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "orders").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "orders", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r1"}},
+			}, nil).Times(2)
+			da := pmock.NewMockDraftAccess(ctrl)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil).Times(2)
+			f.va.EXPECT().GetTables(gomock.Any(), owner, []string{"r1"}).
+				Return([]*interfaces.VegaTable{{ID: "r1", CatalogID: "c-net"}}, nil).Times(2)
+			f.svc.pc = &logics.ProjectCatalogs{BBA: f.bba, VA: f.va, DA: da}
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c-old", "c2"}).Return([]string{"c-old"}, nil)
+			f.pa.EXPECT().SetProjectCatalogs(gomock.Any(), "p1", []string{"c2"}, gomock.Any()).Return(nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
+			f.va.EXPECT().MissingCatalogs(gomock.Any(), owner, []string{"c2"}).Return(nil, nil)
+
+			entry, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c-net", "c-old", "c2"}, owner)
+
+			So(err, ShouldBeNil)
+			So(entry.CatalogIDs, ShouldResemble, []string{"c-net", "c2"})
+			So(entry.NetworkCatalogIDs, ShouldResemble, []string{"c-net"})
 		})
 
 		Convey("The same catalogs change nothing\n", func() {

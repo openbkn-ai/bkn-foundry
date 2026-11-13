@@ -103,13 +103,19 @@ func Test_ProjectRestHandler(t *testing.T) {
 			}
 		})
 
-		Convey("Get replies the project, or the service's not found\n", func() {
+		Convey("Get replies the project with the catalogs it reads, or the service's not found\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), "Bearer t", "p1").Return(entry, nil)
-			So(serve(handler, http.MethodGet, base+"/p1").Result().StatusCode, ShouldEqual, http.StatusOK)
+			ps.EXPECT().ResolveCatalogs(gomock.Any(), "Bearer t", entry, caller).
+				Do(func(_ context.Context, _ string, e *interfaces.ProjectEntry, _ interfaces.AccountInfo) {
+					e.NetworkCatalogIDs = []string{"c-network"}
+				})
+			w := serve(handler, http.MethodGet, base+"/p1")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"network_catalog_ids":["c-network"]`)
 
 			ps.EXPECT().GetProject(gomock.Any(), "Bearer t", "p2").
 				Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusNotFound, perrors.BknProject_Project_NotFound))
-			w := serve(handler, http.MethodGet, base+"/p2")
+			w = serve(handler, http.MethodGet, base+"/p2")
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Project_NotFound)
 		})

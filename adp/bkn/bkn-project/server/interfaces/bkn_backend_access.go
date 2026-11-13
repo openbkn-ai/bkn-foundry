@@ -94,7 +94,25 @@ type BknBackendAccess interface {
 	ListActionTypes(ctx context.Context, token string, knID string, objectTypeID string) ([]*KNActionType, error)
 	// ListObjectTypeIDs lists the ids of the network's object types.
 	ListObjectTypeIDs(ctx context.Context, token string, knID string) ([]string, error)
+	// ListObjectTypeSources lists the network's object types with the data each reads.
+	ListObjectTypeSources(ctx context.Context, token string, knID string) ([]*KNObjectTypeSource, error)
 }
+
+// KNObjectTypeSource is an object type of a network and the data it reads.
+type KNObjectTypeSource struct {
+	ID         string        `json:"id"`
+	DataSource *KNDataSource `json:"data_source"`
+}
+
+// KNDataSource is the data an object type reads: a vega-backend resource (a table) when Type is
+// KN_DATA_SOURCE_RESOURCE, or empty as definitions older than the type leave it.
+type KNDataSource struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// KN_DATA_SOURCE_RESOURCE is the data source type of a vega-backend resource.
+const KN_DATA_SOURCE_RESOURCE = "resource"
 
 // KNObjectMetric is what bkn-project reads of an object metric of a network.
 type KNObjectMetric struct {

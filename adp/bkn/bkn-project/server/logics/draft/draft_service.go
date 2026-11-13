@@ -73,6 +73,8 @@ type draftService struct {
 	run func(fn func())
 	// checkRuns holds each project's running check, a *checkRun, so a later run can stop it.
 	checkRuns sync.Map
+	// pc reads the catalogs a project on an existing network takes from it.
+	pc *logics.ProjectCatalogs
 }
 
 func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
@@ -92,6 +94,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			gs:      logics.GS,
 			ba:      logics.BAA,
 			run:     func(fn func()) { go fn() },
+			pc:      logics.NewProjectCatalogs(),
 		}
 	})
 	return ds
@@ -127,6 +130,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
+	s.pc.Resolve(ctx, token, caller, entry)
 	if len(entry.CatalogIDs) == 0 {
 		span.SetStatus(codes.Error, "No catalogs")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NoCatalogs)
