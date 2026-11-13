@@ -162,6 +162,53 @@ func (va *vegaAccess) MissingCatalogs(ctx context.Context, account interfaces.Ve
 	return missing, nil
 }
 
+// CatalogNames calls GET /catalogs/{ids}; vega refuses the whole batch for one catalog it does not
+// have or show, so it then asks catalog by catalog.
+func (va *vegaAccess) CatalogNames(ctx context.Context, account interfaces.VegaAccount,
+	catalogIDs []string) (map[string]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CatalogNames")
+	defer span.End()
+
+	names := map[string]string{}
+	if len(catalogIDs) == 0 {
+		return names, nil
+	}
+	read := func(ids []string) (int, error) {
+		respCode, respBody, err := va.getCatalogs(ctx, account, ids)
+		if err != nil || respCode != http.StatusOK {
+			return respCode, err
+		}
+		list := &struct {
+			Entries []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"entries"`
+		}{}
+		if err := json.Unmarshal(respBody, list); err != nil {
+			return respCode, fmt.Errorf("unmarshal catalogs: %w", err)
+		}
+		for _, entry := range list.Entries {
+			names[entry.ID] = entry.Name
+		}
+		return respCode, nil
+	}
+	respCode, err := read(catalogIDs)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalogs failed")
+		return nil, err
+	}
+	if respCode != http.StatusOK && len(catalogIDs) > 1 {
+		for _, id := range catalogIDs {
+			if _, err := read([]string{id}); err != nil {
+				oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
+				return nil, err
+			}
+		}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	return names, nil
+}
+
 func (va *vegaAccess) getCatalogs(ctx context.Context, account interfaces.VegaAccount,
 	catalogIDs []string) (int, []byte, error) {
 	escaped := make([]string, 0, len(catalogIDs))

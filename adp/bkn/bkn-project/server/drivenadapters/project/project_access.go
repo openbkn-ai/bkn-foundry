@@ -284,27 +284,6 @@ func (pa *projectAccess) SetProjectCatalogs(ctx context.Context, id string, cata
 	return nil
 }
 
-func (pa *projectAccess) SetProjectNamingLanguage(ctx context.Context, id string, language string,
-	updateTime int64) error {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "SetProjectNamingLanguage")
-	defer span.End()
-
-	sqlStr, vals, err := sq.Update(PROJECT_TABLE_NAME).
-		Set("f_naming_language", language).Set("f_update_time", updateTime).
-		Where(sq.Eq{"f_id": id}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return err
-	}
-	if _, err = pa.db.ExecContext(ctx, sqlStr, vals...); err != nil {
-		span.SetStatus(codes.Error, "Update data failed")
-		return err
-	}
-	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
 // filterProjects adds the networks, archive state and name of query.
 func filterProjects(builder sq.SelectBuilder, query interfaces.ProjectsQuery) sq.SelectBuilder {
 	builder = builder.Where(sq.Eq{"f_kn_id": query.KNIDs})
@@ -337,4 +316,72 @@ func scanProject(row interface{ Scan(dest ...any) error }) (*interfaces.Project,
 		return nil, err
 	}
 	return project, nil
+}
+
+func (pa *projectAccess) RenameProject(ctx context.Context, id string, name string, updateTime int64) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "RenameProject")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Update(PROJECT_TABLE_NAME).
+		Set("f_name", name).Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = pa.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// projectOwnedTables are the tables whose rows belong to one project by f_project_id.
+var projectOwnedTables = []string{
+	"t_bkn_project_draft", "t_bkn_project_check", "t_bkn_project_id", "t_bkn_project_index_build",
+	"t_bkn_project_requirement_document", "t_bkn_project_requirement", "t_bkn_project_question_guidance",
+	"t_bkn_project_regression",
+}
+
+func (pa *projectAccess) DeleteProject(ctx context.Context, id string) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "DeleteProject")
+	defer span.End()
+
+	tx, err := pa.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin transaction failed")
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, table := range projectOwnedTables {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE f_project_id = ?", id); err != nil {
+			span.SetStatus(codes.Error, "Delete data failed")
+			return err
+		}
+	}
+	// A published release is a record of the network's versions and stays; one only prepared was
+	// withdrawn before.
+	if _, err = tx.ExecContext(ctx, "DELETE FROM t_bkn_project_release WHERE f_project_id = ? AND f_state = ?",
+		id, interfaces.RELEASE_STATE_PREPARED); err != nil {
+		span.SetStatus(codes.Error, "Delete data failed")
+		return err
+	}
+	if deleter, ok := projecthooks.Current().Projects.(projecthooks.ProjectDeleter); ok {
+		if err = deleter.DeletingRows(ctx, tx, id); err != nil {
+			span.SetStatus(codes.Error, "Delete edition data failed")
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM "+PROJECT_TABLE_NAME+" WHERE f_id = ?", id); err != nil {
+		span.SetStatus(codes.Error, "Delete data failed")
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
 }

@@ -106,8 +106,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects", r.ListProjectsByEx)
 	apiV1.GET("/projects/:project_id", r.GetProjectByEx)
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
+	apiV1.PATCH("/projects/:project_id", r.RenameProjectByEx)
+	apiV1.DELETE("/projects/:project_id", r.DeleteProjectByEx)
 	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
-	apiV1.PUT("/projects/:project_id/naming-language", r.SetProjectNamingLanguageByEx)
+	// A project package: exporting a project to one, and creating a project from one.
+	apiV1.GET("/projects/:project_id/export", r.ExportProjectByEx)
+	apiV1.POST("/project-packages/preview", r.PreviewPackageByEx)
+	apiV1.POST("/project-packages/import", r.ImportPackageByEx)
 	// Semantic understanding of the tables in the project's data catalogs: catalogs:understand
 	// submits it, and its progress is read from vega-backend. Bringing the live version into the
 	// project's branch is branch:sync, and committing the live network's drift first drift:commit.

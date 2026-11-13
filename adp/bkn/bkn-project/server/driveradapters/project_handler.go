@@ -6,6 +6,10 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,9 +40,6 @@ func (r *restHandler) ListProjectsByEx(c *gin.Context)  { r.withExVisitor(c, r.L
 func (r *restHandler) GetProjectByEx(c *gin.Context)    { r.withExVisitor(c, r.GetProject) }
 func (r *restHandler) SetProjectCatalogsByEx(c *gin.Context) {
 	r.withExVisitor(c, r.SetProjectCatalogs)
-}
-func (r *restHandler) SetProjectNamingLanguageByEx(c *gin.Context) {
-	r.withExVisitor(c, r.SetProjectNamingLanguage)
 }
 
 // ProjectActionByEx serves POST /projects/{project_id}:archive and :unarchive.
@@ -79,7 +80,7 @@ func (r *restHandler) CreateProject(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
-	r.nameOwners(ctx, entry)
+	r.describeProjects(ctx, visitor, entry)
 	rest.ReplyOK(c, http.StatusCreated, entry)
 }
 
@@ -106,7 +107,7 @@ func (r *restHandler) ListProjects(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	r.nameOwners(ctx, list.Entries...)
+	r.describeProjects(ctx, visitor, list.Entries...)
 	rest.ReplyOK(c, http.StatusOK, list)
 }
 
@@ -125,7 +126,7 @@ func (r *restHandler) GetProject(c *gin.Context, visitor hydra.Visitor) {
 	}
 	r.ps.ResolveCatalogs(ctx, visitor.TokenID, entry, visitorAccount(visitor))
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	r.nameOwners(ctx, entry)
+	r.describeProjects(ctx, visitor, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -144,7 +145,7 @@ func (r *restHandler) SetProjectArchived(c *gin.Context, visitor hydra.Visitor, 
 		hooks.Archived(ctx, visitor.TokenID, id, visitorAccount(visitor))
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	r.nameOwners(ctx, entry)
+	r.describeProjects(ctx, visitor, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -170,32 +171,7 @@ func (r *restHandler) SetProjectCatalogs(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	r.nameOwners(ctx, entry)
-	rest.ReplyOK(c, http.StatusOK, entry)
-}
-
-// SetProjectNamingLanguage serves PUT /projects/{project_id}/naming-language with {"naming_language"}.
-func (r *restHandler) SetProjectNamingLanguage(c *gin.Context, visitor hydra.Visitor) {
-	ctx, span := oteltrace.StartServerSpan(c)
-	defer span.End()
-	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
-
-	id := c.Param("project_id")
-	span.SetAttributes(attr.Key("project_id").String(id))
-
-	req := interfaces.SetProjectNamingLanguageRequest{}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidRequestBody))
-		return
-	}
-
-	entry, err := r.ps.SetProjectNamingLanguage(ctx, visitor.TokenID, id, req.NamingLanguage, visitorAccount(visitor))
-	if err != nil {
-		replyError(c, span, err)
-		return
-	}
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	r.nameOwners(ctx, entry)
+	r.describeProjects(ctx, visitor, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
 }
 
@@ -209,4 +185,158 @@ func parseOffset(ctx context.Context, value string) (int, error) {
 		return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Offset)
 	}
 	return offset, nil
+}
+
+// describeProjects names the owners and tells whether the caller may manage each project.
+func (r *restHandler) describeProjects(ctx context.Context, visitor hydra.Visitor, entries ...*interfaces.ProjectEntry) {
+	r.nameOwners(ctx, entries...)
+	r.ps.MarkManageable(ctx, visitor.TokenID, visitorAccount(visitor), entries...)
+}
+
+func (r *restHandler) RenameProjectByEx(c *gin.Context)  { r.withExVisitor(c, r.RenameProject) }
+func (r *restHandler) DeleteProjectByEx(c *gin.Context)  { r.withExVisitor(c, r.DeleteProject) }
+func (r *restHandler) ExportProjectByEx(c *gin.Context)  { r.withExVisitor(c, r.ExportProject) }
+func (r *restHandler) PreviewPackageByEx(c *gin.Context) { r.withExVisitor(c, r.PreviewPackage) }
+func (r *restHandler) ImportPackageByEx(c *gin.Context)  { r.withExVisitor(c, r.ImportPackage) }
+
+// RenameProject serves PATCH /projects/{project_id} with {"name"}.
+func (r *restHandler) RenameProject(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	req := interfaces.RenameProjectRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidRequestBody))
+		return
+	}
+	entry, err := r.ps.RenameProject(ctx, visitor.TokenID, id, req.Name, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	r.describeProjects(ctx, visitor, entry)
+	rest.ReplyOK(c, http.StatusOK, entry)
+}
+
+// DeleteProject serves DELETE /projects/{project_id}.
+func (r *restHandler) DeleteProject(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	if err := r.ps.DeleteProject(ctx, visitor.TokenID, id, visitorAccount(visitor)); err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	c.Status(http.StatusNoContent)
+}
+
+// ExportProject serves GET /projects/{project_id}/export: the project package as a file.
+func (r *restHandler) ExportProject(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	pkg, name, err := r.ps.ExportProject(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	c.Data(http.StatusOK, "application/zip", pkg)
+}
+
+// PreviewPackage serves POST /project-packages/preview with the package in the multipart field file.
+func (r *restHandler) PreviewPackage(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	pkg, err := readPackageUpload(ctx, c)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	preview, err := r.ps.PreviewPackage(ctx, pkg)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, preview)
+}
+
+// ImportPackage serves POST /project-packages/import with the package in the multipart field file
+// and where to import it, ImportProjectOptions as JSON, in the field options.
+func (r *restHandler) ImportPackage(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	pkg, err := readPackageUpload(ctx, c)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	options := interfaces.ImportProjectOptions{}
+	if err := json.Unmarshal([]byte(c.Request.FormValue("options")), &options); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidRequestBody))
+		return
+	}
+	entry, err := r.ps.ImportPackage(ctx, visitor.TokenID, pkg, options, visitorAccount(visitor), gitAuthor(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	r.describeProjects(ctx, visitor, entry)
+	rest.ReplyOK(c, http.StatusCreated, entry)
+}
+
+// packageUploadSlack is what the multipart framing and the options field may add to a package.
+const packageUploadSlack = 1 << 20
+
+// readPackageUpload reads the package of the multipart field file, refusing one too large.
+func readPackageUpload(ctx context.Context, c *gin.Context) ([]byte, error) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, interfaces.PROJECT_PACKAGE_MAX_BYTES+packageUploadSlack)
+	tooLarge := func() error {
+		return httperrors.NewHTTPError(ctx, http.StatusRequestEntityTooLarge, perrors.BknProject_Project_PackageTooLarge).
+			WithErrorDetails(map[string]any{"max_bytes": interfaces.PROJECT_PACKAGE_MAX_BYTES})
+	}
+	if err := c.Request.ParseMultipartForm(8 << 20); err != nil {
+		if maxErr := (*http.MaxBytesError)(nil); errors.As(err, &maxErr) {
+			return nil, tooLarge()
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidPackage)
+	}
+	defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidPackage)
+	}
+	defer func() { _ = file.Close() }()
+	if header.Size > interfaces.PROJECT_PACKAGE_MAX_BYTES {
+		return nil, tooLarge()
+	}
+	pkg, err := io.ReadAll(io.LimitReader(file, interfaces.PROJECT_PACKAGE_MAX_BYTES+1))
+	if err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidPackage)
+	}
+	if len(pkg) > interfaces.PROJECT_PACKAGE_MAX_BYTES {
+		return nil, tooLarge()
+	}
+	return pkg, nil
 }

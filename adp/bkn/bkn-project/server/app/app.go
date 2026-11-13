@@ -26,6 +26,7 @@ import (
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/accountname"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknagent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
@@ -99,6 +100,7 @@ func Boot() *Application {
 	logics.SetBknAgentAccess(bknagent.NewBknAgentAccess(appSetting))
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
+	logics.SetAdminAccess(accountname.NewAdminAccess())
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.

@@ -27,6 +27,7 @@ var (
 	RQA interfaces.RequirementAccess
 	BAA interfaces.BknAgentAccess
 	RGA interfaces.RegressionAccess
+	ADM interfaces.AdminAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -91,4 +92,8 @@ func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
 
 func SetRegressionAccess(rga interfaces.RegressionAccess) {
 	RGA = rga
+}
+
+func SetAdminAccess(adm interfaces.AdminAccess) {
+	ADM = adm
 }

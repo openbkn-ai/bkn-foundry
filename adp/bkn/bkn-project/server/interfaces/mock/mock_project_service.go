@@ -56,6 +56,36 @@ func (mr *MockProjectServiceMockRecorder) CreateProject(ctx, token, req, owner, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateProject", reflect.TypeOf((*MockProjectService)(nil).CreateProject), ctx, token, req, owner, author)
 }
 
+// DeleteProject mocks base method.
+func (m *MockProjectService) DeleteProject(ctx context.Context, token, id string, caller interfaces.AccountInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteProject", ctx, token, id, caller)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteProject indicates an expected call of DeleteProject.
+func (mr *MockProjectServiceMockRecorder) DeleteProject(ctx, token, id, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteProject", reflect.TypeOf((*MockProjectService)(nil).DeleteProject), ctx, token, id, caller)
+}
+
+// ExportProject mocks base method.
+func (m *MockProjectService) ExportProject(ctx context.Context, token, id string, caller interfaces.AccountInfo) ([]byte, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportProject", ctx, token, id, caller)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ExportProject indicates an expected call of ExportProject.
+func (mr *MockProjectServiceMockRecorder) ExportProject(ctx, token, id, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportProject", reflect.TypeOf((*MockProjectService)(nil).ExportProject), ctx, token, id, caller)
+}
+
 // GetProject mocks base method.
 func (m *MockProjectService) GetProject(ctx context.Context, token, id string) (*interfaces.ProjectEntry, error) {
 	m.ctrl.T.Helper()
@@ -87,6 +117,21 @@ func (mr *MockProjectServiceMockRecorder) GetProjectForStatus(ctx, token, id, ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProjectForStatus", reflect.TypeOf((*MockProjectService)(nil).GetProjectForStatus), ctx, token, id, caller)
 }
 
+// ImportPackage mocks base method.
+func (m *MockProjectService) ImportPackage(ctx context.Context, token string, pkg []byte, options interfaces.ImportProjectOptions, owner interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.ProjectEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ImportPackage", ctx, token, pkg, options, owner, author)
+	ret0, _ := ret[0].(*interfaces.ProjectEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ImportPackage indicates an expected call of ImportPackage.
+func (mr *MockProjectServiceMockRecorder) ImportPackage(ctx, token, pkg, options, owner, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportPackage", reflect.TypeOf((*MockProjectService)(nil).ImportPackage), ctx, token, pkg, options, owner, author)
+}
+
 // ListProjects mocks base method.
 func (m *MockProjectService) ListProjects(ctx context.Context, token, archived, name string, limit, offset int, cursor string) (*interfaces.ProjectList, error) {
 	m.ctrl.T.Helper()
@@ -100,6 +145,53 @@ func (m *MockProjectService) ListProjects(ctx context.Context, token, archived, 
 func (mr *MockProjectServiceMockRecorder) ListProjects(ctx, token, archived, name, limit, offset, cursor any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjects", reflect.TypeOf((*MockProjectService)(nil).ListProjects), ctx, token, archived, name, limit, offset, cursor)
+}
+
+// MarkManageable mocks base method.
+func (m *MockProjectService) MarkManageable(ctx context.Context, token string, caller interfaces.AccountInfo, entries ...*interfaces.ProjectEntry) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, token, caller}
+	for _, a := range entries {
+		varargs = append(varargs, a)
+	}
+	m.ctrl.Call(m, "MarkManageable", varargs...)
+}
+
+// MarkManageable indicates an expected call of MarkManageable.
+func (mr *MockProjectServiceMockRecorder) MarkManageable(ctx, token, caller any, entries ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, token, caller}, entries...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkManageable", reflect.TypeOf((*MockProjectService)(nil).MarkManageable), varargs...)
+}
+
+// PreviewPackage mocks base method.
+func (m *MockProjectService) PreviewPackage(ctx context.Context, pkg []byte) (*interfaces.ProjectPackagePreview, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PreviewPackage", ctx, pkg)
+	ret0, _ := ret[0].(*interfaces.ProjectPackagePreview)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PreviewPackage indicates an expected call of PreviewPackage.
+func (mr *MockProjectServiceMockRecorder) PreviewPackage(ctx, pkg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreviewPackage", reflect.TypeOf((*MockProjectService)(nil).PreviewPackage), ctx, pkg)
+}
+
+// RenameProject mocks base method.
+func (m *MockProjectService) RenameProject(ctx context.Context, token, id, name string, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameProject", ctx, token, id, name, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RenameProject indicates an expected call of RenameProject.
+func (mr *MockProjectServiceMockRecorder) RenameProject(ctx, token, id, name, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameProject", reflect.TypeOf((*MockProjectService)(nil).RenameProject), ctx, token, id, name, caller)
 }
 
 // ResolveCatalogs mocks base method.
@@ -142,19 +234,4 @@ func (m *MockProjectService) SetProjectCatalogs(ctx context.Context, token, id s
 func (mr *MockProjectServiceMockRecorder) SetProjectCatalogs(ctx, token, id, catalogIDs, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectCatalogs", reflect.TypeOf((*MockProjectService)(nil).SetProjectCatalogs), ctx, token, id, catalogIDs, caller)
-}
-
-// SetProjectNamingLanguage mocks base method.
-func (m *MockProjectService) SetProjectNamingLanguage(ctx context.Context, token, id, language string, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetProjectNamingLanguage", ctx, token, id, language, caller)
-	ret0, _ := ret[0].(*interfaces.ProjectEntry)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SetProjectNamingLanguage indicates an expected call of SetProjectNamingLanguage.
-func (mr *MockProjectServiceMockRecorder) SetProjectNamingLanguage(ctx, token, id, language, caller any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectNamingLanguage", reflect.TypeOf((*MockProjectService)(nil).SetProjectNamingLanguage), ctx, token, id, language, caller)
 }

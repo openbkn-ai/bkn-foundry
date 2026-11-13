@@ -13,6 +13,12 @@ const (
 	BknProject_Project_InvalidArchived    = "BknProject.Project.InvalidArchived"
 	// BknProject_Project_InvalidNamingLanguage: a naming language other than zh-CN or en-US.
 	BknProject_Project_InvalidNamingLanguage = "BknProject.Project.InvalidNamingLanguage"
+	// BknProject_Project_InvalidPackage: the file is not a project package, or it is damaged.
+	BknProject_Project_InvalidPackage = "BknProject.Project.InvalidPackage"
+	// BknProject_Project_UnsupportedPackageVersion: the package was made by a format this service does not read.
+	BknProject_Project_UnsupportedPackageVersion = "BknProject.Project.UnsupportedPackageVersion"
+	// BknProject_Project_InvalidCatalogMapping: a catalog of the package is not mapped to one of this environment.
+	BknProject_Project_InvalidCatalogMapping = "BknProject.Project.InvalidCatalogMapping"
 
 	// 403
 	BknProject_Project_NotOwner = "BknProject.Project.NotOwner"
@@ -23,11 +29,17 @@ const (
 	BknProject_Project_NotFound = "BknProject.Project.NotFound"
 
 	// 409
+	// BknProject_Project_ReleasePublishing: the project's release is being published; deleting waits for it.
+	BknProject_Project_ReleasePublishing = "BknProject.Project.ReleasePublishing"
 	// BknProject_Project_CatalogMissing: a catalog set on the project no longer exists in vega.
 	BknProject_Project_CatalogMissing = "BknProject.Project.CatalogMissing"
 	// BknProject_Project_VersioningRequired: the network does not keep versions; the owner confirms
 	// turning it on (enable_versioning) before a project is made on it.
 	BknProject_Project_VersioningRequired = "BknProject.Project.VersioningRequired"
+
+	// 413
+	// BknProject_Project_PackageTooLarge: the package exceeds the size an import reads.
+	BknProject_Project_PackageTooLarge = "BknProject.Project.PackageTooLarge"
 
 	// 4xx or 502
 	BknProject_Project_BknBackendRequestFailed = "BknProject.Project.BknBackendRequestFailed"
@@ -95,6 +107,11 @@ var (
 		BknProject_Project_InvalidCatalogIDs,
 		BknProject_Project_InvalidArchived,
 		BknProject_Project_InvalidNamingLanguage,
+		BknProject_Project_InvalidPackage,
+		BknProject_Project_UnsupportedPackageVersion,
+		BknProject_Project_InvalidCatalogMapping,
+		BknProject_Project_ReleasePublishing,
+		BknProject_Project_PackageTooLarge,
 		BknProject_Project_NotOwner,
 		BknProject_Project_NotFound,
 		BknProject_Project_CatalogMissing,

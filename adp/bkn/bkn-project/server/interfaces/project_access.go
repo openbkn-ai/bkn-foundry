@@ -23,5 +23,11 @@ type ProjectAccess interface {
 	// SetProjectArchived archives or unarchives the project.
 	SetProjectArchived(ctx context.Context, id string, archived bool, updateTime int64) error
 	SetProjectCatalogs(ctx context.Context, id string, catalogIDs []string, updateTime int64) error
-	SetProjectNamingLanguage(ctx context.Context, id string, language string, updateTime int64) error
+	// RenameProject sets the project's name.
+	RenameProject(ctx context.Context, id string, name string, updateTime int64) error
+	// DeleteProject deletes the project's row and every row of its own: draft, check, ids, index
+	// builds, requirement documents and specification, guidance, regressions and its prepared
+	// releases. Published releases stay, as records of the network's versions. An edition's hook
+	// deletes its rows in the same transaction.
+	DeleteProject(ctx context.Context, id string) error
 }
