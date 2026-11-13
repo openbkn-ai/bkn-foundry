@@ -164,6 +164,81 @@ def test_fallback_all_invalid_raises():
         asyncio.run(structured_extract(m, [], SCHEMA))
 
 
+class _JsonMode:
+    """A provider with json_object but no json_schema, as DeepSeek: the native
+    call is refused, the fallback goes through bind(response_format=...)."""
+
+    def __init__(self, replies, refuse_json_object=False):
+        self.replies = list(replies)
+        self.refuse_json_object = refuse_json_object
+        self.bound = []
+        self.plain = 0
+        self.seen = []
+
+    def with_structured_output(self, schema):
+        raise RuntimeError(
+            "Error code: 400 - This response_format type is unavailable now"
+        )
+
+    def _reply(self, messages):
+        self.seen.append(list(messages))
+        text, finish = self.replies.pop(0)
+        return AIMessage(content=text, response_metadata={"finish_reason": finish})
+
+    def bind(self, **kwargs):
+        outer = self
+
+        class _Bound:
+            async def ainvoke(self, messages):
+                outer.bound.append(kwargs)
+                if outer.refuse_json_object:
+                    raise RuntimeError("400 - response_format json_object is not supported")
+                return outer._reply(messages)
+
+        return _Bound()
+
+    async def ainvoke(self, messages):
+        self.plain += 1
+        return self._reply(messages)
+
+
+def test_fallback_asks_for_json_object():
+    m = _JsonMode([('{"greeting": "hi"}', "stop")])
+    out, path = asyncio.run(structured_extract_with_path(m, [], SCHEMA))
+    assert (out, path) == ({"greeting": "hi"}, "fallback")
+    assert m.bound == [{"response_format": {"type": "json_object"}}]
+    assert m.plain == 0
+
+
+def test_fallback_without_json_object_asks_plainly():
+    m = _JsonMode([('{"greeting": "hi"}', "stop")], refuse_json_object=True)
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "hi"}
+    assert m.plain == 1
+
+
+def test_fallback_accepts_raw_newline_in_string():
+    m = _JsonMode([('{"greeting": "a' + chr(10) + 'b"}', "stop")])
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "a" + chr(10) + "b"}
+
+
+def test_truncated_reply_asks_for_a_shorter_one():
+    m = _JsonMode([('{"greeting": "cut', "length"), ('{"greeting": "short"}', "stop")])
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "short"}
+    retry = m.seen[1]
+    # The cut-off text is not sent back; the retry asks for less.
+    assert all('"cut' not in str(part) for part in retry)
+    assert "cut off" in str(retry[-1])
+
+
+def test_truncated_twice_says_so():
+    m = _JsonMode([('{"greeting": "cut', "length"), ('{"greeting": "cut again', "length")])
+    with pytest.raises(structured.StructuredOutputError, match=structured.TRUNCATED):
+        asyncio.run(structured_extract(m, [], SCHEMA))
+
+
 # ---------- run_agent_once 集成 ----------
 
 class _FakeGraph:
