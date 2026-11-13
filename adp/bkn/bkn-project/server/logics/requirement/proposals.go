@@ -271,14 +271,14 @@ func (s *requirementService) DecideProposals(ctx context.Context, token string, 
 }
 
 // startEmpty writes an empty ready specification as the project's, for proposals asked before it
-// had any, and returns its update time. A project with one already is stale: its list was read
-// since, so the proposals are adopted over it only as read.
+// had any, and returns its update time. A project with one already is stale: the caller read none,
+// so it reads the list again before adopting over it.
 func (s *requirementService) startEmpty(ctx context.Context, projectID string,
 	caller interfaces.AccountInfo) (int64, error) {
 	if _, ok, err := s.ra.GetRequirement(ctx, projectID); err != nil {
 		return 0, internalError(ctx, "Get requirement failed", err)
 	} else if ok {
-		return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_MissingUpdateTime)
+		return 0, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Requirement_Stale)
 	}
 	now := s.now()
 	spec := emptySpec()

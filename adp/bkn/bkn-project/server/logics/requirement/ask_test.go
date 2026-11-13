@@ -370,11 +370,11 @@ func Test_AskFromNothing(t *testing.T) {
 			So(result.Requirement, ShouldNotBeNil)
 		})
 
-		Convey("Adopting with no update time once the list exists is refused, not written over\n", func() {
+		Convey("Adopting with no update time once the list exists is stale, not written over\n", func() {
 			st.req = askSpec()
 			_, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
 				interfaces.RequirementProposalsDecision{Adopt: []int{0}}, caller)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_MissingUpdateTime)
+			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_Stale)
 		})
 
 		Convey("Adopting with no update time while another writes the list first is stale\n", func() {
