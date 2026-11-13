@@ -153,6 +153,15 @@ func Test_NameInLanguage(t *testing.T) {
 			So(objectType(items, "orders").Name, ShouldEqual, "订单")
 		})
 
+		Convey("Naming leaves drafting the time it needs to finish: with too little left it asks nothing\n", func() {
+			items := draftIn(en)
+			ctx, cancel := context.WithTimeout(context.Background(), namingReserve/2)
+			defer cancel()
+			svc.nameInLanguage(ctx, caller, &items, en, catalog())
+			So(objectType(items, "customers").Name, ShouldEqual, "客户")
+			So(ctx.Err(), ShouldBeNil)
+		})
+
 		Convey("Without the Agent drafting names as before\n", func() {
 			items := draftIn(en)
 			(&draftService{setting: testSetting}).nameInLanguage(context.Background(), caller, &items, en, catalog())

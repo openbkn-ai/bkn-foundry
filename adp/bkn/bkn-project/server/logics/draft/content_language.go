@@ -36,6 +36,9 @@ const (
 	namingParallel = 4
 	// namingDeadline bounds one task.
 	namingDeadline = 3 * time.Minute
+	// namingReserve is the time naming leaves drafting to finish in: registering ids and recording
+	// the draft. Naming that would take it stops, and the items not named keep the catalog's names.
+	namingReserve = time.Minute
 )
 
 // namingPoll is how often a naming task is read until it ends; tests shorten it.
@@ -214,6 +217,15 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 		return
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) <= namingReserve {
+			otellog.LogWarn(ctx, "Naming drafted items skipped: too little time left to draft")
+			return
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline.Add(-namingReserve))
+		defer cancel()
+	}
 	named := s.runNaming(ctx, caller, language, batchesOf(groups))
 	applyNames(items, language, targets, named)
 	for _, rt := range items.RelationTypes {
@@ -280,6 +292,9 @@ func (s *draftService) runNaming(ctx context.Context, caller interfaces.AccountI
 			defer wg.Done()
 			slots <- struct{}{}
 			defer func() { <-slots }()
+			if ctx.Err() != nil {
+				return
+			}
 			out, err := s.nameBatch(ctx, caller, language, batch)
 			if err != nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Naming %d drafted items in %s failed: %v", len(batch), language, err))
@@ -347,6 +362,10 @@ func applyNames(items *interfaces.DraftItems, language string, targets map[strin
 			return ot != nil && slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool {
 				return p.DisplayName == name || p.Name == name
 			})
+		case 'r':
+			return slices.ContainsFunc(items.RelationTypes, func(rt *interfaces.DraftRelationType) bool { return rt.Name == name })
+		case 'v':
+			return slices.ContainsFunc(items.ValueTypes, func(vt *interfaces.DraftValueType) bool { return vt.Name == name })
 		}
 		return false
 	}
