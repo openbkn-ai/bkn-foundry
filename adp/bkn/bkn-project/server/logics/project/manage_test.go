@@ -198,7 +198,9 @@ func Test_ProjectPackage(t *testing.T) {
 			Inputs: &interfaces.RequirementInputs{CatalogIDs: []string{"c1"}, Documents: []interfaces.RequirementInputDocument{{ID: "d1"}}},
 		}, true, nil)
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
-			ObjectTypes:  []*interfaces.DraftObjectType{{ID: "order", Name: "Order"}},
+			ObjectTypes: []*interfaces.DraftObjectType{{ID: "order", Name: "Order"},
+				// An item whose id and name equal a catalog and a table id keeps them.
+				{ID: "c1", Name: "t1", Table: interfaces.DraftTable{ResourceID: "t1", CatalogID: "c1", Name: "orders"}}},
 			Inputs:       &interfaces.DraftInputs{CatalogIDs: []string{"c1"}, Tables: []interfaces.DraftInputTable{{ResourceID: "t1"}}},
 			Confirmation: &interfaces.DraftConfirmation{Commit: "abc", Files: []string{"object_types/order.bkn"}},
 		}}, true, nil)
@@ -219,6 +221,11 @@ func Test_ProjectPackage(t *testing.T) {
 		So(preview.Catalogs, ShouldResemble, []interfaces.PackageCatalog{{ID: "c1", Name: "ERP"}})
 		So(preview.Contents, ShouldResemble, interfaces.PackageContents{Documents: 1, Requirement: true, Draft: true,
 			ConfirmedFiles: 1, Editions: []string{"terms"}})
+
+		Convey("A package whose material does not read is refused before anything is created\n", func() {
+			_, err := readMaterial(ctx, map[string][]byte{packageDraft: []byte(`{"object_types":"x"}`)})
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidPackage)
+		})
 
 		Convey("Every catalog of the package must be mapped\n", func() {
 			_, err := f.svc.ImportPackage(ctx, token, pkg, interfaces.ImportProjectOptions{KNID: "orders"}, owner, author)
@@ -274,6 +281,9 @@ func Test_ProjectPackage(t *testing.T) {
 			So(draft.Items.Confirmation, ShouldBeNil)
 			So(draft.Items.Inputs.Tables[0].ResourceID, ShouldEqual, "t9")
 			So(draft.Items.ObjectTypes[0].Name, ShouldEqual, "Order")
+			So(draft.Items.ObjectTypes[1].ID, ShouldEqual, "c1")
+			So(draft.Items.ObjectTypes[1].Name, ShouldEqual, "t1")
+			So(draft.Items.ObjectTypes[1].Table, ShouldResemble, interfaces.DraftTable{ResourceID: "t9", CatalogID: "c9", Name: "orders"})
 			So(hooks.imported["terms"]["terms.json"], ShouldResemble, []byte(`[]`))
 			So(hooks.replace["t1"], ShouldEqual, "t9")
 		})

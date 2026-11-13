@@ -240,6 +240,13 @@ func (s *projectService) ImportPackage(ctx context.Context, token string, pkg []
 		span.SetStatus(codes.Error, "Read package failed")
 		return nil, err
 	}
+	// Everything the package says is read before anything is created: what can fail after it is
+	// only a write, never the package, so a refused package leaves no network or project behind.
+	material, err := readMaterial(ctx, files)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read package failed")
+		return nil, err
+	}
 	catalogIDs, unmapped := []string{}, []string{}
 	for _, c := range manifest.Catalogs {
 		target := strings.TrimSpace(options.CatalogMapping[c.ID])
@@ -278,7 +285,7 @@ func (s *projectService) ImportPackage(ctx context.Context, token string, pkg []
 		span.SetStatus(codes.Error, "Create project failed")
 		return nil, err
 	}
-	if err = s.restore(ctx, token, entry.Project, manifest, files, options.CatalogMapping, owner); err != nil {
+	if err = s.restore(ctx, token, entry.Project, manifest, material, files, options.CatalogMapping, owner); err != nil {
 		span.SetStatus(codes.Error, "Restore project failed")
 		// Not left half imported: the project goes, as deleting it would take it.
 		if derr := s.pa.DeleteProject(context.WithoutCancel(ctx), entry.ID); derr != nil {
@@ -309,16 +316,46 @@ func (s *projectService) ImportPackage(ctx context.Context, token string, pkg []
 	return entry, nil
 }
 
+// packageMaterial is what a package restores, read and checked before the project is created.
+type packageMaterial struct {
+	docs              []packageDocument
+	spec, draft       []byte
+	hasSpec, hasDraft bool
+}
+
+// readMaterial checks that the documents, specification and draft of a package read as such.
+func readMaterial(ctx context.Context, files map[string][]byte) (*packageMaterial, error) {
+	m := &packageMaterial{}
+	if raw, ok := files[packageDocuments]; ok {
+		if err := json.Unmarshal(raw, &m.docs); err != nil {
+			return nil, invalidPackage(ctx, err)
+		}
+	}
+	if raw, ok := files[packageSpecification]; ok {
+		if err := json.Unmarshal(raw, &packageSpec{}); err != nil {
+			return nil, invalidPackage(ctx, err)
+		}
+		m.spec, m.hasSpec = raw, true
+	}
+	if raw, ok := files[packageDraft]; ok {
+		if err := json.Unmarshal(raw, &interfaces.DraftItems{}); err != nil {
+			return nil, invalidPackage(ctx, err)
+		}
+		m.draft, m.hasDraft = raw, true
+	}
+	return m, nil
+}
+
 // restore writes the package's material into the project made for it, ids of the exporting
 // environment replaced by those of this one: catalogs as mapped, tables by name within them, and
-// documents by the ids they get here.
+// documents by the ids they get here. Only the fields that hold such ids are rewritten.
 func (s *projectService) restore(ctx context.Context, token string, project *interfaces.Project,
-	manifest *interfaces.PackageManifest, files map[string][]byte, mapping map[string]string,
-	owner interfaces.AccountInfo) error {
-	replace := map[string]string{}
-	for from, to := range mapping {
-		if from != "" && to != "" {
-			replace[from] = to
+	manifest *interfaces.PackageManifest, material *packageMaterial, files map[string][]byte,
+	mapping map[string]string, owner interfaces.AccountInfo) error {
+	ids := idRewrite{catalogs: map[string]string{}, tables: map[string]string{}, documents: map[string]string{}}
+	for _, c := range manifest.Catalogs {
+		if to := mapping[c.ID]; to != "" {
+			ids.catalogs[c.ID] = to
 		}
 	}
 	tablesOf := map[string]map[string]string{}
@@ -340,17 +377,13 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 			tablesOf[target] = byName
 		}
 		if id, ok := byName[t.Name]; ok {
-			replace[t.ID] = id
+			ids.tables[t.ID] = id
 		}
 	}
 
 	now := time.Now().UnixMilli()
-	if raw, ok := files[packageDocuments]; ok {
-		docs := []packageDocument{}
-		if err := json.Unmarshal(raw, &docs); err != nil {
-			return invalidPackage(ctx, err)
-		}
-		for _, d := range docs {
+	{
+		for _, d := range material.docs {
 			id, err := uuid.NewV7()
 			if err != nil {
 				return internalError(ctx, "Generate document id failed", err)
@@ -369,15 +402,14 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 				doc.ID = existing
 			}
 			if d.ID != "" {
-				replace[d.ID] = doc.ID
+				ids.documents[d.ID] = doc.ID
 			}
 		}
 	}
-	rewrite := replacer(replace)
-	if raw, ok := files[packageSpecification]; ok {
+	if material.hasSpec {
 		spec := packageSpec{}
-		if err := json.Unmarshal(rewrite(raw), &spec); err != nil {
-			return invalidPackage(ctx, err)
+		if err := unmarshalRewritten(material.spec, ids, &spec); err != nil {
+			return internalError(ctx, "Restore requirement failed", err)
 		}
 		runID, err := uuid.NewV7()
 		if err != nil {
@@ -395,10 +427,10 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 			return internalError(ctx, "Restore requirement failed", err)
 		}
 	}
-	if raw, ok := files[packageDraft]; ok {
+	if material.hasDraft {
 		items := interfaces.DraftItems{}
-		if err := json.Unmarshal(rewrite(raw), &items); err != nil {
-			return invalidPackage(ctx, err)
+		if err := unmarshalRewritten(material.draft, ids, &items); err != nil {
+			return internalError(ctx, "Restore draft failed", err)
 		}
 		// The draft comes back to be confirmed here: nothing of it is on this project's branch, and
 		// nothing is being added or prepared.
@@ -429,28 +461,82 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 		parts[part][file] = b
 	}
 	if packager, ok := projecthooks.Current().Projects.(projecthooks.ProjectPackager); ok && len(parts) > 0 {
-		if err := packager.ImportParts(ctx, token, project.ID, parts, replace, owner); err != nil {
+		if err := packager.ImportParts(ctx, token, project.ID, parts, ids.all(), owner); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// replacer rewrites ids inside JSON: a whole string equal to an old id becomes the new one.
-func replacer(replace map[string]string) func([]byte) []byte {
-	pairs := []string{}
-	for from, to := range replace {
-		if from != to {
-			q, _ := json.Marshal(from)
-			r, _ := json.Marshal(to)
-			pairs = append(pairs, string(q), string(r))
+// idRewrite maps ids of the exporting environment to those of this one, by what they name.
+type idRewrite struct {
+	catalogs, tables, documents map[string]string
+}
+
+// The JSON fields of a specification and a draft that hold catalog, table and document ids. A
+// value equal to an old id elsewhere, such as an item id or a name, stays as it is.
+var (
+	catalogIDFields  = map[string]bool{"catalog_id": true, "catalog_ids": true, "added_by_catalog": true}
+	tableIDFields    = map[string]bool{"resource_id": true, "resource_ids": true, "table_id": true}
+	documentIDFields = map[string]bool{"document_id": true, "document_ids": true}
+)
+
+// all is every id mapped, for an edition's parts.
+func (r idRewrite) all() map[string]string {
+	out := map[string]string{}
+	for _, m := range []map[string]string{r.catalogs, r.tables, r.documents} {
+		for from, to := range m {
+			out[from] = to
 		}
 	}
-	if len(pairs) == 0 {
-		return func(b []byte) []byte { return b }
+	return out
+}
+
+// unmarshalRewritten decodes raw into v with the id fields rewritten.
+func unmarshalRewritten(raw []byte, r idRewrite, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var doc any
+	if err := dec.Decode(&doc); err != nil {
+		return err
 	}
-	r := strings.NewReplacer(pairs...)
-	return func(b []byte) []byte { return []byte(r.Replace(string(b))) }
+	b, err := json.Marshal(r.walk(doc, "", ""))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, v)
+}
+
+// walk rewrites the ids of v, which sits under field key of an object under field parent.
+func (r idRewrite) walk(v any, key, parent string) any {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, child := range t {
+			t[k] = r.walk(child, k, key)
+		}
+		return t
+	case []any:
+		for i, child := range t {
+			t[i] = r.walk(child, key, parent)
+		}
+		return t
+	case string:
+		var m map[string]string
+		switch {
+		case catalogIDFields[key]:
+			m = r.catalogs
+		case tableIDFields[key]:
+			m = r.tables
+		case documentIDFields[key], key == "id" && parent == "documents":
+			// The documents a specification was drafted from are listed by id.
+			m = r.documents
+		}
+		if to, ok := m[t]; ok {
+			return to
+		}
+		return t
+	}
+	return v
 }
 
 // writePackage zips the manifest and files, recording each file's SHA-256 in the manifest.
