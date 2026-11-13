@@ -612,6 +612,8 @@ func (s *requirementService) MapConcept(ctx context.Context, token string, proje
 				return invalidItem(ctx, mapping.MapsTo.Kind+" "+mapping.MapsTo.ID+" is not in the draft")
 			}
 			spec.Concepts[i].MapsTo, spec.Concepts[i].Edited = mapping.MapsTo, true
+			// The mapping is the person's match too, so the concepts page shows what questions follow.
+			spec.Concepts[i].Match = mappedMatch(mapping.MapsTo)
 			followConcepts(spec)
 			return nil
 		})

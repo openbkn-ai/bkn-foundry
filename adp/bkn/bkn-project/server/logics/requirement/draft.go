@@ -169,6 +169,8 @@ type agentConcept struct {
 	MapsTo            *interfaces.RequirementItemRef `json:"maps_to"`
 	Citations         []agentCitation                `json:"citations"`
 	SupplementReason  string                         `json:"supplement_reason"`
+	// Match is the data the concept is, as pass concepts proposes it.
+	Match *agentMatch `json:"match"`
 }
 
 type agentQuestion struct {

@@ -115,6 +115,71 @@ type DraftConcepts struct {
 	// NotUnderstood counts the tables concepts are drafted from that the catalog's semantic
 	// understanding has given no business name yet: their concepts are named by the table.
 	NotUnderstood int `json:"not_understood"`
+	// Requirements are the requirement concepts of the ready specification, each with the
+	// concept of the data it is matched to: a requirement concept never becomes an item of its own.
+	Requirements []DraftRequirementConcept `json:"requirements"`
+}
+
+// What data a concept is bound to: a table of the project's catalogs (structured), or the dataset
+// a knowledge-base extraction writes (unstructured). Concepts of different bindings are never
+// merged: making one of them needs a custom view mapping the properties of both.
+const (
+	CONCEPT_BINDING_TABLE   = "table"
+	CONCEPT_BINDING_DATASET = "dataset"
+)
+
+// DraftConceptBinding is the data a concept is bound to: its kind, and the table or dataset by id
+// and name, when known.
+type DraftConceptBinding struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// Where a requirement concept stands on the concepts page.
+const (
+	// REQUIREMENT_MATCH_PENDING: matched to a concept of the data, by AI or by name; no one confirmed it.
+	REQUIREMENT_MATCH_PENDING = "pending"
+	// REQUIREMENT_MATCH_CONFIRMED: a person confirmed the match or chose it.
+	REQUIREMENT_MATCH_CONFIRMED = "confirmed"
+	// REQUIREMENT_MATCH_UNMATCHED: the data holds nothing it names yet.
+	REQUIREMENT_MATCH_UNMATCHED = "unmatched"
+	// REQUIREMENT_MATCH_EXCLUDED: not included.
+	REQUIREMENT_MATCH_EXCLUDED = "excluded"
+)
+
+// Who matched a requirement concept.
+const (
+	REQUIREMENT_MATCH_BY_AI     = "ai"
+	REQUIREMENT_MATCH_BY_PERSON = "person"
+	// REQUIREMENT_MATCH_BY_NAME: its term names the concept, as no one matched it otherwise.
+	REQUIREMENT_MATCH_BY_NAME = "name"
+)
+
+// DraftRequirementConcept is a requirement concept as the concepts page lists it: its term, the
+// first passage it quotes, and the concept of the data it is matched to, with why and by whom.
+type DraftRequirementConcept struct {
+	ID         string `json:"id"`
+	Term       string `json:"term"`
+	Category   string `json:"category"`
+	Definition string `json:"definition,omitempty"`
+	Quote      string `json:"quote,omitempty"`
+	// Match is the concept of the data it is matched to, absent when unmatched.
+	Match *DraftRequirementMatch `json:"match,omitempty"`
+	// Basis is why it is matched, or why nothing in the data is it.
+	Basis string `json:"basis,omitempty"`
+	By    string `json:"by,omitempty"`
+	State string `json:"state"`
+}
+
+// DraftRequirementMatch is the concept of the data a requirement concept is matched to, and the
+// target that names it in a match.
+type DraftRequirementMatch struct {
+	Key     string               `json:"key"`
+	Name    string               `json:"name"`
+	Binding *DraftConceptBinding `json:"binding,omitempty"`
+	// Target names the concept in a match; absent for one that is no object.
+	Target *RequirementMatchTarget `json:"target,omitempty"`
 }
 
 // DraftConcept is one concept. Item is the draft item it is, absent for a requirement concept no
@@ -130,9 +195,12 @@ type DraftConcept struct {
 	Sources []DraftConceptSource `json:"sources"`
 	// AI tells a concept AI named or added: by the catalog's semantic understanding, or adopted
 	// from Ask AI.
-	AI        bool              `json:"ai,omitempty"`
-	Item      *DraftConceptItem `json:"item,omitempty"`
-	Suggested string            `json:"suggested"`
+	AI bool `json:"ai,omitempty"`
+	// Binding is the data the concept is bound to, absent for a requirement concept or one added
+	// from Ask AI with no source.
+	Binding   *DraftConceptBinding `json:"binding,omitempty"`
+	Item      *DraftConceptItem    `json:"item,omitempty"`
+	Suggested string               `json:"suggested"`
 	// SuggestedBecause is a code for why drafting suggested it, worded by the client.
 	SuggestedBecause string `json:"suggested_because,omitempty"`
 	Verdict          string `json:"verdict"`

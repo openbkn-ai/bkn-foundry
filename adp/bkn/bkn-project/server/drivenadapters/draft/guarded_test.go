@@ -103,14 +103,21 @@ func TestGuardedCommitChecksEverySnapshotInOneTransaction(t *testing.T) {
 	}
 }
 
-func TestDocumentCandidatesCannotBeSilentlyDiscardedByTableRedrafting(t *testing.T) {
+func TestDocumentCandidatesAreCarriedOverByTableRedrafting(t *testing.T) {
+	// Drafting from the tables again keeps what a knowledge-base extraction drafted: it is nothing
+	// to discard, so it asks nothing.
 	for _, kind := range []string{"object_types", "relation_types"} {
-		if !hasDecisions(`{"` + kind + `":[{"id":"model","document":{"role":"entity"}}],"decisions":[]}`) {
-			t.Fatal("document candidates were not protected by explicit discard confirmation")
+		if hasDecisions(`{"` + kind + `":[{"id":"model","document":{"role":"entity"}}],"decisions":[]}`) {
+			t.Fatal("document candidates ask before table redrafting, which keeps them")
 		}
 	}
-	if hasDecisions(`{"object_types":[{"id":"table","document":null}],"decisions":[]}`) {
-		t.Fatal("table-only reset behavior changed")
+	items := interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "fresh"}}}
+	carriedDocuments(`{"object_types":[{"id":"table","document":null},{"id":"invoice","document":{"role":"entity"}}],`+
+		`"relation_types":[{"id":"invoice_supplier","document":{"role":"entity"}},{"id":"join"}],`+
+		`"document_concepts":[{"id":"c1","name":"Page"}]}`, &items)
+	if len(items.ObjectTypes) != 2 || items.ObjectTypes[1].ID != "invoice" || len(items.RelationTypes) != 1 ||
+		items.RelationTypes[0].ID != "invoice_supplier" || len(items.DocumentConcepts) != 1 {
+		t.Fatalf("document items not carried over: %+v", items)
 	}
 }
 
