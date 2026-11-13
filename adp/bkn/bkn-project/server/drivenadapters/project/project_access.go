@@ -121,9 +121,11 @@ func (pa *projectAccess) ListProjects(ctx context.Context, query interfaces.Proj
 			sq.And{sq.Eq{"f_create_time": query.Cursor.CreateTime}, sq.Lt{"f_id": query.Cursor.ID}},
 		})
 	}
-	sqlStr, vals, err := builder.OrderBy("f_create_time DESC", "f_id DESC").
-		Limit(uint64(query.Limit)).
-		ToSql()
+	builder = builder.OrderBy("f_create_time DESC", "f_id DESC").Limit(uint64(query.Limit))
+	if query.Offset > 0 {
+		builder = builder.Offset(uint64(query.Offset))
+	}
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return nil, err

@@ -5,7 +5,9 @@
 package driveradapters
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -81,7 +83,7 @@ func (r *restHandler) CreateProject(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusCreated, entry)
 }
 
-// ListProjects serves GET /projects?archived=&name=&limit=&cursor=.
+// ListProjects serves GET /projects?archived=&name=&limit=&offset=&cursor=.
 func (r *restHandler) ListProjects(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -92,7 +94,13 @@ func (r *restHandler) ListProjects(c *gin.Context, visitor hydra.Visitor) {
 		replyError(c, span, err)
 		return
 	}
-	list, err := r.ps.ListProjects(ctx, visitor.TokenID, c.Query("archived"), c.Query("name"), limit, c.Query("cursor"))
+	offset, err := parseOffset(ctx, c.Query("offset"))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	list, err := r.ps.ListProjects(ctx, visitor.TokenID, c.Query("archived"), c.Query("name"), limit, offset,
+		c.Query("cursor"))
 	if err != nil {
 		replyError(c, span, err)
 		return
@@ -188,4 +196,16 @@ func (r *restHandler) SetProjectNamingLanguage(c *gin.Context, visitor hydra.Vis
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	r.nameOwners(ctx, entry)
 	rest.ReplyOK(c, http.StatusOK, entry)
+}
+
+// parseOffset reads how many entries a page by number skips; an absent offset is 0.
+func parseOffset(ctx context.Context, value string) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	offset, err := strconv.Atoi(value)
+	if err != nil || offset < 0 {
+		return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Offset)
+	}
+	return offset, nil
 }

@@ -65,5 +65,7 @@ type ProjectsQuery struct {
 	// Name matches project names containing it.
 	Name   string
 	Cursor *ProjectCursor
+	// Offset skips that many projects first, for a page by number; it is not combined with Cursor.
+	Offset int
 	Limit  int
 }

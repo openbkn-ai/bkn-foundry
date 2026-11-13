@@ -88,18 +88,18 @@ func (mr *MockProjectServiceMockRecorder) GetProjectForStatus(ctx, token, id, ca
 }
 
 // ListProjects mocks base method.
-func (m *MockProjectService) ListProjects(ctx context.Context, token, archived, name string, limit int, cursor string) (*interfaces.ProjectList, error) {
+func (m *MockProjectService) ListProjects(ctx context.Context, token, archived, name string, limit, offset int, cursor string) (*interfaces.ProjectList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListProjects", ctx, token, archived, name, limit, cursor)
+	ret := m.ctrl.Call(m, "ListProjects", ctx, token, archived, name, limit, offset, cursor)
 	ret0, _ := ret[0].(*interfaces.ProjectList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListProjects indicates an expected call of ListProjects.
-func (mr *MockProjectServiceMockRecorder) ListProjects(ctx, token, archived, name, limit, cursor any) *gomock.Call {
+func (mr *MockProjectServiceMockRecorder) ListProjects(ctx, token, archived, name, limit, offset, cursor any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjects", reflect.TypeOf((*MockProjectService)(nil).ListProjects), ctx, token, archived, name, limit, cursor)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjects", reflect.TypeOf((*MockProjectService)(nil).ListProjects), ctx, token, archived, name, limit, offset, cursor)
 }
 
 // SetProjectArchived mocks base method.

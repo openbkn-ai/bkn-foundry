@@ -397,7 +397,7 @@ func Test_ProjectService_ListProjects(t *testing.T) {
 			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), []string{"orders", "parts"}).
 				Return(map[string]int64{"orders": 2, "parts": 1}, nil)
 
-			list, err := f.svc.ListProjects(ctx, token, "", " ord ", 2, "")
+			list, err := f.svc.ListProjects(ctx, token, "", " ord ", 2, 0, "")
 
 			So(err, ShouldBeNil)
 			So(list.Total, ShouldEqual, 5)
@@ -413,7 +413,7 @@ func Test_ProjectService_ListProjects(t *testing.T) {
 			f.pa.EXPECT().CountProjects(gomock.Any(), next).Return(int64(5), nil)
 			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), []string{}).Return(map[string]int64{}, nil)
 
-			page, err := f.svc.ListProjects(ctx, token, "false", "ord", 2, *list.NextCursor)
+			page, err := f.svc.ListProjects(ctx, token, "false", "ord", 2, 0, *list.NextCursor)
 
 			So(err, ShouldBeNil)
 			So(page.Entries, ShouldNotBeNil)
@@ -431,7 +431,7 @@ func Test_ProjectService_ListProjects(t *testing.T) {
 			f.pa.EXPECT().CountProjects(gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), []string{"orders"}).Return(map[string]int64{"orders": 2}, nil)
 
-			list, err := f.svc.ListProjects(ctx, token, "all", "", 20, "")
+			list, err := f.svc.ListProjects(ctx, token, "all", "", 20, 0, "")
 
 			So(err, ShouldBeNil)
 			So(list.Entries[0].OtherProjects, ShouldEqual, 2)
@@ -447,32 +447,57 @@ func Test_ProjectService_ListProjects(t *testing.T) {
 			f.pa.EXPECT().CountProjects(gomock.Any(), gomock.Any()).Return(int64(0), nil)
 			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
 
-			_, err := f.svc.ListProjects(ctx, token, "true", "", 20, "")
+			_, err := f.svc.ListProjects(ctx, token, "true", "", 20, 0, "")
 
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Bad parameters are refused before any call\n", func() {
-			_, err := f.svc.ListProjects(ctx, token, "yes", "", 20, "")
+			_, err := f.svc.ListProjects(ctx, token, "yes", "", 20, 0, "")
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidArchived)
 
-			_, err = f.svc.ListProjects(ctx, token, "", strings.Repeat("n", maxNameRunes+1), 20, "")
+			_, err = f.svc.ListProjects(ctx, token, "", strings.Repeat("n", maxNameRunes+1), 20, 0, "")
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidName)
 
 			for _, limit := range []int{0, interfaces.MAX_PROJECT_LIMIT + 1} {
-				_, err = f.svc.ListProjects(ctx, token, "", "", limit, "")
+				_, err = f.svc.ListProjects(ctx, token, "", "", limit, 0, "")
 				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Limit)
 			}
 			for _, cursor := range []string{"not base64!", "bm90IGpzb24", encodeCursor(interfaces.ProjectCursor{CreateTime: 1})} {
-				_, err = f.svc.ListProjects(ctx, token, "", "", 20, cursor)
+				_, err = f.svc.ListProjects(ctx, token, "", "", 20, 0, cursor)
 				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Cursor)
 			}
+		})
+
+		Convey("A page by number skips offset projects and still gives the next cursor\n", func() {
+			unarchived := false
+			f.bba.EXPECT().ListKNIDs(gomock.Any(), token).Return([]string{"orders", "parts"}, nil)
+			want := interfaces.ProjectsQuery{KNIDs: []string{"orders", "parts"}, Archived: &unarchived, Offset: 4, Limit: 3}
+			f.pa.EXPECT().ListProjects(gomock.Any(), want).Return([]*interfaces.Project{p3, p2, p1}, nil)
+			f.pa.EXPECT().CountProjects(gomock.Any(), want).Return(int64(9), nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
+
+			list, err := f.svc.ListProjects(ctx, token, "", "", 2, 4, "")
+
+			So(err, ShouldBeNil)
+			So(list.Total, ShouldEqual, 9)
+			So(len(list.Entries), ShouldEqual, 2)
+			So(*list.NextCursor, ShouldEqual, encodeCursor(interfaces.ProjectCursor{CreateTime: 2, ID: "p2"}))
+		})
+
+		Convey("A negative offset, or one with a cursor, is refused before any call\n", func() {
+			_, err := f.svc.ListProjects(ctx, token, "", "", 20, -1, "")
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Offset)
+
+			cursor := encodeCursor(interfaces.ProjectCursor{CreateTime: 2, ID: "p2"})
+			_, err = f.svc.ListProjects(ctx, token, "", "", 20, 12, cursor)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Offset)
 		})
 
 		Convey("A bkn-backend failure listing networks is a bad gateway\n", func() {
 			f.bba.EXPECT().ListKNIDs(gomock.Any(), token).Return(nil, errors.New("connection refused"))
 
-			_, err := f.svc.ListProjects(ctx, token, "", "", 20, "")
+			_, err := f.svc.ListProjects(ctx, token, "", "", 20, 0, "")
 
 			shouldBeHTTPError(err, http.StatusBadGateway, perrors.BknProject_Project_BknBackendRequestFailed)
 		})

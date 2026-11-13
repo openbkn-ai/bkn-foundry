@@ -18,6 +18,7 @@ func TestImportInitializesErrorCodes(t *testing.T) {
 	codes := []string{
 		perrors.BknProject_InvalidParameter_Limit,
 		perrors.BknProject_InvalidParameter_Cursor,
+		perrors.BknProject_InvalidParameter_Offset,
 	}
 	codes = append(codes, perrors.ReleaseErrCodeList...)
 	codes = append(codes, perrors.ProjectErrCodeList...)

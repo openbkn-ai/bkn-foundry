@@ -144,7 +144,7 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 }
 
 func (s *projectService) ListProjects(ctx context.Context, token string, archived string, name string, limit int,
-	cursor string) (*interfaces.ProjectList, error) {
+	offset int, cursor string) (*interfaces.ProjectList, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListProjects")
 	defer span.End()
 
@@ -170,6 +170,12 @@ func (s *projectService) ListProjects(ctx context.Context, token string, archive
 		span.SetStatus(codes.Error, "Invalid name")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidName)
 	}
+	// A page by number skips offset projects; the cursor already says where its page starts.
+	if offset < 0 || offset > 0 && cursor != "" {
+		span.SetStatus(codes.Error, "Invalid offset")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Offset)
+	}
+	query.Offset = offset
 	if cursor != "" {
 		position, err := decodeCursor(cursor)
 		if err != nil {
