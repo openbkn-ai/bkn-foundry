@@ -558,7 +558,9 @@ func storedJob(job Job) Job {
 		copy := *job.BatchProgress
 		job.BatchProgress = &copy
 	}
-	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete && !(job.BatchProgress != nil && job.BatchProgress.CheckpointPrepared && job.Status == observabilityvo.ArchiveStatusFailed) {
+	keepCandidates := job.Status == observabilityvo.ArchiveStatusCleanupIncomplete ||
+		job.Status == observabilityvo.ArchiveStatusFailed && job.BatchProgress != nil && job.BatchProgress.CheckpointPrepared
+	if !keepCandidates {
 		job.Candidates = nil
 	}
 	return job
