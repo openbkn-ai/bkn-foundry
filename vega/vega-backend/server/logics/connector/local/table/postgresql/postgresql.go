@@ -10,6 +10,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -19,8 +20,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
-	"github.com/mitchellh/mapstructure"
+	"github.com/lib/pq"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -97,12 +97,12 @@ func (c *PostgresqlConnector) ValidateBuildSchema(_ *interfaces.Resource) error 
 
 // GetType returns the PostgreSQL connector type.
 func (c *PostgresqlConnector) GetType() string {
-	return interfaces.ConnectorTypePostgreSQL
+	return "postgresql"
 }
 
 // GetName returns the connector name.
 func (c *PostgresqlConnector) GetName() string {
-	return interfaces.ConnectorTypePostgreSQL
+	return "postgresql"
 }
 
 // GetMode returns the local connector mode.
@@ -113,6 +113,11 @@ func (c *PostgresqlConnector) GetMode() string {
 // GetCategory returns the table connector category.
 func (c *PostgresqlConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryTable
+}
+
+// SupportDiscover reports the connector's existing discovery capability.
+func (c *PostgresqlConnector) SupportDiscover() bool {
+	return true
 }
 
 // GetEnabled reports whether the connector is enabled.
@@ -126,8 +131,8 @@ func (c *PostgresqlConnector) SetEnabled(enabled bool) {
 }
 
 // GetSensitiveFields lists configuration fields that require encryption.
-func (c *PostgresqlConnector) GetSensitiveFields() []string {
-	return []string{"password"}
+func (c *PostgresqlConnector) GetSensitiveFields(_ interfaces.ConnectorConfig) ([]string, error) {
+	return []string{"password"}, nil
 }
 
 // GetFieldConfig returns connection form fields matching the connector-type migration.
@@ -146,8 +151,8 @@ func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 // New creates a connector instance from the configuration.
 func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var pCfg postgresqlConfig
-	if err := mapstructure.Decode(cfg, &pCfg); err != nil {
-		return nil, fmt.Errorf("failed to decode postgresql config: %w", err)
+	if err := common.DecodeMapToStruct(cfg, &pCfg); err != nil {
+		return nil, errors.New("failed to decode postgresql config")
 	}
 
 	if pCfg.Host == "" || pCfg.Port == 0 || pCfg.Username == "" || pCfg.Password == "" || pCfg.Database == "" {
@@ -309,18 +314,18 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 
 	db, err := sql.Open("postgres", c.connectionString())
 	if err != nil {
-		return fmt.Errorf("failed to open PostgreSQL connection: %w", err)
+		return connectionError(ctx, "failed to open PostgreSQL connection", err)
 	}
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("failed to ping PostgreSQL connection: %w", err)
+		return connectionError(ctx, "failed to ping PostgreSQL connection", err)
 	}
 
 	compatibility, err := detectPostgresqlCompatibility(ctx, db)
 	if err != nil {
 		_ = db.Close()
-		return fmt.Errorf("failed to detect PostgreSQL compatibility: %w", err)
+		return connectionError(ctx, "failed to detect PostgreSQL compatibility", err)
 	}
 
 	c.db, c.compatibility, c.connected = db, compatibility, true
@@ -335,7 +340,7 @@ func (c *PostgresqlConnector) Close(ctx context.Context) error {
 		c.connected = false
 		c.db = nil
 		if err != nil {
-			return fmt.Errorf("failed to close PostgreSQL connection: %w", err)
+			return connectionError(ctx, "failed to close PostgreSQL connection", err)
 		}
 		return nil
 	}
@@ -348,7 +353,7 @@ func (c *PostgresqlConnector) Ping(ctx context.Context) error {
 		return fmt.Errorf("failed to connect for ping: %w", err)
 	}
 	if err := c.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("failed to ping PostgreSQL connection: %w", err)
+		return connectionError(ctx, "failed to ping PostgreSQL connection", err)
 	}
 	return nil
 }
@@ -373,11 +378,31 @@ func (c *PostgresqlConnector) validateSchemas(ctx context.Context) error {
 		err := c.db.QueryRowContext(ctx,
 			`SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = $1)`, s).Scan(&exists)
 		if err != nil {
-			return fmt.Errorf("failed to validate schema %q: %w", s, err)
+			return connectionError(ctx, "failed to validate schema", err)
 		}
 		if !exists {
 			return fmt.Errorf("schema not found: %s", s)
 		}
 	}
 	return nil
+}
+
+// connectionError preserves safe failure classifications without exposing driver messages or connection strings.
+func connectionError(ctx context.Context, operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s: %w", operation, ctx.Err())
+	}
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, cause) {
+			return fmt.Errorf("%s: %w", operation, cause)
+		}
+	}
+	var sourceError *pq.Error
+	if errors.As(err, &sourceError) && len(sourceError.Code) == 5 && strings.IndexFunc(string(sourceError.Code), func(char rune) bool { return (char < 'A' || char > 'Z') && (char < '0' || char > '9') }) == -1 {
+		return fmt.Errorf("%s: %w", operation, &pq.Error{Code: sourceError.Code, Message: "source rejected the connection request"})
+	}
+	return errors.New(operation)
 }

@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
@@ -105,12 +104,12 @@ func (c *OpenSearchConnector) ValidateBuildSchema(_ *interfaces.Resource) error 
 
 // GetType returns the data source type.
 func (c *OpenSearchConnector) GetType() string {
-	return interfaces.ConnectorTypeOpenSearch
+	return "opensearch"
 }
 
 // GetName returns the data source name.
 func (c *OpenSearchConnector) GetName() string {
-	return interfaces.ConnectorTypeOpenSearch
+	return "opensearch"
 }
 
 // GetMode returns the connector mode.
@@ -121,6 +120,11 @@ func (c *OpenSearchConnector) GetMode() string {
 // GetCategory returns the connector category.
 func (c *OpenSearchConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryIndex
+}
+
+// SupportDiscover reports the connector's existing discovery capability.
+func (c *OpenSearchConnector) SupportDiscover() bool {
+	return true
 }
 
 // GetEnabled returns the enabled status.
@@ -134,8 +138,8 @@ func (c *OpenSearchConnector) SetEnabled(enabled bool) {
 }
 
 // GetSensitiveFields returns the sensitive fields for OpenSearch connector.
-func (c *OpenSearchConnector) GetSensitiveFields() []string {
-	return []string{"password"}
+func (c *OpenSearchConnector) GetSensitiveFields(_ interfaces.ConnectorConfig) ([]string, error) {
+	return []string{"password"}, nil
 }
 
 // GetFieldConfig returns the field configuration for OpenSearch connector.
@@ -152,8 +156,8 @@ func (c *OpenSearchConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 // New creates a new OpenSearch connector.
 func (c *OpenSearchConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var osCfg opensearchConfig
-	if err := mapstructure.Decode(cfg, &osCfg); err != nil {
-		return nil, fmt.Errorf("failed to decode opensearch config: %w", err)
+	if err := common.DecodeMapToStruct(cfg, &osCfg); err != nil {
+		return nil, errors.New("failed to decode opensearch config")
 	}
 
 	return &OpenSearchConnector{
@@ -176,7 +180,7 @@ func (c *OpenSearchConnector) Connect(ctx context.Context) error {
 
 	client, err := opensearch.NewClient(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create opensearch client: %w", err)
+		return errors.New("failed to create opensearch client")
 	}
 
 	c.client = client
@@ -198,11 +202,20 @@ func (c *OpenSearchConnector) Ping(ctx context.Context) error {
 	req := opensearchapi.InfoRequest{}
 	resp, err := req.Do(ctx, c.client)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errors.Is(err, context.Canceled) {
+			return context.Canceled
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return context.DeadlineExceeded
+		}
+		return errors.New("opensearch ping request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.IsError() {
-		return fmt.Errorf("ping failed: %s", resp.String())
+		return fmt.Errorf("opensearch ping failed: HTTP %d", resp.StatusCode)
 	}
 	return nil
 }

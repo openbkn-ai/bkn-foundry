@@ -32,11 +32,13 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 	t.Run("postgresql connector metadata and config", func(t *testing.T) {
 		connector := &PostgresqlConnector{}
 
-		assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetType())
-		assert.Equal(t, interfaces.ConnectorTypePostgreSQL, connector.GetName())
+		assert.Equal(t, "postgresql", connector.GetType())
+		assert.Equal(t, "postgresql", connector.GetName())
 		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
 		assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
-		assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+		protectedFields, metadataErr := connector.GetSensitiveFields(nil)
+		require.NoError(t, metadataErr)
+		assert.Equal(t, []string{"password"}, protectedFields)
 		assert.False(t, connector.GetEnabled())
 		connector.SetEnabled(true)
 		assert.True(t, connector.GetEnabled())
@@ -60,6 +62,26 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 }
 
 func TestPostgresqlConnectorNew(t *testing.T) {
+	t.Run("fixed config fields require exact case", func(t *testing.T) {
+		cfg := validPostgresqlConfig(5432)
+		cfg["Password"] = cfg["password"]
+		delete(cfg, "password")
+		instance, err := (&PostgresqlConnector{}).New(cfg)
+		require.Error(t, err)
+		assert.Nil(t, instance)
+		cfg["password"] = "canonical-fixture"
+		cfg["Password"] = map[string]any{"ignored": true}
+		instance, err = (&PostgresqlConnector{}).New(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "canonical-fixture", instance.(*PostgresqlConnector).config.Password)
+	})
+	t.Run("decode errors exclude submitted credential values", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"password": map[string]any{"value": "private-fixture"}}
+		_, err := (&PostgresqlConnector{}).New(cfg)
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "private-fixture")
+	})
+
 	builder := &PostgresqlConnector{}
 
 	t.Run("success", func(t *testing.T) {
@@ -369,6 +391,25 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 }
 
 func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
+	for _, cause := range []error{errors.New("private-driver-fixture"), &pq.Error{Code: "28P01", Message: "private-driver-fixture", Detail: "private-driver-fixture"}, context.Canceled, context.DeadlineExceeded} {
+		t.Run("driver errors exclude source contents "+cause.Error(), func(t *testing.T) {
+			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) { return nil, cause })
+			defer patches.Reset()
+			connector := &PostgresqlConnector{config: &postgresqlConfig{}}
+			err := connector.Connect(context.Background())
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "private-driver-fixture")
+			var originalErr *pq.Error
+			if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+				assert.ErrorIs(t, err, cause)
+			} else if errors.As(cause, &originalErr) {
+				var sourceErr *pq.Error
+				require.ErrorAs(t, err, &sourceErr)
+				assert.Equal(t, "28P01", string(sourceErr.Code))
+			}
+		})
+	}
+
 	t.Run("failed probes close the pool without publishing connection state", func(t *testing.T) {
 		for _, tc := range []struct {
 			name, stage string
@@ -406,8 +447,15 @@ func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
 				connector := &PostgresqlConnector{config: &postgresqlConfig{}}
 				err = connector.Connect(t.Context())
 				require.Error(t, err)
-				if tc.cause != nil {
+				var sourceErr *pq.Error
+				if errors.Is(tc.cause, context.Canceled) || errors.Is(tc.cause, context.DeadlineExceeded) {
 					assert.ErrorIs(t, err, tc.cause)
+				} else if errors.As(tc.cause, &sourceErr) {
+					var safeErr *pq.Error
+					require.ErrorAs(t, err, &safeErr)
+					assert.Equal(t, sourceErr.Code, safeErr.Code)
+				} else {
+					assert.ErrorContains(t, err, "failed to detect PostgreSQL compatibility")
 				}
 				assert.False(t, connector.connected)
 				assert.Nil(t, connector.db)

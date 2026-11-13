@@ -15,14 +15,15 @@ data:
       {{- toYaml .Values.config.otel | nindent 6 }}
     catalogHealthCheck:
       {{- toYaml .Values.config.catalogHealthCheck | nindent 6 }}
+    httpAPI:
+      {{- toYaml .Values.config.httpAPI | nindent 6 }}
     indexCleanup:
       {{- toYaml .Values.config.indexCleanup | nindent 6 }}
     taskWorker:
       {{- toYaml .Values.config.taskWorker | nindent 6 }}
-  {{- if .Values.config.crypto.enabled }}
     crypto:
-      {{- toYaml .Values.config.crypto | nindent 6 }}
-  {{- end }}
+      enabled: {{ .Values.config.crypto.enabled }}
+      aesKeyPath: {{ if or .Values.config.crypto.enabled .Values.config.crypto.aesKey }}{{ .Values.config.crypto.aesKeyPath | quote }}{{ else }}""{{ end }}
     depServices: 
       {{- toYaml .Values.depServices | nindent 6 }}
 

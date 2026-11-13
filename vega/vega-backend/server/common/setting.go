@@ -7,8 +7,10 @@
 package common
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -38,13 +40,11 @@ type ServerSetting struct {
 	WriteTimeout int    `mapstructure:"writeTimeOut"`
 }
 
-// CryptoSetting RSA key configuration item
+// CryptoSetting configures AES-256-GCM credential storage.
 type CryptoSetting struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	PrivateKey     string `mapstructure:"-"`              // RSA private key (PEM format) - Read from file
-	PublicKey      string `mapstructure:"-"`              // RSA Public Key (PEM format) - Read from file
-	PrivateKeyPath string `mapstructure:"privateKeyPath"` // The path of the RSA private key file
-	PublicKeyPath  string `mapstructure:"publicKeyPath"`  // RSA public key file path
+	Enabled    bool   `mapstructure:"enabled"` // Encrypt new writes; stored ciphertext always requires the original key.
+	AESKey     []byte `mapstructure:"-" json:"-" yaml:"-"`
+	AESKeyPath string `mapstructure:"aesKeyPath"`
 }
 
 // KafkaConnectSetting KafkaConnect configuration item
@@ -103,6 +103,12 @@ type TaskWorkerConfig struct {
 	StreamingWorkerCount int `mapstructure:"streamingWorkerCount"`
 }
 
+// HTTPAPIConfig defines deployment-owned outbound target boundaries for HTTP API connectors.
+type HTTPAPIConfig struct {
+	ServiceCIDRs        []string       `mapstructure:"serviceCIDRs"`
+	ServiceCIDRPrefixes []netip.Prefix `mapstructure:"-" json:"-" yaml:"-"`
+}
+
 // AppSetting contains application configuration.
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
@@ -113,6 +119,7 @@ type AppSetting struct {
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
 	QuerySetting        QueryConfig               `mapstructure:"query"`
 	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
+	HTTPAPI             HTTPAPIConfig             `mapstructure:"httpAPI"`
 	IndexCleanup        IndexCleanupConfig        `mapstructure:"indexCleanup"`
 	TaskWorker          TaskWorkerConfig          `mapstructure:"taskWorker"`
 
@@ -207,10 +214,10 @@ func loadSetting(vp *viper.Viper) {
 		}
 	}
 
-	// Debugging script (such as issue382) : Disable crypto when no key is mounted to avoid reading /opt/... Failure
+	// Disable encryption for new writes while retaining available keys for existing stored ciphertext.
 	if v := strings.TrimSpace(os.Getenv("VEGA_CRYPTO_DISABLED")); strings.EqualFold(v, "1") || strings.EqualFold(v, "true") {
 		appSetting.CryptoSetting.Enabled = false
-		logger.Info("Crypto disabled via VEGA_CRYPTO_DISABLED env")
+		logger.Info("Encryption for new writes disabled via VEGA_CRYPTO_DISABLED env")
 	}
 
 	// Loading time zone
@@ -223,6 +230,10 @@ func loadSetting(vp *viper.Viper) {
 
 	if err := loadCryptoKeys(); err != nil {
 		logger.Fatalf("Failed to load crypto keys: %s\n", err)
+	}
+
+	if err := loadServiceCIDRPrefixes(); err != nil {
+		logger.Fatalf("Failed to load Service CIDR prefixes: %s\n", err)
 	}
 
 	SetLogSetting(appSetting.LogSetting)
@@ -378,31 +389,47 @@ func NormalizeBknSafeURL(rawURL string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-// loadCryptoKeys loads RSA keys from files
+// loadCryptoKeys loads the AES key even when encryption for new writes is disabled.
 func loadCryptoKeys() error {
-	if !appSetting.CryptoSetting.Enabled {
+	setting := &appSetting.CryptoSetting
+	if setting.AESKeyPath == "" {
+		if setting.Enabled {
+			return errors.New("aesKeyPath is required when crypto is enabled")
+		}
+		setting.AESKey = nil
 		return nil
 	}
 
-	if appSetting.CryptoSetting.PrivateKeyPath == "" {
-		return fmt.Errorf("privateKeyPath is required when crypto is enabled")
-	}
-	if appSetting.CryptoSetting.PublicKeyPath == "" {
-		return fmt.Errorf("publicKeyPath is required when crypto is enabled")
-	}
-
-	privateKeyContent, err := os.ReadFile(appSetting.CryptoSetting.PrivateKeyPath)
+	content, err := os.ReadFile(setting.AESKeyPath)
 	if err != nil {
-		return fmt.Errorf("failed to read private key file: %w", err)
+		if !setting.Enabled && os.IsNotExist(err) {
+			setting.AESKey = nil
+			return nil
+		}
+		return fmt.Errorf("failed to read AES key file: %w", err)
 	}
-	appSetting.CryptoSetting.PrivateKey = string(privateKeyContent)
-
-	publicKeyContent, err := os.ReadFile(appSetting.CryptoSetting.PublicKeyPath)
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(content)))
 	if err != nil {
-		return fmt.Errorf("failed to read public key file: %w", err)
+		return errors.New("AES key file must contain a Base64-encoded 32-byte key")
 	}
-	appSetting.CryptoSetting.PublicKey = string(publicKeyContent)
+	if len(key) != 32 {
+		return errors.New("AES key must be 32 bytes")
+	}
+	setting.AESKey = key
+	return nil
+}
 
+// loadServiceCIDRPrefixes parses Service CIDRs into their in-memory representation.
+func loadServiceCIDRPrefixes() error {
+	prefixes := make([]netip.Prefix, len(appSetting.HTTPAPI.ServiceCIDRs))
+	for index, value := range appSetting.HTTPAPI.ServiceCIDRs {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			return fmt.Errorf("invalid serviceCIDRs[%d]: %w", index, err)
+		}
+		prefixes[index] = prefix.Masked()
+	}
+	appSetting.HTTPAPI.ServiceCIDRPrefixes = prefixes
 	return nil
 }
 

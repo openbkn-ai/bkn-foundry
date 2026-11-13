@@ -283,7 +283,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 	})
 
 	t.Run("invalid projections fail before source execution", func(t *testing.T) {
-		for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB} {
+		for _, connectorType := range []string{"mysql", "mariadb"} {
 			t.Run(connectorType, func(t *testing.T) {
 				for _, tc := range []struct {
 					name   string
@@ -775,7 +775,7 @@ func TestMariaDBConnectorExecuteSQLResourceQuery(t *testing.T) {
 		assert.NoError(t, db.Close())
 		assert.NoError(t, mock.ExpectationsWereMet())
 	}()
-	connector := &MariaDBConnector{connectorType: interfaces.ConnectorTypeMySQL, db: db, connected: true}
+	connector := &MariaDBConnector{connectorType: "mysql", db: db, connected: true}
 	resource := &interfaces.Resource{SourceIdentifier: "`orders`", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "name", Type: interfaces.DataType_String}}}
 	params := &interfaces.ResourceDataQueryParams{OutputFields: []string{"id", "name"}, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1}, NeedTotal: true, Sort: []*interfaces.SortField{{Field: "id"}}, ActualFilterCond: &filter_condition.GtCond{Cfg: &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Const}, Lfield: resource.SchemaDefinition[0], Value: int64(3)}}
 	mock.ExpectQuery("SELECT `id` AS `id`, `name` AS `name` FROM `orders` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 2 OFFSET 1").WithArgs(int64(3)).WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(5, []byte("five"))).RowsWillBeClosed()

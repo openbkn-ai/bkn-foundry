@@ -429,3 +429,68 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Nil(t, got)
 	})
 }
+
+func TestCatalogHealthCheckScheduleServiceAPICatalog(t *testing.T) {
+	for _, action := range []string{"create", "update"} {
+		t.Run(action, func(t *testing.T) {
+			for _, mode := range []string{interfaces.CatalogHealthCheckScheduleModeInherit, interfaces.CatalogHealthCheckScheduleModeEnabled, interfaces.CatalogHealthCheckScheduleModeDisabled} {
+				t.Run(mode, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					service := newCatalogHealthCheckScheduleServiceForTest(t)
+					sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+					service.sa = sa
+					catalog := &interfaces.Catalog{ID: "api", Type: interfaces.CatalogTypePhysical, ConnectorType: "http"}
+					req := &interfaces.CatalogHealthCheckScheduleRequest{Mode: mode, ExpectedUpdateTime: 10}
+					if mode == interfaces.CatalogHealthCheckScheduleModeEnabled {
+						req.CronExpr = "0 * * * *"
+					}
+					var got *interfaces.CatalogHealthCheckSchedule
+					var err error
+					if action == "create" {
+						sa.EXPECT().Create(gomock.Any(), nil, gomock.Any()).Return(nil)
+						if mode == interfaces.CatalogHealthCheckScheduleModeInherit {
+							req = nil
+						}
+						got, err = service.Create(context.Background(), nil, catalog, req)
+					} else {
+						ca := vmock.NewMockCatalogAccess(ctrl)
+						ps := vmock.NewMockPermissionService(ctrl)
+						service.ca = ca
+						service.ps = ps
+						current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "api", Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, NextRun: 456, LastRun: 123}
+						ca.EXPECT().GetByID(gomock.Any(), "api").Return(catalog, nil)
+						ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "api"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+						sa.EXPECT().GetByCatalogID(gomock.Any(), "api").Return(current, nil)
+						sa.EXPECT().Update(gomock.Any(), current, int64(10)).Return(int64(1), nil)
+						got, err = service.Update(context.Background(), "api", req)
+					}
+					require.NoError(t, err)
+					require.NotNil(t, got)
+					assert.Equal(t, "api", got.CatalogID)
+					assert.Equal(t, mode, got.Mode)
+					if mode == interfaces.CatalogHealthCheckScheduleModeDisabled {
+						assert.Zero(t, got.NextRun)
+					} else {
+						assert.Positive(t, got.NextRun)
+					}
+					if mode == interfaces.CatalogHealthCheckScheduleModeEnabled {
+						assert.Equal(t, "0 * * * *", got.CronExpr)
+					}
+				})
+			}
+		})
+	}
+	t.Run("update requires modify permission before accessing schedule", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		service := &catalogHealthCheckScheduleService{ca: ca, ps: ps, sa: sa}
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		ca.EXPECT().GetByID(gomock.Any(), "api").Return(&interfaces.Catalog{ID: "api", Type: interfaces.CatalogTypePhysical, ConnectorType: "http"}, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "api"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+		got, err := service.Update(context.Background(), "api", &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit})
+		require.ErrorIs(t, err, permissionErr)
+		assert.Nil(t, got)
+	})
+}

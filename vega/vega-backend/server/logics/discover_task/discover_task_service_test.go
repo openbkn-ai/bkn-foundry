@@ -29,123 +29,186 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
+	cf := vmock.NewMockConnectorFactory(ctrl)
+	cf.EXPECT().SupportDiscover("postgresql").Return(true, nil).AnyTimes()
 	// 探查任务的授权判在它所属的目录上（#269）；这些用例验的是别的东西，统一放行。
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
-		Return(true, nil, nil).AnyTimes()
+		Return(true, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "postgresql"}, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
-		Return(true, nil, nil).AnyTimes()
+		Return(true, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "postgresql"}, nil).AnyTimes()
 	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 
 	return &discoverTaskService{
 		cs:  cs,
+		cf:  cf,
 		dta: dta,
 		ums: ums,
 	}, dta, ums
 }
 
-func TestDiscoverTaskServiceCreateRequestsDispatchAfterPersistence(t *testing.T) {
-	service, dta, _ := newTestDiscoverTaskService(t)
-	service.dispatchCh = make(chan struct{}, discoverTaskDispatchBuffer)
-	dta.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.DiscoverTask{})).
-		DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
-			assert.Equal(t, "catalog-1", task.CatalogID)
-			assert.Equal(t, interfaces.DiscoverTaskStatusPending, task.Status)
-			return nil
+func TestDiscoverTaskServiceCreate(t *testing.T) {
+	t.Run("dispatch after persistence", func(t *testing.T) {
+		service, dta, _ := newTestDiscoverTaskService(t)
+		service.dispatchCh = make(chan struct{}, discoverTaskDispatchBuffer)
+		dta.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.DiscoverTask{})).
+			DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
+				assert.Equal(t, "catalog-1", task.CatalogID)
+				assert.Equal(t, interfaces.DiscoverTaskStatusPending, task.Status)
+				return nil
+			})
+
+		id, err := service.Create(context.Background(), &interfaces.CreateDiscoverTaskRequest{
+			CatalogID:   "catalog-1",
+			TriggerType: interfaces.DiscoverTaskTriggerManual,
+			Strategy:    interfaces.DiscoverStrategyFullSync,
 		})
 
-	id, err := service.Create(context.Background(), &interfaces.CreateDiscoverTaskRequest{
-		CatalogID:   "catalog-1",
-		TriggerType: interfaces.DiscoverTaskTriggerManual,
-		Strategy:    interfaces.DiscoverStrategyFullSync,
+		require.NoError(t, err)
+		assert.NotEmpty(t, id)
+		select {
+		case <-service.DispatchSignal():
+		default:
+			t.Fatal("expected a dispatch signal after the task was persisted")
+		}
 	})
 
-	require.NoError(t, err)
-	assert.NotEmpty(t, id)
-	select {
-	case <-service.DispatchSignal():
-	default:
-		t.Fatal("expected a dispatch signal after the task was persisted")
-	}
-}
-
-func TestDiscoverTaskServiceCreateCountOnly(t *testing.T) {
-	for _, tt := range []struct {
-		name         string
-		category     string
-		catalogType  string
-		missing      bool
-		wrongCatalog bool
-		lookupError  bool
-		wantStatus   int
-	}{
-		{name: "logical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypeLogical, wantStatus: http.StatusBadRequest},
-		{name: "physical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypePhysical, wantStatus: http.StatusBadRequest},
-		{name: "fileset", category: interfaces.ResourceCategoryFileset, wantStatus: http.StatusBadRequest},
-		{name: "table", category: interfaces.ResourceCategoryTable},
-		{name: "index", category: interfaces.ResourceCategoryIndex},
-		{name: "logical_view", category: interfaces.ResourceCategoryLogicalView},
-		{name: "missing resource", missing: true, wantStatus: http.StatusNotFound},
-		{name: "wrong catalog", category: interfaces.ResourceCategoryTable, wrongCatalog: true, wantStatus: http.StatusNotFound},
-		{name: "lookup error", lookupError: true},
-		{name: "catalog task"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			rs := vmock.NewMockResourceService(ctrl)
-			cs := vmock.NewMockCatalogService(ctrl)
-			dta := vmock.NewMockDiscoverTaskAccess(ctrl)
-			service := &discoverTaskService{cs: cs, rs: rs, dta: dta, dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer)}
-			cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
-				Return(true, &interfaces.Catalog{ID: "catalog-1", Type: tt.catalogType}, nil)
-			req := &interfaces.CreateDiscoverTaskRequest{CatalogID: "catalog-1", ResourceID: "res", Strategy: interfaces.DiscoverStrategyCountOnly}
-			lookupErr := errors.New("resource lookup failed")
-			if tt.name == "catalog task" {
-				req.ResourceID = ""
-			} else {
-				res := &interfaces.Resource{ID: "res", CatalogID: req.CatalogID, Category: tt.category}
-				if tt.missing {
-					res = nil
-				}
-				if tt.wrongCatalog {
-					res.CatalogID = "other-catalog"
-				}
-				if tt.lookupError {
-					rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(nil, lookupErr)
+	t.Run("count only", func(t *testing.T) {
+		for _, tt := range []struct {
+			name         string
+			category     string
+			catalogType  string
+			missing      bool
+			wrongCatalog bool
+			lookupError  bool
+			wantStatus   int
+		}{
+			{name: "logical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypeLogical, wantStatus: http.StatusBadRequest},
+			{name: "physical dataset", category: interfaces.ResourceCategoryDataset, catalogType: interfaces.CatalogTypePhysical, wantStatus: http.StatusBadRequest},
+			{name: "fileset", category: interfaces.ResourceCategoryFileset, wantStatus: http.StatusBadRequest},
+			{name: "table", category: interfaces.ResourceCategoryTable},
+			{name: "index", category: interfaces.ResourceCategoryIndex},
+			{name: "logical_view", category: interfaces.ResourceCategoryLogicalView},
+			{name: "missing resource", missing: true, wantStatus: http.StatusNotFound},
+			{name: "wrong catalog", category: interfaces.ResourceCategoryTable, wrongCatalog: true, wantStatus: http.StatusNotFound},
+			{name: "lookup error", lookupError: true},
+			{name: "catalog task"},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				rs := vmock.NewMockResourceService(ctrl)
+				cs := vmock.NewMockCatalogService(ctrl)
+				dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				cf.EXPECT().SupportDiscover("postgresql").Return(true, nil).AnyTimes()
+				service := &discoverTaskService{cs: cs, cf: cf, rs: rs, dta: dta, dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer)}
+				cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+					Return(true, &interfaces.Catalog{ID: "catalog-1", Type: tt.catalogType, ConnectorType: "postgresql"}, nil)
+				req := &interfaces.CreateDiscoverTaskRequest{CatalogID: "catalog-1", ResourceID: "res", Strategy: interfaces.DiscoverStrategyCountOnly}
+				lookupErr := errors.New("resource lookup failed")
+				if tt.name == "catalog task" {
+					req.ResourceID = ""
 				} else {
-					rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(res, nil)
+					res := &interfaces.Resource{ID: "res", CatalogID: req.CatalogID, Category: tt.category}
+					if tt.missing {
+						res = nil
+					}
+					if tt.wrongCatalog {
+						res.CatalogID = "other-catalog"
+					}
+					if tt.lookupError {
+						rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(nil, lookupErr)
+					} else {
+						rs.EXPECT().InternalGetByID(gomock.Any(), nil, req.ResourceID).Return(res, nil)
+					}
 				}
-			}
-			if tt.wantStatus == 0 && !tt.lookupError {
-				if req.ResourceID != "" {
-					dta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+				if tt.wantStatus == 0 && !tt.lookupError {
+					if req.ResourceID != "" {
+						dta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+					}
+					dta.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
+						assert.Equal(t, req.ResourceID, task.ResourceID)
+						assert.Equal(t, interfaces.DiscoverStrategyCountOnly, task.Strategy)
+						return nil
+					})
 				}
-				dta.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.DiscoverTask) error {
-					assert.Equal(t, req.ResourceID, task.ResourceID)
-					assert.Equal(t, interfaces.DiscoverStrategyCountOnly, task.Strategy)
-					return nil
-				})
-			}
-			id, err := service.Create(context.Background(), req)
-			if tt.wantStatus != 0 || tt.lookupError {
+				id, err := service.Create(context.Background(), req)
+				if tt.wantStatus != 0 || tt.lookupError {
+					assert.Empty(t, id)
+					assert.Empty(t, service.dispatchCh)
+					if tt.lookupError {
+						require.ErrorIs(t, err, lookupErr)
+						return
+					}
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, tt.wantStatus, httpErr.HTTPCode)
+					if tt.wantStatus == http.StatusBadRequest {
+						assert.Contains(t, httpErr.Error(), "does not support count_only")
+					}
+					return
+				}
+				require.NoError(t, err)
+				assert.NotEmpty(t, id)
+				assert.Len(t, service.dispatchCh, 1)
+			})
+		}
+	})
+
+	t.Run("discovery capability", func(t *testing.T) {
+		unknown := errors.New("connector unavailable")
+		for _, tt := range []struct {
+			name       string
+			catalog    *interfaces.Catalog
+			supported  bool
+			factoryErr error
+			allowed    bool
+		}{
+			{name: "unsupported arbitrary connector", catalog: &interfaces.Catalog{ConnectorType: "custom"}, allowed: true},
+			{name: "discoverable API connector", catalog: &interfaces.Catalog{ConnectorType: "custom-api"}, supported: true, allowed: true},
+			{name: "logical catalog retains existing task support", catalog: &interfaces.Catalog{Type: interfaces.CatalogTypeLogical}, supported: true, allowed: true},
+			{name: "unknown connector", catalog: &interfaces.Catalog{ConnectorType: "unknown"}, factoryErr: unknown, allowed: true},
+			{name: "missing catalog", allowed: true},
+			{name: "permission denied", catalog: &interfaces.Catalog{ConnectorType: "custom"}},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cs := vmock.NewMockCatalogService(ctrl)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+				service := &discoverTaskService{cs: cs, cf: cf, dta: dta, dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer)}
+				cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(tt.allowed, tt.catalog, nil)
+				if tt.allowed && tt.catalog != nil && tt.catalog.Type != interfaces.CatalogTypeLogical {
+					cf.EXPECT().SupportDiscover(tt.catalog.ConnectorType).Return(tt.supported, tt.factoryErr)
+				}
+				if tt.allowed && tt.supported {
+					dta.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+				}
+				id, err := service.Create(context.Background(), &interfaces.CreateDiscoverTaskRequest{CatalogID: "catalog"})
+				if tt.allowed && tt.supported {
+					require.NoError(t, err)
+					assert.NotEmpty(t, id)
+					assert.Len(t, service.dispatchCh, 1)
+					return
+				}
+				require.Error(t, err)
 				assert.Empty(t, id)
 				assert.Empty(t, service.dispatchCh)
-				if tt.lookupError {
-					require.ErrorIs(t, err, lookupErr)
+				if tt.factoryErr != nil {
+					assert.ErrorIs(t, err, tt.factoryErr)
 					return
 				}
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, tt.wantStatus, httpErr.HTTPCode)
-				if tt.wantStatus == http.StatusBadRequest {
-					assert.Contains(t, httpErr.Error(), "does not support count_only")
+				expected := http.StatusBadRequest
+				if !tt.allowed {
+					expected = http.StatusForbidden
+				} else if tt.catalog == nil {
+					expected = http.StatusNotFound
 				}
-				return
-			}
-			require.NoError(t, err)
-			assert.NotEmpty(t, id)
-			assert.Len(t, service.dispatchCh, 1)
-		})
-	}
+				assert.Equal(t, expected, httpErr.HTTPCode)
+			})
+		}
+	})
 }
 
 func TestDiscoverTaskServiceInternalUpdateProgress(t *testing.T) {
@@ -271,9 +334,9 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	// This case verifies name enrichment; list authorization returns its catalog.
 	cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"catalog-1"}, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
-		Return(true, nil, nil).AnyTimes()
+		Return(true, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "postgresql"}, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), true).
-		Return(true, nil, nil).AnyTimes()
+		Return(true, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "postgresql"}, nil).AnyTimes()
 	service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 
 	t.Run("list batches current page catalog ids", func(t *testing.T) {

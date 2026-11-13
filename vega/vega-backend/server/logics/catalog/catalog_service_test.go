@@ -19,24 +19,32 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
+	kwcrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 )
 
-// mockCipher 实现 kwcrypto.Cipher 接口用于测试
-// 注：kwcrypto.Cipher 是外部库接口，无 mockgen 生成的版本，手写 mock 是合理的
+// mockCipher isolates credential encryption failures in service tests.
 type mockCipher struct {
+	encryptFunc func(plaintext string) (string, error)
 	decryptFunc func(ciphertext string) (string, error)
 }
 
 func (m *mockCipher) Encrypt(plaintext string) (string, error) {
+	if m.encryptFunc != nil {
+		return m.encryptFunc(plaintext)
+	}
 	return "encrypted_" + plaintext, nil
 }
 
@@ -44,8 +52,8 @@ func (m *mockCipher) Decrypt(ciphertext string) (string, error) {
 	return m.decryptFunc(ciphertext)
 }
 
-func (m *mockCipher) Signature(data string) (string, error) {
-	return "", nil
+func (m *mockCipher) Signature(string) (string, error) {
+	return "", errors.New("signature is not supported by the credential test cipher")
 }
 
 func requireRedactedConnectorInitializationError(t *testing.T, err error, sensitiveError string) {
@@ -59,110 +67,312 @@ func requireRedactedConnectorInitializationError(t *testing.T, err error, sensit
 	assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), connectorInitializationFailedResult)
 }
 
-func TestValidateAndDecryptSensitiveFields(t *testing.T) {
-	t.Run("validate and decrypt no cipher", func(t *testing.T) {
-		cs := &catalogService{cipher: nil}
-		config := map[string]any{"password": "secret123", "host": "localhost"}
-
-		decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if decrypted["password"] != "secret123" {
-			t.Errorf("expected 'secret123', got '%v'", decrypted["password"])
-		}
-		if config["password"] != "secret123" {
-			t.Errorf("original config should not be modified")
-		}
-	})
-	t.Run("validate and decrypt with cipher success", func(t *testing.T) {
-		cs := &catalogService{
-			cipher: &mockCipher{
-				decryptFunc: func(ciphertext string) (string, error) {
-					return "decrypted_" + ciphertext, nil
-				},
-			},
-		}
-		config := map[string]any{"password": "rsa_ciphertext", "host": "localhost"} //nolint:gosec // Test-only placeholder ciphertext.
-
-		decrypted, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if decrypted["password"] != "decrypted_rsa_ciphertext" {
-			t.Errorf("expected 'decrypted_rsa_ciphertext', got '%v'", decrypted["password"])
-		}
-		if config["password"] != EncryptedPrefix+"rsa_ciphertext" {
-			t.Errorf("expected ENC: prefix, got '%v'", config["password"])
-		}
-		if decrypted["host"] != "localhost" {
-			t.Errorf("non-sensitive field should be unchanged")
+func TestEncryptSensitiveFields(t *testing.T) {
+	t.Run("reserved plaintext prefix is rejected before encryption regardless of the switch", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			for _, value := range []string{"ENC:", "enc:fixture", "EnC:fixture"} {
+				for _, nested := range []bool{false, true} {
+					t.Run(fmt.Sprintf("enabled=%t nested=%t value=%s", enabled, nested, value), func(t *testing.T) {
+						cfg := interfaces.ConnectorConfig{"token": value, "variables": map[string]any{"token": "plain-fixture"}}
+						if nested {
+							cfg["token"] = nil
+							cfg["variables"].(map[string]any)["token"] = value
+						}
+						before, err := json.Marshal(cfg)
+						require.NoError(t, err)
+						cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) {
+							t.Fatal("reserved prefix must be rejected before encryption")
+							return "", nil
+						}}}
+						got, err := cs.encryptSensitiveFields([]string{"token"}, cfg)
+						require.ErrorContains(t, err, "plaintext must not start with ENC:")
+						assert.NotContains(t, err.Error(), "fixture")
+						assert.Nil(t, got)
+						after, err := json.Marshal(cfg)
+						require.NoError(t, err)
+						assert.Equal(t, before, after)
+					})
+				}
+			}
 		}
 	})
-	t.Run("validate and decrypt with cipher decrypt fails", func(t *testing.T) {
-		cs := &catalogService{
-			cipher: &mockCipher{
-				decryptFunc: func(ciphertext string) (string, error) {
-					return "", fmt.Errorf("invalid ciphertext")
-				},
-			},
+	t.Run("AES credentials survive write encryption switches without changing stored inputs", func(t *testing.T) {
+		key := []byte(strings.Repeat("k", 32))
+		cipher, err := kwcrypto.NewAESGCMCipher(key)
+		require.NoError(t, err)
+		setting := &common.AppSetting{CryptoSetting: common.CryptoSetting{AESKey: key}}
+		cs := &catalogService{appSetting: setting, cipher: cipher}
+		input := interfaces.ConnectorConfig{
+			"password":  strings.Repeat("long-fixture-", 512),
+			"variables": map[string]any{"token": strings.Repeat("示例凭据", 256), "empty": "", "tenant": "public"},
 		}
-		config := map[string]any{"password": "bad_data"}
-
-		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-		if err == nil {
-			t.Fatal("expected error for invalid ciphertext")
+		fields := []string{"password", "token", "empty"}
+		var stored []interfaces.ConnectorConfig
+		for _, enabled := range []bool{false, true, false, true} {
+			setting.CryptoSetting.Enabled = enabled
+			sealed, err := cs.encryptSensitiveFields(fields, input)
+			require.NoError(t, err)
+			if enabled {
+				assert.True(t, strings.HasPrefix(sealed["password"].(string), EncryptedPrefix))
+				assert.NotEqual(t, input["password"], sealed["password"])
+				assert.NotEqual(t, input["variables"].(map[string]any)["token"], sealed["variables"].(map[string]any)["token"])
+			} else {
+				assert.Equal(t, input, sealed)
+			}
+			assert.Equal(t, "", sealed["variables"].(map[string]any)["empty"])
+			stored = append(stored, sealed)
+			for _, previous := range stored {
+				plain, err := cs.decryptSensitiveFields(fields, previous)
+				require.NoError(t, err)
+				assert.Equal(t, input, plain)
+			}
 		}
-		if !strings.Contains(err.Error(), "password") {
-			t.Errorf("error should mention field name, got: %v", err)
+		assert.Equal(t, strings.Repeat("long-fixture-", 512), input["password"])
+		assert.Equal(t, strings.Repeat("示例凭据", 256), input["variables"].(map[string]any)["token"])
+		assert.Equal(t, "public", input["variables"].(map[string]any)["tenant"])
+	})
+	t.Run("driver options are not encrypted when the selected field is absent", func(t *testing.T) {
+		cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) {
+			t.Error("driver options must not be selected for encryption")
+			return "unexpected", nil
+		}}}
+		cfg := interfaces.ConnectorConfig{"variables": map[string]any{"tenant": "public"}, "options": map[string]any{"fixture_option": "driver-fixture"}}
+		got, err := cs.encryptSensitiveFields([]string{"fixture_option"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, cfg, got)
+	})
+	t.Run("encrypts declared variables without changing caller configuration", func(t *testing.T) {
+		var encrypted []string
+		cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+			encrypted = append(encrypted, value)
+			return "sealed_" + value, nil
+		}}}
+		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": "key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}, "options": map[string]any{"driver_option": "unchanged"}}
+		got, err := cs.encryptSensitiveFields([]string{"token", "api_key"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"fixed-fixture", "key-fixture"}, encrypted)
+		assert.Equal(t, "ENC:sealed_fixed-fixture", got["token"])
+		assert.Equal(t, "ENC:sealed_key-fixture", got["variables"].(map[string]any)["api_key"])
+		assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"])
+		assert.Equal(t, cfg["options"], got["options"])
+		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"])
+	})
+	t.Run("retained keys support off on off writes without migrating existing values", func(t *testing.T) {
+		setting := &common.AppSetting{}
+		cs := &catalogService{appSetting: setting, cipher: &mockCipher{
+			encryptFunc: func(value string) (string, error) { return "sealed_" + value, nil },
+			decryptFunc: func(value string) (string, error) { return strings.TrimPrefix(value, "sealed_"), nil },
+		}}
+		fields := []string{"fixture_option"}
+		input := interfaces.ConnectorConfig{"variables": map[string]any{"fixture_option": "client-fixture"}}
+		legacy, err := cs.encryptSensitiveFields(fields, input)
+		require.NoError(t, err)
+		assert.Equal(t, input, legacy)
+		setting.CryptoSetting.Enabled = true
+		plain, err := cs.decryptSensitiveFields(fields, legacy)
+		require.NoError(t, err)
+		assert.Equal(t, input, plain)
+		sealed, err := cs.encryptSensitiveFields(fields, input)
+		require.NoError(t, err)
+		assert.Equal(t, "ENC:sealed_client-fixture", sealed["variables"].(map[string]any)["fixture_option"])
+		setting.CryptoSetting.Enabled = false
+		plain, err = cs.decryptSensitiveFields(fields, sealed)
+		require.NoError(t, err)
+		assert.Equal(t, input, plain)
+		unsealed, err := cs.encryptSensitiveFields(fields, input)
+		require.NoError(t, err)
+		assert.Equal(t, input, unsealed)
+		setting.CryptoSetting.Enabled = true
+		for _, stored := range []interfaces.ConnectorConfig{legacy, sealed, unsealed} {
+			plain, err = cs.decryptSensitiveFields(fields, stored)
+			require.NoError(t, err)
+			assert.Equal(t, input, plain)
+		}
+		assert.Equal(t, "ENC:sealed_client-fixture", sealed["variables"].(map[string]any)["fixture_option"])
+		assert.Equal(t, "client-fixture", input["variables"].(map[string]any)["fixture_option"])
+	})
+	t.Run("fixed and variables values are encrypted in an independent storage copy", func(t *testing.T) {
+		var encrypted []string
+		cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+			encrypted = append(encrypted, value)
+			return "cipher_" + value, nil
+		}, decryptFunc: func(string) (string, error) { t.Fatal("storage must encrypt plaintext"); return "", nil }}}
+		cfg := interfaces.ConnectorConfig{"token": "client-fixture", "variables": map[string]any{"fixture_option": "literal-client", "nested": []any{map[string]any{"flag": false}}}}
+		before, _ := json.Marshal(cfg)
+		got, err := cs.encryptSensitiveFields([]string{"token", "fixture_option"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"client-fixture", "literal-client"}, encrypted)
+		assert.Equal(t, "ENC:cipher_client-fixture", got["token"])
+		assert.Equal(t, "ENC:cipher_literal-client", got["variables"].(map[string]any)["fixture_option"])
+		got["variables"].(map[string]any)["nested"].([]any)[0].(map[string]any)["flag"] = true
+		after, _ := json.Marshal(cfg)
+		assert.Equal(t, string(before), string(after))
+	})
+	t.Run("top-level fields do not shadow sensitive variables", func(t *testing.T) {
+		for _, value := range []any{"top-level", "", nil, false, 0} {
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(text string) (string, error) {
+				assert.Contains(t, []string{"top-level", "nested-value"}, text)
+				return "cipher_" + text, nil
+			}}}
+			cfg := interfaces.ConnectorConfig{"fixture_option": value, "variables": map[string]any{"fixture_option": "nested-value"}}
+			got, err := cs.encryptSensitiveFields([]string{"fixture_option"}, cfg)
+			require.NoError(t, err)
+			if value == "top-level" {
+				assert.Equal(t, "ENC:cipher_top-level", got["fixture_option"])
+			} else {
+				assert.Equal(t, value, got["fixture_option"])
+			}
+			assert.Equal(t, value, cfg["fixture_option"])
+			assert.Equal(t, "ENC:cipher_nested-value", got["variables"].(map[string]any)["fixture_option"])
+			assert.Equal(t, "nested-value", cfg["variables"].(map[string]any)["fixture_option"])
 		}
 	})
-	t.Run("validate and decrypt empty value", func(t *testing.T) {
-		cs := &catalogService{
-			cipher: &mockCipher{
-				decryptFunc: func(ciphertext string) (string, error) {
-					t.Fatal("should not be called for empty value")
-					return "", nil
-				},
-			},
-		}
-		config := map[string]any{"password": ""}
-
-		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	t.Run("failed encryption does not mutate any submitted value", func(t *testing.T) {
+		calls := 0
+		cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+			calls++
+			if value == "fail-fixture" {
+				return "", errors.New("provider private-fixture")
+			}
+			return "cipher", nil
+		}}}
+		cfg := interfaces.ConnectorConfig{"token": "first-fixture", "variables": map[string]any{"fixture_option": "fail-fixture"}}
+		before, _ := json.Marshal(cfg)
+		got, err := cs.encryptSensitiveFields([]string{"token", "fixture_option"}, cfg)
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Equal(t, 2, calls)
+		assert.NotContains(t, err.Error(), "provider private-fixture")
+		after, _ := json.Marshal(cfg)
+		assert.Equal(t, string(before), string(after))
 	})
-	t.Run("validate and decrypt non string value", func(t *testing.T) {
-		cs := &catalogService{
-			cipher: &mockCipher{
-				decryptFunc: func(ciphertext string) (string, error) {
-					t.Fatal("should not be called for non-string value")
-					return "", nil
-				},
-			},
-		}
-		config := map[string]any{"password": 12345}
-
-		_, err := cs.validateAndDecryptSensitiveFields([]string{"password"}, config)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	t.Run("disabled crypto keeps plaintext in a deep independent copy", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"token": "fixture", "variables": map[string]any{"rows": []any{map[string]any{"flag": false}}}}
+		got, err := (&catalogService{appSetting: &common.AppSetting{}}).encryptSensitiveFields([]string{"token"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, cfg, got)
+		got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+		assert.Equal(t, false, cfg["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"])
+	})
+	t.Run("missing fields and legacy variables shapes are preserved", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"variables": "legacy-shape"}
+		got, err := (&catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) { t.Fatal("no selected value exists"); return "", nil }}}).encryptSensitiveFields([]string{"missing"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, cfg, got)
 	})
 }
 
 func TestDecryptSensitiveFields(t *testing.T) {
-	t.Run("decrypt no cipher", func(t *testing.T) {
-		cs := &catalogService{cipher: nil}
-		config := map[string]any{"password": "ENC:ciphertext"} //nolint:gosec // Test-only placeholder ciphertext.
+	t.Run("top-level fields do not shadow encrypted variables", func(t *testing.T) {
+		for _, value := range []any{"ENC:fixed", "plain", "", nil, false, 0} {
+			cs := &catalogService{cipher: &mockCipher{decryptFunc: func(ciphertext string) (string, error) { return "plain_" + ciphertext, nil }}}
+			cfg := interfaces.ConnectorConfig{"fixture_option": value, "variables": map[string]any{"fixture_option": "ENC:nested"}, "options": map[string]any{"fixture_option": "ENC:driver"}}
+			got, err := cs.decryptSensitiveFields([]string{"fixture_option"}, cfg)
+			require.NoError(t, err)
+			assert.Equal(t, "plain_nested", got["variables"].(map[string]any)["fixture_option"])
+			if value == "ENC:fixed" {
+				assert.Equal(t, "plain_fixed", got["fixture_option"])
+			} else {
+				assert.Equal(t, value, got["fixture_option"])
+			}
+			assert.Equal(t, cfg["options"], got["options"])
+			assert.Equal(t, value, cfg["fixture_option"])
+			assert.Equal(t, "ENC:nested", cfg["variables"].(map[string]any)["fixture_option"])
+		}
+	})
+	t.Run("driver options are not decrypted when the selected field is absent", func(t *testing.T) {
+		cs := &catalogService{cipher: &mockCipher{decryptFunc: func(string) (string, error) {
+			t.Error("driver options must not be selected for decryption")
+			return "unexpected", nil
+		}}}
+		cfg := interfaces.ConnectorConfig{"variables": map[string]any{"tenant": "public"}, "options": map[string]any{"fixture_option": "ENC:driver-fixture"}}
+		got, err := cs.decryptSensitiveFields([]string{"fixture_option"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, cfg, got)
+	})
+	t.Run("decrypts declared variables independently of the write encryption switch", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{decryptFunc: func(value string) (string, error) { return strings.TrimPrefix(value, "sealed_"), nil }}}
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"api_key": "ENC:sealed_key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}}
+			got, err := cs.decryptSensitiveFields([]string{"api_key"}, cfg)
+			require.NoError(t, err)
+			assert.Equal(t, "key-fixture", got["variables"].(map[string]any)["api_key"])
+			assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"])
+			assert.Equal(t, "ENC:sealed_key-fixture", cfg["variables"].(map[string]any)["api_key"])
+		}
+	})
+	t.Run("variable presence takes precedence over driver options", func(t *testing.T) {
+		for _, value := range []any{nil, "", false, 0, "plain-fixture"} {
+			cs := &catalogService{cipher: &mockCipher{decryptFunc: func(string) (string, error) { t.Fatal("must not decrypt shadowed options"); return "", nil }}}
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"api_key": value}, "options": map[string]any{"api_key": "ENC:driver-fixture"}}
+			got, err := cs.decryptSensitiveFields([]string{"api_key"}, cfg)
+			require.NoError(t, err)
+			assert.Equal(t, value, got["variables"].(map[string]any)["api_key"])
+			assert.Equal(t, cfg["options"], got["options"])
+		}
+	})
+	t.Run("plaintext and ciphertext remain readable after switching write encryption", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("write encryption=%t", enabled), func(t *testing.T) {
+				cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{
+					encryptFunc: func(string) (string, error) {
+						t.Fatal("reading must not encrypt or migrate stored values")
+						return "", nil
+					},
+					decryptFunc: func(value string) (string, error) {
+						assert.Equal(t, "cipher-fixture", value)
+						return "decoded-fixture", nil
+					},
+				}}
+				cfg := interfaces.ConnectorConfig{"token": "legacy-fixture", "variables": map[string]any{"fixture_option": "ENC:cipher-fixture"}}
+				got, err := cs.decryptSensitiveFields([]string{"token", "fixture_option"}, cfg)
+				require.NoError(t, err)
+				assert.Equal(t, "legacy-fixture", got["token"])
+				assert.Equal(t, "decoded-fixture", got["variables"].(map[string]any)["fixture_option"])
+				assert.Equal(t, "ENC:cipher-fixture", cfg["variables"].(map[string]any)["fixture_option"])
+			})
+		}
+	})
+	t.Run("reads fixed and nested credentials without modifying storage", func(t *testing.T) {
+		cs := &catalogService{cipher: &mockCipher{decryptFunc: func(value string) (string, error) { return "plain_" + value, nil }}}
+		cfg := interfaces.ConnectorConfig{"token": "ENC:fixed", "variables": map[string]any{"fixture_option": "ENC:nested", "count": 0, "rows": []any{map[string]any{"flag": false}}}, "sensitive_variables": []any{"fixture_option"}}
+		got, err := cs.decryptSensitiveFields([]string{"token", "fixture_option"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "plain_fixed", got["token"])
+		assert.Equal(t, "plain_nested", got["variables"].(map[string]any)["fixture_option"])
+		got["variables"].(map[string]any)["count"] = 99
+		got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+		assert.Equal(t, false, cfg["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"])
+		assert.Equal(t, "ENC:fixed", cfg["token"])
+		assert.Equal(t, "ENC:nested", cfg["variables"].(map[string]any)["fixture_option"])
+		assert.Equal(t, 0, cfg["variables"].(map[string]any)["count"])
+	})
+	for _, value := range []string{"ENC:bad"} {
+		t.Run("rejects malformed stored variable "+value, func(t *testing.T) {
+			cs := &catalogService{cipher: &mockCipher{decryptFunc: func(string) (string, error) { return "", errors.New("provider fixture disclosure") }}}
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"fixture_option": value}, "sensitive_variables": []string{"fixture_option"}}
+			got, err := cs.decryptSensitiveFields([]string{"fixture_option"}, cfg)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.NotContains(t, err.Error(), "provider fixture")
+			assert.Equal(t, value, cfg["variables"].(map[string]any)["fixture_option"])
+		})
+	}
+	t.Run("crypto disabled isolates declared variable fields", func(t *testing.T) {
+		cs := &catalogService{}
+		cfg := interfaces.ConnectorConfig{"variables": map[string]any{"fixture_option": "fixture"}, "sensitive_variables": []string{"fixture_option"}}
+		got, err := cs.decryptSensitiveFields([]string{"fixture_option"}, cfg)
+		require.NoError(t, err)
+		got["variables"].(map[string]any)["fixture_option"] = "changed"
+		assert.Equal(t, "fixture", cfg["variables"].(map[string]any)["fixture_option"])
+	})
 
-		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if decrypted["password"] != "ENC:ciphertext" {
-			t.Errorf("expected original value, got '%v'", decrypted["password"])
-		}
+	t.Run("encrypted storage never falls back to plaintext without its key", func(t *testing.T) {
+		config := interfaces.ConnectorConfig{"token": "ENC:fixture"}
+		got, err := (&catalogService{}).decryptSensitiveFields([]string{"token"}, config)
+		require.ErrorContains(t, err, "decryption key is unavailable")
+		assert.Nil(t, got)
+		assert.Equal(t, "ENC:fixture", config["token"])
 	})
 	t.Run("decrypt with cipher success", func(t *testing.T) {
 		cs := &catalogService{
@@ -172,33 +382,22 @@ func TestDecryptSensitiveFields(t *testing.T) {
 				},
 			},
 		}
-		config := map[string]any{"password": "ENC:rsa_data"} //nolint:gosec // Test-only placeholder ciphertext.
+		config := interfaces.ConnectorConfig{"password": "ENC:cipher_data"} //nolint:gosec // Test-only placeholder ciphertext.
 
 		decrypted, err := cs.decryptSensitiveFields([]string{"password"}, config)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if decrypted["password"] != "plaintext_rsa_data" {
-			t.Errorf("expected 'plaintext_rsa_data', got '%v'", decrypted["password"])
+		if decrypted["password"] != "plaintext_cipher_data" {
+			t.Errorf("expected 'plaintext_cipher_data', got '%v'", decrypted["password"])
 		}
 	})
-	t.Run("decrypt missing enc prefix", func(t *testing.T) {
-		cs := &catalogService{
-			cipher: &mockCipher{
-				decryptFunc: func(ciphertext string) (string, error) {
-					return "", nil
-				},
-			},
-		}
-		config := map[string]any{"password": "no_prefix_value"}
-
-		_, err := cs.decryptSensitiveFields([]string{"password"}, config)
-		if err == nil {
-			t.Fatal("expected error for missing ENC: prefix")
-		}
-		if !strings.Contains(err.Error(), "not encrypted") {
-			t.Errorf("expected 'not encrypted' error, got: %v", err)
-		}
+	t.Run("legacy plaintext does not require decryption", func(t *testing.T) {
+		cs := &catalogService{cipher: &mockCipher{decryptFunc: func(string) (string, error) { t.Fatal("legacy plaintext must not be decrypted"); return "", nil }}}
+		config := interfaces.ConnectorConfig{"token": "legacy-fixture"}
+		got, err := cs.decryptSensitiveFields([]string{"token"}, config)
+		require.NoError(t, err)
+		assert.Equal(t, config, got)
 	})
 	t.Run("decrypt decrypt fails", func(t *testing.T) {
 		cs := &catalogService{
@@ -208,7 +407,7 @@ func TestDecryptSensitiveFields(t *testing.T) {
 				},
 			},
 		}
-		config := map[string]any{"password": "ENC:bad_data"} //nolint:gosec // Test-only malformed ciphertext.
+		config := interfaces.ConnectorConfig{"password": "ENC:bad_data"} //nolint:gosec // Test-only malformed ciphertext.
 
 		_, err := cs.decryptSensitiveFields([]string{"password"}, config)
 		if err == nil {
@@ -284,6 +483,270 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 }
 
 func TestCatalogServiceCreate(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reserved sensitive plaintext returns 400 without persistence crypto=%t", enabled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := vmock.NewMockPermissionService(ctrl)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			cfg := interfaces.ConnectorConfig{"fixture_option": nil, "variables": map[string]any{"fixture_option": "eNc:private-fixture"}, "sensitive_variables": []string{"fixture_option"}}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"fixture_option"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
+			connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ca: ca, ps: ps, cf: cf, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) {
+				t.Fatal("reserved plaintext must not reach the cipher")
+				return "", nil
+			}}}
+			req := &interfaces.CatalogRequest{ID: "one", Name: "API", ConnectorType: "http", ConnectorCfg: cfg}
+			_, err := cs.Create(context.Background(), req, true)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.ErrorCode)
+			assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "plaintext must not start with ENC:")
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "private-fixture")
+			assert.Equal(t, "eNc:private-fixture", cfg["variables"].(map[string]any)["fixture_option"])
+		})
+	}
+	for _, allowUnhealthy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("storage encryption failure never persists allow_unhealthy=%t", allowUnhealthy), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			ps := vmock.NewMockPermissionService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			cfg := interfaces.ConnectorConfig{"token": "first-fixture", "variables": map[string]any{"fixture_option": "failed-fixture", "rows": []any{map[string]any{"flag": false}}}}
+			before, _ := json.Marshal(cfg)
+			req := &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: cfg}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				assert.Equal(t, cfg, got)
+				got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+				return connector, nil
+			})
+			checked := false
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error {
+				checked = true
+				if allowUnhealthy {
+					return errors.New("source temporarily unavailable")
+				}
+				return nil
+			})
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ca: ca, ps: ps, cf: cf, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+				assert.True(t, checked)
+				if value == "failed-fixture" {
+					return "", errors.New("provider disclosed failed-fixture")
+				}
+				return "cipher", nil
+			}, decryptFunc: func(string) (string, error) { t.Fatal("plaintext update must not decrypt"); return "", nil }}}
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil).AnyTimes()
+			_, err := cs.Create(context.Background(), req, allowUnhealthy)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "provider disclosed")
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "failed-fixture")
+			after, _ := json.Marshal(cfg)
+			assert.Equal(t, string(before), string(after))
+		})
+	}
+
+	for _, cryptoEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("plaintext client input reaches source and storage crypto=%t", cryptoEnabled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			ps := vmock.NewMockPermissionService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+			db, sqlMock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			cfg := interfaces.ConnectorConfig{"token": "client-fixture", "variables": map[string]any{"fixture_option": "literal-client", "nested": map[string]any{"value": false}}, "sensitive_variables": []string{"fixture_option"}}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
+			sourceChecked := false
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				assert.Equal(t, cfg, got)
+				got["variables"].(map[string]any)["nested"].(map[string]any)["value"] = true
+				return connector, nil
+			})
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error { sourceChecked = true; return nil })
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil)
+			sqlMock.ExpectBegin()
+			sqlMock.ExpectCommit()
+			ca.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog) error {
+				if cryptoEnabled {
+					assert.Equal(t, "ENC:encrypted_client-fixture", saved.ConnectorCfg["token"])
+					assert.Equal(t, "ENC:encrypted_literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"])
+				} else {
+					assert.Equal(t, "client-fixture", saved.ConnectorCfg["token"])
+					assert.Equal(t, "literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"])
+				}
+				assert.Equal(t, false, saved.ConnectorCfg["variables"].(map[string]any)["nested"].(map[string]any)["value"])
+				return nil
+			})
+			hcss.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cs := &catalogService{ca: ca, ps: ps, cf: cf, hcss: hcss, db: db, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) { assert.True(t, sourceChecked); return "encrypted_" + value, nil }, decryptFunc: func(string) (string, error) { return "", errors.New("plaintext input must not be decrypted") }}}
+			cs.appSetting.CryptoSetting.Enabled = cryptoEnabled
+			_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: cfg}, false)
+			require.NoError(t, err)
+			assert.Equal(t, "client-fixture", cfg["token"])
+			assert.Equal(t, "literal-client", cfg["variables"].(map[string]any)["fixture_option"])
+			assert.Equal(t, false, cfg["variables"].(map[string]any)["nested"].(map[string]any)["value"])
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+
+	}
+
+	t.Run("metadata lookup error is not a decryption or connectivity failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cf.EXPECT().GetSensitiveFields("missing", gomock.Any()).Return(nil, factory.ErrConnectorUnavailable)
+		cs := &catalogService{ps: ps, cf: cf, ca: ca}
+		req := &interfaces.CatalogRequest{ID: "one", Name: "name", ConnectorType: "missing", ConnectorCfg: map[string]any{}}
+		_, err := cs.Create(context.Background(), req, true)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+	})
+	t.Run("API cancelled connection test closes without persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps, cf := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(probeCtx context.Context) error {
+			require.ErrorIs(t, probeCtx.Err(), context.Canceled)
+			return probeCtx.Err()
+		})
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		cs := &catalogService{ps: ps, cf: cf, appSetting: &common.AppSetting{}}
+		_, err := cs.Create(ctx, &interfaces.CatalogRequest{ConnectorType: "http", Name: "API"}, false)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	})
+	for _, allow := range []bool{false, true} {
+		t.Run(fmt.Sprintf("API transport failure allow_unhealthy=%t", allow), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			connector.EXPECT().TestConnection(gomock.Any()).Return(context.DeadlineExceeded)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
+			req := &interfaces.CatalogRequest{ID: "api-1", Name: "API", ConnectorType: "http", ConnectorCfg: map[string]any{"auth_type": "none"}, ExpectedUpdateTime: 9}
+			if allow {
+				db, sqlMock, err := sqlmock.New()
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = db.Close(); require.NoError(t, sqlMock.ExpectationsWereMet()) })
+				cs.db = db
+				sqlMock.ExpectBegin()
+				sqlMock.ExpectCommit()
+				ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil)
+				ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(nil, nil)
+				ca.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog) error {
+					assert.Equal(t, interfaces.ConnectorCategoryAPI, saved.Category)
+					assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, saved.HealthCheckStatus)
+					assert.Equal(t, connectionTestFailedResult, saved.HealthCheckResult)
+					return nil
+				})
+				hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+				cs.hcss = hcss
+				hcss.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+				ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			}
+			_, err := cs.Create(context.Background(), req, allow)
+			if allow {
+				require.NoError(t, err)
+			} else {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		status int
+	}{
+		{"invalid config", errors.New("fixture-invalid-config"), http.StatusBadRequest},
+		{"unavailable", factory.ErrConnectorUnavailable, http.StatusBadRequest},
+		{"disabled", factory.ErrConnectorDisabled, http.StatusConflict},
+		{"edition denied", factory.ErrConnectorEntitlementDenied, http.StatusForbidden},
+	} {
+		t.Run("API rejects "+tc.name+" before writes", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(nil, tc.cause)
+			cs := &catalogService{ps: ps, cf: cf, ca: ca}
+			_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: map[string]any{"auth_type": "none"}}, true)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+		})
+	}
+	for _, schedule := range []*interfaces.CatalogHealthCheckScheduleRequest{nil, {Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *"}} {
+		t.Run(fmt.Sprintf("API config tests transport with schedule supplied=%t", schedule != nil), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca, ps, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl)
+			hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+			hcss.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), schedule).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
+			connector := vmock.NewMockConnector(ctrl)
+			db, sqlMock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("kingdee", gomock.Any()).Return([]string{"token"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "kingdee", interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "auth_type": "bearer", "token": "test-only-value"}).Return(connector, nil)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
+			connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil)
+			sqlMock.ExpectBegin()
+			ca.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog) error {
+				assert.Equal(t, interfaces.CatalogTypePhysical, saved.Type)
+				assert.Equal(t, interfaces.ConnectorCategoryAPI, saved.Category)
+				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, saved.HealthCheckStatus)
+				assert.Equal(t, "Connection test succeeded.", saved.HealthCheckResult)
+				assert.Equal(t, "ENC:fixture", saved.ConnectorCfg["token"])
+				return nil
+			})
+			sqlMock.ExpectCommit()
+			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), interfaces.CATALOG_CREATOR_OPERATIONS).Return(nil)
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, db: db, ca: ca, ps: ps, cf: cf, hcss: hcss, cipher: &mockCipher{encryptFunc: func(value string) (string, error) { assert.Equal(t, "test-only-value", value); return "fixture", nil }}}
+			req := &interfaces.CatalogRequest{Name: "API", ConnectorType: "kingdee", HealthCheckSchedule: schedule, ConnectorCfg: map[string]any{"base_url": "https://api.example.com/", "auth_type": "bearer", "token": "test-only-value"}}
+			require.NoError(t, json.Unmarshal([]byte(`{"category":"table"}`), req))
+			id, err := cs.Create(context.Background(), req, false)
+			require.NoError(t, err)
+			assert.NotEmpty(t, id)
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+	}
+
 	t.Run("checks permission before catalog uniqueness", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := vmock.NewMockPermissionService(ctrl)
@@ -317,11 +780,11 @@ func TestCatalogServiceCreate(t *testing.T) {
 	t.Run("does not expose connector initialization error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := vmock.NewMockPermissionService(ctrl)
-		sensitiveError := "invalid endpoint db.internal with token secret"
+		sensitiveError := "invalid endpoint db.internal"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
 			Return(nil, errors.New(sensitiveError))
 		cs := &catalogService{
@@ -342,7 +805,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{
 			Name:          "internal-physical-catalog",
 			Builtin:       true,
-			ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			ConnectorType: "postgresql",
 		}, false)
 
 		var httpErr *httperrors.HTTPError
@@ -356,13 +819,14 @@ func TestCatalogServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
-		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
+		sensitiveError := "dial tcp db.internal:3306 failed"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
 		cs := &catalogService{
@@ -398,6 +862,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		mockCA.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 				require.NotNil(t, tx)
+				assert.Empty(t, catalog.Category)
 				if catalog.Enabled {
 					t.Fatal("expected catalog to be disabled by default")
 				}
@@ -596,10 +1061,177 @@ func TestCatalogServiceCreate(t *testing.T) {
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
-	t.Run("returns connector details while redacting sensitive config during preflight", func(t *testing.T) {
+	t.Run("temporary plaintext config never calls storage cipher", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := vmock.NewMockPermissionService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		cfg := interfaces.ConnectorConfig{"token": "fixture", "variables": map[string]any{"nested": []any{map[string]any{"value": false}}}}
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			assert.Equal(t, cfg, got)
+			got["variables"].(map[string]any)["nested"].([]any)[0].(map[string]any)["value"] = true
+			return connector, nil
+		})
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		cs := &catalogService{ps: ps, cf: cf, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) { t.Fatal("temporary config must not encrypt"); return "", nil }, decryptFunc: func(string) (string, error) { t.Fatal("temporary config must not decrypt"); return "", nil }}}
+		got, err := cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{ConnectorType: "http", ConnectorCfg: cfg})
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.CatalogHealthStatusHealthy, got.HealthCheckStatus)
+		assert.Equal(t, false, cfg["variables"].(map[string]any)["nested"].([]any)[0].(map[string]any)["value"])
+	})
+
+	for _, saved := range []bool{false, true} {
+		for _, failInitialization := range []bool{false, true} {
+			t.Run(fmt.Sprintf("dynamic credentials source and logs saved=%t initialization=%t", saved, failInitialization), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				ca := vmock.NewMockCatalogAccess(ctrl)
+				ps := vmock.NewMockPermissionService(ctrl)
+				connector := vmock.NewMockConnector(ctrl)
+				var logged []string
+				patches := gomonkey.ApplyFunc(otellog.LogError, func(_ context.Context, _ string, err error, _ ...attribute.KeyValue) {
+					logged = append(logged, err.Error())
+				})
+				defer patches.Reset()
+				cs := &catalogService{cf: cf, ca: ca, ps: ps, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{decryptFunc: func(value string) (string, error) { return "plain@" + value + " value", nil }}}
+				plaintextFixture := "plain@nested value"
+				sourceErr := errors.New("source connection unavailable")
+				cfg := interfaces.ConnectorConfig{"variables": map[string]any{"fixture_option": plaintextFixture, "normal": false}, "sensitive_variables": []any{"fixture_option"}}
+				if saved {
+					cfg["variables"].(map[string]any)["fixture_option"] = "ENC:nested"
+				}
+				if saved {
+					cf.EXPECT().GetSensitiveFields("custom", gomock.Any()).Return([]string{"fixture_option"}, nil)
+				}
+				cf.EXPECT().CreateConnectorInstance(gomock.Any(), "custom", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+					assert.Equal(t, plaintextFixture, got["variables"].(map[string]any)["fixture_option"])
+					got["variables"].(map[string]any)["normal"] = true
+					if failInitialization {
+						return nil, sourceErr
+					}
+					return connector, nil
+				})
+				if !failInitialization {
+					connector.EXPECT().TestConnection(gomock.Any()).Return(sourceErr)
+					connector.EXPECT().Close(gomock.Any()).Return(nil)
+				}
+				var result *interfaces.CatalogHealthCheckStatus
+				var err error
+				if saved {
+					ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", ConnectorType: "custom", ConnectorCfg: cfg}, nil)
+					if !failInitialization {
+						ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "one", gomock.Any()).Return(nil)
+					}
+					result, err = cs.InternalTestConnection(context.Background(), "one")
+				} else {
+					ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+					result, err = cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{ConnectorType: "custom", ConnectorCfg: cfg})
+				}
+				if failInitialization {
+					require.Error(t, err)
+					assert.Nil(t, result)
+					assert.NotContains(t, err.Error(), plaintextFixture)
+				} else {
+					require.NoError(t, err)
+					assert.NotContains(t, result.HealthCheckResult, plaintextFixture)
+					assert.NotContains(t, result.HealthCheckResult, "plain%40nested%20value")
+				}
+				require.NotEmpty(t, logged)
+				for _, entry := range logged {
+					assert.NotContains(t, entry, plaintextFixture)
+					assert.NotContains(t, entry, "plain%40nested%20value")
+				}
+				if saved {
+					assert.Equal(t, "ENC:nested", cfg["variables"].(map[string]any)["fixture_option"])
+				} else {
+					assert.Equal(t, plaintextFixture, cfg["variables"].(map[string]any)["fixture_option"])
+				}
+				assert.Equal(t, false, cfg["variables"].(map[string]any)["normal"])
+			})
+		}
+	}
+
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		status string
+	}{
+		{"TCP TLS success", nil, interfaces.CatalogHealthStatusHealthy},
+		{"TCP TLS failure", errors.New("TCP dial failed"), interfaces.CatalogHealthStatusUnhealthy},
+		{"caller cancelled", context.Canceled, interfaces.CatalogHealthStatusUnhealthy},
+	} {
+		t.Run("API worker health "+tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			config := interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "token": "fixture-secret"}
+			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", ConnectorType: "http", ConnectorCfg: config}, nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return([]string{"token"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", config).Return(connector, nil)
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+				deadline, ok := ctx.Deadline()
+				require.True(t, ok)
+				assert.LessOrEqual(t, time.Until(deadline), 2*time.Second)
+				return tc.cause
+			})
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "api-1", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, result interfaces.CatalogHealthCheckStatus) error {
+				assert.Equal(t, tc.status, result.HealthCheckStatus)
+				assert.NotContains(t, result.HealthCheckResult, "fixture-secret")
+				if tc.cause == nil {
+					assert.Equal(t, "Connection test succeeded.", result.HealthCheckResult)
+				}
+				return nil
+			})
+			cs := &catalogService{ca: ca, cf: cf, appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
+			result, err := cs.InternalTestConnection(context.Background(), "api-1")
+			require.NoError(t, err)
+			assert.Equal(t, tc.status, result.HealthCheckStatus)
+		})
+	}
+	for _, saved := range []bool{false, true} {
+		for _, cause := range []error{nil, errors.New("fixture dial failed")} {
+			t.Run(fmt.Sprintf("API transport test saved=%t failure=%t", saved, cause != nil), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+				connector := vmock.NewMockConnector(ctrl)
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				if saved {
+					cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+				}
+				cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+				connector.EXPECT().TestConnection(gomock.Any()).Return(cause)
+				connector.EXPECT().Close(gomock.Any()).Return(nil)
+				cs := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
+				var result *interfaces.CatalogHealthCheckStatus
+				var err error
+				if saved {
+					ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", ConnectorType: "http"}, nil)
+					ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "api-1", gomock.Any()).Return(nil)
+					result, err = cs.TestConnection(context.Background(), "api-1")
+				} else {
+					result, err = cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{ConnectorType: "http"})
+				}
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				if cause == nil {
+					assert.Equal(t, interfaces.CatalogHealthStatusHealthy, result.HealthCheckStatus)
+					assert.Equal(t, "Connection test succeeded.", result.HealthCheckResult)
+				} else {
+					assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+					assert.Contains(t, result.HealthCheckResult, "fixture dial failed")
+				}
+			})
+		}
+	}
+
+	t.Run("records safe connector details during preflight", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
 			"host":      "db.example.com",
@@ -608,10 +1240,9 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			"password":  "secret-password",
 			"databases": []string{"sales"},
 		}
-		connectorError := "dial tcp db.example.com:3306: access denied for reporter on sales with password secret-password"
+		connectorError := "dial tcp db.example.com:3306: access denied for reporter on sales"
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", config).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(connectorError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
@@ -630,7 +1261,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
 		assert.Equal(t,
-			"dial tcp db.example.com:3306: access denied for reporter on sales with password ******",
+			"dial tcp db.example.com:3306: access denied for reporter on sales",
 			result.HealthCheckResult,
 		)
 		assert.NotContains(t, result.HealthCheckResult, "secret-password")
@@ -640,6 +1271,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
 			"host":     "db.example.com",
@@ -647,8 +1279,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			"username": "reporter",
 			"password": "secret-password",
 		}
-		connectorError := "dial tcp db.example.com:3306: i/o timeout using password secret-password"
-		redactedError := "dial tcp db.example.com:3306: i/o timeout using password ******"
+		connectorError := "dial tcp db.example.com:3306: i/o timeout"
+		expectedError := "dial tcp db.example.com:3306: i/o timeout"
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -657,13 +1289,13 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			ConnectorType: "mariadb",
 			ConnectorCfg:  config,
 		}, nil)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return([]string{"password"}, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", config).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(connectorError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ string, status interfaces.CatalogHealthCheckStatus) error {
-				assert.Equal(t, redactedError, status.HealthCheckResult)
+				assert.Equal(t, expectedError, status.HealthCheckResult)
 				return nil
 			},
 		)
@@ -679,18 +1311,17 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
-		assert.Equal(t, redactedError, result.HealthCheckResult)
+		assert.Equal(t, expectedError, result.HealthCheckResult)
 		assert.NotContains(t, result.HealthCheckResult, "secret-password")
 	})
 
 	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := vmock.NewMockPermissionService(ctrl)
-		sensitiveError := "invalid endpoint db.internal with token secret"
+		sensitiveError := "invalid endpoint db.internal"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
 			Return(nil, errors.New(sensitiveError))
 		cs := &catalogService{
@@ -770,6 +1401,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+
 		sensitiveError := "update t_catalog health status failed at db.internal"
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -783,7 +1415,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).
 			Return(errors.New(sensitiveError))
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
 		cs := &catalogService{
@@ -861,21 +1493,15 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 }
 
-func TestSanitizeConnectionError(t *testing.T) {
-	t.Run("redacts literal and URL-encoded sensitive values", func(t *testing.T) {
-		config := interfaces.ConnectorConfig{"password": "p@ss word"}
-		err := errors.New("password=p@ss word dsn-password=p%40ss%20word")
-
-		result := sanitizeConnectionError(err, config, []string{"password"})
-
-		assert.Equal(t, "password=****** dsn-password=******", result)
+func TestConnectionErrorResult(t *testing.T) {
+	t.Run("preserves the connector-provided safe message", func(t *testing.T) {
+		assert.Equal(t, "source unavailable", connectionErrorResult(errors.New("source unavailable")))
+		assert.Empty(t, connectionErrorResult(nil))
+		assert.Equal(t, connectionTestFailedResult, connectionErrorResult(errors.New(" \r\n ")))
 	})
-
-	t.Run("flattens and limits an untrusted connector response", func(t *testing.T) {
+	t.Run("flattens and limits a connector response", func(t *testing.T) {
 		err := errors.New("first line\r\n" + strings.Repeat("x", maximumConnectionTestResultLength+10))
-
-		result := sanitizeConnectionError(err, nil, nil)
-
+		result := connectionErrorResult(err)
 		assert.NotContains(t, result, "\n")
 		assert.LessOrEqual(t, len([]rune(result)), maximumConnectionTestResultLength)
 		assert.True(t, strings.HasSuffix(result, "..."))
@@ -886,6 +1512,7 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 	t.Run("passes configured timeout to connector", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		connector := vmock.NewMockConnector(ctrl)
+
 		cs := &catalogService{appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
 
 		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
@@ -901,6 +1528,7 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		connector := vmock.NewMockConnector(ctrl)
+
 		cs := &catalogService{appSetting: &common.AppSetting{}}
 
 		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
@@ -915,6 +1543,264 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 }
 
 func TestCatalogServiceUpdate(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reserved sensitive plaintext returns 400 without persistence crypto=%t", enabled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := vmock.NewMockPermissionService(ctrl)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			cfg := interfaces.ConnectorConfig{"fixture_option": nil, "variables": map[string]any{"fixture_option": "eNc:private-fixture"}, "sensitive_variables": []string{"fixture_option"}}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"fixture_option"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
+			connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ca: ca, ps: ps, cf: cf, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{encryptFunc: func(string) (string, error) {
+				t.Fatal("reserved plaintext must not reach the cipher")
+				return "", nil
+			}}}
+			req := &interfaces.CatalogRequest{ID: "one", Name: "API", ConnectorType: "http", ConnectorCfg: cfg}
+			ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "API", ConnectorType: "http", Category: interfaces.ConnectorCategoryAPI}, nil)
+			err := cs.Update(context.Background(), req, true)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.ErrorCode)
+			assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "plaintext must not start with ENC:")
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "private-fixture")
+			assert.Equal(t, "eNc:private-fixture", cfg["variables"].(map[string]any)["fixture_option"])
+		})
+	}
+	t.Run("explicit plaintext replacement encrypts fixed and variables without mutating the request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		cfg := interfaces.ConnectorConfig{"token": "updated-fixture", "variables": map[string]any{"fixture_option": "literal-client", "rows": []any{map[string]any{"flag": false}}}}
+		before, _ := json.Marshal(cfg)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "API", ConnectorType: "http", Category: interfaces.ConnectorCategoryAPI, ConnectorCfg: interfaces.ConnectorConfig{"token": "ENC:previous"}}, nil)
+		cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			assert.Equal(t, cfg, got)
+			got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+			return connector, nil
+		})
+		checked := false
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error { checked = true; return nil })
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		ca.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), int64(9), true).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64, _ bool) (int64, error) {
+			assert.Equal(t, "ENC:encrypted_updated-fixture", saved.ConnectorCfg["token"])
+			assert.Equal(t, "ENC:encrypted_literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"])
+			assert.Equal(t, false, saved.ConnectorCfg["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"])
+			assert.Equal(t, interfaces.CatalogHealthStatusHealthy, saved.HealthCheckStatus)
+			return 1, nil
+		})
+		cs := &catalogService{ca: ca, ps: ps, cf: cf, db: db, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) { assert.True(t, checked); return "encrypted_" + value, nil }, decryptFunc: func(string) (string, error) {
+			t.Fatal("plaintext replacement must not decrypt old or new values")
+			return "", nil
+		}}}
+		err = cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "one", Name: "API", ConnectorType: "http", ConnectorCfg: cfg, ExpectedUpdateTime: 9}, false)
+		require.NoError(t, err)
+		after, _ := json.Marshal(cfg)
+		assert.Equal(t, string(before), string(after))
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	for _, allowUnhealthy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("storage encryption failure never persists allow_unhealthy=%t", allowUnhealthy), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			ps := vmock.NewMockPermissionService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			cfg := interfaces.ConnectorConfig{"token": "first-fixture", "variables": map[string]any{"fixture_option": "failed-fixture", "rows": []any{map[string]any{"flag": false}}}}
+			before, _ := json.Marshal(cfg)
+			req := &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: cfg}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+				assert.Equal(t, cfg, got)
+				got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+				return connector, nil
+			})
+			checked := false
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error {
+				checked = true
+				if allowUnhealthy {
+					return errors.New("source temporarily unavailable")
+				}
+				return nil
+			})
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ca: ca, ps: ps, cf: cf, appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+				assert.True(t, checked)
+				if value == "failed-fixture" {
+					return "", errors.New("provider disclosed failed-fixture")
+				}
+				return "cipher", nil
+			}, decryptFunc: func(string) (string, error) { t.Fatal("plaintext update must not decrypt"); return "", nil }}}
+			req.ID = "one"
+			ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "API", ConnectorType: "http", Category: interfaces.ConnectorCategoryAPI}, nil)
+			err := cs.Update(context.Background(), req, allowUnhealthy)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.ErrorCode)
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "provider disclosed")
+			assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), "failed-fixture")
+			after, _ := json.Marshal(cfg)
+			assert.Equal(t, string(before), string(after))
+		})
+	}
+
+	t.Run("metadata lookup error is not a decryption or connectivity failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		cf.EXPECT().GetSensitiveFields("missing", gomock.Any()).Return(nil, factory.ErrConnectorUnavailable)
+		cs := &catalogService{ps: ps, cf: cf, ca: ca}
+		req := &interfaces.CatalogRequest{ID: "one", Name: "name", ConnectorType: "missing", ConnectorCfg: map[string]any{}}
+		ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "name", ConnectorType: "missing"}, nil)
+		err := cs.Update(context.Background(), req, true)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+	})
+	t.Run("stored API category preserves local validation for unavailable connectors", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "name", ConnectorType: "missing", Category: interfaces.ConnectorCategoryAPI}, nil)
+		cf.EXPECT().GetSensitiveFields("missing", gomock.Any()).Return(nil, factory.ErrConnectorUnavailable)
+		cs := &catalogService{ps: ps, cf: cf, ca: ca}
+		err := cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "one", Name: "name", ConnectorType: "missing"}, true)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+	})
+	for _, allow := range []bool{false, true} {
+		t.Run(fmt.Sprintf("API transport failure allow_unhealthy=%t", allow), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+			connector.EXPECT().TestConnection(gomock.Any()).Return(context.DeadlineExceeded)
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			cs := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
+			req := &interfaces.CatalogRequest{ID: "api-1", Name: "API", ConnectorType: "http", ConnectorCfg: map[string]any{"auth_type": "none"}, ExpectedUpdateTime: 9}
+			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Name: "API", ConnectorType: "http"}, nil)
+			if allow {
+				db, sqlMock, err := sqlmock.New()
+				require.NoError(t, err)
+				t.Cleanup(func() { _ = db.Close(); require.NoError(t, sqlMock.ExpectationsWereMet()) })
+				cs.db = db
+				sqlMock.ExpectBegin()
+				sqlMock.ExpectCommit()
+				ca.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), int64(9), true).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64, _ bool) (int64, error) {
+					assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, saved.HealthCheckStatus)
+					assert.Equal(t, connectionTestFailedResult, saved.HealthCheckResult)
+					return 1, nil
+				})
+			}
+			err := cs.Update(context.Background(), req, allow)
+			if allow {
+				require.NoError(t, err)
+			} else {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		status int
+	}{
+		{"invalid config", errors.New("fixture-invalid-config"), http.StatusBadRequest},
+		{"unavailable", factory.ErrConnectorUnavailable, http.StatusBadRequest},
+		{"disabled", factory.ErrConnectorDisabled, http.StatusConflict},
+		{"edition denied", factory.ErrConnectorEntitlementDenied, http.StatusForbidden},
+	} {
+		t.Run("API rejects "+tc.name+" before writes", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(nil, tc.cause)
+			cs := &catalogService{ps: ps, cf: cf, ca: ca}
+			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Name: "API", ConnectorType: "http", Category: interfaces.ConnectorCategoryAPI, ConnectorCfg: map[string]any{"auth_type": "none"}}, nil)
+			err := cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "api-1", Name: "API", ConnectorType: "http"}, true)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+		})
+	}
+	for _, replacement := range []bool{false, true} {
+		t.Run(fmt.Sprintf("API configuration local validation replacement=%t", replacement), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca, ps, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl)
+			connector := vmock.NewMockConnector(ctrl)
+			db, sqlMock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			stored := interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "auth_type": "bearer", "token": "ENC:fixture"}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Name: "API", ConnectorType: "kingdee", Category: interfaces.ConnectorCategoryAPI, ConnectorCfg: stored, Type: interfaces.CatalogTypePhysical, CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy, HealthCheckResult: "previous-result"}}, nil)
+			cf.EXPECT().GetSensitiveFields("kingdee", gomock.Any()).DoAndReturn(func(_ string, cfg interfaces.ConnectorConfig) ([]string, error) {
+				if replacement {
+					assert.Equal(t, "test-only-value", cfg["token"])
+				} else {
+					assert.Equal(t, stored, cfg)
+				}
+				return []string{"token"}, nil
+			})
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "kingdee", interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "auth_type": "bearer", "token": "test-only-value"}).Return(connector, nil)
+
+			if replacement {
+				connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+			}
+			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			sqlMock.ExpectBegin()
+			ca.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), int64(9), replacement).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64, _ bool) (int64, error) {
+				assert.Equal(t, stored, saved.ConnectorCfg)
+				assert.Equal(t, interfaces.ConnectorCategoryAPI, saved.Category)
+				if replacement {
+					assert.Equal(t, interfaces.CatalogHealthStatusHealthy, saved.HealthCheckStatus)
+					assert.Equal(t, "Connection test succeeded.", saved.HealthCheckResult)
+				} else {
+					assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, saved.HealthCheckStatus)
+					assert.Equal(t, "previous-result", saved.HealthCheckResult)
+				}
+				return 1, nil
+			})
+			sqlMock.ExpectCommit()
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, db: db, ca: ca, ps: ps, cf: cf, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+				assert.True(t, replacement)
+				assert.Equal(t, "test-only-value", value)
+				return "fixture", nil
+			}, decryptFunc: func(string) (string, error) { assert.False(t, replacement); return "test-only-value", nil }}}
+			req := &interfaces.CatalogRequest{ID: "api-1", Name: "API", ConnectorType: "kingdee", ExpectedUpdateTime: 9}
+			require.NoError(t, json.Unmarshal([]byte(`{"category":"table"}`), req))
+			if replacement {
+				req.ConnectorCfg = map[string]any{"base_url": "https://api.example.com/", "auth_type": "bearer", "token": "test-only-value"}
+			}
+			require.NoError(t, cs.Update(context.Background(), req, false))
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+	}
 	for _, tc := range []struct {
 		name           string
 		configJSON     string
@@ -1069,14 +1955,14 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
-		sensitiveError := "invalid endpoint db.internal with token secret"
+		sensitiveError := "invalid endpoint db.internal"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
 			ID: "catalog-1", Name: "physical-catalog", ConnectorType: "mariadb",
 		}, nil)
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", interfaces.ConnectorConfig{}).
 			Return(nil, errors.New(sensitiveError))
 		cs := &catalogService{
@@ -1099,7 +1985,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
-		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
+
+		sensitiveError := "dial tcp db.internal:3306 failed"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1108,7 +1995,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
 		cs := &catalogService{
@@ -1137,6 +2024,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -1153,7 +2041,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 				HealthCheckResult: "awaiting scheduled health check",
 			},
 		}, nil)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return([]string{"password"}, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", interfaces.ConnectorConfig{
 			"host": "new.example.com", "password": "test-only-plaintext",
 		}).Return(connector, nil)
@@ -1171,17 +2059,17 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			},
 		)
 
-		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory, cipher: &mockCipher{
-			decryptFunc: func(value string) (string, error) {
-				assert.Equal(t, "test-only-ciphertext", value)
-				return "test-only-plaintext", nil
+		cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory, cipher: &mockCipher{
+			encryptFunc: func(value string) (string, error) {
+				assert.Equal(t, "test-only-plaintext", value)
+				return "test-only-ciphertext", nil
 			},
 		}}
 		err = cs.Update(context.Background(), &interfaces.CatalogRequest{
 			ID:            "catalog-1",
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
-			ConnectorCfg:  interfaces.ConnectorConfig{"host": "new.example.com", "password": "test-only-ciphertext"},
+			ConnectorCfg:  interfaces.ConnectorConfig{"host": "new.example.com", "password": "test-only-plaintext"},
 		}, true)
 
 		require.NoError(t, err)
@@ -1193,6 +2081,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -1204,7 +2093,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
 			ID: "catalog-1", Name: "physical-catalog", ConnectorType: "mariadb",
 		}, nil)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb", gomock.Any()).Return(nil, nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New("connection refused"))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
@@ -1430,6 +2319,64 @@ func TestCatalogServiceInternalGetByIDs(t *testing.T) {
 }
 
 func TestCatalogServiceGetByIDs(t *testing.T) {
+	for _, malformed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dynamic batch metadata malformed=%t", malformed), func(t *testing.T) {
+			cs, ca, ps, ums := newS2SCatalogService(t)
+			ctrl := gomock.NewController(t)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			cs.cf = cf
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"fixture_option": "ENC:nested", "normal": 0}, "sensitive_variables": []any{"fixture_option"}}
+			if malformed {
+				cfg["sensitive_variables"] = []any{false}
+			}
+			ca.EXPECT().GetByIDs(gomock.Any(), []string{"one"}).Return(map[string]*interfaces.Catalog{"one": {ID: "one", ConnectorType: "custom", ConnectorCfg: cfg}}, nil)
+			var metadataErr error
+			if malformed {
+				metadataErr = errors.New("invalid protection metadata")
+			}
+			cf.EXPECT().GetSensitiveFields("custom", cfg).Return([]string{"fixture_option"}, metadataErr)
+			if !malformed {
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), []string{"one"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"one": {}}, nil)
+				ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			}
+			got, err := cs.GetByIDs(context.Background(), []string{"one"})
+			if malformed {
+				require.Error(t, err)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+			assert.NotContains(t, got[0].ConnectorCfg["variables"], "fixture_option")
+			assert.Equal(t, "ENC:nested", cfg["variables"].(map[string]any)["fixture_option"])
+		})
+	}
+
+	for _, unknown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("batch protection metadata unknown=%t", unknown), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca, cf, ps, ums := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockUserMgmtService(ctrl)
+			ca.EXPECT().GetByIDs(gomock.Any(), []string{"one"}).Return(map[string]*interfaces.Catalog{"one": {ID: "one", ConnectorType: "declared", ConnectorCfg: interfaces.ConnectorConfig{"base_url": "https://api.example.com/"}}}, nil)
+			var metadataErr error
+			if unknown {
+				metadataErr = factory.ErrConnectorUnavailable
+			} else {
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), []string{"one"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"one": {}}, nil)
+				ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			}
+			cf.EXPECT().GetSensitiveFields("declared", gomock.Any()).Return(nil, metadataErr)
+			cs := &catalogService{ca: ca, cf: cf, ps: ps, ums: ums}
+			got, err := cs.GetByIDs(context.Background(), []string{"one"})
+			if unknown {
+				require.Error(t, err)
+				assert.Nil(t, got)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, got, 1)
+				assert.Equal(t, "https://api.example.com/", got[0].ConnectorCfg["base_url"])
+			}
+		})
+	}
 	t.Run("preserves requested order from keyed access results", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
@@ -1847,6 +2794,27 @@ func TestCatalogServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testi
 }
 
 func TestCatalogServiceGetDeletionImpact(t *testing.T) {
+	t.Run("API catalog includes its inherited health schedule", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca, ps, ra := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockResourceAccess(ctrl)
+		bta, dsa, dta := vmock.NewMockBuildTaskAccess(ctrl), vmock.NewMockDiscoverScheduleAccess(ctrl), vmock.NewMockDiscoverTaskAccess(ctrl)
+		suta, hcss := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl), vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "http"}, nil)
+		ra.EXPECT().GetByCatalogID(gomock.Any(), "api-1").Return(nil, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		hcss.EXPECT().GetByCatalogID(gomock.Any(), "api-1").Return(&interfaces.CatalogHealthCheckSchedule{CatalogID: "api-1"}, nil)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+		cs := &catalogService{ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss, cf: cf}
+		impact, err := cs.GetDeletionImpact(context.Background(), "api-1")
+		require.NoError(t, err)
+		assert.True(t, impact.CanDelete)
+		assert.Equal(t, int64(1), impact.CatalogHealthCheckSchedules)
+	})
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
@@ -2012,6 +2980,38 @@ func expectCatalogDeletionImpact(
 }
 
 func TestCatalogServiceDeleteByID(t *testing.T) {
+	t.Run("deletes API catalog without a health schedule", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca, ps, ra := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockResourceAccess(ctrl)
+		bta, dsa, dta := vmock.NewMockBuildTaskAccess(ctrl), vmock.NewMockDiscoverScheduleAccess(ctrl), vmock.NewMockDiscoverTaskAccess(ctrl)
+		suta, hcss := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl), vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "http"}, nil)
+		ra.EXPECT().GetByCatalogID(gomock.Any(), "api-1").Return(nil, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		dsa.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil).Times(2)
+		hcss.EXPECT().GetByCatalogID(gomock.Any(), "api-1").Return(nil, nil)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		sqlMock.ExpectBegin()
+		bta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		dta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		suta.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		dsa.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		hcss.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		ra.EXPECT().DeleteByCatalogID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		ca.EXPECT().DeleteByID(gomock.Any(), gomock.Any(), "api-1").Return(nil)
+		sqlMock.ExpectCommit()
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"api-1"}).Return(nil)
+		cs := &catalogService{db: db, ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss, cf: cf}
+		require.NoError(t, cs.DeleteByID(context.Background(), "api-1"))
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
 	t.Run("returns not found when catalog disappears after authorization", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ca := vmock.NewMockCatalogAccess(ctrl)
@@ -2134,6 +3134,43 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 }
 
 func TestCatalogServiceGetByID(t *testing.T) {
+	for _, sensitive := range []bool{false, true} {
+		for _, unknown := range []bool{false, true} {
+			t.Run(fmt.Sprintf("metadata lookup sensitive=%t unknown=%t", sensitive, unknown), func(t *testing.T) {
+				cs, ca, ps, ums := newS2SCatalogService(t)
+				ctrl := gomock.NewController(t)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				cs.cf = cf
+				ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", ConnectorType: "declared", ConnectorCfg: interfaces.ConnectorConfig{"base_url": "https://api.example.com/"}}, nil)
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"catalog-1"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"catalog-1": {Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}}}, nil)
+				ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+				var metadataErr error
+				if unknown {
+					metadataErr = factory.ErrConnectorUnavailable
+				}
+				cf.EXPECT().GetSensitiveFields("declared", gomock.Any()).Return(nil, metadataErr)
+				got, err := cs.GetByID(context.Background(), "catalog-1", sensitive)
+				if unknown {
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+					assert.Nil(t, got)
+				} else {
+					require.NoError(t, err)
+					assert.Equal(t, "https://api.example.com/", got.ConnectorCfg["base_url"])
+				}
+			})
+		}
+	}
+	t.Run("protected logical catalog skips connector metadata", func(t *testing.T) {
+		cs, ca, ps, ums := newS2SCatalogService(t)
+		ca.EXPECT().GetByID(gomock.Any(), "logical").Return(&interfaces.Catalog{ID: "logical", Type: interfaces.CatalogTypeLogical}, nil)
+		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"logical": {}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+		got, err := cs.GetByID(context.Background(), "logical", true)
+		require.NoError(t, err)
+		assert.Equal(t, "logical", got.ID)
+	})
 	t.Run("trusted proxy cannot bypass internal catalog guard", func(t *testing.T) {
 		cs, ca, _, _ := newS2SCatalogService(t)
 		ca.EXPECT().GetByID(gomock.Any(), "c1").Return(&interfaces.Catalog{ID: "c1", Builtin: true}, nil)
@@ -2203,4 +3240,187 @@ func newS2SCatalogService(t *testing.T) (
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	cs := &catalogService{ca: ca, ps: ps, ums: ums}
 	return cs, ca, ps, ums
+}
+
+func TestCatalogServiceRemoveSensitiveFields(t *testing.T) {
+	t.Run("driver options are not removed when the selected field is absent", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cfg := interfaces.ConnectorConfig{"variables": map[string]any{"tenant": "public"}, "options": map[string]any{"fixture_option": "driver-fixture"}}
+		cf.EXPECT().GetSensitiveFields("custom", cfg).Return([]string{"fixture_option"}, nil)
+		catalog := &interfaces.Catalog{ConnectorType: "custom", ConnectorCfg: cfg}
+		require.NoError(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
+		assert.Equal(t, cfg, catalog.ConnectorCfg)
+	})
+	t.Run("hides declared variables and preserves other configuration", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": "key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}, "options": map[string]any{"driver_option": "unchanged"}}
+		cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "api_key"}, nil)
+		catalog := &interfaces.Catalog{ConnectorType: "http", ConnectorCfg: cfg}
+		require.NoError(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
+		assert.NotContains(t, catalog.ConnectorCfg, "token")
+		assert.NotContains(t, catalog.ConnectorCfg["variables"], "api_key")
+		assert.Equal(t, "public", catalog.ConnectorCfg["variables"].(map[string]any)["tenant"])
+		assert.Equal(t, cfg["options"], catalog.ConnectorCfg["options"])
+		assert.Equal(t, []string{"api_key"}, catalog.ConnectorCfg["sensitive_variables"])
+		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"])
+	})
+	t.Run("removes both top-level and variable fields", func(t *testing.T) {
+		for _, value := range []any{"top-value", "", nil, false, 0} {
+			t.Run(fmt.Sprintf("%T=%v", value, value), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				cfg := interfaces.ConnectorConfig{"fixture_option": value, "variables": map[string]any{"fixture_option": "nested-value"}}
+				cf.EXPECT().GetSensitiveFields("custom", cfg).Return([]string{"fixture_option"}, nil)
+				catalog := &interfaces.Catalog{ConnectorType: "custom", ConnectorCfg: cfg}
+				require.NoError(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
+				assert.NotContains(t, catalog.ConnectorCfg, "fixture_option")
+				assert.NotContains(t, catalog.ConnectorCfg["variables"], "fixture_option")
+				assert.Equal(t, "nested-value", cfg["variables"].(map[string]any)["fixture_option"])
+				assert.Contains(t, cfg, "fixture_option")
+			})
+		}
+	})
+	t.Run("redacts fixed and dynamic fields independently and idempotently", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("custom", gomock.Any()).Return([]string{"token", "fixture_option"}, nil).Times(2)
+		original := interfaces.ConnectorConfig{"token": "fixed", "variables": map[string]any{"fixture_option": "nested", "normal": "public", "zero": 0, "flag": false, "rows": []any{map[string]any{"flag": false}}}, "sensitive_variables": []any{"fixture_option"}}
+		catalog := &interfaces.Catalog{ConnectorType: "custom", ConnectorCfg: original}
+		cs := &catalogService{cf: cf}
+		for range 2 {
+			require.NoError(t, cs.removeSensitiveFields(catalog))
+		}
+		assert.NotContains(t, catalog.ConnectorCfg, "token")
+		variables := catalog.ConnectorCfg["variables"].(map[string]any)
+		assert.NotContains(t, variables, "fixture_option")
+		assert.Equal(t, "public", variables["normal"])
+		assert.Equal(t, 0, variables["zero"])
+		assert.Equal(t, false, variables["flag"])
+		variables["rows"].([]any)[0].(map[string]any)["flag"] = true
+		assert.Equal(t, false, original["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"])
+		assert.Equal(t, []any{"fixture_option"}, catalog.ConnectorCfg["sensitive_variables"])
+		assert.Equal(t, "fixed", original["token"])
+		assert.Equal(t, "nested", original["variables"].(map[string]any)["fixture_option"])
+	})
+	t.Run("invalid metadata fails before modifying the catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("custom", gomock.Any()).Return(nil, errors.New("invalid protection metadata"))
+		cfg := interfaces.ConnectorConfig{"token": "fixed", "variables": map[string]any{"fixture_option": "fixture"}, "sensitive_variables": []any{false}}
+		catalog := &interfaces.Catalog{ConnectorType: "custom", ConnectorCfg: cfg}
+		require.Error(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
+		assert.Equal(t, "fixed", catalog.ConnectorCfg["token"])
+	})
+
+	for _, fields := range [][]string{nil, {"token", "api_key", "app_secret"}} {
+		t.Run(fmt.Sprintf("declared fields empty=%t", len(fields) == 0), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cf := vmock.NewMockConnectorFactory(ctrl)
+			cf.EXPECT().GetSensitiveFields("declared", gomock.Any()).Return(fields, nil)
+			catalog := &interfaces.Catalog{ConnectorType: "declared", ConnectorCfg: interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "token": "fixture", "api_key": "fixture", "app_secret": "fixture"}}
+			cs := &catalogService{cf: cf}
+			require.NoError(t, cs.removeSensitiveFields(catalog))
+			assert.Equal(t, "https://api.example.com/", catalog.ConnectorCfg["base_url"])
+			for _, field := range fields {
+				assert.NotContains(t, catalog.ConnectorCfg, field)
+			}
+			if len(fields) == 0 {
+				assert.Len(t, catalog.ConnectorCfg, 4)
+			}
+		})
+	}
+	t.Run("nil and logical catalogs do not need connector metadata", func(t *testing.T) {
+		cs := &catalogService{}
+		require.NoError(t, cs.removeSensitiveFields(nil))
+		require.NoError(t, cs.removeSensitiveFields(&interfaces.Catalog{}))
+	})
+	t.Run("unknown connector returns metadata error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("missing", gomock.Any()).Return(nil, factory.ErrConnectorUnavailable)
+		cs := &catalogService{cf: cf}
+		require.ErrorIs(t, cs.removeSensitiveFields(&interfaces.Catalog{ConnectorType: "missing"}), factory.ErrConnectorUnavailable)
+	})
+}
+
+func TestCatalogServiceInternalGetByID(t *testing.T) {
+	for _, protected := range []bool{false, true} {
+		for _, internal := range []bool{false, true} {
+			for _, malformed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("dynamic read protected=%t internal=%t malformed=%t", protected, internal, malformed), func(t *testing.T) {
+					cs, ca, ps, ums := newS2SCatalogService(t)
+					ctrl := gomock.NewController(t)
+					cf := vmock.NewMockConnectorFactory(ctrl)
+					cs.cf = cf
+					cs.cipher = &mockCipher{decryptFunc: func(value string) (string, error) { return "plain_" + value, nil }}
+					cfg := interfaces.ConnectorConfig{"token": "ENC:fixed", "variables": map[string]any{"fixture_option": "ENC:nested", "flag": false}, "sensitive_variables": []any{"fixture_option"}}
+					if malformed {
+						cfg["sensitive_variables"] = []any{123}
+					}
+					ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", ConnectorType: "custom", ConnectorCfg: cfg}, nil)
+					var metadataErr error
+					if malformed {
+						metadataErr = errors.New("invalid protection metadata")
+					}
+					cf.EXPECT().GetSensitiveFields("custom", cfg).Return([]string{"token", "fixture_option"}, metadataErr)
+					if !internal {
+						ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), []string{"one"}, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).Return(map[string]interfaces.PermissionResourceOps{"one": {}}, nil)
+						ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+					}
+					var got *interfaces.Catalog
+					var err error
+					if internal {
+						got, err = cs.InternalGetByID(context.Background(), "one", protected)
+					} else {
+						got, err = cs.GetByID(context.Background(), "one", protected)
+					}
+					if malformed {
+						require.Error(t, err)
+						assert.Nil(t, got)
+						return
+					}
+					require.NoError(t, err)
+					require.NotNil(t, got)
+					variables := got.ConnectorCfg["variables"].(map[string]any)
+					if protected {
+						assert.Equal(t, "plain_nested", variables["fixture_option"])
+						assert.Equal(t, "plain_fixed", got.ConnectorCfg["token"])
+					} else {
+						assert.NotContains(t, variables, "fixture_option")
+						assert.NotContains(t, got.ConnectorCfg, "token")
+					}
+					assert.Equal(t, false, variables["flag"])
+					assert.Equal(t, []any{"fixture_option"}, got.ConnectorCfg["sensitive_variables"])
+					assert.Equal(t, "ENC:nested", cfg["variables"].(map[string]any)["fixture_option"])
+					assert.Equal(t, "ENC:fixed", cfg["token"])
+				})
+			}
+		}
+	}
+
+	for _, sensitive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unavailable API sensitive=%t", sensitive), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockConnectorFactory(ctrl)
+			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", ConnectorType: "http", ConnectorCfg: interfaces.ConnectorConfig{"token": "fixture"}}, nil)
+			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, factory.ErrConnectorUnavailable)
+			cs := &catalogService{ca: ca, cf: cf}
+			got, err := cs.InternalGetByID(context.Background(), "api-1", sensitive)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Nil(t, got)
+		})
+	}
+	t.Run("protected logical catalog does not look up a connector", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ca.EXPECT().GetByID(gomock.Any(), "logical").Return(&interfaces.Catalog{ID: "logical", Type: interfaces.CatalogTypeLogical}, nil)
+		cs := &catalogService{ca: ca}
+		got, err := cs.InternalGetByID(context.Background(), "logical", true)
+		require.NoError(t, err)
+		assert.Equal(t, "logical", got.ID)
+	})
 }

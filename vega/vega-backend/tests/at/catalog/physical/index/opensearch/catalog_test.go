@@ -43,7 +43,6 @@ func TestOpenSearchCatalogCreate(t *testing.T) {
 		t.Logf("✓ AT测试环境就绪，VEGA Manager: %s", config.VegaBackend.BaseURL)
 
 		builder = NewOpenSearchPayloadBuilder(config.TargetOpenSearch)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 
@@ -237,7 +236,7 @@ func TestOpenSearchCatalogCreate(t *testing.T) {
 					"host":     config.TargetOpenSearch.Host,
 					"port":     1,
 					"username": config.TargetOpenSearch.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  config.TargetOpenSearch.UseSSL,
 				},
 			}
@@ -253,7 +252,7 @@ func TestOpenSearchCatalogCreate(t *testing.T) {
 					"host":     config.TargetOpenSearch.Host,
 					"port":     65535,
 					"username": config.TargetOpenSearch.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  config.TargetOpenSearch.UseSSL,
 				},
 			}
@@ -275,7 +274,7 @@ func TestOpenSearchCatalogCreate(t *testing.T) {
 					"host":     "localhost",
 					"port":     config.TargetOpenSearch.Port,
 					"username": config.TargetOpenSearch.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  config.TargetOpenSearch.UseSSL,
 				},
 			}
@@ -337,7 +336,6 @@ func TestOpenSearchCatalogRead(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		builder = NewOpenSearchPayloadBuilder(config.TargetOpenSearch)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 
@@ -448,7 +446,6 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		builder = NewOpenSearchPayloadBuilder(config.TargetOpenSearch)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 
@@ -470,7 +467,7 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 					"host":     osConfig.Host,
 					"port":     osConfig.Port,
 					"username": osConfig.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  osConfig.UseSSL,
 				},
 			})
@@ -494,7 +491,7 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 					"host":     osConfig.Host,
 					"port":     osConfig.Port,
 					"username": osConfig.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  osConfig.UseSSL,
 				},
 			})
@@ -521,7 +518,7 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 					"host":     "invalid-host-12345.example.com",
 					"port":     osConfig.Port,
 					"username": osConfig.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  osConfig.UseSSL,
 				},
 			})
@@ -545,7 +542,7 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 					"host":     osConfig.Host,
 					"port":     65536,
 					"username": osConfig.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  osConfig.UseSSL,
 				},
 			})
@@ -569,7 +566,7 @@ func TestOpenSearchCatalogUpdate(t *testing.T) {
 					"host":     osConfig.Host,
 					"port":     osConfig.Port,
 					"username": osConfig.Username,
-					"password": builder.GetEncryptedPassword(),
+					"password": builder.GetPassword(),
 					"use_ssl":  osConfig.UseSSL,
 				},
 			})
@@ -603,7 +600,6 @@ func TestOpenSearchCatalogDelete(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		builder = NewOpenSearchPayloadBuilder(config.TargetOpenSearch)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 
@@ -663,7 +659,6 @@ func TestOpenSearchSpecificOptions(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		builder = NewOpenSearchPayloadBuilder(config.TargetOpenSearch)
-		builder.SetTestConfig(config)
 
 		helpers.CleanupCatalogs(client, t)
 

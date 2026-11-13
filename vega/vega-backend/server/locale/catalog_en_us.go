@@ -33,7 +33,7 @@ var catalogEnUS = i18n.I18nMessages{
 		"VegaBackend.Catalog.InternalError.DeleteFailed":                  "Failed to delete catalog. Please contact the administrator",
 		"VegaBackend.Catalog.InternalError.TestConnectionFailed":          "Failed to test catalog connection. Please contact the administrator",
 		"VegaBackend.Catalog.InternalError.EncryptFailed":                 "Failed to entrypt config. Please contact the administrator",
-		"VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted": "Sensitive field is not properly encrypted. Please encrypt the sensitive field with the public key before submitting",
+		"VegaBackend.Catalog.InvalidParameter.SensitiveFieldNotEncrypted": "Stored sensitive field has an invalid format or could not be decrypted",
 		"VegaBackend.Catalog.UpdateConflict":                              "The catalog configuration was updated after it was read. Reload the catalog configuration and retry the update",
 	},
 }

@@ -1189,7 +1189,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			if changed {
 				resource.SchemaDefinition[0].OriginalType = "LARGEINT"
 			}
-			catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}
+			catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, ConnectorType: "doris"}
 			cs.EXPECT().CheckCatalogPermission(gomock.Any(), resource.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, catalog, nil)
 			rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
 			bta.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)

@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -55,23 +56,23 @@ func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
 
 		cf.RegisterCoreLocalConnectors()
 
-		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMySQL)
-		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeMariaDB)
-		assert.Contains(t, cf.connectors, interfaces.ConnectorTypePostgreSQL)
-		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeOpenSearch)
-		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
-		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeSQLServer)
-		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
-		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeDoris)
-		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions[interfaces.ConnectorTypeMySQL])
-		assert.NotSame(t, cf.connectors[interfaces.ConnectorTypeMySQL], cf.connectors[interfaces.ConnectorTypeMariaDB])
+		assert.Contains(t, cf.connectors, "mysql")
+		assert.Contains(t, cf.connectors, "mariadb")
+		assert.Contains(t, cf.connectors, "postgresql")
+		assert.Contains(t, cf.connectors, "opensearch")
+		assert.Contains(t, cf.connectors, "anyshare")
+		assert.NotContains(t, cf.connectors, "sqlserver")
+		assert.NotContains(t, cf.connectors, "oracle")
+		assert.NotContains(t, cf.connectors, "doris")
+		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions["mysql"])
+		assert.NotSame(t, cf.connectors["mysql"], cf.connectors["mariadb"])
 		assert.Empty(t, entitlement.Assembled())
 
-		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
-		cf.SetConnectorEnabled(interfaces.ConnectorTypeMySQL, false)
+		cf.SetConnectorEnabled("mariadb", true)
+		cf.SetConnectorEnabled("mysql", false)
 
-		assert.True(t, cf.connectors[interfaces.ConnectorTypeMariaDB].GetEnabled())
-		assert.False(t, cf.connectors[interfaces.ConnectorTypeMySQL].GetEnabled())
+		assert.True(t, cf.connectors["mariadb"].GetEnabled())
+		assert.False(t, cf.connectors["mysql"].GetEnabled())
 	})
 }
 
@@ -136,10 +137,10 @@ func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 	assert.Empty(t, missing.RequiredEdition)
 	t.Run("enabled state changes independently of edition availability", func(t *testing.T) {
 		connector := mariadb.NewMySQLConnector()
-		cf := &connectorFactory{connectors: map[string]interfaces.Connector{interfaces.ConnectorTypeMySQL: connector}}
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"mysql": connector}}
 		for _, enabled := range []bool{true, false, true} {
-			cf.SetConnectorEnabled(interfaces.ConnectorTypeMySQL, enabled)
-			availability := cf.GetConnectorAvailability(interfaces.ConnectorTypeMySQL)
+			cf.SetConnectorEnabled("mysql", enabled)
+			availability := cf.GetConnectorAvailability("mysql")
 			assert.True(t, availability.Available)
 			assert.Equal(t, !enabled, availability.Disabled)
 		}
@@ -361,7 +362,7 @@ func TestConnectorFactoryValidateConnectorTypeRegistration(t *testing.T) {
 		}
 		cf.RegisterCoreLocalConnectors()
 		request := &interfaces.ConnectorType{
-			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
+			Type: "mysql", Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
 			Category: interfaces.ConnectorCategoryTable, Enabled: true,
 		}
 
@@ -464,7 +465,7 @@ func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 			local.EXPECT().SetEnabled(true),
 			local.EXPECT().GetEnabled().Return(true),
 			local.EXPECT().New(cfg).Return(instance, nil),
-			local.EXPECT().GetSensitiveFields().Return([]string{"password"}),
+			local.EXPECT().GetSensitiveFields(gomock.Any()).Return([]string{"password"}, nil),
 		)
 		cf := &connectorFactory{
 			connectors: map[string]interfaces.Connector{
@@ -483,8 +484,12 @@ func TestConnectorFactorySetEnabledCreateAndSensitiveFields(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, instance, got)
 
-		assert.Equal(t, []string{"password"}, cf.GetSensitiveFields("localdb"))
-		assert.Nil(t, cf.GetSensitiveFields("missing"))
+		fields, err := cf.GetSensitiveFields("localdb", nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"password"}, fields)
+		fields, err = cf.GetSensitiveFields("missing", nil)
+		require.ErrorIs(t, err, ErrConnectorUnavailable)
+		assert.Nil(t, fields)
 
 		cf.SetConnectorEnabled("missing", true)
 
@@ -561,17 +566,17 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			connector, unit string
 			valid           bool
 		}{
-			{interfaces.ConnectorTypeMariaDB, "day", true},
-			{interfaces.ConnectorTypeMySQL, "microsecond", true},
-			{interfaces.ConnectorTypeMariaDB, "quarter", true},
-			{interfaces.ConnectorTypeMariaDB, "days", false},
-			{interfaces.ConnectorTypePostgreSQL, "days", true},
-			{interfaces.ConnectorTypePostgreSQL, "weeks", true},
-			{interfaces.ConnectorTypePostgreSQL, "microsecond", false},
-			{interfaces.ConnectorTypePostgreSQL, "quarter", false},
-			{interfaces.ConnectorTypeAnyShare, "day", false},
-			{interfaces.ConnectorTypeOpenSearch, "day", true},
-			{interfaces.ConnectorTypeOpenSearch, "microsecond", false},
+			{"mariadb", "day", true},
+			{"mysql", "microsecond", true},
+			{"mariadb", "quarter", true},
+			{"mariadb", "days", false},
+			{"postgresql", "days", true},
+			{"postgresql", "weeks", true},
+			{"postgresql", "microsecond", false},
+			{"postgresql", "quarter", false},
+			{"anyshare", "day", false},
+			{"opensearch", "day", true},
+			{"opensearch", "microsecond", false},
 		} {
 			t.Run(tc.connector+"/"+tc.unit, func(t *testing.T) {
 				cf.SetConnectorEnabled(tc.connector, true)
@@ -595,18 +600,18 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 	t.Run("delegates non-before operators to the connector", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 		cf.RegisterCoreLocalConnectors()
-		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
+		cf.SetConnectorEnabled("mariadb", true)
 		cfg := &interfaces.FilterCondCfg{Field: "content", Operation: filter_condition.OperationMatch, ValueFrom: interfaces.ValueFrom_Const, Value: "search"}
 		condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"content": {Name: "content", Type: interfaces.DataType_Text}})
 		require.NoError(t, err)
-		err = cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text}}})
+		err = cf.ValidateFilterCondition("mariadb", condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "content", Type: interfaces.DataType_Text}}})
 		var unsupported *interfaces.UnsupportedOperationError
 		require.ErrorAs(t, err, &unsupported)
 	})
 	t.Run("passes index schema to the full converter", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 		cf.RegisterCoreLocalConnectors()
-		cf.SetConnectorEnabled(interfaces.ConnectorTypeOpenSearch, true)
+		cf.SetConnectorEnabled("opensearch", true)
 		field := &interfaces.Property{Name: "content", OriginalName: "physical.content", Type: interfaces.DataType_Text,
 			Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 4}}}}
 		source := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{field}}
@@ -614,7 +619,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 			cfg := &interfaces.FilterCondCfg{Field: field.Name, Operation: filter_condition.OperationEqual, ValueFrom: interfaces.ValueFrom_Const, Value: value}
 			cond, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
 			require.NoError(t, err)
-			err = cf.ValidateFilterCondition(interfaces.ConnectorTypeOpenSearch, cond, source)
+			err = cf.ValidateFilterCondition("opensearch", cond, source)
 			if value == "okay" {
 				require.NoError(t, err)
 			} else {
@@ -685,7 +690,7 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 		t.Cleanup(entitlement.ResetForTest)
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 		cf.RegisterCoreLocalConnectors()
-		cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, true)
+		cf.SetConnectorEnabled("mariadb", true)
 		property := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
 		condition := &filter_condition.BeforeCond{Lfield: property, Value: []any{int64(1), "day"}}
 		remote := &interfaces.ConnectorType{Type: "review_remote", Mode: interfaces.ConnectorModeRemote, Category: interfaces.ConnectorCategoryAPI, Enabled: true}
@@ -701,14 +706,14 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 					failures <- err
 					return
 				}
-				cf.SetConnectorEnabled(interfaces.ConnectorTypeMariaDB, i%2 == 0)
+				cf.SetConnectorEnabled("mariadb", i%2 == 0)
 			}
 		}()
 		go func() {
 			defer group.Done()
 			<-start
 			for range 2000 {
-				err := cf.ValidateFilterCondition(interfaces.ConnectorTypeMariaDB, condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}})
+				err := cf.ValidateFilterCondition("mariadb", condition, &interfaces.Resource{SchemaDefinition: []*interfaces.Property{property}})
 				if err != nil && !errors.Is(err, ErrConnectorDisabled) {
 					failures <- err
 					return
@@ -849,7 +854,7 @@ func TestConnectorFactoryGetConnectorFieldConfig(t *testing.T) {
 	t.Cleanup(entitlement.ResetForTest)
 	cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
 	cf.RegisterCoreLocalConnectors()
-	ct := &interfaces.ConnectorType{Type: interfaces.ConnectorTypePostgreSQL, Mode: interfaces.ConnectorModeLocal, Category: interfaces.ConnectorCategoryTable}
+	ct := &interfaces.ConnectorType{Type: "postgresql", Mode: interfaces.ConnectorModeLocal, Category: interfaces.ConnectorCategoryTable}
 	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 		ctx := context.WithValue(context.Background(), i18n.LanguageKey, language)
 		fields, err := cf.GetConnectorFieldConfig(ctx, ct)
@@ -1016,6 +1021,86 @@ func TestConnectorFactoryValidateFilterability(t *testing.T) {
 					assert.Same(t, tc.flag, resource.SchemaDefinition[0].Filterable)
 				})
 			}
+		}
+	})
+}
+
+func TestConnectorFactoryGetSensitiveFields(t *testing.T) {
+	t.Run("passes original config and propagates connector metadata errors without instantiation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockConnector(ctrl)
+		cfg := interfaces.ConnectorConfig{"options": map[string]any{"fixture_option": "fixture"}}
+		metadataErr := errors.New("invalid sensitive member metadata")
+		connector.EXPECT().GetSensitiveFields(gomock.Any()).DoAndReturn(func(got interfaces.ConnectorConfig) ([]string, error) {
+			assert.Equal(t, cfg, got)
+			got["observed"] = true
+			return nil, metadataErr
+		})
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"present": connector}}
+		got, err := cf.GetSensitiveFields("present", cfg)
+		require.ErrorIs(t, err, metadataErr)
+		assert.Nil(t, got)
+		assert.Equal(t, true, cfg["observed"])
+	})
+
+	for _, fields := range [][]string{nil, {"token"}} {
+		t.Run("existing metadata", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetSensitiveFields(gomock.Any()).Return(fields, nil)
+			cf := &connectorFactory{connectors: map[string]interfaces.Connector{"present": connector}}
+			got, err := cf.GetSensitiveFields("present", nil)
+			require.NoError(t, err)
+			assert.Equal(t, fields, got)
+			got, err = cf.GetSensitiveFields("missing", nil)
+			require.ErrorIs(t, err, ErrConnectorUnavailable)
+			assert.Nil(t, got)
+		})
+	}
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+	ctrl := gomock.NewController(t)
+	connector := vmock.NewMockConnector(ctrl)
+	connector.EXPECT().GetSensitiveFields(gomock.Any()).Return([]string{"token"}, nil)
+	cf := &connectorFactory{connectors: map[string]interfaces.Connector{"private": connector}, connectorRequiredEditions: map[string]licverify.Edition{"private": licverify.EditionProfessional}}
+	fields, err := cf.GetSensitiveFields("private", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"token"}, fields)
+	instance, err := cf.CreateConnectorInstance(context.Background(), "private", nil)
+	require.ErrorIs(t, err, ErrConnectorEntitlementDenied)
+	assert.Nil(t, instance)
+}
+
+func TestConnectorFactorySupportDiscover(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+	for _, support := range []bool{false, true} {
+		t.Run(fmt.Sprintf("static discovery support=%t", support), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			builder := vmock.NewMockConnector(ctrl)
+			builder.EXPECT().SupportDiscover().Return(support)
+			cf := &connectorFactory{connectors: map[string]interfaces.Connector{"arbitrary": builder}, connectorRequiredEditions: map[string]licverify.Edition{"arbitrary": licverify.EditionProfessional}}
+			got, err := cf.SupportDiscover("arbitrary")
+			require.NoError(t, err)
+			assert.Equal(t, support, got)
+			instance, err := cf.CreateConnectorInstance(context.Background(), "arbitrary", nil)
+			require.ErrorIs(t, err, ErrConnectorEntitlementDenied)
+			assert.Nil(t, instance)
+		})
+	}
+	t.Run("unknown connector", func(t *testing.T) {
+		cf := &connectorFactory{}
+		got, err := cf.SupportDiscover("unknown")
+		require.ErrorIs(t, err, ErrConnectorUnavailable)
+		assert.False(t, got)
+	})
+	t.Run("existing core connectors retain discovery", func(t *testing.T) {
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+		cf.RegisterCoreLocalConnectors()
+		for _, name := range []string{"mysql", "mariadb", "postgresql", "opensearch", "anyshare"} {
+			got, err := cf.SupportDiscover(name)
+			require.NoError(t, err)
+			assert.True(t, got, name)
 		}
 	})
 }

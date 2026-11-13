@@ -76,6 +76,7 @@ type Catalog struct {
 	Builtin bool `json:"built_in"`
 
 	ConnectorType string          `json:"connector_type"`
+	Category      string          `json:"category"` // Server-derived connector category; empty for logical catalogs.
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 	Metadata      map[string]any  `json:"metadata"`
 
@@ -103,6 +104,7 @@ type CatalogSummary struct {
 	Builtin bool   `json:"built_in"`
 
 	ConnectorType string   `json:"connector_type"`
+	Category      string   `json:"category"` // Server-derived connector category; empty for logical catalogs.
 	Schemas       []string `json:"schemas"`
 
 	CatalogHealthCheckStatus

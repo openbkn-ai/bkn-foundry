@@ -127,17 +127,18 @@ func (mr *MockConnectorFactoryMockRecorder) GetConnectorFieldConfig(ctx, ct any)
 }
 
 // GetSensitiveFields mocks base method.
-func (m *MockConnectorFactory) GetSensitiveFields(tp string) []string {
+func (m *MockConnectorFactory) GetSensitiveFields(tp string, cfg interfaces.ConnectorConfig) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSensitiveFields", tp)
+	ret := m.ctrl.Call(m, "GetSensitiveFields", tp, cfg)
 	ret0, _ := ret[0].([]string)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetSensitiveFields indicates an expected call of GetSensitiveFields.
-func (mr *MockConnectorFactoryMockRecorder) GetSensitiveFields(tp any) *gomock.Call {
+func (mr *MockConnectorFactoryMockRecorder) GetSensitiveFields(tp, cfg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnectorFactory)(nil).GetSensitiveFields), tp)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSensitiveFields", reflect.TypeOf((*MockConnectorFactory)(nil).GetSensitiveFields), tp, cfg)
 }
 
 // RegisterConnector mocks base method.
@@ -188,6 +189,21 @@ func (m *MockConnectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 func (mr *MockConnectorFactoryMockRecorder) SetConnectorEnabled(tp, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConnectorEnabled", reflect.TypeOf((*MockConnectorFactory)(nil).SetConnectorEnabled), tp, enabled)
+}
+
+// SupportDiscover mocks base method.
+func (m *MockConnectorFactory) SupportDiscover(tp string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportDiscover", tp)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SupportDiscover indicates an expected call of SupportDiscover.
+func (mr *MockConnectorFactoryMockRecorder) SupportDiscover(tp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportDiscover", reflect.TypeOf((*MockConnectorFactory)(nil).SupportDiscover), tp)
 }
 
 // ValidateBuildSchema mocks base method.

@@ -73,6 +73,33 @@ func TestCatalogHealthCheckScheduleHandlerGet(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "only supported for physical catalogs")
 	})
 
+	t.Run("returns existing schedule for API catalog", func(t *testing.T) {
+		engine, cs, hcss := setupCatalogHealthCheckScheduleHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "api", false).Return(&interfaces.Catalog{
+			ID: "api", Type: interfaces.CatalogTypePhysical, ConnectorType: "http",
+		}, nil)
+		hcss.EXPECT().GetByCatalogID(gomock.Any(), "api").Return(&interfaces.CatalogHealthCheckSchedule{
+			CatalogID: "api", Mode: interfaces.CatalogHealthCheckScheduleModeInherit,
+		}, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/catalogs/api/health-check-schedule", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"catalog_id":"api"`)
+		assert.Contains(t, w.Body.String(), `"mode":"inherit"`)
+	})
+
+	t.Run("preserves authorization refusal before reading API schedule", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHealthCheckScheduleHandlerTest(t)
+		cs.EXPECT().GetByID(gomock.Any(), "api", false).Return(nil,
+			httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/catalogs/api/health-check-schedule", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), httperrors.PublicError_Forbidden)
+	})
+
 	t.Run("preserves catalog not found error", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHealthCheckScheduleHandlerTest(t)
 		cs.EXPECT().GetByID(gomock.Any(), "missing", false).Return(nil,
