@@ -37,17 +37,19 @@ type Candidate struct {
 }
 
 // BatchProgress records a completed or interrupted batch in one synchronous run.
-// RemainingAtSelection excludes this batch and is not a live collection count.
+// RemainingAtSelection excludes this batch's frozen candidates (none for a
+// blocked selection) and is not a live collection count.
 // Cleaned counts include only batches whose frozen IDs were confirmed absent.
 type BatchProgress struct {
-	RunID                string `json:"run_id"`
-	BatchNumber          int    `json:"batch_number"`
-	EligibleAtSelection  int    `json:"eligible_at_selection"`
-	VerifiedCount        int    `json:"verified_count"`
-	CleanedCount         int    `json:"cleaned_count"`
-	CleanedInRun         int    `json:"cleaned_in_run"`
-	RemainingAtSelection int    `json:"remaining_at_selection"`
-	RunComplete          bool   `json:"run_complete"`
+	Blocked              *PayloadBudgetError `json:"blocked,omitempty"`
+	RunID                string              `json:"run_id"`
+	BatchNumber          int                 `json:"batch_number"`
+	EligibleAtSelection  int                 `json:"eligible_at_selection"`
+	VerifiedCount        int                 `json:"verified_count"`
+	CleanedCount         int                 `json:"cleaned_count"`
+	CleanedInRun         int                 `json:"cleaned_in_run"`
+	RemainingAtSelection int                 `json:"remaining_at_selection"`
+	RunComplete          bool                `json:"run_complete"`
 }
 
 type Batch struct {
@@ -185,6 +187,29 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 			batch.EligibleCount = len(batch.Candidates)
 		}
 		if err != nil {
+			var blocked *PayloadBudgetError
+			if kind == observabilityvo.ArchiveKindTrace && errors.As(err, &blocked) {
+				// A retry with no new completed prefix can reuse the exact
+				// blocked selection, preserving useful history in the bounded list.
+				if runID == "" {
+					if previous, ok := service.store.Latest(kind); ok && sameBlockedSelection(previous, window, batch.EligibleCount, blocked) {
+						return previous, fmt.Errorf("freeze archive candidates: %w", err)
+					}
+				}
+				now := service.now().UTC()
+				if runID == "" {
+					runID = fmt.Sprintf("arc_%s_%d_%s", kind, now.UnixNano(), rand.Text())
+				}
+				job := newJob(kind, window, nil, now)
+				job.ID = fmt.Sprintf("%s_%06d", runID, number+1)
+				job.CandidateIDs = []string{blocked.InteractionID}
+				job.ErrorMessage = blocked.Error()
+				job.BatchProgress = &BatchProgress{RunID: runID, BatchNumber: number + 1, EligibleAtSelection: batch.EligibleCount, CleanedInRun: cleaned, RemainingAtSelection: batch.EligibleCount, Blocked: blocked}
+				if saveErr := service.store.Create(job); saveErr != nil {
+					return last, fmt.Errorf("persist blocked archive: %w", saveErr)
+				}
+				return job, fmt.Errorf("freeze archive candidates: %w", err)
+			}
 			return last, fmt.Errorf("freeze archive candidates: %w", err)
 		}
 		if batch.EligibleCount < len(batch.Candidates) || batch.EligibleCount > 0 && len(batch.Candidates) == 0 {
@@ -216,6 +241,13 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 		}
 		cleaned = last.BatchProgress.CleanedInRun
 	}
+}
+
+func sameBlockedSelection(job Job, window observabilityvo.ArchiveRange, eligible int, blocked *PayloadBudgetError) bool {
+	p := job.BatchProgress
+	return job.Status == observabilityvo.ArchiveStatusFailed && job.ManifestRef == "" && job.CandidateCount == 0 &&
+		job.Range.From.Equal(window.From) && job.Range.To.Equal(window.To) && p != nil && p.Blocked != nil &&
+		!p.RunComplete && p.EligibleAtSelection == eligible && p.RemainingAtSelection == eligible && *p.Blocked == *blocked
 }
 
 func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candidates []Candidate) (Job, error) {

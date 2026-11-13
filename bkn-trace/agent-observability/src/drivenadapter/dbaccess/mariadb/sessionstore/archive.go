@@ -89,10 +89,16 @@ func (source *TraceArchiveSource) FreezeBatch(ctx context.Context, kind observab
 	for _, id := range ids {
 		payload, occurredAt, err := source.packageInteraction(ctx, id)
 		if err != nil {
-			return archivesvc.Batch{}, err
+			if errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) && len(batch.Candidates) > 0 {
+				return batch, nil
+			}
+			return batch, err
 		}
 		if len(payload) > archivesvc.MaxTraceArchiveCandidateBytes {
-			return archivesvc.Batch{}, archivesvc.ErrArchivePayloadTooLarge
+			if len(batch.Candidates) > 0 {
+				return batch, nil
+			}
+			return batch, &archivesvc.PayloadBudgetError{InteractionID: id, Stage: "core_json", Actual: int64(len(payload)), Limit: archivesvc.MaxTraceArchiveCandidateBytes, Unit: "bytes"}
 		}
 		if bytes+len(payload)+1 > archivesvc.MaxTraceArchiveBatchBytes {
 			break
@@ -170,7 +176,7 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 		return nil, time.Time{}, err
 	}
 	if len(payload) > archivesvc.MaxTraceArchiveCandidateBytes {
-		return nil, time.Time{}, archivesvc.ErrArchivePayloadTooLarge
+		return nil, time.Time{}, &archivesvc.PayloadBudgetError{InteractionID: interactionID, Stage: "core_json", Actual: int64(len(payload)), Limit: archivesvc.MaxTraceArchiveCandidateBytes, Unit: "bytes"}
 	}
 	if interaction.TerminalAt == nil {
 		return nil, time.Time{}, fmt.Errorf("terminal interaction %s has no terminal time", interactionID)
@@ -215,8 +221,11 @@ func (source *TraceArchiveSource) readBoundedPackage(ctx context.Context, id str
 	}
 	// Even empty-payload rows occupy structs, IDs and JSON metadata. The row cap
 	// prevents a tiny-byte aggregate from materializing an unbounded collection.
-	if rows > int64(archivesvc.MaxTraceArchiveCandidateBytes/256) || bytes > int64(archivesvc.MaxTraceArchiveCandidateBytes) {
-		return archivesvc.ErrArchivePayloadTooLarge
+	if rows > int64(archivesvc.MaxTraceArchiveCandidateBytes/256) {
+		return &archivesvc.PayloadBudgetError{InteractionID: id, Stage: "sql_rows", Actual: rows, Limit: archivesvc.MaxTraceArchiveCandidateBytes / 256, Unit: "rows"}
+	}
+	if bytes > int64(archivesvc.MaxTraceArchiveCandidateBytes) {
+		return &archivesvc.PayloadBudgetError{InteractionID: id, Stage: "sql_payload", Actual: bytes, Limit: archivesvc.MaxTraceArchiveCandidateBytes, Unit: "bytes"}
 	}
 	adapter := &transaction{ctx: ctx, tx: tx}
 	if err = read(adapter); err != nil {

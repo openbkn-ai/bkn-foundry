@@ -65,6 +65,9 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 			case errors.Is(err, archivesvc.ErrArchiveBusy):
 				writeObservabilityError(w, r, http.StatusConflict, "archive_busy", "archive operation is already running")
 			case errors.Is(err, archivesvc.ErrArchivePayloadTooLarge):
+				if writeArchiveBlockage(w, r, job, err) {
+					return
+				}
 				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded")
 			case errors.Is(err, archivesvc.ErrIncompleteCandidates):
 				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded")
@@ -132,10 +135,30 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	}
 	job, err := handler.service.RetryCleanup(r.Context(), parts[0])
 	if err != nil {
+		if writeArchiveBlockage(w, r, job, err) {
+			return
+		}
 		writeObservabilityError(w, r, http.StatusBadRequest, "archive_retry_failed", "archive cleanup cannot be retried")
 		return
 	}
 	writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
+}
+
+// Only advertise a persistent blocker after its failed job was saved. A failed
+// checkpoint write must retain the ordinary server error, without a phantom ID.
+func writeArchiveBlockage(w http.ResponseWriter, r *http.Request, job archivesvc.Job, err error) bool {
+	var blocked *archivesvc.PayloadBudgetError
+	if !errors.As(err, &blocked) || job.ID == "" || job.BatchProgress == nil || job.BatchProgress.Blocked == nil {
+		return false
+	}
+	writeJSON(w, r, http.StatusConflict, observabilityErrorEnvelope{Error: observabilityError{
+		Code: "archive_incomplete_candidates", Message: "trace archive is blocked by an oversized interaction; source retained; earlier verified batches remain recorded", RequestID: requestIDFromRequest(r), RequiredAction: "review_oversized_interaction",
+		Details: struct {
+			JobID   string                         `json:"archive_job_id"`
+			Blocked *archivesvc.PayloadBudgetError `json:"blocked"`
+		}{job.ID, job.BatchProgress.Blocked},
+	}})
+	return true
 }
 
 func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID string) {

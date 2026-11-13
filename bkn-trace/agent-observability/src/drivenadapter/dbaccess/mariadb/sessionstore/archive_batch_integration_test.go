@@ -10,9 +10,11 @@ package sessionstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/archivestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -118,5 +121,62 @@ func TestTraceArchiveBoundedMariaDB(t *testing.T) {
 	if count, err := source.Count(ctx, observabilityvo.ArchiveKindTrace, window); err != nil || count != 1 {
 		t.Fatalf("oversized interaction lost: remaining=%d err=%v", count, err)
 	}
+	// Reuse only this disposable database. Three sorted candidates: small,
+	// 37 sub-1MB outputs accumulating beyond 8MiB, then another small candidate.
+	if _, err = db.ExecContext(ctx, `UPDATE bkn_trace_interactions SET closure_manifest=NULL WHERE interaction_id=?`, "archive-i-101"); err != nil {
+		t.Fatal(err)
+	}
+	seed(102)
+	seed(103)
+	output := sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadInline, Inline: json.RawMessage(`"` + strings.Repeat("x", 400000) + `"`)}
+	if err = store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		for i := 0; i < 37; i++ {
+			op := fmt.Sprintf("large-op-%02d", i)
+			receipt := fmt.Sprintf("large-receipt-%02d", i)
+			tx.SaveOperation(sessionvo.Operation{ID: op, ConversationID: "archive-c", InteractionID: "archive-i-102", OperationKey: op, ToolName: "run_cypher", Attempt: 1, AttemptStatus: sessionvo.AttemptCompleted, RowVersion: 1, CreatedAt: old, UpdatedAt: old})
+			tx.SaveReceipt(sessionvo.Receipt{ID: receipt, SchemaVersion: "3.0.0", Owner: sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "owner"}, ConversationID: "archive-c", InteractionID: "archive-i-102", OperationID: op, Attempt: 1, OperationKey: op, ToolName: "run_cypher", Status: sessionvo.ReceiptCompleted, EvidenceDurability: sessionvo.DurabilityDurable, RequestID: op, RowVersion: 1, IssuedAt: old, TerminalAt: &old})
+			tx.SaveOperationCallFact(sessionvo.OperationCallFact{OperationID: op, ReceiptID: receipt, Attempt: 1, ConversationID: "archive-c", InteractionID: "archive-i-102", ToolName: "run_cypher", Protocol: sessionvo.ProtocolMCP, SourceModule: "context-loader", Input: sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadInline, Inline: json.RawMessage(`{}`)}, Output: &output, StartedAt: old, FinishedAt: &old, Status: sessionvo.AttemptCompleted})
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The full service holds a kind lock on its own connection.
+	db.SetMaxOpenConns(3)
+	jobs := archivestore.New(db)
+	objects := &packetArchiveObjects{}
+	svc := archivesvc.New(jobs, archivesvc.TraceBundleSource{Core: source}, objects, archivesvc.Options{Now: func() time.Time { return now }, Location: time.UTC})
+	job, err := svc.Create(ctx, observabilityvo.ArchiveKindTrace)
+	var blocked *archivesvc.PayloadBudgetError
+	if !errors.As(err, &blocked) || blocked.InteractionID != "archive-i-102" || blocked.Stage != "sql_payload" || blocked.Actual <= blocked.Limit {
+		t.Fatalf("missing accumulated-output diagnosis: %v", err)
+	}
+	if len(objects.counts) != 1 || objects.counts[0] != 1 {
+		t.Fatalf("prefix not committed alone: %v", objects.counts)
+	}
+	saved, ok := jobs.Get(job.ID)
+	if !ok || saved.BatchProgress.Blocked == nil || saved.BatchProgress.RunComplete || saved.BatchProgress.CleanedInRun != 1 || saved.BatchProgress.RemainingAtSelection != 2 || saved.CandidateCount != 0 || saved.ManifestRef != "" {
+		t.Fatalf("non-durable blockage: %+v", saved)
+	}
+	if count, err := source.Count(ctx, observabilityvo.ArchiveKindTrace, window); err != nil || count != 2 {
+		t.Fatalf("lost blocked candidate or suffix: %d %v", count, err)
+	}
+	var facts int
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_operation_call_facts WHERE interaction_id=?`, blocked.InteractionID).Scan(&facts); err != nil || facts != 37 {
+		t.Fatalf("blocked facts changed: %d %v", facts, err)
+	}
+	restarted := archivesvc.New(archivestore.New(db), archivesvc.TraceBundleSource{Core: source}, objects, archivesvc.Options{Now: func() time.Time { return now }, Location: time.UTC})
+	if _, err = restarted.RetryCleanup(ctx, job.ID); err == nil {
+		t.Fatal("blocked job accepted cleanup")
+	}
+	retried, retryErr := restarted.Create(ctx, observabilityvo.ArchiveKindTrace)
+	if retried.ID != job.ID {
+		t.Fatal("real MariaDB retry did not reuse durable blocker")
+	}
+	if err = retryErr; !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) || len(objects.counts) != 1 {
+		t.Fatalf("restart skipped blocked candidate: %v", err)
+	}
+	t.Logf("#2948: 37 outputs x400000 bytes; SQL aggregate=%d; safe prefix=1; blocked+suffix=2; persisted diagnosis survives restart; all 37 facts retained", blocked.Actual)
+
 	t.Log("real MariaDB: 101 interactions archived as 100+1, empty eligible count, oversized closure rejected before decoding and retained hot")
 }

@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -89,5 +90,46 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 				t.Fatal("unauthorized request queried archive source")
 			}
 		})
+	}
+}
+
+func TestArchiveCreateReturnsDurableBlockage(t *testing.T) {
+	auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
+		})},
+		AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: []string{"admin"}}},
+	})
+	blocked := &archivesvc.PayloadBudgetError{InteractionID: "large-interaction", Stage: "sql_payload", Actual: 12598557, Limit: 8388608, Unit: "bytes"}
+	source := &archiveErrorSource{err: fmt.Errorf("must never expose private URL: %w", blocked)}
+	jobs := archivesvc.NewMemoryStore()
+	h := NewArchiveHandler(archivesvc.New(jobs, source, nil, archivesvc.Options{}), auth)
+	req := httptest.NewRequest(http.MethodPost, "/archives", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("X-Request-Id", "archive-test-request")
+	rec := httptest.NewRecorder()
+	h.Create(observabilityvo.ArchiveKindTrace)(rec, req)
+	var response struct {
+		Error struct {
+			Code, Message  string
+			Retryable      bool
+			RequiredAction string `json:"required_action"`
+			RequestID      string `json:"request_id"`
+			Details        struct {
+				JobID   string                         `json:"archive_job_id"`
+				Blocked *archivesvc.PayloadBudgetError `json:"blocked"`
+			}
+		}
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	detail := response.Error.Details
+	if rec.Code != 409 || response.Error.Code != "archive_incomplete_candidates" || response.Error.Retryable || response.Error.RequestID != "archive-test-request" || response.Error.RequiredAction != "review_oversized_interaction" || detail.JobID == "" || detail.Blocked == nil || *detail.Blocked != *blocked || strings.Contains(rec.Body.String(), "private URL") {
+		t.Fatalf("bad response: %s", rec.Body.String())
+	}
+	saved, ok := jobs.Get(detail.JobID)
+	if !ok || saved.BatchProgress.Blocked.InteractionID != blocked.InteractionID || source.purges != 0 {
+		t.Fatal("response does not identify durable safe blockage")
 	}
 }

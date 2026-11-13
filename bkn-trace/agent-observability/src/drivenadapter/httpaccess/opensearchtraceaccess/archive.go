@@ -39,8 +39,11 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if len(candidate.Payload) > archivesvc.MaxTraceArchiveCandidateBytes || len(candidate.Payload)+1 > archivesvc.MaxTraceArchiveBatchBytes-inputBytes {
-			return nil, archivesvc.ErrArchivePayloadTooLarge
+		if len(candidate.Payload)+1 > archivesvc.MaxTraceArchiveBatchBytes-inputBytes {
+			return nil, archiveBudgetError(candidates, "technical_batch", inputBytes+len(candidate.Payload)+1, archivesvc.MaxTraceArchiveBatchBytes, false)
+		}
+		if len(candidate.Payload) > archivesvc.MaxTraceArchiveCandidateBytes {
+			return nil, archiveBudgetError([]archivesvc.Candidate{candidate}, "technical_input", len(candidate.Payload), archivesvc.MaxTraceArchiveCandidateBytes, false)
 		}
 		inputBytes += len(candidate.Payload) + 1
 	}
@@ -67,7 +70,7 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 	body, err := store.client.SearchBounded(ctx, store.index, query, archivesvc.MaxTraceArchiveResponseBytes)
 	if err != nil {
 		if errors.Is(err, opensearch.ErrSearchResponseBudget) {
-			return nil, fmt.Errorf("%w: %w", archivesvc.ErrArchivePayloadTooLarge, err)
+			return nil, errors.Join(archiveBudgetError(candidates, "technical_response", archivesvc.MaxTraceArchiveResponseBytes+1, archivesvc.MaxTraceArchiveResponseBytes, true), err)
 		}
 		return nil, err
 	}
@@ -138,7 +141,7 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		// Bound raw source and identity strings before marshaling even one frozen
 		// metadata entry. Serialized metadata is then included in the preflight sum.
 		if len(hit.Source)+len(document.Index)+len(document.ID)+len(document.Routing) > archivesvc.MaxTraceArchiveCandidateBytes {
-			return nil, archivesvc.ErrArchivePayloadTooLarge
+			return nil, archiveBudgetError(candidates, "technical_document", len(hit.Source)+len(document.Index)+len(document.ID)+len(document.Routing), archivesvc.MaxTraceArchiveCandidateBytes, false)
 		}
 		metadata, err := json.Marshal(document)
 		if err != nil {
@@ -146,7 +149,7 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		}
 		cost := len(hit.Source) + len(metadata) + 2
 		if cost > archivesvc.MaxTraceArchiveCandidateBytes-bytesByTrace[source.TraceID] {
-			return nil, archivesvc.ErrArchivePayloadTooLarge
+			return nil, archiveBudgetError(candidates, "technical_trace", bytesByTrace[source.TraceID]+cost, archivesvc.MaxTraceArchiveCandidateBytes, false)
 		}
 		bytesByTrace[source.TraceID] += cost
 		key := frozenDocumentKey{document.Index, document.ID, document.Routing}
@@ -174,12 +177,12 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		for _, id := range ids {
 			cost := bytesByTrace[id] + len(id)
 			if cost > archivesvc.MaxTraceArchiveCandidateBytes-preflightBytes {
-				return nil, archivesvc.ErrArchivePayloadTooLarge
+				return nil, archiveBudgetError([]archivesvc.Candidate{candidate}, "technical_bundle", preflightBytes+cost, archivesvc.MaxTraceArchiveCandidateBytes, false)
 			}
 			preflightBytes += cost
 		}
 		if preflightBytes+1 > archivesvc.MaxTraceArchiveBatchBytes-outputBytes {
-			return nil, archivesvc.ErrArchivePayloadTooLarge
+			return nil, archiveBudgetError(candidates, "technical_batch", outputBytes+preflightBytes+1, archivesvc.MaxTraceArchiveBatchBytes, false)
 		}
 		technical := make([]json.RawMessage, 0)
 		records := make([]opensearch.FrozenDocument, 0)
@@ -208,14 +211,26 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		}
 		// JSON escaping and added field/array delimiters can grow the preflight
 		// representation. Check the exact persisted payload and JSONL batch bytes.
-		if len(encoded) > archivesvc.MaxTraceArchiveCandidateBytes || len(encoded)+1 > archivesvc.MaxTraceArchiveBatchBytes-outputBytes {
-			return nil, archivesvc.ErrArchivePayloadTooLarge
+		if len(encoded)+1 > archivesvc.MaxTraceArchiveBatchBytes-outputBytes {
+			return nil, archiveBudgetError(candidates, "technical_batch", outputBytes+len(encoded)+1, archivesvc.MaxTraceArchiveBatchBytes, false)
+		}
+		if len(encoded) > archivesvc.MaxTraceArchiveCandidateBytes {
+			return nil, archiveBudgetError([]archivesvc.Candidate{candidate}, "enriched_json", len(encoded), archivesvc.MaxTraceArchiveCandidateBytes, false)
 		}
 		outputBytes += len(encoded) + 1
 		candidate.Payload = encoded
 		result = append(result, candidate)
 	}
 	return result, nil
+}
+
+// Enrichment in TraceBundleSource is deliberately one interaction per call.
+// A multi-candidate legacy call cannot attribute a response-wide budget to one ID.
+func archiveBudgetError(candidates []archivesvc.Candidate, stage string, actual, limit int, atLeast bool) error {
+	if len(candidates) != 1 {
+		return archivesvc.ErrArchivePayloadTooLarge
+	}
+	return &archivesvc.PayloadBudgetError{InteractionID: candidates[0].ID, Stage: stage, Actual: int64(actual), Limit: int64(limit), Unit: "bytes", AtLeast: atLeast}
 }
 
 func searchResultTruncated(total, returned int) bool { return total > returned }
