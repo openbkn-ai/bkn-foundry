@@ -297,6 +297,32 @@ func (gs *gitStore) CreateBranch(ctx context.Context, lineageID string, branch s
 	return nil
 }
 
+func (gs *gitStore) DeleteBranch(ctx context.Context, lineageID string, branch string) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "DeleteBranch")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	if branch == interfaces.GIT_MAIN_BRANCH {
+		span.SetStatus(codes.Error, "Main branch")
+		return fmt.Errorf("branch %s of lineage %s cannot be deleted", branch, lineageID)
+	}
+	if err := repo.Storer.RemoveReference(branchRef); err != nil {
+		span.SetStatus(codes.Error, "Remove reference failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 func (gs *gitStore) Tag(ctx context.Context, lineageID string, name string, ref string) error {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "Tag")
 	defer span.End()

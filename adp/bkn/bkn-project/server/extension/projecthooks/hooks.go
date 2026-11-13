@@ -89,3 +89,27 @@ type Projects interface {
 	// Archived runs once the archive is committed; a failure leaves it to be retried.
 	Archived(ctx context.Context, token, projectID string, caller interfaces.AccountInfo)
 }
+
+// ProjectDeleter is what an edition's Projects add to deleting a project, when they implement it.
+// It is asserted on Projects rather than part of it, so an edition built before it keeps building.
+type ProjectDeleter interface {
+	// Deleting runs before a project is deleted, while it still exists, so an edition can release
+	// what it holds outside the database, such as knowledge-base files. An error stops the delete.
+	Deleting(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) error
+	// DeletingRows deletes the edition's rows of the project in the transaction that deletes the
+	// project's own rows.
+	DeletingRows(ctx context.Context, tx *sql.Tx, projectID string) error
+}
+
+// ProjectPackager is what an edition's Projects add to a project package, when they implement it.
+// Paths are relative to the edition's folder of the package; the names are the parts the package
+// lists. Errors are public.
+type ProjectPackager interface {
+	// ExportParts returns the files of the edition's parts of the project, by part name.
+	ExportParts(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (map[string]map[string][]byte, error)
+	// ImportParts restores the edition's parts into a project just created from a package;
+	// replace maps ids of the exporting environment, such as catalogs, tables and documents, to
+	// those of this one.
+	ImportParts(ctx context.Context, token, projectID string, parts map[string]map[string][]byte,
+		replace map[string]string, caller interfaces.AccountInfo) error
+}

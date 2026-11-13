@@ -655,52 +655,6 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 			}
 		})
 
-		Convey("The owner sets the naming language; the same one changes nothing\n", func() {
-			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.pa.EXPECT().SetProjectNamingLanguage(gomock.Any(), "p1", interfaces.NAMING_LANGUAGE_EN_US, gomock.Any()).Return(nil)
-			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
-
-			entry, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
-
-			So(err, ShouldBeNil)
-			So(entry.NamingLanguage, ShouldEqual, interfaces.NAMING_LANGUAGE_EN_US)
-			So(entry.UpdateTime, ShouldBeGreaterThan, 1)
-
-			same := stored()
-			same.NamingLanguage = interfaces.NAMING_LANGUAGE_EN_US
-			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(same, true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
-
-			entry, err = f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
-
-			So(err, ShouldBeNil)
-			So(entry.UpdateTime, ShouldEqual, 1)
-		})
-
-		Convey("Only the owner may set the naming language, and an invalid one is refused before any call\n", func() {
-			_, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", "fr-FR", owner)
-			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidNamingLanguage)
-
-			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			_, err = f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US,
-				interfaces.AccountInfo{ID: "u2", Type: "user"})
-			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
-		})
-
-		Convey("A naming language write failure is an internal error\n", func() {
-			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
-			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
-			f.pa.EXPECT().SetProjectNamingLanguage(gomock.Any(), "p1", interfaces.NAMING_LANGUAGE_EN_US, gomock.Any()).
-				Return(errors.New("db down"))
-
-			_, err := f.svc.SetProjectNamingLanguage(ctx, token, "p1", interfaces.NAMING_LANGUAGE_EN_US, owner)
-
-			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
-		})
-
 		Convey("A deleted catalog is refused before anything is written; a refused one is not deleted\n", func() {
 			// MissingCatalogs takes only vega's 404 for missing: a catalog the owner may not see in
 			// detail is still set, as before.

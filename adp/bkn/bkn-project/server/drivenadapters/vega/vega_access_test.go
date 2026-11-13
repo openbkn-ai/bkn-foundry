@@ -101,6 +101,25 @@ func Test_VegaAccess(t *testing.T) {
 			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
 
+		Convey("CatalogNames names the catalogs; a refused batch is asked catalog by catalog\n", func() {
+			byPath := map[string]int{
+				"/api/vega-backend/in/v1/catalogs/c1,c2": http.StatusForbidden,
+				"/api/vega-backend/in/v1/catalogs/c1":    http.StatusOK,
+				"/api/vega-backend/in/v1/catalogs/c2":    http.StatusNotFound,
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(byPath[r.URL.Path])
+				_, _ = w.Write([]byte(`{"entries":[{"id":"c1","name":"ERP"}]}`))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+
+			names, err := each.CatalogNames(ctx, account, []string{"c1", "c2"})
+
+			So(err, ShouldBeNil)
+			So(names, ShouldResemble, map[string]string{"c1": "ERP"})
+		})
+
 		Convey("MissingTables asks once and takes the ids left out for missing\n", func() {
 			respBody = `{"entries":[{"id":"r1","name":"orders"},{"id":"r3","name":"parts"}]}`
 

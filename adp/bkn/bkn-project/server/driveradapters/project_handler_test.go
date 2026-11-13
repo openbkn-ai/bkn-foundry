@@ -5,8 +5,11 @@
 package driveradapters
 
 import (
+	"bytes"
 	"context"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -34,6 +37,7 @@ func Test_ProjectRestHandler(t *testing.T) {
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().
 			Return(hydra.Visitor{ID: "u1", Type: hydra.VisitorType_User, TokenID: "Bearer t"}, nil)
 		caller := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
+		ps.EXPECT().MarkManageable(gomock.Any(), "Bearer t", caller, gomock.Any()).AnyTimes()
 		const base = "/api/bkn-project/v1/projects"
 		entry := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "orders"}, OtherProjects: 1}
 
@@ -143,13 +147,57 @@ func Test_ProjectRestHandler(t *testing.T) {
 			}
 		})
 
-		Convey("PUT naming-language sets the language for the caller; the body must be JSON\n", func() {
-			ps.EXPECT().SetProjectNamingLanguage(gomock.Any(), "Bearer t", "p1", "en-US", caller).Return(entry, nil)
-			So(serveBody(handler, http.MethodPut, base+"/p1/naming-language", []byte(`{"naming_language":"en-US"}`)).
-				Result().StatusCode, ShouldEqual, http.StatusOK)
-
-			So(serveBody(handler, http.MethodPut, base+"/p1/naming-language", []byte(`not json`)).Result().StatusCode,
+		Convey("PATCH renames, DELETE deletes with 204, for the caller\n", func() {
+			ps.EXPECT().RenameProject(gomock.Any(), "Bearer t", "p1", "New", caller).Return(entry, nil)
+			So(serveBody(handler, http.MethodPatch, base+"/p1", []byte(`{"name":"New"}`)).Result().StatusCode,
+				ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPatch, base+"/p1", []byte(`not json`)).Result().StatusCode,
 				ShouldEqual, http.StatusBadRequest)
+
+			ps.EXPECT().DeleteProject(gomock.Any(), "Bearer t", "p1", caller).Return(nil)
+			So(serve(handler, http.MethodDelete, base+"/p1").Result().StatusCode, ShouldEqual, http.StatusNoContent)
+		})
+
+		Convey("Export replies the package as an attachment named after the project\n", func() {
+			ps.EXPECT().ExportProject(gomock.Any(), "Bearer t", "p1", caller).Return([]byte("PK"), "订单 项目.bknproj", nil)
+			w := serve(handler, http.MethodGet, base+"/p1/export")
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Header().Get("Content-Type"), ShouldEqual, "application/zip")
+			So(w.Header().Get("Content-Disposition"), ShouldStartWith, "attachment; filename*=utf-8''")
+			So(w.Body.String(), ShouldEqual, "PK")
+		})
+
+		Convey("Preview and import read the package of the multipart field file\n", func() {
+			upload := func(path string, fields map[string]string, file []byte) *httptest.ResponseRecorder {
+				body := &bytes.Buffer{}
+				mw := multipart.NewWriter(body)
+				if file != nil {
+					fw, _ := mw.CreateFormFile("file", "p.bknproj")
+					_, _ = fw.Write(file)
+				}
+				for k, v := range fields {
+					_ = mw.WriteField(k, v)
+				}
+				_ = mw.Close()
+				return serveUpload(handler, path, body, mw.FormDataContentType())
+			}
+			preview := &interfaces.ProjectPackagePreview{Name: "Orders"}
+			ps.EXPECT().PreviewPackage(gomock.Any(), []byte("PK")).Return(preview, nil)
+			So(upload("/api/bkn-project/v1/project-packages/preview", nil, []byte("PK")).Code, ShouldEqual, http.StatusOK)
+			So(upload("/api/bkn-project/v1/project-packages/preview", nil, nil).Code, ShouldEqual, http.StatusBadRequest)
+
+			options := interfaces.ImportProjectOptions{KNID: "orders", CatalogMapping: map[string]string{"c1": "c9"}}
+			ps.EXPECT().ImportPackage(gomock.Any(), "Bearer t", []byte("PK"), options, caller, gomock.Any()).Return(entry, nil)
+			So(upload("/api/bkn-project/v1/project-packages/import",
+				map[string]string{"options": `{"kn_id":"orders","catalog_mapping":{"c1":"c9"}}`}, []byte("PK")).Code,
+				ShouldEqual, http.StatusCreated)
+			So(upload("/api/bkn-project/v1/project-packages/import", map[string]string{"options": "nope"}, []byte("PK")).Code,
+				ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Setting the naming language is gone: a project keeps the language it was created in\n", func() {
+			So(serveBody(handler, http.MethodPut, base+"/p1/naming-language", []byte(`{"naming_language":"en-US"}`)).
+				Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})
 
 		Convey("Any other POST on a project is not found\n", func() {

@@ -85,6 +85,20 @@ func (mr *MockProjectAccessMockRecorder) CreateProject(ctx, project any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateProject", reflect.TypeOf((*MockProjectAccess)(nil).CreateProject), ctx, project)
 }
 
+// DeleteProject mocks base method.
+func (m *MockProjectAccess) DeleteProject(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteProject", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteProject indicates an expected call of DeleteProject.
+func (mr *MockProjectAccessMockRecorder) DeleteProject(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteProject", reflect.TypeOf((*MockProjectAccess)(nil).DeleteProject), ctx, id)
+}
+
 // GetProject mocks base method.
 func (m *MockProjectAccess) GetProject(ctx context.Context, id string) (*interfaces.Project, bool, error) {
 	m.ctrl.T.Helper()
@@ -116,6 +130,20 @@ func (mr *MockProjectAccessMockRecorder) ListProjects(ctx, query any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProjects", reflect.TypeOf((*MockProjectAccess)(nil).ListProjects), ctx, query)
 }
 
+// RenameProject mocks base method.
+func (m *MockProjectAccess) RenameProject(ctx context.Context, id, name string, updateTime int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameProject", ctx, id, name, updateTime)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RenameProject indicates an expected call of RenameProject.
+func (mr *MockProjectAccessMockRecorder) RenameProject(ctx, id, name, updateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameProject", reflect.TypeOf((*MockProjectAccess)(nil).RenameProject), ctx, id, name, updateTime)
+}
+
 // SetProjectArchived mocks base method.
 func (m *MockProjectAccess) SetProjectArchived(ctx context.Context, id string, archived bool, updateTime int64) error {
 	m.ctrl.T.Helper()
@@ -142,18 +170,4 @@ func (m *MockProjectAccess) SetProjectCatalogs(ctx context.Context, id string, c
 func (mr *MockProjectAccessMockRecorder) SetProjectCatalogs(ctx, id, catalogIDs, updateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectCatalogs", reflect.TypeOf((*MockProjectAccess)(nil).SetProjectCatalogs), ctx, id, catalogIDs, updateTime)
-}
-
-// SetProjectNamingLanguage mocks base method.
-func (m *MockProjectAccess) SetProjectNamingLanguage(ctx context.Context, id, language string, updateTime int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetProjectNamingLanguage", ctx, id, language, updateTime)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetProjectNamingLanguage indicates an expected call of SetProjectNamingLanguage.
-func (mr *MockProjectAccessMockRecorder) SetProjectNamingLanguage(ctx, id, language, updateTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectNamingLanguage", reflect.TypeOf((*MockProjectAccess)(nil).SetProjectNamingLanguage), ctx, id, language, updateTime)
 }

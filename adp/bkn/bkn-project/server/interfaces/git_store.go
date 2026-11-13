@@ -52,6 +52,8 @@ type GitStore interface {
 	CommitFiles(ctx context.Context, lineageID string, branch string, files map[string][]byte, message string, author GitAuthor) (string, error)
 	// CreateBranch creates branch at the commit from resolves to.
 	CreateBranch(ctx context.Context, lineageID string, branch string, from string) error
+	// DeleteBranch removes a branch; a branch that does not exist is no error.
+	DeleteBranch(ctx context.Context, lineageID string, branch string) error
 	// Tag creates a lightweight tag at the commit ref resolves to.
 	Tag(ctx context.Context, lineageID string, name string, ref string) error
 	// ReadTree returns the bkn/ files of the commit ref resolves to.

@@ -100,6 +100,20 @@ func (mr *MockGitStoreMockRecorder) CreateBranch(ctx, lineageID, branch, from an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBranch", reflect.TypeOf((*MockGitStore)(nil).CreateBranch), ctx, lineageID, branch, from)
 }
 
+// DeleteBranch mocks base method.
+func (m *MockGitStore) DeleteBranch(ctx context.Context, lineageID, branch string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBranch", ctx, lineageID, branch)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBranch indicates an expected call of DeleteBranch.
+func (mr *MockGitStoreMockRecorder) DeleteBranch(ctx, lineageID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBranch", reflect.TypeOf((*MockGitStore)(nil).DeleteBranch), ctx, lineageID, branch)
+}
+
 // Diff mocks base method.
 func (m *MockGitStore) Diff(ctx context.Context, lineageID, refA, refB string) (*interfaces.PathDiff, error) {
 	m.ctrl.T.Helper()
