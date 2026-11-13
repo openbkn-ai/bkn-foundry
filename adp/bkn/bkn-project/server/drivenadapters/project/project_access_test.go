@@ -292,9 +292,7 @@ func (archivingProbe) Archived(context.Context, string, string, interfaces.Accou
 // deletingProbe deletes one row of its own in the delete transaction.
 type deletingProbe struct{ archivingProbe }
 
-func (deletingProbe) Deleting(context.Context, string, string, interfaces.AccountInfo) error {
-	return nil
-}
+func (deletingProbe) Deleted(context.Context, string, string, interfaces.AccountInfo) {}
 func (deletingProbe) DeletingRows(ctx context.Context, tx *sql.Tx, projectID string) error {
 	_, err := tx.ExecContext(ctx, "DELETE FROM edition_rows WHERE f_project_id=?", projectID)
 	return err

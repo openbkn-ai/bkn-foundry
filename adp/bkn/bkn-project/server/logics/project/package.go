@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -156,7 +157,7 @@ func (s *projectService) ExportProject(ctx context.Context, token string, id str
 		parts, err := packager.ExportParts(ctx, token, id, caller)
 		if err != nil {
 			span.SetStatus(codes.Error, "Export edition parts failed")
-			return nil, "", err
+			return nil, "", publicError(ctx, "Export edition parts failed", err)
 		}
 		for part, partFiles := range parts {
 			if len(partFiles) == 0 || !validPartName(part) {
@@ -462,7 +463,7 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 	}
 	if packager, ok := projecthooks.Current().Projects.(projecthooks.ProjectPackager); ok && len(parts) > 0 {
 		if err := packager.ImportParts(ctx, token, project.ID, parts, ids.all(), owner); err != nil {
-			return err
+			return publicError(ctx, "Import edition parts failed", err)
 		}
 	}
 	return nil
@@ -476,9 +477,9 @@ type idRewrite struct {
 // The JSON fields of a specification and a draft that hold catalog, table and document ids. A
 // value equal to an old id elsewhere, such as an item id or a name, stays as it is.
 var (
-	catalogIDFields  = map[string]bool{"catalog_id": true, "catalog_ids": true, "added_by_catalog": true}
+	catalogIDFields  = map[string]bool{"catalog_id": true, "catalog_ids": true, "added_by_catalog": true, "catalogs_unlisted": true}
 	tableIDFields    = map[string]bool{"resource_id": true, "resource_ids": true, "table_id": true}
-	documentIDFields = map[string]bool{"document_id": true, "document_ids": true}
+	documentIDFields = map[string]bool{"document_id": true, "document_ids": true, "suggested_document_id": true}
 )
 
 // all is every id mapped, for an edition's parts.
@@ -649,6 +650,15 @@ func readPackage(ctx context.Context, pkg []byte) (*interfaces.PackageManifest, 
 		manifest.Contents.Editions = []string{}
 	}
 	return manifest, files, nil
+}
+
+// publicError keeps an edition's HTTP error and makes any other an internal one.
+func publicError(ctx context.Context, operation string, err error) error {
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr
+	}
+	return internalError(ctx, operation, err)
 }
 
 func invalidPackage(ctx context.Context, err error) error {

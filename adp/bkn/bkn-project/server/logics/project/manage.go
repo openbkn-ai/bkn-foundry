@@ -64,8 +64,8 @@ func (s *projectService) RenameProject(ctx context.Context, token string, id str
 	return entries[0], nil
 }
 
-// DeleteProject withdraws the project's prepared release, lets the edition release what it holds,
-// deletes the project's rows and then its branch. Its owner may also when its network was deleted.
+// DeleteProject withdraws the project's prepared release, deletes the project's rows, lets the
+// edition release what it holds, and then deletes its branch. Its owner may also when its network was deleted.
 func (s *projectService) DeleteProject(ctx context.Context, token string, id string, caller interfaces.AccountInfo) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteProject")
 	defer span.End()
@@ -85,15 +85,12 @@ func (s *projectService) DeleteProject(ctx context.Context, token string, id str
 			return err
 		}
 	}
-	if deleter, ok := projecthooks.Current().Projects.(projecthooks.ProjectDeleter); ok {
-		if err = deleter.Deleting(ctx, token, id, caller); err != nil {
-			span.SetStatus(codes.Error, "Release edition data failed")
-			return err
-		}
-	}
 	if err = s.pa.DeleteProject(ctx, id); err != nil {
 		span.SetStatus(codes.Error, "Delete project failed")
 		return internalError(ctx, "Delete project failed", err)
+	}
+	if deleter, ok := projecthooks.Current().Projects.(projecthooks.ProjectDeleter); ok {
+		deleter.Deleted(ctx, token, id, caller)
 	}
 	// The branch goes last: nothing reaches it without the project, and a failure only leaves it unused.
 	if s.gs != nil {

@@ -26,18 +26,16 @@ import (
 
 // editionProjects is an edition's project hooks that delete and package what they own.
 type editionProjects struct {
-	deleting, deletingRows []string
-	failDeleting           error
-	exported               map[string]map[string][]byte
-	imported               map[string]map[string][]byte
-	replace                map[string]string
+	deleted, deletingRows []string
+	exported              map[string]map[string][]byte
+	imported              map[string]map[string][]byte
+	replace               map[string]string
 }
 
 func (e *editionProjects) Archiving(context.Context, *sql.Tx, string, int64) error          { return nil }
 func (e *editionProjects) Archived(context.Context, string, string, interfaces.AccountInfo) {}
-func (e *editionProjects) Deleting(_ context.Context, _ string, projectID string, _ interfaces.AccountInfo) error {
-	e.deleting = append(e.deleting, projectID)
-	return e.failDeleting
+func (e *editionProjects) Deleted(_ context.Context, _ string, projectID string, _ interfaces.AccountInfo) {
+	e.deleted = append(e.deleted, projectID)
 }
 func (e *editionProjects) DeletingRows(_ context.Context, _ *sql.Tx, projectID string) error {
 	e.deletingRows = append(e.deletingRows, projectID)
@@ -114,7 +112,7 @@ func Test_ManageProject(t *testing.T) {
 			gs.EXPECT().DeleteBranch(gomock.Any(), "orders", "project/p1").Return(nil).After(del)
 
 			So(f.svc.DeleteProject(ctx, token, "p1", owner), ShouldBeNil)
-			So(hooks.deleting, ShouldResemble, []string{"p1"})
+			So(hooks.deleted, ShouldResemble, []string{"p1"})
 		})
 
 		Convey("A draft edited since preparing stays; a branch that will not go is no failure\n", func() {
@@ -135,11 +133,14 @@ func Test_ManageProject(t *testing.T) {
 			shouldBeHTTPError(f.svc.DeleteProject(ctx, token, "p1", owner), http.StatusConflict,
 				perrors.BknProject_Project_ReleasePublishing)
 
-			hooks := &editionProjects{failDeleting: errors.New("kb down")}
+			hooks := &editionProjects{}
 			defer projecthooks.SetForTest(projecthooks.Hooks{Projects: hooks})()
 			visible()
 			f.ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
-			So(f.svc.DeleteProject(ctx, token, "p1", owner), ShouldNotBeNil)
+			f.pa.EXPECT().DeleteProject(gomock.Any(), "p1").Return(errors.New("db down"))
+			shouldBeHTTPError(f.svc.DeleteProject(ctx, token, "p1", owner), http.StatusInternalServerError,
+				perrors.BknProject_Project_InternalError)
+			So(hooks.deleted, ShouldBeEmpty)
 
 			visible()
 			adm.EXPECT().IsAdmin(gomock.Any(), token).Return(false)
@@ -287,6 +288,21 @@ func Test_ProjectPackage(t *testing.T) {
 			So(hooks.imported["terms"]["terms.json"], ShouldResemble, []byte(`[]`))
 			So(hooks.replace["t1"], ShouldEqual, "t9")
 		})
+	})
+}
+
+func Test_RewriteIDs(t *testing.T) {
+	Convey("Only id fields are rewritten, by what they name\n", t, func() {
+		ids := idRewrite{catalogs: map[string]string{"orders": "c9"}, tables: map[string]string{"t1": "t9"},
+			documents: map[string]string{"d1": "d9"}}
+		out := map[string]any{}
+		So(unmarshalRewritten([]byte(`{"id":"orders","name":"t1","catalog_ids":["orders"],"catalogs_unlisted":["orders"],
+			"table":{"resource_id":"t1","catalog_id":"orders"},"conflicts":[{"suggested_document_id":"d1","sides":[{"document_id":"d1"}]}],
+			"inputs":{"documents":[{"id":"d1"}]},"rows":12345678901234}`), ids, &out), ShouldBeNil)
+		b, _ := json.Marshal(out)
+		So(string(b), ShouldEqual, `{"catalog_ids":["c9"],"catalogs_unlisted":["c9"],"conflicts":[{"sides":[{"document_id":"d9"}],`+
+			`"suggested_document_id":"d9"}],"id":"orders","inputs":{"documents":[{"id":"d9"}]},"name":"t1","rows":12345678901234,`+
+			`"table":{"catalog_id":"c9","resource_id":"t9"}}`)
 	})
 }
 

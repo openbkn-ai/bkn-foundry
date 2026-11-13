@@ -93,12 +93,12 @@ type Projects interface {
 // ProjectDeleter is what an edition's Projects add to deleting a project, when they implement it.
 // It is asserted on Projects rather than part of it, so an edition built before it keeps building.
 type ProjectDeleter interface {
-	// Deleting runs before a project is deleted, while it still exists, so an edition can release
-	// what it holds outside the database, such as knowledge-base files. An error stops the delete.
-	Deleting(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) error
-	// DeletingRows deletes the edition's rows of the project in the transaction that deletes the
-	// project's own rows.
+	// DeletingRows deletes the edition's rows of the project, or queues what it must release, in
+	// the transaction that deletes the project's own rows. An error stops the delete.
 	DeletingRows(ctx context.Context, tx *sql.Tx, projectID string) error
+	// Deleted runs once the delete is committed, to release what the edition holds outside the
+	// database, such as knowledge-base files; a failure leaves it queued and does not fail the delete.
+	Deleted(ctx context.Context, token, projectID string, caller interfaces.AccountInfo)
 }
 
 // ProjectPackager is what an edition's Projects add to a project package, when they implement it.
