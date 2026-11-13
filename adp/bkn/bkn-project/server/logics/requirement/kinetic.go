@@ -39,6 +39,9 @@ type agentLogicNeed struct {
 	// ExecutedBy is, for an action type, the id of the api or mcp_tool need that carries it out:
 	// one of this output, or a kept- id.
 	ExecutedBy string `json:"executed_by"`
+	// CoveredBy is the kept-network- id of the network's item that already covers the need, itself
+	// or as a step of what it computes: the need is linked to it, never added as new.
+	CoveredBy string `json:"covered_by"`
 }
 
 type agentPropertyRef struct {
@@ -56,7 +59,7 @@ func logicNeedSchema() map[string]any {
 		}, "object_type_id", "property")),
 		"suggested_metric_type": schemaEnum(append([]string{""}, interfaces.LogicNeedMetricTypes...)...),
 		"concept_ids":           schemaStrings(), "citations": citationsSchema(), "supplement_reason": schemaString(),
-		"executed_by": schemaString(),
+		"executed_by": schemaString(), "covered_by": schemaString(),
 	}, "id", "kind", "name", "definition", "citations")
 }
 
@@ -98,11 +101,7 @@ func buildKineticMessage(language string, docs []*interfaces.RequirementDocument
 		n.ID = keptPrefix + n.ID
 		msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, n)
 	}
-	model := map[string]bool{}
-	for _, ot := range msg.ObjectTypes {
-		model[ot.ID] = true
-	}
-	networkItems, omitted := messageNetworkItemsOf(items, model)
+	networkItems, omitted := messageNetworkItemsOf(items, modelNames(msg.ObjectTypes))
 	msg.Kept.LogicNeeds = append(msg.Kept.LogicNeeds, networkItems...)
 	msg.NetworkItemsOmitted = omitted
 	body, err := json.Marshal(msg)
@@ -325,12 +324,14 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		const kind = interfaces.REQUIREMENT_RUN_KINETIC
 		checked := cloneSpec(spec)
 		checked.Rejected = rejectedOf(checked.Rejected, kind)
-		addLogicNeeds(checked, uncovered(out.(*kineticOutput).LogicNeeds, items), interfaces.LOGIC_NEED_FROM_ANALYSIS,
+		proposed, covered := uncovered(out.(*kineticOutput).LogicNeeds, items)
+		addLogicNeeds(checked, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS,
 			byID, draft, concepts, func(k, text, reason string) {
 				checked.Rejected = append(checked.Rejected, &interfaces.RequirementRejected{Kind: k, Text: text, Reason: reason, Run: kind})
 			})
-		// What the network has covers the needs of its name: they are linked to it, not left new.
-		linkCovered(checked, items, caller, s.now())
+		// What the network has covers the needs the Agent said it covers and those of its name: they
+		// are linked to it, not left new.
+		linkCovered(checked, items, covered, caller, s.now())
 		needScenarios(checked)
 		spec = checked
 		p.inputs = requirementInputsOf(docs, project)

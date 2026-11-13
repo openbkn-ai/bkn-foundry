@@ -53,7 +53,8 @@ func Test_ScenariosCoverTheWholeModel(t *testing.T) {
 			So(msg.RelationTypes, ShouldHaveLength, 1)
 			// Those on the model's object types first, each by its place among the items.
 			So(msg.LogicNeeds, ShouldResemble, []messageLogicNeed{
-				{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"}},
+				{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"},
+					OwnerObjectType: "Sales order"},
 				{ID: "kept-network-1", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 			})
 		})
@@ -186,7 +187,8 @@ func Test_ScenarioDraftingOnNetworks(t *testing.T) {
 					So(msg.ObjectTypes, ShouldHaveLength, 2)
 					So(msg.RelationTypes, ShouldHaveLength, 1)
 					So(msg.LogicNeeds, ShouldResemble, []messageLogicNeed{{ID: "kept-network-1",
-						Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"}}})
+						Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "Hold order", ObjectTypeIDs: []string{"sales_order"},
+						OwnerObjectType: "Sales order"}})
 				})
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)

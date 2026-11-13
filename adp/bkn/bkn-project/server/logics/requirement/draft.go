@@ -342,6 +342,8 @@ type messageLogicNeed struct {
 	Name          string   `json:"name"`
 	Definition    string   `json:"definition,omitempty"`
 	ObjectTypeIDs []string `json:"object_type_ids,omitempty"`
+	// OwnerObjectType names, for an item of the network, the object type it belongs to.
+	OwnerObjectType string `json:"owner_object_type,omitempty"`
 }
 
 func messageConceptsOf(concepts []*interfaces.RequirementConcept) []messageConcept {
@@ -525,11 +527,7 @@ func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, 
 	var tablesOmitted, propertiesOmitted int
 	msg.Tables, tablesOmitted = messageTablesOf(tables)
 	msg.ObjectTypes, msg.RelationTypes, propertiesOmitted = messageOntologyOf(draft, true)
-	model := map[string]bool{}
-	for _, ot := range msg.ObjectTypes {
-		model[ot.ID] = true
-	}
-	fromNetwork, _ := messageNetworkItemsOf(networkItems, model)
+	fromNetwork, _ := messageNetworkItemsOf(networkItems, modelNames(msg.ObjectTypes))
 	msg.LogicNeeds = append(msg.LogicNeeds, fromNetwork...)
 	body, err := json.Marshal(msg)
 	if err != nil {

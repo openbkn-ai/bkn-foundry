@@ -65,6 +65,7 @@ CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
 GRAPH_EXPLORER_V2 = MIGRATIONS / "0.2.2/04-graph-explorer-count-first-v2.sql"
 ANALYSIS_WRITER = MIGRATIONS / "0.2.2/05-seed-analysis-writer.sql"
 SEMANTIC_DROP_API_NAME = MIGRATIONS / "0.2.2/07-semantic-drop-api-name.sql"
+REQUIREMENTS_V9 = MIGRATIONS / "0.2.2/08-requirements-kinetic-network-coverage-v9.sql"
 
 
 def statements(path):
@@ -308,6 +309,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, ANALYSIS_WRITER)
         apply(upgraded, EVAL_ASSISTANT)
         apply(upgraded, SEMANTIC_DROP_API_NAME)
+        apply(upgraded, REQUIREMENTS_V9)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         # An upgrade keeps the Agents an edition now seeds; the core compares without them.
@@ -537,7 +539,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9)]],
         ],
         "0.2.2",
         True,
@@ -1331,6 +1333,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(SEMANTIC_DROP_API_NAME) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V7) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V8) if "f_localized_content" in s}
+                               | {s for s in statements(REQUIREMENTS_V9) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V6) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
@@ -1514,7 +1517,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -3081,9 +3084,7 @@ def test_requirements_v8_upgrade_matches_fresh_install_and_keeps_history(start):
         old = requirements_prompt_version(db, 7)
         history = snapshot(db)[3]
         apply(db, REQUIREMENTS_V8)
-        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
         new = requirements_prompt_version(db, 8)
-        assert new == requirements_prompt_version(fresh, 8)
         content = new["f_content"]
         # Concepts come from the documents before a model, kinetic needs from the model, scenarios last.
         for rule in ("pass concepts, pass kinetic, pass draft or pass guidance",
@@ -3127,16 +3128,19 @@ def test_requirements_v8_upgrade_matches_fresh_install_and_keeps_history(start):
         before = snapshot(db)
         apply(db, REQUIREMENTS_V8)
         assert snapshot(db) == before
+        # 08 then brings it to the fresh install's v9.
+        apply(db, REQUIREMENTS_V9)
+        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
-def test_requirements_v8_fresh_snapshot_seeds_v8_and_its_translations():
+def test_requirements_v9_fresh_snapshot_seeds_v9_and_its_translations():
     init = (MIGRATIONS / "0.2.2/init.sql").read_text()
-    v8 = [s for s in statements(REQUIREMENTS_V8) if s.startswith("insert into t_agent_prompt_version")][0]
-    body = v8[v8.index("select v.f_prompt_id, 8,") + len("select v.f_prompt_id, 8,"):v8.index("v.f_vars_schema,")].strip()
+    v9 = [s for s in statements(REQUIREMENTS_V9) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v9[v9.index("select v.f_prompt_id, 9,") + len("select v.f_prompt_id, 9,"):v9.index("v.f_vars_schema,")].strip()
     seed = init.index("-- bkn-project-requirements:")
-    assert init.index("select 'bkn-project-requirements-prompt', 8, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-requirements-prompt', 9, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The fresh snapshot attaches the same translations as the upgrade.
-    text = REQUIREMENTS_V8.read_text()
+    text = REQUIREMENTS_V9.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
     # Apart from the requirements Agent, Ask AI, graph explorer v2, resource semantic understanding
     # v7 and the new analysis writer, the 0.2.2 snapshot is the 0.2.1 one without the Agents an
@@ -3208,6 +3212,120 @@ def test_requirements_v8_upgrade_keeps_custom_settings_and_official_baseline(sta
         for field in ("f_model", "f_tools", "f_limits"):
             assert baseline[field] == original[field]
         assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (8, "custom-model", '{"max_turns":17}')
+
+
+def requirements_v8_state(db):
+    """The Agent just before 0.2.2/08: upgraded to v8 by 0.2.2/01."""
+    requirements_v7_state(db, "upgraded")
+    apply(db, REQUIREMENTS_V8)
+
+
+# What v9 adds to pass kinetic, after v8's sentence on kept needs without object types.
+REQUIREMENTS_V9_KINETIC = (
+    "A kept need whose id begins with kept-network- is what the network already has",
+    "Judge what it covers by its description, not by its name alone",
+    "neither is a step of what it already computes",
+    "covered_by that kept-network- id: the server links it to that item",
+)
+REQUIREMENTS_V9_KINETIC_ZH = (
+    "id \u4ee5 kept-network- \u5f00\u5934\u7684\u4fdd\u7559\u9700\u6c42\u662f\u7f51\u7edc\u5df2\u6709\u7684\u5185\u5bb9",
+    "\u6309\u63cf\u8ff0\u5224\u65ad\u5b83\u8986\u76d6\u4ec0\u4e48",
+    "\u5728 covered_by \u4e2d\u5199\u51fa\u90a3\u4e2a kept-network- id",
+)
+
+
+def test_requirements_v9_upgrade_matches_fresh_install_and_changes_only_pass_kinetic():
+    with database() as db, database() as fresh:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        requirements_v8_state(db)
+        old = requirements_prompt_version(db, 8)
+        history = snapshot(db)[3]
+        apply(db, REQUIREMENTS_V9)
+        assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
+        new = requirements_prompt_version(db, 9)
+        assert new == requirements_prompt_version(fresh, 9)
+        content, locales = new["f_content"], json.loads(new["f_localized_content"])
+        old_locales = json.loads(old["f_localized_content"])
+        assert locales["en-US"] == content
+        for rule in REQUIREMENTS_V9_KINETIC:
+            assert rule in content and rule not in old["f_content"]
+        for rule in REQUIREMENTS_V9_KINETIC_ZH:
+            assert rule in locales["zh-CN"] and rule not in old_locales["zh-CN"]
+        # Only pass kinetic changes, in both languages.
+        for before, after, start in ((old["f_content"], content, "pass kinetic, for"),
+                                     (old_locales["zh-CN"], locales["zh-CN"], "pass kinetic\uff0c")):
+            assert before[:before.index(start)] == after[:after.index(start)]
+            assert before[before.index("\n\npass draft"):] == after[after.index("\n\npass draft"):]
+        assert requirements_prompt_version(db, 8) == old
+        updated = snapshot(db)[3]
+        for row in history:
+            match = next(after for after in updated if after[:2] == row[:2])
+            assert row[:7] + row[9:] == match[:7] + match[9:]
+        rows = db.execute(
+            f"SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='{RQ}' AND (f_initial=1 OR f_current=1)"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(9, 1, 1)]
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V9)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
+def test_requirements_v9_upgrade_preserves_operator_prompt_choices(customization):
+    with database() as db:
+        requirements_v8_state(db)
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=8"
+            )
+        elif customization in ("zh-CN", "en-US"):
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_localized_content=json_set(f_localized_content,?,'custom') WHERE f_prompt_id='bkn-project-requirements-prompt' AND f_version=8",
+                (f'$."{customization}"',),
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version(f_prompt_id,f_version,f_content,f_vars_schema,f_create_user,f_create_time) VALUES('bkn-project-requirements-prompt',9,'custom newer prompt',null,'operator',9e15)"
+            )
+            if customization == "higher-version":
+                db.execute("UPDATE t_agent_prompt SET f_current_version=9 WHERE f_prompt_id='bkn-project-requirements-prompt'")
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=9e15 WHERE f_prompt_id='bkn-project-requirements-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, REQUIREMENTS_V9)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 8))
+def test_requirements_v9_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            requirements_v8_state(connection)
+            if customized:
+                connection.execute(f"UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='{RQ}'")
+        apply(expected, REQUIREMENTS_V9)
+        apply(db, REQUIREMENTS_V9, limit=limit)
+        apply(db, REQUIREMENTS_V9)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_requirements_v9_upgrade_keeps_custom_settings_and_official_baseline():
+    with database() as db:
+        requirements_v8_state(db)
+        original = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_version=1").fetchone())
+        db.execute(
+            f"UPDATE t_agent SET f_model='custom-model',f_limits=? WHERE f_agent_id='{RQ}'", ('{"max_turns":17}',)
+        )
+        apply(db, REQUIREMENTS_V9)
+        baseline = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_initial=1").fetchone())
+        current = dict(db.execute(f"SELECT * FROM t_agent_version WHERE f_agent_id='{RQ}' AND f_current=1").fetchone())
+        assert (baseline["f_prompt_version"], baseline["f_current"]) == (9, 0)
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == original[field]
+        assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (9, "custom-model", '{"max_turns":17}')
 
 
 def answer_judge_prompt(db):
@@ -4485,7 +4603,7 @@ def test_single_call_never_overwrites_operator_configuration(custom):
 def test_eval_assistant_delta_preserves_existing_defaults():
     fresh, upgrade = selected_migrations("0.2.1")
     assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9)]]], "0.2.2", True]
     with database() as db:
         apply(db, MIGRATIONS / "0.2.1/init.sql")
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='eval_assistant'").fetchone()[0] == 0
