@@ -26,6 +26,8 @@ type UnderstandSubmittedCatalog struct {
 	// Permitted is false when the caller may not run tasks on the catalog (task_manage): nothing
 	// is submitted there.
 	Permitted bool `json:"permitted"`
+	// Missing is true when the catalog no longer exists: it is not permitted, but for that reason.
+	Missing bool `json:"missing,omitempty"`
 	// Tables counts the tables submitted.
 	Tables int `json:"tables"`
 }
@@ -40,6 +42,8 @@ type UnderstandingCatalog struct {
 	// Visible is false when the caller may not see the catalog's tasks (task_manage): its
 	// progress is unknown.
 	Visible bool `json:"visible"`
+	// Missing is true when the catalog no longer exists: it is not visible, but for that reason.
+	Missing bool `json:"missing,omitempty"`
 	// Counts are the tables in each status.
 	Counts map[string]int       `json:"counts"`
 	Tables []UnderstandingTable `json:"tables,omitempty"`

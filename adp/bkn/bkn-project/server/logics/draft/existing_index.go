@@ -62,7 +62,8 @@ func (s *draftService) GetExistingIndex(ctx context.Context, token string, proje
 }
 
 // existingIndexItems are the existing object types that read a table, as adopted items of their
-// own, in the branch's order.
+// own, in the branch's order. A table is named as the definition names it until vega-backend
+// names it: a table that cannot be read, as when its catalog is gone, keeps that name.
 func existingIndexItems(existing *interfaces.DraftExisting) *interfaces.DraftItems {
 	items := &interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{}}
 	for _, ot := range existing.ObjectTypes {
@@ -70,7 +71,7 @@ func existingIndexItems(existing *interfaces.DraftExisting) *interfaces.DraftIte
 			continue
 		}
 		items.ObjectTypes = append(items.ObjectTypes, &interfaces.DraftObjectType{
-			ID: ot.ID, Name: ot.Name, Adopted: true, Table: interfaces.DraftTable{ResourceID: ot.TableID},
+			ID: ot.ID, Name: ot.Name, Adopted: true, Table: interfaces.DraftTable{ResourceID: ot.TableID, Name: ot.TableName},
 		})
 	}
 	return items

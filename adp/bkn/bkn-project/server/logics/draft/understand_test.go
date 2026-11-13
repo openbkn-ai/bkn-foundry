@@ -52,6 +52,7 @@ func Test_Understand(t *testing.T) {
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(tables, nil)
 			// Without task_manage on c2 nothing is submitted there.
 			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c2").Return(nil, false, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c2"}).Return(nil, nil)
 
 			got, err := svc.Understand(ctx, token, "p1", interfaces.ProjectUnderstand{}, caller)
 
@@ -135,6 +136,7 @@ func Test_Understand(t *testing.T) {
 			va.EXPECT().ListSemanticTasks(gomock.Any(), other, "c1").Return(tasks, true, nil)
 			va.EXPECT().ListTables(gomock.Any(), other, "c1").Return(tables, nil)
 			va.EXPECT().ListSemanticTasks(gomock.Any(), other, "c2").Return(nil, false, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), other, []string{"c2"}).Return(nil, nil)
 
 			got, err := svc.GetUnderstanding(ctx, token, "p1", other)
 
@@ -155,6 +157,36 @@ func Test_Understand(t *testing.T) {
 				interfaces.UNDERSTAND_NOT_STARTED: 1, "completed": 3, "running": 1, "failed": 1, "pending": 1})
 			// Without task_manage the progress is unknown, not "nothing started".
 			So(got.Catalogs[1], ShouldResemble, interfaces.UnderstandingCatalog{CatalogID: "c2", Counts: map[string]int{}})
+		})
+
+		Convey("A catalog that is gone reads as gone, not as one the caller may not run tasks on\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project("", "c1", "c_gone", "c_hidden"), nil).Times(2)
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c1").Return(tasks, true, nil).Times(2)
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(tables, nil).Times(2)
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c_gone").Return(nil, false, nil).Times(2)
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c_hidden").Return(nil, false, nil).Times(2)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c_gone", "c_hidden"}).Return([]string{"c_gone"}, nil).Times(2)
+
+			got, err := svc.GetUnderstanding(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.Catalogs[0].Missing, ShouldBeFalse)
+			So(got.Catalogs[1], ShouldResemble, interfaces.UnderstandingCatalog{CatalogID: "c_gone", Missing: true, Counts: map[string]int{}})
+			So(got.Catalogs[2], ShouldResemble, interfaces.UnderstandingCatalog{CatalogID: "c_hidden", Counts: map[string]int{}})
+
+			submitted, err := svc.Understand(ctx, token, "p1", interfaces.ProjectUnderstand{}, caller)
+			So(err, ShouldBeNil)
+			So(submitted.Catalogs[1:], ShouldResemble, []interfaces.UnderstandSubmittedCatalog{
+				{CatalogID: "c_gone", Missing: true}, {CatalogID: "c_hidden"}})
+		})
+
+		Convey("When vega-backend does not tell whether a catalog is gone, it reads as before\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project("", "c2"), nil)
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c2").Return(nil, false, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c2"}).Return(nil, errors.New("vega is down"))
+
+			got, err := svc.GetUnderstanding(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.Catalogs[0], ShouldResemble, interfaces.UnderstandingCatalog{CatalogID: "c2", Counts: map[string]int{}})
 		})
 
 		Convey("A failure reading the progress is an internal error\n", func() {

@@ -30,6 +30,10 @@ func (d *drafter) withRegisteredIDs(projectID string, ids []*interfaces.Register
 // withTaken keeps the ids of the object and relation types of items from what this draft names.
 func (d *drafter) withTaken(items *interfaces.DraftItems) *drafter {
 	d.taken = map[string]map[string]bool{interfaces.ID_KIND_OBJECT_TYPES: {}, interfaces.ID_KIND_RELATION_TYPES: {}}
+	// A system object type is left out of the network's items, but its id stays taken.
+	for _, id := range interfaces.SystemObjectTypeIDs() {
+		d.taken[interfaces.ID_KIND_OBJECT_TYPES][id] = true
+	}
 	for _, ot := range items.ObjectTypes {
 		d.taken[interfaces.ID_KIND_OBJECT_TYPES][ot.ID] = true
 	}

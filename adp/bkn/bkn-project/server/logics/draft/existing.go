@@ -65,7 +65,9 @@ func (s *draftService) readExisting(ctx context.Context, lineageID string, branc
 	return existingOf(files, owned), nil
 }
 
-// existingDefinitions parses the object and relation types of the branch outside owned, by id. The
+// existingDefinitions parses the object and relation types of the branch outside owned, by id,
+// leaving out the system object types BKN-project writes there for agents: they are no business
+// content of the network. The
 // branch is read as a whole, under the specification its network.bkn declares, so that what 3.0
 // declares, such as aliases, is read too; a branch the loader refuses is read file by file instead,
 // leaving out a file that does not parse, as the release review leaves it.
@@ -85,6 +87,9 @@ func existingDefinitions(files map[string][]byte, owned []string) ([]*bkn.BknObj
 		switch {
 		case strings.HasPrefix(p, objectTypesDir):
 			if ot, err := bkn.ParseObjectTypeFile(string(files[p]), p); err == nil && ot.ID != "" {
+				if interfaces.IsSystemObjectType(ot.ID) {
+					continue
+				}
 				if skip[p] {
 					ownedObjects[ot.ID] = true
 				} else {
@@ -112,7 +117,7 @@ func existingDefinitions(files map[string][]byte, owned []string) ([]*bkn.BknObj
 	}
 	objectTypes, relationTypes = []*bkn.BknObjectType{}, []*bkn.BknRelationType{}
 	for _, ot := range network.ObjectTypes {
-		if ot.ID != "" && !ownedObjects[ot.ID] {
+		if ot.ID != "" && !ownedObjects[ot.ID] && !interfaces.IsSystemObjectType(ot.ID) {
 			objectTypes = append(objectTypes, ot)
 		}
 	}
@@ -139,6 +144,7 @@ func existingOf(files map[string][]byte, owned []string) *interfaces.DraftExisti
 		}
 		if ot.DataSource != nil {
 			item.TableID = ot.DataSource.ID
+			item.TableName = dataSourceName(ot.DataSource)
 		}
 		if item.PrimaryKeys == nil {
 			item.PrimaryKeys = []string{}
@@ -151,6 +157,14 @@ func existingOf(files map[string][]byte, owned []string) *interfaces.DraftExisti
 		})
 	}
 	return existing
+}
+
+// dataSourceName is the name the definition gives its table, empty when it gives only the id.
+func dataSourceName(source *bkn.ResourceInfo) string {
+	if source.Name == source.ID {
+		return ""
+	}
+	return source.Name
 }
 
 // existingItemsOf reads the object and relation types of the branch outside owned as draft items

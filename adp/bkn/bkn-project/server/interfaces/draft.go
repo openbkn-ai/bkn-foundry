@@ -149,7 +149,9 @@ type DraftExistingObjectType struct {
 	Aliases     []string `json:"aliases,omitempty"`
 	Description string   `json:"description"`
 	// TableID is the resource id of the table it reads; empty when it reads none.
-	TableID       string   `json:"table_id"`
+	TableID string `json:"table_id"`
+	// TableName is the table's name as the definition gives it; empty when it gives none.
+	TableName     string   `json:"table_name,omitempty"`
 	PrimaryKeys   []string `json:"primary_keys"`
 	PropertyCount int      `json:"property_count"`
 }

@@ -76,6 +76,19 @@ func Test_GetExistingIndex(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(got.ObjectTypes, ShouldHaveLength, 1)
 			So(got.ObjectTypes[0].State, ShouldEqual, interfaces.INDEX_STATE_UNREADABLE)
+			// The table is named as the definition names it, as when its catalog is gone.
+			So(got.ObjectTypes[0].Table, ShouldResemble, interfaces.DraftTable{ResourceID: "t_regions", Name: "regions"})
+		})
+
+		Convey("the term object type is no index of the network's\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{
+				"object_types/" + interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS + ".bkn": []byte(domainTerms),
+			}, nil)
+
+			got, err := svc.GetExistingIndex(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.ObjectTypes, ShouldBeEmpty)
 		})
 
 		Convey("a branch that cannot be read fails\n", func() {
