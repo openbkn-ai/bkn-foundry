@@ -232,9 +232,11 @@ paths:
       description: |-
         Deletes an event type, its event class and the class's dataset. Requires `modify`.
 
-        409 `BknBackend.KnEvent.EventTypeInUse` is returned when the type has any event (of any status),
-        or when its class, or the class's relation, is used by other definitions of the network (the
-        error details name the users). Nothing is deleted in that case. The dataset is deleted after the
+        409 `BknBackend.KnEvent.EventTypeInUse` is returned when the type has any event (of any status).
+        409 `BknBackend.KnEvent.EventClassInUse` is returned when its class, or the class's relation, is
+        used by other definitions of the network; the error details are
+        `{"event_class": "<object type ID>", "used_by": ["<name>", ...]}`. Nothing is deleted in either
+        case. The dataset is deleted after the
         type is gone; a failure to delete it is logged and does not fail the request. In a versioned
         network the class is removed in the draft and the dataset is kept, since the published version
         still reads the class.
@@ -650,6 +652,7 @@ components:
     Conflict:
       description: |-
         One of BknBackend.KnEvent.EventTypeExisted, BknBackend.KnEvent.EventTypeInUse,
+        BknBackend.KnEvent.EventClassInUse (error_details: `{"event_class", "used_by"}`),
         BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`) or
         BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`).
       content:
