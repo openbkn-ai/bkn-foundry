@@ -30,6 +30,7 @@ type CursorSession struct {
 	// Builder 通道保存结构化查询；物理名称、目标类型及版本在每次续页前复核。
 	SQLQuery             *sqlbuilder.SelectBuilder
 	SQLResourceVersions  map[string]int64
+	SQLSourceValidator   SQLQueryCursorValidator
 	SQLCatalogUpdateTime int64
 	SQLConnectorType     string
 	// Builder cursor 保留首次执行的结果集和连接，续页只继续读取。

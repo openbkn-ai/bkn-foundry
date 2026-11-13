@@ -19,6 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
 type prepareViewService struct {
@@ -54,6 +55,10 @@ func (viewService *prepareViewService) Prepare(_ context.Context, req *interface
 
 func (*prepareViewService) QueryWithPaging(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	return nil, errors.New("query is not expected")
+}
+
+func (*prepareViewService) PrepareSQLQuery(context.Context, *sqlbuilder.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+	return nil, errors.New("SQL preparation is not expected")
 }
 
 func TestLogicalViewServiceEntryPoints(t *testing.T) {

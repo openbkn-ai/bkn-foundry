@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/remote"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -114,9 +115,11 @@ func TestConnectorFactoryApplyPersistedConnectorTypes(t *testing.T) {
 }
 
 func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
+	connector := vmock.NewMockConnector(gomock.NewController(t))
+	connector.EXPECT().GetEnabled().Return(true)
 	cf := &connectorFactory{
 		connectors: map[string]interfaces.Connector{
-			"registered": nil,
+			"registered": connector,
 		},
 		connectorRequiredEditions: map[string]licverify.Edition{
 			"sqlserver": licverify.EditionProfessional,
@@ -126,19 +129,32 @@ func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 	registered := cf.GetConnectorAvailability("registered")
 	assert.True(t, registered.Available)
 	assert.Empty(t, registered.RequiredEdition)
+	assert.False(t, registered.Disabled)
 
 	missing := cf.GetConnectorAvailability("missing")
 	assert.False(t, missing.Available)
 	assert.Empty(t, missing.RequiredEdition)
+	t.Run("enabled state changes independently of edition availability", func(t *testing.T) {
+		connector := mariadb.NewMySQLConnector()
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{interfaces.ConnectorTypeMySQL: connector}}
+		for _, enabled := range []bool{true, false, true} {
+			cf.SetConnectorEnabled(interfaces.ConnectorTypeMySQL, enabled)
+			availability := cf.GetConnectorAvailability(interfaces.ConnectorTypeMySQL)
+			assert.True(t, availability.Available)
+			assert.Equal(t, !enabled, availability.Disabled)
+		}
+	})
 }
 
 func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
+	connectorBuilder := vmock.NewMockConnector(gomock.NewController(t))
+	connectorBuilder.EXPECT().GetEnabled().Return(true).AnyTimes()
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
 	t.Cleanup(entitlement.ResetForTest)
 
 	cf := &connectorFactory{
 		connectors: map[string]interfaces.Connector{
-			"sqlserver": nil,
+			"sqlserver": connectorBuilder,
 		},
 		connectorRequiredEditions: map[string]licverify.Edition{
 			"sqlserver": licverify.EditionProfessional,
@@ -738,6 +754,92 @@ func TestConnectorFactoryValidateFilterCondition(t *testing.T) {
 				}
 				assert.ErrorIs(t, cf.ValidateFilterCondition(tc.name, &filter_condition.BeforeCond{}, &interfaces.Resource{}), tc.want)
 			})
+		}
+	})
+}
+
+func TestConnectorFactoryConvertSQLFilterCondition(t *testing.T) {
+	t.Run("returns the registered converter AST without opening a connection", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		connector.EXPECT().GetEnabled().Return(true)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"table": connector}}
+		condition := &filter_condition.AndCond{}
+		source := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{{Name: "tenant", OriginalName: "tenant_id", Type: interfaces.DataType_String}},
+			SourceMetadata:   map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "tenant_id", Type: "VARCHAR"}}}}
+		want := &sqlbuilder.Eq{Left: &sqlbuilder.Column{Name: "tenant_id"}, Right: &sqlbuilder.Param{Value: "fixed"}}
+		connector.EXPECT().ConvertFilterCondition(condition, source.SchemaDefinition,
+			map[string]interfaces.TableColumnMeta{"tenant_id": {Name: "tenant_id", Type: "VARCHAR"}}).Return(want, nil)
+		got, err := cf.ConvertSQLFilterCondition("table", condition, source)
+		require.NoError(t, err)
+		assert.Same(t, want, got)
+	})
+	t.Run("literal source names do not require column metadata", func(t *testing.T) {
+		connector := mariadb.NewMySQLConnector()
+		connector.SetEnabled(true)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"table": connector}}
+		field := &interfaces.Property{Name: "tenant", OriginalName: "tenant.id", Type: interfaces.DataType_String}
+		source := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{field}}
+		condition, err := filter_condition.NewFilterCondition(t.Context(),
+			&interfaces.FilterCondCfg{Field: field.Name, Operation: "==", Value: "fixed"},
+			map[string]*interfaces.Property{field.Name: field})
+		require.NoError(t, err)
+		got, err := cf.ConvertSQLFilterCondition("table", condition, source)
+		require.NoError(t, err)
+		assert.Equal(t, &sqlbuilder.Eq{Left: &sqlbuilder.Column{Name: "tenant.id"}, Right: &sqlbuilder.Param{Value: "fixed"}}, got)
+	})
+
+	t.Run("preserves typed conversion failures", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		connector.EXPECT().GetEnabled().Return(true)
+		want := interfaces.NewConditionBuildError("unsupported source filter")
+		connector.EXPECT().ConvertFilterCondition(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, want)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"table": connector}}
+		got, err := cf.ConvertSQLFilterCondition("table", &filter_condition.AndCond{}, &interfaces.Resource{Category: interfaces.ResourceCategoryTable})
+		assert.Nil(t, got)
+		assert.ErrorIs(t, err, want)
+	})
+	t.Run("nil condition needs no connector", func(t *testing.T) {
+		got, err := (&connectorFactory{}).ConvertSQLFilterCondition("", nil, nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+	t.Run("availability checked before conversion", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+		for _, tc := range []struct {
+			name string
+			want error
+		}{
+			{"missing", ErrConnectorUnavailable}, {"disabled", ErrConnectorDisabled}, {"private", ErrConnectorEntitlementDenied},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				connector := vmock.NewMockConnector(gomock.NewController(t))
+				cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+				if tc.name != "missing" {
+					cf.connectors[tc.name] = connector
+				}
+				if tc.name == "private" {
+					cf.connectorRequiredEditions[tc.name] = licverify.EditionProfessional
+				}
+				if tc.name == "disabled" {
+					connector.EXPECT().GetEnabled().Return(false)
+				}
+				got, err := cf.ConvertSQLFilterCondition(tc.name, &filter_condition.AndCond{}, &interfaces.Resource{Category: interfaces.ResourceCategoryTable})
+				assert.Nil(t, got)
+				assert.ErrorIs(t, err, tc.want)
+			})
+		}
+	})
+	t.Run("non table sources and malformed metadata fail before conversion", func(t *testing.T) {
+		for _, source := range []*interfaces.Resource{nil, {Category: interfaces.ResourceCategoryIndex},
+			{Category: interfaces.ResourceCategoryTable, SourceMetadata: map[string]any{"columns": "invalid"}}} {
+			connector := vmock.NewMockTableConnector(gomock.NewController(t))
+			connector.EXPECT().GetEnabled().Return(true)
+			cf := &connectorFactory{connectors: map[string]interfaces.Connector{"table": connector}}
+			got, err := cf.ConvertSQLFilterCondition("table", &filter_condition.AndCond{}, source)
+			assert.Nil(t, got)
+			require.Error(t, err)
 		}
 	})
 }

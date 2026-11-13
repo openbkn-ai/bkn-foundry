@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sqlbuilder "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	licverify "github.com/openbkn-ai/licverify"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -40,6 +41,21 @@ func NewMockConnectorFactory(ctrl *gomock.Controller) *MockConnectorFactory {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockConnectorFactory) EXPECT() *MockConnectorFactoryMockRecorder {
 	return m.recorder
+}
+
+// ConvertSQLFilterCondition mocks base method.
+func (m *MockConnectorFactory) ConvertSQLFilterCondition(tp string, condition interfaces.FilterCondition, resource *interfaces.Resource) (sqlbuilder.SqlNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConvertSQLFilterCondition", tp, condition, resource)
+	ret0, _ := ret[0].(sqlbuilder.SqlNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConvertSQLFilterCondition indicates an expected call of ConvertSQLFilterCondition.
+func (mr *MockConnectorFactoryMockRecorder) ConvertSQLFilterCondition(tp, condition, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConvertSQLFilterCondition", reflect.TypeOf((*MockConnectorFactory)(nil).ConvertSQLFilterCondition), tp, condition, resource)
 }
 
 // CreateConnectorInstance mocks base method.

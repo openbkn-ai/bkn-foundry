@@ -14,8 +14,47 @@ import (
 	reflect "reflect"
 
 	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sqlbuilder "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockSQLQueryCursorValidator is a mock of SQLQueryCursorValidator interface.
+type MockSQLQueryCursorValidator struct {
+	ctrl     *gomock.Controller
+	recorder *MockSQLQueryCursorValidatorMockRecorder
+	isgomock struct{}
+}
+
+// MockSQLQueryCursorValidatorMockRecorder is the mock recorder for MockSQLQueryCursorValidator.
+type MockSQLQueryCursorValidatorMockRecorder struct {
+	mock *MockSQLQueryCursorValidator
+}
+
+// NewMockSQLQueryCursorValidator creates a new mock instance.
+func NewMockSQLQueryCursorValidator(ctrl *gomock.Controller) *MockSQLQueryCursorValidator {
+	mock := &MockSQLQueryCursorValidator{ctrl: ctrl}
+	mock.recorder = &MockSQLQueryCursorValidatorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSQLQueryCursorValidator) EXPECT() *MockSQLQueryCursorValidatorMockRecorder {
+	return m.recorder
+}
+
+// ValidateSQLCursor mocks base method.
+func (m *MockSQLQueryCursorValidator) ValidateSQLCursor(arg0 context.Context, arg1 []*interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateSQLCursor", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateSQLCursor indicates an expected call of ValidateSQLCursor.
+func (mr *MockSQLQueryCursorValidatorMockRecorder) ValidateSQLCursor(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateSQLCursor", reflect.TypeOf((*MockSQLQueryCursorValidator)(nil).ValidateSQLCursor), arg0, arg1)
+}
 
 // MockLogicalViewService is a mock of LogicalViewService interface.
 type MockLogicalViewService struct {
@@ -55,6 +94,21 @@ func (m *MockLogicalViewService) Prepare(ctx context.Context, req *interfaces.Re
 func (mr *MockLogicalViewServiceMockRecorder) Prepare(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Prepare", reflect.TypeOf((*MockLogicalViewService)(nil).Prepare), ctx, req)
+}
+
+// PrepareSQLQuery mocks base method.
+func (m *MockLogicalViewService) PrepareSQLQuery(ctx context.Context, query *sqlbuilder.SelectBuilder, resources []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareSQLQuery", ctx, query, resources)
+	ret0, _ := ret[0].(*interfaces.SQLViewQuery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareSQLQuery indicates an expected call of PrepareSQLQuery.
+func (mr *MockLogicalViewServiceMockRecorder) PrepareSQLQuery(ctx, query, resources any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareSQLQuery", reflect.TypeOf((*MockLogicalViewService)(nil).PrepareSQLQuery), ctx, query, resources)
 }
 
 // QueryWithPaging mocks base method.

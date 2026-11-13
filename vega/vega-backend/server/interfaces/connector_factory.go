@@ -8,16 +8,18 @@ package interfaces
 import (
 	"context"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/licverify"
 )
 
 //go:generate mockgen -source ../interfaces/connector_factory.go -destination ../interfaces/mock/mock_connector_factory.go
 
-// ConnectorAvailability describes whether a connector can currently be used
-// and the edition declared by its local implementation. RequiredEdition is
-// empty for remote connectors and implementations not bundled in this binary.
+// ConnectorAvailability reports implementation/edition availability separately
+// from the registered connector's enabled state. RequiredEdition is empty for
+// remote connectors and implementations not bundled in this binary.
 type ConnectorAvailability struct {
 	Available       bool
+	Disabled        bool
 	RequiredEdition licverify.Edition
 }
 
@@ -77,4 +79,7 @@ type ConnectorFactory interface {
 
 	// ValidateFilterCondition 从 Resource 取得原生 Schema 和列元数据，委托连接器转换完整条件树，不创建实例或访问源端。
 	ValidateFilterCondition(tp string, condition FilterCondition, resource *Resource) error
+
+	// ConvertSQLFilterCondition 在注册连接器的读锁内转换完整 Table 过滤树，保留参数节点，不创建连接。
+	ConvertSQLFilterCondition(tp string, condition FilterCondition, resource *Resource) (sqlbuilder.SqlNode, error)
 }
