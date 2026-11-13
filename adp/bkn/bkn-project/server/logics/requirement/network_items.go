@@ -265,8 +265,8 @@ func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) 
 }
 
 // linkCovered links each need no one linked or changed to the network's item that covers it, by
-// caller at now: the one covered gives for it by its id, when that item is of the kind of
-// implementation the need links to, or the one of its name.
+// caller at now: the one covered gives for it by its id, when that item implements needs of its
+// kind, or the one of its name. An API need is left to a person, as coveringItems leaves it.
 func linkCovered(spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem,
 	covered map[string]*interfaces.LogicNetworkItem, caller interfaces.AccountInfo, now int64) {
 	for _, n := range spec.LogicNeeds {
@@ -274,7 +274,7 @@ func linkCovered(spec *interfaces.RequirementSpec, items []*interfaces.LogicNetw
 			continue
 		}
 		item := covered[n.ID]
-		if item == nil || item.Type != interfaces.LogicLinkTypeOf(n.Kind) {
+		if item == nil || n.Kind == interfaces.LOGIC_NEED_API || cmp.Or(item.Kind, networkNeedKind(item.Type)) != n.Kind {
 			item = coveringItem(items, n)
 		}
 		if item != nil {

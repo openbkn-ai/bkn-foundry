@@ -91,12 +91,15 @@ func Test_LinkCovered(t *testing.T) {
 			// A function is not linked to a metric.
 			{ID: "n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Promise"},
 			{ID: "n3", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Edited", Edited: true},
+			// An API need is left to a person, even when the Agent says a function covers it.
+			{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates"},
 		}
-		covered["n3"] = items[0]
+		covered["n3"], covered["n4"] = items[0], items[0]
 		linkCovered(spec, items, covered, caller, 5)
 		So(spec.LogicNeeds[0].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION,
 			ID: "f1", BoxID: "box1", By: caller, At: 5})
 		So(spec.LogicNeeds[1].Link, ShouldBeNil)
 		So(spec.LogicNeeds[2].Link, ShouldBeNil)
+		So(spec.LogicNeeds[3].Link, ShouldBeNil)
 	})
 }
