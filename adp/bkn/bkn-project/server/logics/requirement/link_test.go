@@ -588,10 +588,13 @@ func Test_ListLogicNeedsNetworkItems(t *testing.T) {
 		lists := func() {
 			bba.EXPECT().ListActionTypes(gomock.Any(), token, "kn1", "").Return(
 				[]*interfaces.KNActionType{{ID: "a1", Name: "Hold order", ObjectTypeID: "sales_order"}}, nil)
+			// The network mounts f1, an API and s1; f7 is a tool an action type runs that it does not mount.
 			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_FUNCTION, "").Return(
-				[]*interfaces.KNCapability{{CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"}}, nil)
+				[]*interfaces.KNCapability{{ID: "b1", CapabilityID: "f1", BoxID: "box1", Name: "Window check", Description: "d"},
+					{CapabilityID: "f7", BoxID: "box1", Name: "Hold"},
+					{ID: "b3", CapabilityID: "f8", BoxID: "box9", Name: "Rates", MetadataType: "openapi"}}, nil)
 			bba.EXPECT().ListCapabilities(gomock.Any(), token, "kn1", interfaces.LOGIC_LINK_SKILL, "").Return(
-				[]*interfaces.KNCapability{{CapabilityID: "s1", Name: "Triage"}}, nil)
+				[]*interfaces.KNCapability{{ID: "b2", CapabilityID: "s1", Name: "Triage"}}, nil)
 		}
 
 		Convey("Before the first release, with the needs linked to them; metrics the edition lacks are none\n", func() {
@@ -611,9 +614,14 @@ func Test_ListLogicNeedsNetworkItems(t *testing.T) {
 			So(got.Live, ShouldBeTrue)
 			So(got.NetworkItemsReason, ShouldBeEmpty)
 			So(got.NetworkItems, ShouldResemble, []*interfaces.LogicNetworkItem{
-				{Type: interfaces.LOGIC_LINK_ACTION_TYPE, ID: "a1", Name: "Hold order", OwnerObjectTypeID: "sales_order", NeedIDs: []string{"n8"}},
-				{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "box1", Name: "Window check", Description: "d", NeedIDs: []string{"n4"}},
-				{Type: interfaces.LOGIC_LINK_SKILL, ID: "s1", Name: "Triage", NeedIDs: []string{"n6"}},
+				{Type: interfaces.LOGIC_LINK_ACTION_TYPE, Kind: interfaces.LOGIC_NEED_ACTION_TYPE, ID: "a1", Name: "Hold order",
+					OwnerObjectTypeID: "sales_order", NeedIDs: []string{"n8"}},
+				{Type: interfaces.LOGIC_LINK_FUNCTION, Kind: interfaces.LOGIC_NEED_FUNCTION, ID: "f1", BoxID: "box1", Name: "Window check",
+					Description: "d", NeedIDs: []string{"n4"}},
+				// An API is a function bound from an OpenAPI description, listed as one.
+				{Type: interfaces.LOGIC_LINK_FUNCTION, Kind: interfaces.LOGIC_NEED_API, ID: "f8", BoxID: "box9", Name: "Rates",
+					NeedIDs: []string{}},
+				{Type: interfaces.LOGIC_LINK_SKILL, Kind: interfaces.LOGIC_NEED_SKILL, ID: "s1", Name: "Triage", NeedIDs: []string{"n6"}},
 			})
 		})
 
@@ -630,7 +638,7 @@ func Test_ListLogicNeedsNetworkItems(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got.NetworkItemsReason, ShouldEqual, interfaces.LOGIC_IMPLEMENTATION_FORBIDDEN)
-			So(got.NetworkItems, ShouldResemble, []*interfaces.LogicNetworkItem{{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1",
+			So(got.NetworkItems, ShouldResemble, []*interfaces.LogicNetworkItem{{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, Kind: interfaces.LOGIC_NEED_METRIC, ID: "m1",
 				Name: "Late rate", OwnerObjectTypeID: "sales_order", OwnerObjectTypeName: "Sales order", NeedIDs: []string{}}})
 		})
 
@@ -653,7 +661,7 @@ func Test_ListLogicNeedsNetworkItems(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(got.Released, ShouldBeTrue)
-			So(got.NetworkItems, ShouldHaveLength, 3)
+			So(got.NetworkItems, ShouldHaveLength, 4)
 		})
 	})
 }

@@ -174,16 +174,14 @@ func conceptDefinitions(items *interfaces.DraftItems) (map[string]interfaces.Dra
 
 // understandConcept names the concept of an object type drafted from a table by what the
 // catalog's semantic understanding gave the table, as the caller read it: its business name and
-// description, while the object type still has the table's own name; the table's own name becomes
-// an alias and names the source. It tells whether the table was understood; table is nil when it
-// was not read.
+// description, while the object type still has the table's own name, named as drafting names it;
+// the table's own name becomes an alias and names the source. It tells whether the table was
+// understood; table is nil when it was not read.
 func understandConcept(c *interfaces.DraftConcept, ot *interfaces.DraftObjectType, table *interfaces.VegaTable,
 	language string) bool {
 	physical := physicalName(table)
 	c.Sources[0].Name = physical
-	// Unnamed, a table keeps the name discovery gave it: its physical name, with its schema before
-	// vega 0.2.1.
-	if given := givenName(table); given == "" || given == physical {
+	if keepsTableName(table) {
 		return false
 	}
 	if ot.Name == physical {
@@ -222,14 +220,62 @@ func adoptionBlocker(ctx context.Context, items *interfaces.DraftItems, kind str
 // are read from the draft's decisions.
 func conceptsOf(ctx context.Context, projectID string, draft *interfaces.Draft, req *interfaces.Requirement,
 	found bool) *interfaces.DraftConcepts {
-	return conceptsWith(ctx, projectID, draft, req, found, nil)
+	return conceptsWith(ctx, projectID, draft, req, found, nil, nil)
 }
 
 // conceptsWith is conceptsOf with the tables of the draft's object types as the caller reads them
 // now, by their ids: a table's concept is named as the catalog's semantic understanding named it.
+// understood are the tables whose understanding completed, as understoodTables reads them.
 func conceptsWith(ctx context.Context, projectID string, draft *interfaces.Draft, req *interfaces.Requirement,
-	found bool, tables map[string]*interfaces.VegaTable) *interfaces.DraftConcepts {
-	return projectConcepts(ctx, projectID, draft, req, found, tables, nil)
+	found bool, tables map[string]*interfaces.VegaTable, understood map[string]bool) *interfaces.DraftConcepts {
+	return projectConcepts(ctx, projectID, draft, req, found, tables, nil, understood)
+}
+
+// keepsTableName tells whether drafting would name a table's object type by the table's own name:
+// semantic understanding, or a person, gave it no business name, and no description whose first
+// clause names it. Unnamed, a table keeps the name discovery gave it: its physical name, with its
+// schema before vega 0.2.1. Which candidate wins depends on the naming language, whether there is
+// one does not.
+func keepsTableName(table *interfaces.VegaTable) bool {
+	physical := physicalName(table)
+	name, _ := pickName("", physical, givenName(table), firstClause(table.Description))
+	return name == physical
+}
+
+// understoodTables are those of tables whose newest semantic understanding completed, as the
+// modeling page counts the catalogs' understanding: one it left as it was, unsure what to call it,
+// would be left so again, so it is not one to understand first. A completed preview (dry_run)
+// wrote nothing and is submitted again, as understanding them does. Only the catalogs of tables
+// that keep their own name are read; one whose tasks the caller cannot see, or that cannot be
+// read, adds none.
+func (s *draftService) understoodTables(ctx context.Context, caller interfaces.AccountInfo,
+	tables []*interfaces.VegaTable) map[string]bool {
+	understood := map[string]bool{}
+	if s.va == nil {
+		return understood
+	}
+	catalogs := []string{}
+	for _, table := range tables {
+		if table != nil && table.CatalogID != "" && keepsTableName(table) && !slices.Contains(catalogs, table.CatalogID) {
+			catalogs = append(catalogs, table.CatalogID)
+		}
+	}
+	for _, catalogID := range catalogs {
+		tasks, visible, err := s.va.ListSemanticTasks(ctx, caller, catalogID)
+		if err != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("List the semantic tasks of catalog %s for the concepts: %v", catalogID, err))
+			continue
+		}
+		if !visible {
+			continue
+		}
+		for id, task := range newestTasks(tasks) {
+			if task.Status == semanticCompleted && task.ApplyMode != interfaces.VEGA_SEMANTIC_APPLY_DRY_RUN {
+				understood[id] = true
+			}
+		}
+	}
+	return understood
 }
 
 // tableConceptPrefix starts the key of a concept of a catalog table before drafting: the table is
@@ -252,9 +298,11 @@ type beforeDrafting struct {
 // projectConcepts is conceptsWith, and before drafting, when before is given, the concepts of what
 // the network already has and one candidate object per catalog table no existing object type reads,
 // named as the catalog's semantic understanding named the table. Those are not judged here until
-// drafting models them.
+// drafting models them. NotUnderstood counts the tables whose concepts keep the table's own name
+// and whose understanding has not completed.
 func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Draft, req *interfaces.Requirement,
-	found bool, tables map[string]*interfaces.VegaTable, before *beforeDrafting) *interfaces.DraftConcepts {
+	found bool, tables map[string]*interfaces.VegaTable, before *beforeDrafting,
+	understood map[string]bool) *interfaces.DraftConcepts {
 	result := &interfaces.DraftConcepts{ProjectID: projectID, Concepts: []interfaces.DraftConcept{},
 		Counts: map[string]int{}}
 	items := &interfaces.DraftItems{}
@@ -306,7 +354,8 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			c.SuggestedBecause = interfaces.CONCEPT_BECAUSE_TABLE
 			c.Sources = []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE,
 				ID: ot.Table.ResourceID, Name: ot.Table.Name}}
-			if table := tables[ot.Table.ResourceID]; table != nil && !understandConcept(&c, ot, table, language) {
+			if table := tables[ot.Table.ResourceID]; table != nil && !understandConcept(&c, ot, table, language) &&
+				c.Name == physicalName(table) && !understood[table.ID] {
 				result.NotUnderstood++
 			}
 		default:
@@ -325,7 +374,7 @@ func projectConcepts(ctx context.Context, projectID string, draft *interfaces.Dr
 			c := interfaces.DraftConcept{Key: tableConceptKey(table.ID), Name: physical, Aliases: []string{},
 				Suggested: interfaces.CONCEPT_VERDICT_OBJECT, SuggestedBecause: interfaces.CONCEPT_BECAUSE_TABLE,
 				Sources: []interfaces.DraftConceptSource{{Kind: interfaces.CONCEPT_SOURCE_TABLE, ID: table.ID, Name: physical}}}
-			if !understandConcept(&c, &interfaces.DraftObjectType{Name: physical}, table, language) {
+			if !understandConcept(&c, &interfaces.DraftObjectType{Name: physical}, table, language) && !understood[table.ID] {
 				result.NotUnderstood++
 			}
 			add(c)
@@ -593,7 +642,12 @@ func (s *draftService) readConcepts(ctx context.Context, projectID string,
 	if err != nil {
 		return nil, internalError(ctx, "Read requirement failed", err)
 	}
-	return conceptsWith(ctx, projectID, draft, req, found, s.conceptTables(ctx, draft, caller)), nil
+	tables := s.conceptTables(ctx, draft, caller)
+	read := make([]*interfaces.VegaTable, 0, len(tables))
+	for _, table := range tables {
+		read = append(read, table)
+	}
+	return conceptsWith(ctx, projectID, draft, req, found, tables, s.understoodTables(ctx, caller, read)), nil
 }
 
 // conceptsBeforeDrafting projects the concepts of a project with no ready draft: what the network
@@ -630,7 +684,12 @@ func (s *draftService) conceptsBeforeDrafting(ctx context.Context, projectID str
 			before.tables = append(before.tables, tables...)
 		}
 	}
-	return projectConcepts(ctx, projectID, draft, req, found, nil, before), nil
+	// Only the candidates are counted, not the tables the network's object types read.
+	read := existingTableIDs(&before.existing)
+	candidates := slices.DeleteFunc(slices.Clone(before.tables), func(table *interfaces.VegaTable) bool {
+		return table == nil || read[table.ID]
+	})
+	return projectConcepts(ctx, projectID, draft, req, found, nil, before, s.understoodTables(ctx, caller, candidates)), nil
 }
 
 // conceptTables reads the tables of the draft's object types as the caller sees them now, for

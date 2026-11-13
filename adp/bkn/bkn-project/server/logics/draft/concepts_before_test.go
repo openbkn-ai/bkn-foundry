@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -43,6 +44,12 @@ func Test_ConceptsBeforeDrafting(t *testing.T) {
 			CatalogIDs: []string{"c1"}, NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(catalogTables(), nil).AnyTimes()
+		// The catalog's semantic understanding, as the modeling page reads it: none ran unless a test says so.
+		var tasks []*interfaces.VegaSemanticTask
+		va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c1").DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, string) ([]*interfaces.VegaSemanticTask, bool, error) {
+				return tasks, true, nil
+			}).AnyTimes()
 		req := readyRequirement()
 		req.Spec.Concepts = []*interfaces.RequirementConcept{
 			{ID: "k1", Term: "订单", Category: "object", Citations: []interfaces.RequirementCitation{{DocumentID: "d1"}}},
@@ -99,6 +106,61 @@ func Test_ConceptsBeforeDrafting(t *testing.T) {
 			So(conceptByKey(got, "table_concepts/r_orders"), ShouldNotBeNil)
 			So(conceptByKey(got, "table_concepts/r_customers"), ShouldNotBeNil)
 			So(got.Counts[interfaces.CONCEPT_STATE_IN_MODEL], ShouldEqual, 3)
+			// Only the candidates count: t_orders is named as the network names its sales orders.
+			So(got.NotUnderstood, ShouldEqual, 1)
+		})
+
+		Convey("A table whose understanding completed is not counted, as the modeling page reads it done\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{}, nil)
+			// customers completed, writing nothing it was sure of; the newest task of sales failed.
+			tasks = []*interfaces.VegaSemanticTask{
+				{ResourceID: "r_customers", Status: semanticCompleted},
+				{ResourceID: "t_orders", Status: "failed"},
+				{ResourceID: "t_orders", Status: semanticCompleted},
+			}
+
+			got, err := svc.GetConcepts(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(got.NotUnderstood, ShouldEqual, 1)
+
+			// A completed preview wrote nothing, and understanding submits the table again: counted.
+			tasks = []*interfaces.VegaSemanticTask{
+				{ResourceID: "r_customers", Status: semanticCompleted, ApplyMode: interfaces.VEGA_SEMANTIC_APPLY_DRY_RUN},
+				{ResourceID: "t_orders", Status: semanticCompleted},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{}, nil)
+			got, err = svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.NotUnderstood, ShouldEqual, 1)
+		})
+
+		Convey("A table described too long to name it keeps its name and is counted until understanding completed\n", func() {
+			// The only table of its catalog that keeps its name; its description has no clause short enough.
+			long := &interfaces.VegaTable{ID: "r_log", CatalogID: "c2", Name: "public.log", SourceSchema: "public",
+				SourceName: "log", Description: strings.Repeat("记录", 40)}
+			draft := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, UpdateTime: readTime,
+				Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "log", Name: "log",
+					Adopted: true, Table: interfaces.DraftTable{ResourceID: "r_log", Name: "public.log"}}}}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).Times(2)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_log"}).Return([]*interfaces.VegaTable{long}, nil).Times(2)
+			var c2 []*interfaces.VegaSemanticTask
+			va.EXPECT().ListSemanticTasks(gomock.Any(), caller, "c2").DoAndReturn(
+				func(context.Context, interfaces.VegaAccount, string) ([]*interfaces.VegaSemanticTask, bool, error) {
+					return c2, true, nil
+				}).Times(2)
+
+			got, err := svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.Concepts[0].Name, ShouldEqual, "log")
+			So(got.NotUnderstood, ShouldEqual, 1)
+
+			c2 = []*interfaces.VegaSemanticTask{{ResourceID: "r_log", Status: semanticCompleted}}
+			got, err = svc.GetConcepts(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.NotUnderstood, ShouldEqual, 0)
 		})
 
 		Convey("While drafting runs, the candidates stay listed\n", func() {
@@ -125,6 +187,31 @@ func Test_ConceptsBeforeDrafting(t *testing.T) {
 			So(got.Concepts, ShouldHaveLength, 1)
 			So(got.Concepts[0].Key, ShouldEqual, "object_types/orders")
 			So(got.Concepts[0].Name, ShouldEqual, "订单")
+		})
+
+		Convey("Understanding that only described a table names it as drafting did, and does not count it\n", func() {
+			// Filling in only what was empty, understanding described shipments and left its name.
+			shipments := &interfaces.VegaTable{ID: "r_shipments", CatalogID: "c1", Name: "public.shipments",
+				Description: "发货单。每行一次发货", SourceSchema: "public", SourceName: "shipments"}
+			draft := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, UpdateTime: readTime,
+				Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "shipments", Name: "发货单",
+					Adopted: true, Table: interfaces.DraftTable{ResourceID: "r_shipments", Name: "public.shipments"}}}}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_shipments"}).Return([]*interfaces.VegaTable{shipments}, nil)
+
+			got, err := svc.GetConcepts(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(got.Concepts[0].Name, ShouldEqual, "发货单")
+			So(got.Concepts[0].SuggestedBecause, ShouldEqual, interfaces.CONCEPT_BECAUSE_UNDERSTOOD)
+			So(got.NotUnderstood, ShouldEqual, 0)
+
+			// Before drafting the candidate is named so too.
+			before := projectConcepts(ctx, "p1", nil, nil, false, nil,
+				&beforeDrafting{tables: []*interfaces.VegaTable{shipments}, language: interfaces.NAMING_LANGUAGE_ZH_CN}, nil)
+			So(before.Concepts[0].Name, ShouldEqual, "发货单")
+			So(before.Concepts[0].Aliases, ShouldResemble, []string{"shipments"})
+			So(before.NotUnderstood, ShouldEqual, 0)
 		})
 	})
 }
