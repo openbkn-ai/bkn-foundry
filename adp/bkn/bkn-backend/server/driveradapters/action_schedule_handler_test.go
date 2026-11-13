@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -346,6 +347,20 @@ func Test_ActionScheduleRestHandler_DeleteActionSchedules(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
+		})
+
+		Convey("Permission denial returns forbidden without deleting\n", func() {
+			ass.EXPECT().GetSchedules(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ActionSchedule{
+				"sched1": {ID: "sched1", Name: "test-schedule"},
+			}, nil)
+			ass.EXPECT().DeleteSchedules(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any()).
+				Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
+
+			req := httptest.NewRequest(http.MethodDelete, url, nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusForbidden)
 		})
 
 		Convey("Failed when GetSchedules returns error\n", func() {
