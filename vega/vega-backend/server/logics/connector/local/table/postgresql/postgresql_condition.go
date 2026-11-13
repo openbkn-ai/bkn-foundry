@@ -470,13 +470,13 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces
 	return &sb.Eq{Left: left, Right: right}, nil
 }
 
-// sqlResourceColumn 沿用现有结构化接口的 OriginalName 回退和别名限定规则。
+// sqlResourceColumn 将资源字段原名作为完整的单列标识符，不从点号猜测来源限定。
 func sqlResourceColumn(field *interfaces.Property) sb.SqlNode {
 	name := field.OriginalName
 	if name == "" {
 		name = field.Name
 	}
-	column := sqlColumnName(name)
+	column := &sb.Column{Name: name}
 	// 在源端转换 money，保留十进制精度并移除 locale 相关的货币格式。
 	if strings.EqualFold(field.OriginalType, "money") {
 		return &sb.Cast{Expr: column, Type: sb.CastUnboundedDecimal}
@@ -484,12 +484,9 @@ func sqlResourceColumn(field *interfaces.Property) sb.SqlNode {
 	return column
 }
 
+// sqlColumnName 表示完整列名或结果别名；限定引用由 Column.Qualifier 单独表达。
 func sqlColumnName(name string) sb.SqlNode {
-	qualifier, column, qualified := strings.Cut(name, ".")
-	if qualified {
-		return &sb.Column{Qualifier: strings.TrimSpace(qualifier), Name: strings.TrimSpace(column)}
-	}
-	return &sb.Column{Name: strings.TrimSpace(name)}
+	return &sb.Column{Name: name}
 }
 
 func sqlComparison(field, rightField *interfaces.Property, value any, op string) (sb.SqlNode, error) {

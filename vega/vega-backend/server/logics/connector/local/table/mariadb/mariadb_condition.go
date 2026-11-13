@@ -460,17 +460,14 @@ func (c *MariaDBConnector) ConvertFilterConditionCurrent(condition interfaces.Fi
 	return &sb.Eq{Left: sqlDateFormat(sqlResourceColumn(cond.Lfield), format), Right: sqlDateFormat(&sb.Function{Name: "NOW"}, format)}, nil
 }
 
-// sqlResourceColumn 沿用现有结构化接口的 OriginalName 回退和别名限定规则。
+// sqlResourceColumn 将资源字段原名作为完整的单列标识符，不从点号猜测来源限定。
 func sqlResourceColumn(field *interfaces.Property) sb.SqlNode {
-	return sqlColumnName(mariadbOriginalName(field))
+	return &sb.Column{Name: mariadbOriginalName(field)}
 }
 
+// sqlColumnName 表示完整列名或结果别名；限定引用由 Column.Qualifier 单独表达。
 func sqlColumnName(name string) sb.SqlNode {
-	qualifier, column, qualified := strings.Cut(name, ".")
-	if qualified {
-		return &sb.Column{Qualifier: strings.TrimSpace(qualifier), Name: strings.TrimSpace(column)}
-	}
-	return &sb.Column{Name: strings.TrimSpace(name)}
+	return &sb.Column{Name: name}
 }
 
 func sqlComparison(field, rightField *interfaces.Property, value any, op string) (sb.SqlNode, error) {

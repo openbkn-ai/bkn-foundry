@@ -19,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/remote"
@@ -207,13 +208,14 @@ func (cf *connectorFactory) GetConnectorAvailability(tp string) interfaces.Conne
 	cf.mu.RLock()
 	defer cf.mu.RUnlock()
 
-	_, exists := cf.connectors[tp]
+	connector, exists := cf.connectors[tp]
 	if !exists {
 		return interfaces.ConnectorAvailability{}
 	}
 	minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]
 	return interfaces.ConnectorAvailability{
 		Available:       !hasMinimumEdition || entitlement.AtLeast(minimumEdition),
+		Disabled:        !connector.GetEnabled(),
 		RequiredEdition: minimumEdition,
 	}
 }
@@ -289,6 +291,34 @@ func (cf *connectorFactory) ValidateFilterCondition(tp string, condition interfa
 	default:
 		return interfaces.NewConditionBuildError("connector %s does not support filter condition conversion", tp)
 	}
+}
+
+// ConvertSQLFilterCondition 为 SQL View 保留完整条件转换的结构化输出。
+func (cf *connectorFactory) ConvertSQLFilterCondition(tp string, condition interfaces.FilterCondition, source *interfaces.Resource) (sqlbuilder.SqlNode, error) {
+	if condition == nil {
+		return nil, nil //nolint:nilnil // 无固定过滤时不产生 SQL 条件。
+	}
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return nil, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+	}
+	if minimumEdition, exists := cf.connectorRequiredEditions[tp]; exists && !entitlement.AtLeast(minimumEdition) {
+		return nil, fmt.Errorf("connector %s requires edition %s: %w", tp, minimumEdition, ErrConnectorEntitlementDenied)
+	}
+	if !connector.GetEnabled() {
+		return nil, fmt.Errorf("connector %s is disabled: %w", tp, ErrConnectorDisabled)
+	}
+	converter, ok := connector.(interfaces.TableConnector)
+	if !ok || source == nil || source.Category != interfaces.ResourceCategoryTable {
+		return nil, interfaces.NewConditionBuildError("SQL filter conversion requires a table source and connector")
+	}
+	columns, err := table.ColumnMetadata(source)
+	if err != nil {
+		return nil, err
+	}
+	return converter.ConvertFilterCondition(condition, source.SchemaDefinition, columns)
 }
 
 // ValidateFilterability 只校验显式开启的字段，复用注册连接器且不创建源端连接。

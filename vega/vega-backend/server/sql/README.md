@@ -42,6 +42,16 @@ Oracle 仅内联不超过 STANDARD 4000 字节上限的 ASCII 字符串。非 AS
 SQL 来源支持带括号的 JOIN 组，例如 `a LEFT JOIN (b JOIN c ON ...) ON ...`。
 Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑定组内全部来源；不会展开成多个外连接而改变 NULL 扩展语义。
 
+## 派生 View 来源
+
+Raw Query 通过已注册 `LogicalViewService.PrepareSQLQuery` 接入 EE；未注册 View 服务时拒绝 View 来源。
+EE 负责 View 来源限制、公开字段隔离、星号展开、独立子查询构造和专属依赖复核；
+返回新增的物理来源与 `SQLQueryCursorValidator`，Core 负责通用物理来源校验、同 Catalog 检查、执行及游标资源管理。
+未安装对应 EE 能力时明确拒绝 View 来源。
+
+View 始终保留独立子查询及固定过滤，SELECT 层次优化由源数据库决定。
+来源范围、权限与发布顺序见[正式设计](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/vega/design/issue-2683-derived-view-sql-source-design.md)。
+
 ## UNION 查询
 
 支持 `UNION`、`UNION DISTINCT` 和 `UNION ALL`，包括多分支混合、括号及 FROM 子查询。

@@ -72,6 +72,81 @@ func toSQL(t *testing.T, connector *PostgresqlConnector, cond interfaces.FilterC
 
 // TestPostgresqlConnectorConvertFilterCondition 校验 LIKE 参数绑定仅转义模式字符，不额外转义 SQL 字面量。
 func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("resource columns preserve full names with or without metadata", func(t *testing.T) {
+		for _, name := range []string{"tenant.id", " tenant.id ", "tenant.part.id", "tenant`id.part"} {
+			t.Run(name, func(t *testing.T) {
+				field := &interfaces.Property{Name: "public", OriginalName: name, Type: interfaces.DataType_Integer}
+				before := *field
+				columns := map[string]interfaces.TableColumnMeta{name: {Name: name, Type: "integer"}}
+				cfg := &interfaces.FilterCondCfg{Field: field.Name, Operation: "==", Value: json.Number("7")}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
+				require.NoError(t, err)
+				for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, columns} {
+					node, err := (&PostgresqlConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field}, metadata)
+					require.NoError(t, err)
+					text, args, err := renderFilterSQL(node)
+					require.NoError(t, err)
+					quoted := "\"" + strings.ReplaceAll(name, "\"", "\"\"") + "\""
+					assert.Equal(t, "("+quoted+" = $1)", text)
+					assert.Equal(t, []any{"7"}, args)
+				}
+				assert.Equal(t, before, *field, "binding must not rewrite shared schema")
+				assert.Equal(t, interfaces.TableColumnMeta{Name: name, Type: "integer"}, columns[name])
+			})
+		}
+	})
+	t.Run("full physical names bind both fields and nested conditions", func(t *testing.T) {
+		left := &interfaces.Property{Name: "left", OriginalName: "a.b", Type: interfaces.DataType_Integer}
+		right := &interfaces.Property{Name: "right", OriginalName: " a.b ", Type: interfaces.DataType_Integer}
+		left.Type, right.Type = interfaces.DataType_Decimal, interfaces.DataType_Decimal
+		left.OriginalType, right.OriginalType = "money", "money"
+		columns := map[string]interfaces.TableColumnMeta{"a.b": {Name: "a.b"}, " a.b ": {Name: " a.b "}}
+		condition := &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{
+			&filter_condition.EqualCond{Lfield: left, Rfield: right},
+			&filter_condition.OrCond{SubConds: []interfaces.FilterCondition{
+				&filter_condition.NullCond{Lfield: left},
+				&filter_condition.GtCond{Lfield: right, Value: json.Number("7")},
+			}},
+		}}
+		for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, columns} {
+			node, err := (&PostgresqlConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{left, right}, metadata)
+			require.NoError(t, err)
+			text, args, err := renderFilterSQL(node)
+			require.NoError(t, err)
+			assert.Equal(t, `((CAST("a.b" AS NUMERIC) = CAST(" a.b " AS NUMERIC)) AND ((CAST("a.b" AS NUMERIC) IS NULL) OR (CAST(" a.b " AS NUMERIC) > $1)))`, text)
+			assert.Equal(t, []any{"7"}, args)
+		}
+	})
+	t.Run("full physical names remain intact inside date functions", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created.time", Type: interfaces.DataType_Datetime}
+		condition := &filter_condition.CurrentCond{Lfield: field, Value: filter_condition.CurrentDay}
+		for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, {"created.time": {Name: "created.time"}}} {
+			node, err := (&PostgresqlConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field},
+				metadata)
+			require.NoError(t, err)
+			text, args, err := renderFilterSQL(node)
+			require.NoError(t, err)
+			assert.Equal(t, `(DATE_TRUNC('day', "created.time") = DATE_TRUNC('day', TRANSACTION_TIMESTAMP()))`, text)
+			assert.Empty(t, args)
+		}
+	})
+	t.Run("physical names do not infer a qualifier from a dot", func(t *testing.T) {
+		field := &interfaces.Property{Name: "logical", OriginalName: "t1.col", Type: interfaces.DataType_Integer}
+		condition := &filter_condition.EqualCond{Lfield: field, Value: json.Number("7")}
+		connector := &PostgresqlConnector{}
+		for _, columns := range []map[string]interfaces.TableColumnMeta{
+			nil,
+			{"col": {Name: "col"}},
+			{"t1.col": {Name: "another"}},
+		} {
+			node, err := connector.ConvertFilterCondition(condition, []*interfaces.Property{field}, columns)
+			require.NoError(t, err)
+			text, args, err := renderFilterSQL(node)
+			require.NoError(t, err)
+			assert.Equal(t, `("t1.col" = $1)`, text)
+			assert.Equal(t, []any{"7"}, args)
+		}
+	})
 	t.Run("money predicates use numeric values without locale formatting", func(t *testing.T) {
 		fields := map[string]*interfaces.Property{
 			"amount": {Name: "amount", OriginalName: "p.source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal},
@@ -83,11 +158,11 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 			sql  string
 			args []any
 		}{
-			{name: "exact comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: ">=", Value: json.Number("92233720368547758.07")}, sql: `(CAST("p"."source_amount" AS NUMERIC) >= $1)`, args: []any{"92233720368547758.07"}},
-			{name: "set", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "in", Value: []any{json.Number("-0.01"), json.Number("123.456")}}, sql: `(CAST("p"."source_amount" AS NUMERIC) IN ($1, $2))`, args: []any{"-0.01", "123.456"}},
-			{name: "range", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "range", Value: []any{json.Number("-1.00"), json.Number("0.00")}}, sql: `((CAST("p"."source_amount" AS NUMERIC) >= $1) AND (CAST("p"."source_amount" AS NUMERIC) <= $2))`, args: []any{"-1.00", "0.00"}},
-			{name: "field comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "==", ValueFrom: interfaces.ValueFrom_Field, Value: "credit"}, sql: `(CAST("p"."source_amount" AS NUMERIC) = CAST("credit" AS NUMERIC))`},
-			{name: "null", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "null", Value: nil}, sql: `(CAST("p"."source_amount" AS NUMERIC) IS NULL)`},
+			{name: "exact comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: ">=", Value: json.Number("92233720368547758.07")}, sql: `(CAST("p.source_amount" AS NUMERIC) >= $1)`, args: []any{"92233720368547758.07"}},
+			{name: "set", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "in", Value: []any{json.Number("-0.01"), json.Number("123.456")}}, sql: `(CAST("p.source_amount" AS NUMERIC) IN ($1, $2))`, args: []any{"-0.01", "123.456"}},
+			{name: "range", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "range", Value: []any{json.Number("-1.00"), json.Number("0.00")}}, sql: `((CAST("p.source_amount" AS NUMERIC) >= $1) AND (CAST("p.source_amount" AS NUMERIC) <= $2))`, args: []any{"-1.00", "0.00"}},
+			{name: "field comparison", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "==", ValueFrom: interfaces.ValueFrom_Field, Value: "credit"}, sql: `(CAST("p.source_amount" AS NUMERIC) = CAST("credit" AS NUMERIC))`},
+			{name: "null", cfg: &interfaces.FilterCondCfg{Field: "amount", Operation: "null", Value: nil}, sql: `(CAST("p.source_amount" AS NUMERIC) IS NULL)`},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cond, err := filter_condition.NewFilterCondition(t.Context(), tc.cfg, fields)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
 const (
@@ -293,6 +294,21 @@ type SearchAfterParams struct {
 	PitKeepAlive string `json:"pit_keep_alive"`
 }
 
+// SQLViewQuery is the result of the registered logical-view service's SQL preparation.
+// Sources contains additional physical Tables with unique IDs; direct Tables
+// are supplied by the query engine. CursorValidator must be non-nil.
+type SQLViewQuery struct {
+	Sources         []*Resource
+	CursorValidator SQLQueryCursorValidator
+}
+
+// SQLQueryCursorValidator retains one query's extension-owned dependency state.
+// ValidateSQLCursor rechecks capability and dependencies using freshly authorized
+// direct resources. The query engine owns cursor invalidation and row cleanup.
+type SQLQueryCursorValidator interface {
+	ValidateSQLCursor(context.Context, []*Resource) error
+}
+
 //go:generate mockgen -source ../interfaces/logical_view_service.go -destination ../interfaces/mock/mock_logical_view_service.go
 type LogicalViewService interface {
 	// ValidateRequest checks the logic-view definition before persistence.
@@ -306,4 +322,10 @@ type LogicalViewService interface {
 
 	// QueryWithPaging queries logic-view data and returns cursor paging state when supported.
 	QueryWithPaging(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
+
+	// PrepareSQLQuery expands views in place and enforces view policy and field
+	// visibility. Direct resources are authorized and direct Table metadata is
+	// bound by the query engine. Each view occurrence gets its own subquery.
+	// The result declares additional physical sources and cursor validation state.
+	PrepareSQLQuery(ctx context.Context, query *sqlbuilder.SelectBuilder, resources []*Resource) (*SQLViewQuery, error)
 }

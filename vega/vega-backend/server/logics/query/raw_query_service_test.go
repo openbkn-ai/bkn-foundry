@@ -12,6 +12,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	mysql "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/postgresql"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
 type builderConnector struct {
@@ -39,6 +41,29 @@ type builderConnector struct {
 	run  func(context.Context, *sb.SelectBuilder) (*interfaces.RawQueryResponse, error)
 	open func(context.Context, *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error)
 	scan func(*sql.Rows, []interfaces.ColumnInfo) (map[string]any, error)
+}
+
+type sqlTestPreparer struct {
+	interfaces.LogicalViewService
+	prepare func(context.Context, *sb.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error)
+}
+
+type sqlTestCursorValidator struct {
+	validate func(context.Context, []*interfaces.Resource) error
+}
+
+type sqlExtensionCursorTest struct {
+	svc               *rawQueryService
+	rs                *vmock.MockResourceService
+	cs                *vmock.MockCatalogService
+	cf                *vmock.MockConnectorFactory
+	virtual, physical *interfaces.Resource
+	catalog           *interfaces.Catalog
+	token             string
+	session           *interfaces.CursorSession
+	opened            context.Context
+	validatorCalls    int
+	validatorErr      error
 }
 
 func int64Pointer(value int64) *int64 {
@@ -1883,11 +1908,14 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 			assertHTTPError(t, err, http.StatusBadRequest)
 		})
 	}
-	t.Run("view expansion is not bypassed", func(t *testing.T) {
-		svc, rs, cs, _ := mysqlRawServices(t)
+	t.Run("unavailable View expansion is not bypassed", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.Category = interfaces.ResourceCategoryLogicalView
-		mysqlRawMetadata(rs, cs, resource, true)
+		previous := resourcelogic.GetLogicalViewService()
+		resourcelogic.SetLogicalViewService(nil)
+		t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
+		expectRawQueryResources(rs, []string{resource.ID}, resource)
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT * FROM {{orders}}"})
 		assert.Nil(t, result)
 		assertHTTPError(t, err, http.StatusBadRequest)
@@ -2429,4 +2457,445 @@ func TestRawQueryServiceOracleSQLBuilder(t *testing.T) {
 	assert.Nil(t, second.Paging.NextCursor)
 	assert.Equal(t, 1, opened)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func (p *sqlTestPreparer) PrepareSQLQuery(ctx context.Context, query *sb.SelectBuilder, direct []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+	return p.prepare(ctx, query, direct)
+}
+
+func (v *sqlTestCursorValidator) ValidateSQLCursor(ctx context.Context, direct []*interfaces.Resource) error {
+	if v.validate != nil {
+		return v.validate(ctx, direct)
+	}
+	return nil
+}
+
+func registerSQLTestPreparer(t *testing.T, prepare func(context.Context, *sb.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error)) {
+	t.Helper()
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(&sqlTestPreparer{prepare: prepare})
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
+}
+
+func sqlExtensionTestResources() (*interfaces.Resource, *interfaces.Resource) {
+	virtual := &interfaces.Resource{ID: "virtual", CatalogID: "logical", Category: interfaces.ResourceCategoryLogicalView,
+		Enabled: true, Status: interfaces.ResourceStatusActive, UpdateTime: 21,
+		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+	physical := builderTestResource()
+	physical.ID, physical.SourceIdentifier = "hidden", "`hidden`"
+	return virtual, physical
+}
+
+// sqlTestPrepare 仅模拟来源改写；业务定义及字段策略由扩展自己的测试验证。
+func sqlTestPrepare(source *interfaces.Resource, validator interfaces.SQLQueryCursorValidator) func(context.Context, *sb.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+	return func(_ context.Context, query *sb.SelectBuilder, _ []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+		for _, table := range sqlBuilderTables(query) {
+			if table.ResourceID == "virtual" {
+				table.ResourceID = source.ID
+			}
+		}
+		return &interfaces.SQLViewQuery{Sources: []*interfaces.Resource{source}, CursorValidator: validator}, nil
+	}
+}
+
+func TestRawQueryServicePrepareExtendedSQLBuilder(t *testing.T) {
+	t.Run("public preparation diagnostics survive the query response", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		virtual, _ := sqlExtensionTestResources()
+		expectRawQueryResources(rs, []string{virtual.ID}, virtual)
+		failure := httperrors.NewHTTPError(compileTestContext(), http.StatusBadRequest, verrors.VegaBackend_LogicalView_DefinitionInvalid).
+			WithMetadata(map[string]any{"Fields": "customer_id"}).
+			WithErrorDetails(map[string]any{"fields": []string{"customer_id"}, "reason": "source_field_mismatch"})
+		registerSQLTestPreparer(t, func(context.Context, *sb.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+			return nil, failure
+		})
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+			QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{virtual}}",
+		})
+		assert.Nil(t, result)
+		assertHTTPError(t, err, http.StatusBadRequest)
+		var response map[string]any
+		require.NoError(t, json.Unmarshal([]byte(err.Error()), &response))
+		assert.Equal(t, failure.ErrorCode, response["error_code"])
+		assert.Equal(t, map[string]any{"Fields": "customer_id"}, response["metadata"])
+		assert.Equal(t, map[string]any{"fields": []any{"customer_id"}, "reason": "source_field_mismatch"}, response["error_details"])
+		assert.Contains(t, response["description"], "customer_id")
+	})
+	for _, tc := range []struct {
+		name, input string
+		directTable bool
+		count       int
+	}{
+		{"single source", "SELECT id FROM {{virtual}}", false, 1},
+		{"repeated sources", "SELECT a.id,b.id FROM {{virtual}} a JOIN {{virtual}} b ON a.id=b.id", false, 2},
+		{"joined direct Table", "SELECT v.id,o.id FROM {{virtual}} v JOIN {{orders}} o ON v.id=o.id", true, 2},
+		{"UNION direct Table", "SELECT id FROM {{virtual}} UNION ALL SELECT id FROM {{orders}}", true, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, rs, cs, _ := mysqlRawServices(t)
+			virtual, hidden := sqlExtensionTestResources()
+			physical := builderTestResource()
+			physical.SourceMetadata = map[string]any{"name": "orders"}
+			validator := &sqlTestCursorValidator{}
+			ids, resources := []string{virtual.ID}, []*interfaces.Resource{virtual}
+			if tc.directTable {
+				ids, resources = append(ids, physical.ID), append(resources, physical)
+			}
+			expectRawQueryResources(rs, ids, resources...)
+			cs.EXPECT().InternalGetByID(gomock.Any(), hidden.CatalogID, true).Return(&interfaces.Catalog{
+				ID: hidden.CatalogID, Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
+			}, nil)
+			registerSQLTestPreparer(t, func(ctx context.Context, query *sb.SelectBuilder, got []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+				assert.Equal(t, resources, got)
+				if tc.directTable {
+					for _, table := range sqlBuilderTables(query) {
+						if table.ResourceID == physical.ID {
+							assert.Equal(t, "orders", table.SourceName)
+							assert.Equal(t, []string{"order.id", "created at"}, table.ColumnNames)
+							assert.Equal(t, physical.SourceIdentifier, table.SourceIdentifier)
+						}
+					}
+				}
+				return sqlTestPrepare(hidden, validator)(ctx, query, got)
+			})
+			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: tc.input})
+			require.NoError(t, err)
+			assert.Equal(t, ids, prepared.resourceIDs)
+			assert.Equal(t, hidden.CatalogID, prepared.catalog.ID)
+			assert.Same(t, validator, prepared.sourceValidator)
+			assert.NotContains(t, prepared.resourceVersions, virtual.ID)
+			assert.EqualValues(t, hidden.UpdateTime, prepared.resourceVersions[hidden.ID])
+			tables := sqlBuilderTables(prepared.builder)
+			require.Len(t, tables, tc.count)
+			for _, table := range tables {
+				assert.NotEmpty(t, table.SourceIdentifier)
+			}
+			if tc.name == "repeated sources" {
+				assert.NotSame(t, tables[0], tables[1])
+				assert.Equal(t, hidden.SourceIdentifier, tables[0].SourceIdentifier)
+				assert.Equal(t, hidden.SourceIdentifier, tables[1].SourceIdentifier)
+			}
+		})
+	}
+	t.Run("extension can reuse a direct Table without declaring it as a hidden source", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		virtual, _ := sqlExtensionTestResources()
+		physical := builderTestResource()
+		validator := &sqlTestCursorValidator{}
+		expectRawQueryResources(rs, []string{virtual.ID, physical.ID}, virtual, physical)
+		registerSQLTestPreparer(t, func(ctx context.Context, query *sb.SelectBuilder, direct []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+			prepared, err := sqlTestPrepare(physical, validator)(ctx, query, direct)
+			prepared.Sources = nil
+			return prepared, err
+		})
+		cs.EXPECT().InternalGetByID(gomock.Any(), physical.CatalogID, true).Return(&interfaces.Catalog{ID: physical.CatalogID, Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL}, nil)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT a.id,b.id FROM {{virtual}} a JOIN {{orders}} b ON a.id=b.id"})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int64{physical.ID: physical.UpdateTime}, prepared.resourceVersions)
+		assert.Same(t, validator, prepared.sourceValidator)
+		assert.Len(t, sqlBuilderTables(prepared.builder), 2)
+	})
+
+	t.Run("all direct permissions precede metadata and extension invocation", func(t *testing.T) {
+		svc, rs, _, _ := mysqlRawServices(t)
+		registerSQLTestPreparer(t, func(context.Context, *sb.SelectBuilder, []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+			t.Fatal("permission denial must stop before the extension")
+			return nil, errors.New("unexpected extension invocation")
+		})
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "orders", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "virtual", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+			Query: "SELECT id FROM {{orders}} UNION SELECT id FROM {{virtual}}"})
+		assert.Nil(t, prepared)
+		assert.Same(t, denial, err)
+	})
+	for _, invalid := range []string{"nil result", "nil validator", "duplicate source", "undeclared source", "non Table", "disabled source", "built in source", "cross Catalog"} {
+		t.Run("reject extension "+invalid, func(t *testing.T) {
+			svc, rs, _, _ := mysqlRawServices(t)
+			virtual, hidden := sqlExtensionTestResources()
+			physical := builderTestResource()
+			input := "SELECT id FROM {{virtual}}"
+			status := http.StatusBadRequest
+			ids, resources := []string{virtual.ID}, []*interfaces.Resource{virtual}
+			if invalid == "cross Catalog" {
+				hidden.CatalogID = "other"
+				input += " UNION SELECT id FROM {{orders}}"
+				ids, resources, status = append(ids, physical.ID), append(resources, physical), http.StatusNotImplemented
+			}
+			expectRawQueryResources(rs, ids, resources...)
+			registerSQLTestPreparer(t, func(ctx context.Context, query *sb.SelectBuilder, direct []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+				prepared, err := sqlTestPrepare(hidden, &sqlTestCursorValidator{})(ctx, query, direct)
+				switch invalid {
+				case "nil result":
+					return nil, nil //nolint:nilnil // 模拟扩展违反非空结果契约，验证执行器拒绝。
+				case "nil validator":
+					prepared.CursorValidator = nil
+				case "duplicate source":
+					prepared.Sources = append(prepared.Sources, hidden)
+				case "undeclared source":
+					prepared.Sources = nil
+				case "non Table":
+					hidden.Category = interfaces.ResourceCategoryIndex
+				case "disabled source":
+					hidden.Enabled = false
+					status = http.StatusConflict
+				case "built in source":
+					hidden.Builtin = true
+					status = http.StatusForbidden
+				}
+				return prepared, err
+			})
+			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: input})
+			assert.Nil(t, prepared)
+			assertHTTPError(t, err, status)
+		})
+	}
+	t.Run("hidden source warnings are not public response warnings", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		virtual, hidden := sqlExtensionTestResources()
+		hidden.Name, hidden.Status = "private physical source", interfaces.ResourceStatusDeprecated
+		registerSQLTestPreparer(t, sqlTestPrepare(hidden, &sqlTestCursorValidator{}))
+		expectRawQueryResources(rs, []string{virtual.ID}, virtual)
+		cs.EXPECT().InternalGetByID(gomock.Any(), hidden.CatalogID, true).Return(&interfaces.Catalog{ID: hidden.CatalogID, Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL}, nil)
+		base := vmock.NewMockTableConnector(gomock.NewController(t))
+		base.EXPECT().Close(gomock.Any()).Return(nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(&builderConnector{
+			TableConnector: base,
+			run: func(context.Context, *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
+				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": int64(1)}}}, nil
+			},
+		}, nil)
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{virtual}}"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{virtual.ID}, result.ResourceIDs)
+		assert.Empty(t, result.Warnings)
+	})
+}
+
+func newSQLExtensionCursorTest(t *testing.T) *sqlExtensionCursorTest {
+	t.Helper()
+	state := &sqlExtensionCursorTest{}
+	state.svc, state.rs, state.cs, state.cf = mysqlRawServices(t)
+	state.virtual, state.physical = sqlExtensionTestResources()
+	state.catalog = &interfaces.Catalog{ID: state.physical.CatalogID, Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL, UpdateTime: 7}
+	validator := &sqlTestCursorValidator{validate: func(_ context.Context, direct []*interfaces.Resource) error {
+		state.validatorCalls++
+		require.Len(t, direct, 1)
+		assert.Equal(t, state.virtual.ID, direct[0].ID)
+		return state.validatorErr
+	}}
+	registerSQLTestPreparer(t, sqlTestPrepare(state.physical, validator))
+	expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
+	state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
+	opened := mysqlRawCursorRows(t, state.cf, "SELECT `id` FROM `hidden`", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3), nil)
+	first, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+		Query: "SELECT id FROM {{virtual}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.Equal(t, []string{state.virtual.ID}, first.ResourceIDs)
+	assert.Equal(t, 0, state.validatorCalls)
+	state.token = *first.Paging.NextCursor
+	state.session = rawQueryCursorSessions.sessions[state.token]
+	state.opened = <-opened
+	return state
+}
+
+func assertSQLExtensionCursorReleased(t *testing.T, state *sqlExtensionCursorTest) {
+	t.Helper()
+	assert.Empty(t, rawQueryCursorSessions.sessions)
+	assert.ErrorIs(t, state.opened.Err(), context.Canceled)
+	assert.Error(t, state.session.SQLRows.Scan(new(any)))
+	assert.Equal(t, 2, state.session.PageOffset)
+}
+
+func expectSQLExtensionRetry(state *sqlExtensionCursorTest) {
+	expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
+	state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
+	state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true})
+	state.rs.EXPECT().InternalGetByID(gomock.Any(), nil, state.physical.ID).Return(state.physical, nil)
+}
+
+func TestRawQueryServiceSQLSourceCursorValidator(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			state := newSQLExtensionCursorTest(t)
+			state.validatorErr = httperrors.NewHTTPError(compileTestContext(), status, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("private extension source diagnostics").
+				WithMetadata(map[string]any{"source": "private hidden source"})
+			expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
+			result, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+			assert.Nil(t, result)
+			assertHTTPError(t, err, status)
+			assert.NotContains(t, err.Error(), "private")
+			assert.Equal(t, 1, state.validatorCalls)
+			if status != http.StatusInternalServerError {
+				assertSQLExtensionCursorReleased(t, state)
+				return
+			}
+			assert.Contains(t, rawQueryCursorSessions.sessions, state.token)
+			assert.NoError(t, state.opened.Err())
+			state.validatorErr = nil
+			expectSQLExtensionRetry(state)
+			result, err = state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"id": int64(3)}}, result.Entries)
+			assert.Equal(t, 2, state.validatorCalls)
+			assertSQLExtensionCursorReleased(t, state)
+		})
+	}
+	t.Run("direct permission revocation precedes validator and metadata", func(t *testing.T) {
+		state := newSQLExtensionCursorTest(t)
+		denial := httperrors.NewHTTPError(compileTestContext(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		state.rs.EXPECT().CheckResourcePermission(gomock.Any(), state.virtual.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(denial)
+		result, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+		assert.Nil(t, result)
+		assert.Same(t, denial, err)
+		assert.Equal(t, 0, state.validatorCalls)
+		assertSQLExtensionCursorReleased(t, state)
+	})
+	for _, phase := range []string{"Catalog", "physical Table"} {
+		t.Run(phase+" temporary read error is safe and retryable", func(t *testing.T) {
+			state := newSQLExtensionCursorTest(t)
+			expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
+			if phase == "Catalog" {
+				failure := httperrors.NewHTTPError(compileTestContext(), http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError_GetFailed).
+					WithErrorDetails("private physical catalog database diagnostics")
+				state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(nil, failure)
+			} else {
+				state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
+				state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true})
+				state.rs.EXPECT().InternalGetByID(gomock.Any(), nil, state.physical.ID).Return(nil, errors.New("private physical Table metadata failure"))
+			}
+			result, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+			assert.Nil(t, result)
+			assertHTTPError(t, err, http.StatusInternalServerError)
+			assert.NotContains(t, err.Error(), "private")
+			assert.Contains(t, rawQueryCursorSessions.sessions, state.token)
+			assert.NoError(t, state.opened.Err())
+			expectSQLExtensionRetry(state)
+			result, err = state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"id": int64(3)}}, result.Entries)
+			assertSQLExtensionCursorReleased(t, state)
+		})
+	}
+}
+
+func TestRawQueryServiceSQLSourceAvailability(t *testing.T) {
+	for _, change := range []string{"unavailable", "disabled", "nil factory", "physical version", "physical category", "physical missing", "Catalog version"} {
+		t.Run(change+" invalidates retained Rows", func(t *testing.T) {
+			state := newSQLExtensionCursorTest(t)
+			expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
+			status, code := http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed
+			availability := interfaces.ConnectorAvailability{Available: true}
+			switch change {
+			case "unavailable":
+				availability.Available = false
+				status, code = http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied
+			case "disabled":
+				availability.Disabled = true
+				code = verrors.VegaBackend_Connector_Disabled
+			case "nil factory":
+				state.svc.cf = nil
+				status, code = http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied
+			case "physical version":
+				state.physical.UpdateTime++
+			case "physical category":
+				state.physical.Category = interfaces.ResourceCategoryIndex
+			case "Catalog version":
+				state.catalog.UpdateTime++
+			}
+			state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
+			if change != "nil factory" {
+				state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(availability)
+			}
+			if change == "physical version" || change == "physical category" || change == "physical missing" {
+				physical := state.physical
+				if change == "physical missing" {
+					physical = nil
+				}
+				state.rs.EXPECT().InternalGetByID(gomock.Any(), nil, state.physical.ID).Return(physical, nil)
+			}
+			result, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
+			assert.Nil(t, result)
+			var failure *httperrors.HTTPError
+			require.ErrorAs(t, err, &failure)
+			assert.Equal(t, status, failure.HTTPCode)
+			assert.Equal(t, code, failure.ErrorCode)
+			assertSQLExtensionCursorReleased(t, state)
+		})
+	}
+}
+
+func TestSQLSourceReadError(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusInternalServerError} {
+		failure := httperrors.NewHTTPError(compileTestContext(), status, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("private source metadata")
+		converted := sqlSourceReadError(compileTestContext(), failure)
+		var result *httperrors.HTTPError
+		require.ErrorAs(t, converted, &result)
+		assert.Equal(t, status, result.HTTPCode)
+		assert.Equal(t, failure.ErrorCode, result.ErrorCode)
+		assert.NotContains(t, result.ErrorDetails, "private")
+	}
+	failure := errors.New("private raw metadata failure")
+	converted := sqlSourceReadError(compileTestContext(), failure)
+	assertHTTPError(t, converted, http.StatusInternalServerError)
+	assert.NotContains(t, converted.Error(), "private")
+}
+
+func TestRawQueryServiceSQLSourceCountAndLogicalLimits(t *testing.T) {
+	svc, rs, cs, cf := mysqlRawServices(t)
+	virtual, hidden := sqlExtensionTestResources()
+	hidden.SchemaDefinition = append(hidden.SchemaDefinition, &interfaces.Property{Name: "tenant", OriginalName: "tenant", Type: interfaces.DataType_String, OriginalType: "VARCHAR(32)"})
+	physical := builderTestResource()
+	expectRawQueryResources(rs, []string{virtual.ID, physical.ID}, virtual, physical)
+	cs.EXPECT().InternalGetByID(gomock.Any(), hidden.CatalogID, true).Return(&interfaces.Catalog{
+		ID: hidden.CatalogID, ConnectorType: interfaces.ConnectorTypeMySQL, Enabled: true,
+	}, nil)
+	registerSQLTestPreparer(t, func(_ context.Context, query *sb.SelectBuilder, _ []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+		union := query.FromPart.(*sb.Union)
+		union.Left.FromPart = &sb.Subquery{Alias: "prepared", Query: sb.Select(
+			&sb.Alias{Expr: &sb.Column{Name: "order.id"}, Name: "id"},
+		).From(&sb.Table{ResourceID: hidden.ID}).Where(
+			&sb.Eq{Left: &sb.Column{Name: "tenant"}, Right: &sb.Param{Value: "bound"}},
+		)}
+		return &interfaces.SQLViewQuery{Sources: []*interfaces.Resource{hidden}, CursorValidator: &sqlTestCursorValidator{}}, nil
+	})
+	for _, count := range []bool{true, false} {
+		base := vmock.NewMockTableConnector(gomock.NewController(t))
+		base.EXPECT().Close(gomock.Any()).Return(nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(&builderConnector{
+			TableConnector: base,
+			run: func(_ context.Context, query *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
+				text, args, err := mysql.ToSql(query)
+				require.NoError(t, err)
+				assert.Equal(t, []any{"bound"}, args)
+				assert.Contains(t, text, "UNION ALL")
+				assert.Contains(t, text, "WHERE (`tenant` = ?)")
+				if count {
+					assert.True(t, strings.HasPrefix(text, "SELECT COUNT(*)"), text)
+					inner := query.FromPart.(*sb.Subquery)
+					assert.Equal(t, "_raw_query_total", inner.Alias)
+					require.NotNil(t, inner.Query.LimitPart)
+					assert.EqualValues(t, 3, *inner.Query.LimitPart)
+					assert.Zero(t, inner.Query.OffsetPart)
+					assert.Contains(t, text, "LIMIT 3")
+					return &interfaces.RawQueryResponse{Entries: []map[string]any{{rawQueryTotalCountColumn: int64(3)}}}, nil
+				}
+				assert.True(t, strings.HasSuffix(text, "LIMIT 1 OFFSET 1"), text)
+				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": int64(2)}}}, nil
+			},
+		}, nil)
+	}
+	result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
+		Query:     "SELECT id FROM {{virtual}} UNION ALL SELECT `order.id` AS id FROM {{orders}} ORDER BY id LIMIT 3",
+		NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 1, Offset: 1}})
+	require.NoError(t, err)
+	require.NotNil(t, result.TotalCount)
+	assert.EqualValues(t, 3, *result.TotalCount)
+	assert.Equal(t, []map[string]any{{"id": int64(2)}}, result.Entries)
+	assert.Equal(t, []string{virtual.ID, physical.ID}, result.ResourceIDs)
 }

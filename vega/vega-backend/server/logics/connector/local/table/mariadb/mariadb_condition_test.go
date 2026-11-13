@@ -90,8 +90,8 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		sql, _ := toSQL(t, c, cond)
-		// OriginalName t1.col must become the qualified identifier `t1`.`col`.
-		if sql != "(`t1`.`col` = ?)" {
+		// OriginalName t1.col is one physical column, rather than an inferred qualifier.
+		if sql != "(`t1.col` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -701,6 +701,79 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 }
 
 func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("resource columns preserve full names with or without metadata", func(t *testing.T) {
+		for _, name := range []string{"tenant.id", " tenant.id ", "tenant.part.id", "tenant`id.part"} {
+			t.Run(name, func(t *testing.T) {
+				field := &interfaces.Property{Name: "public", OriginalName: name, Type: interfaces.DataType_Integer}
+				before := *field
+				columns := map[string]interfaces.TableColumnMeta{name: {Name: name, Type: "integer"}}
+				cfg := &interfaces.FilterCondCfg{Field: field.Name, Operation: "==", Value: json.Number("7")}
+				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{field.Name: field})
+				require.NoError(t, err)
+				for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, columns} {
+					node, err := (&MariaDBConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field}, metadata)
+					require.NoError(t, err)
+					text, args, err := render(node)
+					require.NoError(t, err)
+					quoted := "`" + strings.ReplaceAll(name, "`", "``") + "`"
+					assert.Equal(t, "("+quoted+" = ?)", text)
+					assert.Equal(t, []any{json.Number("7")}, args)
+				}
+				assert.Equal(t, before, *field, "binding must not rewrite shared schema")
+				assert.Equal(t, interfaces.TableColumnMeta{Name: name, Type: "integer"}, columns[name])
+			})
+		}
+	})
+	t.Run("full physical names bind both fields and nested conditions", func(t *testing.T) {
+		left := &interfaces.Property{Name: "left", OriginalName: "a.b", Type: interfaces.DataType_Integer}
+		right := &interfaces.Property{Name: "right", OriginalName: " a.b ", Type: interfaces.DataType_Integer}
+		columns := map[string]interfaces.TableColumnMeta{"a.b": {Name: "a.b"}, " a.b ": {Name: " a.b "}}
+		condition := &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{
+			&filter_condition.EqualCond{Lfield: left, Rfield: right},
+			&filter_condition.OrCond{SubConds: []interfaces.FilterCondition{
+				&filter_condition.NullCond{Lfield: left},
+				&filter_condition.GtCond{Lfield: right, Value: json.Number("7")},
+			}},
+		}}
+		for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, columns} {
+			node, err := (&MariaDBConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{left, right}, metadata)
+			require.NoError(t, err)
+			text, args, err := render(node)
+			require.NoError(t, err)
+			assert.Equal(t, "((`a.b` = ` a.b `) AND ((`a.b` IS NULL) OR (` a.b ` > ?)))", text)
+			assert.Equal(t, []any{json.Number("7")}, args)
+		}
+	})
+	t.Run("full physical names remain intact inside date functions", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created.time", Type: interfaces.DataType_Datetime}
+		condition := &filter_condition.CurrentCond{Lfield: field, Value: filter_condition.CurrentDay}
+		for _, metadata := range []map[string]interfaces.TableColumnMeta{nil, {"created.time": {Name: "created.time"}}} {
+			node, err := (&MariaDBConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field},
+				metadata)
+			require.NoError(t, err)
+			text, args, err := render(node)
+			require.NoError(t, err)
+			assert.Equal(t, "(DATE_FORMAT(`created.time`, '%Y-%m-%d') = DATE_FORMAT(NOW(), '%Y-%m-%d'))", text)
+			assert.Empty(t, args)
+		}
+	})
+	t.Run("physical names do not infer a qualifier from a dot", func(t *testing.T) {
+		field := &interfaces.Property{Name: "logical", OriginalName: "t1.col", Type: interfaces.DataType_Integer}
+		condition := &filter_condition.EqualCond{Lfield: field, Value: json.Number("7")}
+		connector := &MariaDBConnector{}
+		for _, columns := range []map[string]interfaces.TableColumnMeta{
+			nil,
+			{"col": {Name: "col"}},
+			{"t1.col": {Name: "another"}},
+		} {
+			node, err := connector.ConvertFilterCondition(condition, []*interfaces.Property{field}, columns)
+			require.NoError(t, err)
+			text, args, err := render(node)
+			require.NoError(t, err)
+			assert.Equal(t, "(`t1.col` = ?)", text)
+			assert.Equal(t, []any{json.Number("7")}, args)
+		}
+	})
 	field := &interfaces.Property{Name: "x", Type: interfaces.DataType_String}
 	cfg := &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Const}
 	connector := &MariaDBConnector{}
@@ -780,16 +853,18 @@ func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
 	})
 }
 
-func TestSqlColumnName(t *testing.T) {
+func TestSqlResourceColumn(t *testing.T) {
 	for _, tc := range []struct{ name, want string }{
-		{"name", "`name`"}, {"t1.name", "`t1`.`name`"}, {"col`name", "`col``name`"}, {" t1 . name ", "`t1`.`name`"},
+		{"name", "`name`"}, {"t1.name", "`t1.name`"}, {"col`name", "`col``name`"}, {" t1 . name ", "` t1 . name `"},
 	} {
-		sql, args, err := render(sqlColumnName(tc.name))
-		require.NoError(t, err)
-		assert.Equal(t, tc.want, sql)
-		assert.Empty(t, args)
+		for _, field := range []*interfaces.Property{{OriginalName: tc.name}, {Name: tc.name}} {
+			sql, args, err := render(sqlResourceColumn(field))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, sql)
+			assert.Empty(t, args)
+		}
 	}
-	sql, args, err := render(sqlColumnName(""))
+	sql, args, err := render(sqlResourceColumn(&interfaces.Property{}))
 	require.Error(t, err)
 	assert.Empty(t, sql)
 	assert.Nil(t, args)

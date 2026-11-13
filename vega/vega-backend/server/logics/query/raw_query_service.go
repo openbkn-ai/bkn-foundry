@@ -51,6 +51,7 @@ type preparedSQLQuery struct {
 	builder          *sb.SelectBuilder
 	resourceVersions map[string]int64
 	warnings         []string
+	sourceValidator  interfaces.SQLQueryCursorValidator
 }
 
 type rawSQLBuildOptions struct {
@@ -211,6 +212,7 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	defer session.Unlock()
 	session.SQLQuery = prepared.builder
 	session.SQLResourceVersions = prepared.resourceVersions
+	session.SQLSourceValidator = prepared.sourceValidator
 	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
 	session.SQLConnectorType = prepared.catalog.ConnectorType
 	session.PageOffset = req.Paging.Offset
@@ -250,7 +252,14 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 	queryCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
-	catalog, warnings, err := rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
+	var catalog *interfaces.Catalog
+	var warnings []string
+	var err error
+	if session.QueryFormat == interfaces.QueryFormatSQL && session.SQLSourceValidator != nil {
+		catalog, warnings, err = rqs.prepareSQLCursorSources(queryCtx, session)
+	} else {
+		catalog, warnings, err = rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
+	}
 	if err != nil {
 		invalidateSQLCursor(session, err)
 		return nil, err
@@ -279,6 +288,39 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 }
 
+func (rqs *rawQueryService) prepareSQLCursorSources(ctx context.Context, session *interfaces.CursorSession) (*interfaces.Catalog, []string, error) {
+	direct, warnings, err := rqs.queryResources(ctx, session.ResourceIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := session.SQLSourceValidator.ValidateSQLCursor(ctx, direct); err != nil {
+		return nil, nil, sqlSourceReadError(ctx, err)
+	}
+	catalog, err := rqs.cs.InternalGetByID(ctx, session.CatalogID, true)
+	if err != nil {
+		return nil, nil, sqlSourceReadError(ctx, err)
+	}
+	if catalog == nil {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+			WithErrorDetails("query source catalog is unavailable")
+	}
+	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
+		return nil, nil, sqlSourceReadError(ctx, err)
+	}
+	availability := interfaces.ConnectorAvailability{}
+	if rqs.cf != nil {
+		availability = rqs.cf.GetConnectorAvailability(catalog.ConnectorType)
+	}
+	if !availability.Available {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).
+			WithErrorDetails("source connector is unavailable for the current edition")
+	}
+	if availability.Disabled {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled)
+	}
+	return catalog, warnings, nil
+}
+
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
 // cursor execution. SQL uses the shared parser and the Catalog selects the renderer.
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
@@ -298,7 +340,16 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("at least one resource_id is required for SQL queries")
 	}
-	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
+	resources, warnings, err := rqs.queryResources(ctx, resourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, resource := range resources {
+		if resource.Category == interfaces.ResourceCategoryLogicalView {
+			return rqs.prepareExtendedSQLBuilder(ctx, parsed, resourceIDs, resources, warnings)
+		}
+	}
+	catalog, err := rqs.catalogForQueryResources(ctx, resources)
 	if err != nil {
 		return nil, err
 	}
@@ -719,6 +770,18 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 // checkSameDataSource verifies that all resource IDs belong to one catalog and are queryable.
 // It returns the catalog, warnings for deprecated resources, and any validation error.
 func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs []string) (*interfaces.Catalog, []string, error) {
+	resources, warnings, err := rqs.queryResources(ctx, resourceIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	catalog, err := rqs.catalogForQueryResources(ctx, resources)
+	if err != nil {
+		return nil, nil, err
+	}
+	return catalog, warnings, nil
+}
+
+func (rqs *rawQueryService) queryResources(ctx context.Context, resourceIDs []string) ([]*interfaces.Resource, []string, error) {
 	if len(resourceIDs) == 0 {
 		return nil, nil, fmt.Errorf("no resource ids provided")
 	}
@@ -757,6 +820,10 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		return nil, nil, err
 	}
 
+	return resources, warnings, nil
+}
+
+func (rqs *rawQueryService) catalogForQueryResources(ctx context.Context, resources []*interfaces.Resource) (*interfaces.Catalog, error) {
 	// Verify that every resource belongs to the same catalog.
 	catalogIDs := make(map[string]bool)
 	for _, r := range resources {
@@ -767,7 +834,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
 			WithErrorDetails(localizedText)
 	}
 
@@ -783,17 +850,17 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 	// a Resource query into a public Catalog detail request.
 	catalog, err := rqs.cs.InternalGetByID(ctx, catalogID, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if catalog == nil {
-		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", catalogID))
 	}
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return catalog, warnings, nil
+	return catalog, nil
 }
 
 func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) error {
@@ -844,25 +911,124 @@ func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.Sel
 			resources[table.ResourceID] = resource
 			versions[table.ResourceID] = resource.UpdateTime
 		}
-		table.SourceIdentifier = resource.SourceIdentifier
-		table.SourceName, _ = resource.SourceMetadata["name"].(string)
-		if resource.SchemaDefinition != nil {
-			table.ColumnNames = make([]string, 0, len(resource.SchemaDefinition))
-			table.ColumnOriginalTypes = make(map[string]string, len(resource.SchemaDefinition))
-			for _, field := range resource.SchemaDefinition {
-				name := field.OriginalName
-				if name == "" {
-					name = field.Name
-				}
-				table.ColumnNames = append(table.ColumnNames, name)
-				table.ColumnOriginalTypes[name] = field.OriginalType
-			}
-		}
+		bindSQLTableMetadata(table, resource)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return &preparedSQLQuery{catalog: catalog, resourceIDs: ids, warnings: warnings, builder: query, resourceVersions: versions}, nil
+}
+
+// prepareExtendedSQLBuilder 将业务来源准备交给可选扩展，执行器只绑定其声明的物理来源。
+func (rqs *rawQueryService) prepareExtendedSQLBuilder(ctx context.Context, query *sb.SelectBuilder, ids []string, direct []*interfaces.Resource, warnings []string) (*preparedSQLQuery, error) {
+	declared := make(map[string]*interfaces.Resource, len(direct))
+	for _, resource := range direct {
+		if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+			return nil, sqlBuilderQueryForbidden(ctx)
+		}
+		switch resource.Category {
+		case interfaces.ResourceCategoryTable:
+			declared[resource.ID] = resource
+		case interfaces.ResourceCategoryLogicalView:
+		default:
+			return nil, sqlBuilderQueryInvalid(ctx, "unsupported SQL resource category")
+		}
+	}
+	preparer := resourcelogic.GetLogicalViewService()
+	if preparer == nil {
+		return nil, sqlBuilderQueryInvalid(ctx, "logical View SQL query preparation is unavailable")
+	}
+	// 普通来源元数据先提供给扩展，用于其公开字段与跨关系作用域校验。
+	for _, table := range sqlBuilderTables(query) {
+		if resource := declared[table.ResourceID]; resource != nil {
+			bindSQLTableMetadata(table, resource)
+		}
+	}
+	prepared, err := preparer.PrepareSQLQuery(ctx, query, direct)
+	if err != nil {
+		// 扩展负责参数诊断的脱敏；保留公开字段及原因，其他来源故障仍统一脱敏。
+		var failure *httperrors.HTTPError
+		if errors.As(err, &failure) && failure.HTTPCode == http.StatusBadRequest {
+			return nil, failure
+		}
+		return nil, sqlSourceReadError(ctx, err)
+	}
+	if prepared == nil || prepared.CursorValidator == nil {
+		return nil, sqlBuilderQueryInvalid(ctx, "SQL source extension returned invalid query metadata")
+	}
+	seen := make(map[string]bool, len(prepared.Sources))
+	for _, resource := range prepared.Sources {
+		if resource == nil || resource.ID == "" || resource.Category != interfaces.ResourceCategoryTable ||
+			resource.SourceIdentifier == "" || seen[resource.ID] {
+			return nil, sqlBuilderQueryInvalid(ctx, "SQL source extension returned invalid physical sources")
+		}
+		seen[resource.ID] = true
+		if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+			return nil, sqlBuilderQueryForbidden(ctx)
+		}
+		if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+			return nil, sqlSourceReadError(ctx, err)
+		}
+		if previous := declared[resource.ID]; previous != nil &&
+			(previous.UpdateTime != resource.UpdateTime || previous.CatalogID != resource.CatalogID || previous.SourceIdentifier != resource.SourceIdentifier) {
+			return nil, sqlBuilderCursorChanged(ctx)
+		}
+		declared[resource.ID] = resource
+	}
+	physical := make([]*interfaces.Resource, 0, len(declared))
+	versions := make(map[string]int64, len(declared))
+	for _, table := range sqlBuilderTables(query) {
+		resource := declared[table.ResourceID]
+		if resource == nil || resource.Category != interfaces.ResourceCategoryTable {
+			return nil, sqlBuilderQueryInvalid(ctx, "SQL query contains an undeclared physical source")
+		}
+		if _, exists := versions[resource.ID]; !exists {
+			physical = append(physical, resource)
+			versions[resource.ID] = resource.UpdateTime
+		}
+		bindSQLTableMetadata(table, resource)
+	}
+	if len(physical) == 0 {
+		return nil, sqlBuilderQueryInvalid(ctx, "SQL query requires a physical source")
+	}
+	catalog, err := rqs.catalogForQueryResources(ctx, physical)
+	if err != nil {
+		return nil, sqlSourceReadError(ctx, err)
+	}
+	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
+		return nil, sqlBuilderQueryForbidden(ctx)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &preparedSQLQuery{
+		catalog:          catalog,
+		resourceIDs:      ids,
+		builder:          query,
+		resourceVersions: versions,
+		warnings:         warnings,
+		sourceValidator:  prepared.CursorValidator,
+	}, nil
+}
+
+func bindSQLTableMetadata(table *sb.Table, resource *interfaces.Resource) {
+	table.SourceIdentifier = resource.SourceIdentifier
+	table.SourceName, _ = resource.SourceMetadata["name"].(string)
+	if resource.SchemaDefinition != nil {
+		table.ColumnNames = make([]string, 0, len(resource.SchemaDefinition))
+		table.ColumnOriginalTypes = make(map[string]string, len(resource.SchemaDefinition))
+		for _, field := range resource.SchemaDefinition {
+			if field == nil {
+				continue
+			}
+			name := field.OriginalName
+			if name == "" {
+				name = field.Name
+			}
+			table.ColumnNames = append(table.ColumnNames, name)
+			table.ColumnOriginalTypes[name] = field.OriginalType
+		}
+	}
 }
 
 // executeSQLBuilder 将读取窗口合并到临时查询根节点，保留基础 Builder 的逻辑 LIMIT 和排序。
@@ -1011,6 +1177,16 @@ func sqlBuilderExecutionError(ctx context.Context, err error) error {
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).WithErrorDetails("query execution failed")
 }
 
+// sqlSourceReadError 保留扩展和元数据失败的公开错误契约，不暴露隐藏来源详情。
+func sqlSourceReadError(ctx context.Context, err error) error {
+	var failure *httperrors.HTTPError
+	if errors.As(err, &failure) {
+		return httperrors.NewHTTPError(ctx, failure.HTTPCode, failure.ErrorCode).
+			WithErrorDetails("SQL query source is unavailable")
+	}
+	return sqlBuilderExecutionError(ctx, err)
+}
+
 // invalidateSQLCursor 权限或来源变化终止结果集；读取前的临时服务错误允许重试。
 func invalidateSQLCursor(session *interfaces.CursorSession, err error) {
 	if session.QueryFormat != interfaces.QueryFormatSQL {
@@ -1032,6 +1208,9 @@ func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, sessio
 	for _, table := range sqlBuilderTables(session.SQLQuery) {
 		resource, err := rqs.rs.InternalGetByID(ctx, nil, table.ResourceID)
 		if err != nil {
+			if session.SQLSourceValidator != nil {
+				return sqlSourceReadError(ctx, err)
+			}
 			return err
 		}
 		if resource == nil || resource.CatalogID != catalog.ID || resource.Category != interfaces.ResourceCategoryTable || resource.UpdateTime != session.SQLResourceVersions[table.ResourceID] || resource.SourceIdentifier != table.SourceIdentifier {
@@ -1039,6 +1218,11 @@ func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, sessio
 		}
 		if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 			return sqlBuilderQueryForbidden(ctx)
+		}
+		if session.SQLSourceValidator != nil {
+			if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+				return sqlSourceReadError(ctx, err)
+			}
 		}
 	}
 	return ctx.Err()

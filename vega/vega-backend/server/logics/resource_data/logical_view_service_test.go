@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
@@ -37,6 +38,10 @@ func (viewService *queryViewService) QueryWithPaging(_ context.Context, resource
 	viewService.resource = resource
 	viewService.params = params
 	return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, Paging: &interfaces.PagingResponse{}}, nil
+}
+
+func (*queryViewService) PrepareSQLQuery(ctx context.Context, _ *sqlbuilder.SelectBuilder, _ []*interfaces.Resource) (*interfaces.SQLViewQuery, error) {
+	return nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, httperrors.PublicError_NotImplemented)
 }
 
 func TestResourceDataServiceQueryWithPagingUsesLogicalViewService(t *testing.T) {
