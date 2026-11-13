@@ -85,6 +85,24 @@ func Test_ProjectCatalogs(t *testing.T) {
 			So(e.NetworkCatalogIDs, ShouldBeNil)
 		})
 
+		Convey("While the project drafts again, what its confirmations wrote stays its own\n", func() {
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "orders", DataSource: resource("r1")},
+				{ID: "lines", DataSource: resource("r2")},
+			}, nil)
+			// A draft drafting or failed holds only what the last confirmations wrote.
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(&interfaces.Draft{Status: interfaces.DRAFT_STATUS_DRAFTING,
+				Items: interfaces.DraftItems{Confirmation: &interfaces.DraftConfirmation{
+					Files: []string{"object_types/orders.bkn", "relation_types/has.bkn"}, Pending: []string{"object_types/lines.bkn"},
+				}}}, true, nil)
+			e := entry("c1")
+
+			pc.Resolve(ctx, "t", caller, e)
+
+			So(e.CatalogIDs, ShouldResemble, []string{"c1"})
+			So(e.NetworkCatalogIDs, ShouldBeNil)
+		})
+
 		Convey("An empty network leaves the catalogs as stored\n", func() {
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return(nil, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)

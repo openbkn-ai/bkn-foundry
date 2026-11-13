@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
@@ -50,6 +51,15 @@ func (pc *ProjectCatalogs) NetworkCatalogs(ctx context.Context, token string, ca
 				own[ot.ID] = true
 			}
 		}
+		// What its confirmations wrote stays the project's while it drafts again, or after that
+		// failed, when the draft holds no items.
+		if c := draft.Items.Confirmation; c != nil {
+			for _, path := range append(slices.Clone(c.Files), c.Pending...) {
+				if id, ok := objectTypeOfPath(path); ok {
+					own[id] = true
+				}
+			}
+		}
 	}
 	resourceIDs := []string{}
 	for _, ot := range objectTypes {
@@ -80,6 +90,16 @@ func (pc *ProjectCatalogs) NetworkCatalogs(ctx context.Context, token string, ca
 		}
 	}
 	return catalogs, nil
+}
+
+// objectTypeOfPath is the id of the object type a definition path holds, object_types/<id>.bkn.
+func objectTypeOfPath(path string) (string, bool) {
+	id, ok := strings.CutPrefix(path, "object_types/")
+	if !ok {
+		return "", false
+	}
+	id, ok = strings.CutSuffix(id, ".bkn")
+	return id, ok && id != "" && !strings.Contains(id, "/")
 }
 
 // Resolve sets the entry's catalogs to those the project reads: the network's, then those the
