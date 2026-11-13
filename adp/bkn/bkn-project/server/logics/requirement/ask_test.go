@@ -275,7 +275,7 @@ func Test_AskAndAdopt(t *testing.T) {
 
 		_, err := svc.Ask(ctx, token, "p1", "", interfaces.RequirementAskRequest{Page: "scenarios", Question: "Why?",
 			Refs: []interfaces.RequirementAskRef{{Kind: "scenarios", ID: "s9"}}}, caller)
-		So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_InvalidQuestion)
+		So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_InvalidItem)
 
 		c, err := svc.Ask(ctx, token, "p1", "", interfaces.RequirementAskRequest{Page: "scenarios", Question: "Why?"}, caller)
 		So(err, ShouldBeNil)

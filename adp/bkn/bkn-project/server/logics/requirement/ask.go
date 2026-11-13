@@ -655,14 +655,14 @@ func (s *requirementService) Ask(ctx context.Context, token string, projectID st
 	}
 	if len(req.Refs) > interfaces.REQUIREMENT_ASK_REFS_MAX {
 		span.SetStatus(codes.Error, "Too many refs")
-		return nil, invalidQuestion(ctx, "too many refs")
+		return nil, invalidItem(ctx, "too many refs")
 	}
 	refs := []interfaces.RequirementAskRef{}
 	for _, ref := range req.Refs {
 		item := specItem(in.spec, ref.Kind, ref.ID)
 		if askKinds[page][ref.Kind] == nil || item == nil {
 			span.SetStatus(codes.Error, "Unknown ref")
-			return nil, invalidQuestion(ctx, "ref "+ref.Kind+"/"+ref.ID+" is not in the list")
+			return nil, invalidItem(ctx, "ref "+ref.Kind+"/"+ref.ID+" is not in the list")
 		}
 		refs = append(refs, interfaces.RequirementAskRef{Kind: ref.Kind, ID: ref.ID, Name: specItemName(item)})
 	}
