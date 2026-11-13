@@ -328,6 +328,25 @@ func Test_RequirementSpecification(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("StartEmpty writes an empty ready specification only where the project has none\n", func() {
+			empty := &interfaces.Requirement{ProjectID: "p1", Version: 1, Status: interfaces.REQUIREMENT_STATUS_READY,
+				Drafter: interfaces.AccountInfo{ID: "u2", Type: "user"}, CreateTime: 10, UpdateTime: 10}
+			startEmpty := regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_version = ?, f_status = ?, f_spec = ?, f_inputs = ?, f_drafter = ?, f_drafter_type = ?, f_create_time = ?, f_update_time = ? WHERE f_project_id = ? AND f_status = ?")
+			smock.ExpectExec(ensureRow).WithArgs("p1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec(startEmpty).WithArgs(1, "ready", sqlmock.AnyArg(), "null", "u2", "user", int64(10), int64(10), "p1", "").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectExec(startEmpty).WillReturnResult(sqlmock.NewResult(0, 0))
+
+			started, err := ra.StartEmpty(ctx, empty)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			started, err = ra.StartEmpty(ctx, empty)
+			So(err, ShouldBeNil)
+			So(started, ShouldBeFalse)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("StartRun refuses while the project drafts or another run goes, and when it changed since read\n", func() {
 			kinetic := `{"runs":{"kinetic":{"status":"running","run_id":"r1","by":{"id":"u1","type":"user"},"start_time":5,"update_time":5}}}`
 			smock.ExpectBegin()

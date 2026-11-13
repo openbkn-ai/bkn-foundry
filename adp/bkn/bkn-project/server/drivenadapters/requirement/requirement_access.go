@@ -328,6 +328,40 @@ func (ra *requirementAccess) StartDrafting(ctx context.Context, req *interfaces.
 	return true, nil
 }
 
+func (ra *requirementAccess) StartEmpty(ctx context.Context, req *interfaces.Requirement) (bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "StartEmptyRequirement")
+	defer span.End()
+
+	specJSON, inputsJSON, err := marshalRequirement(req)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal requirement failed")
+		return false, err
+	}
+	sqlStr, vals, err := sq.Insert(REQUIREMENT_TABLE_NAME).Columns("f_project_id", "f_spec", "f_inputs").
+		Values(req.ProjectID, "", "").Suffix("ON DUPLICATE KEY UPDATE f_project_id = f_project_id").
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Write data failed")
+		return false, err
+	}
+	// Only a row without a specification takes it, so one written meanwhile stays.
+	sqlStr, vals, err = sq.Update(REQUIREMENT_TABLE_NAME).
+		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", specJSON).
+		Set("f_inputs", inputsJSON).Set("f_drafter", req.Drafter.ID).Set("f_drafter_type", req.Drafter.Type).
+		Set("f_create_time", req.CreateTime).Set("f_update_time", req.UpdateTime).
+		Where(sq.Eq{"f_project_id": req.ProjectID}).Where(sq.Eq{"f_status": ""}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	return ra.execAffected(ctx, span, sqlStr, vals)
+}
+
 func (ra *requirementAccess) UpdateRequirement(ctx context.Context, req *interfaces.Requirement,
 	readUpdateTime int64) (bool, error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "UpdateRequirement")
