@@ -81,6 +81,34 @@ grep -rlE 'openbkn-ai/bkn-foundry/comm-go v[0-9]' --include=go.mod . | xargs -n1
 中电科金仓（北京）科技股份有限公司。它被 `db/driver/rds.go` 无条件 import，因此
 链接进每个用到 `db/driver` 的服务。来源说明与第三方 license 例外待归档。
 
+## AES-GCM 加密
+
+`crypto.NewAESGCMCipher(key []byte) (crypto.Cipher, error)` 接受 16、24 或 32 字节的原始 AES 密钥，
+分别对应 AES-128、AES-192 和 AES-256；密钥长度不合法时返回错误，不截断、折叠或派生密钥。
+生产密钥由部署方通过安全随机源生成并管理；配置文件的 Base64 解码由调用方负责。
+
+```go
+c, err := crypto.NewAESGCMCipher(key)
+if err != nil {
+    return err
+}
+encoded, err := c.Encrypt(plaintext)
+if err != nil {
+    return err
+}
+restored, err := c.Decrypt(encoded)
+```
+
+每次 `Encrypt` 自动生成独立的 12 字节随机 nonce，返回
+`Base64(nonce || ciphertext || authentication_tag)`，认证标签为 16 字节。
+nonce 与密文一起保存，不需要额外字段。`Decrypt` 自动提取 nonce 并校验认证标签；
+非法编码、截断、篡改或错误密钥均返回错误，不返回部分明文，也不回退其他格式。
+空字符串、Unicode 和尾部零字节均原样往返。返回值不包含业务前缀，前缀由使用方处理。
+
+同一实例可并发调用。使用同一密钥加密的消息数量应少于 `2^32`，达到之前须更换密钥；
+已保存密文仍需要原密钥解密。`Cipher.Signature` 对该实现返回不支持错误，不终止进程。
+新增接口不改变既有 `NewAESCipher` 的 ECB 行为或 `NewRSACipher`。
+
 ## HTTP 错误与 i18n
 
 `i18n` 提供语言协商、context 语言传递和消息模板渲染；`httperrors` 提供错误码注册、HTTP 错误构造、渲染与序列化；`rest` 提供 HTTP 响应写出。
