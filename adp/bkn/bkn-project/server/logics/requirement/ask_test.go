@@ -223,6 +223,14 @@ func Test_AskAndAdopt(t *testing.T) {
 			keepForKinetic(again, true)
 			So(ids(again.LogicNeeds, logicNeedID), ShouldResemble, []string{"n2"})
 
+			Convey("An add whose item is in the list already is not added twice, as when its decision was not recorded\n", func() {
+				cs.list[0].Turns[0].Proposals[1].Status = ""
+				_, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
+					interfaces.RequirementProposalsDecision{UpdateTime: st.req.UpdateTime, Adopt: []int{1}}, caller)
+				So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_ProposalChanged)
+				So(len(st.req.Spec.LogicNeeds), ShouldEqual, 3)
+			})
+
 			Convey("A proposal decided once is not decided again\n", func() {
 				_, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
 					interfaces.RequirementProposalsDecision{UpdateTime: st.req.UpdateTime, Decline: []int{0}}, caller)

@@ -209,7 +209,14 @@ func (s *requirementService) DecideProposals(ctx context.Context, token string, 
 				changed := []int{}
 				for _, index := range decision.Adopt {
 					p := proposals[index]
-					if fingerprint(spec, p.Kind, p.TargetID, p.IntoID) != p.Fingerprint {
+					// What an add or split adds being in the list already, it was adopted, or added since.
+					added := p.Item
+					if p.Op == interfaces.REQUIREMENT_PROPOSAL_SPLIT && len(p.Parts) == 2 {
+						added = &p.Parts[1]
+					}
+					if fingerprint(spec, p.Kind, p.TargetID, p.IntoID) != p.Fingerprint ||
+						(p.Op == interfaces.REQUIREMENT_PROPOSAL_ADD || p.Op == interfaces.REQUIREMENT_PROPOSAL_SPLIT) &&
+							added != nil && repeats(spec, p.Kind, added) {
 						changed = append(changed, index)
 					}
 				}

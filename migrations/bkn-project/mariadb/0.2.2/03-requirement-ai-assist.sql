@@ -7,8 +7,9 @@ USE openbkn;
 -- AI-assisted kinetic modeling and business scenarios. The owner's supplement
 -- note sits beside the specification, never in it, so running again or starting
 -- over leaves it; every kinetic analysis, scenario drafting and Ask AI reads it.
+-- NULL until a note is written: rows made without it, as runs make them, stay valid.
 ALTER TABLE t_bkn_project_requirement
-  ADD COLUMN IF NOT EXISTS f_supplement TEXT NOT NULL COMMENT 'The owner''s supplement note every kinetic analysis, scenario drafting and Ask AI reads, JSON';
+  ADD COLUMN IF NOT EXISTS f_supplement TEXT NULL COMMENT 'The owner''s supplement note every kinetic analysis, scenario drafting and Ask AI reads, JSON';
 
 -- Ask AI conversations of the kinetic modeling and business scenarios pages,
 -- one row each, kept per page: the questions, the answers, the changes each

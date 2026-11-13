@@ -36,7 +36,7 @@ func (ra *requirementAccess) GetSupplement(ctx context.Context, projectID string
 		span.SetStatus(codes.Error, "Build sql failed")
 		return nil, err
 	}
-	var raw string
+	var raw sql.NullString
 	supplement := &interfaces.RequirementSupplement{}
 	err = ra.db.QueryRowContext(ctx, sqlStr, vals...).Scan(&raw)
 	switch {
@@ -44,8 +44,8 @@ func (ra *requirementAccess) GetSupplement(ctx context.Context, projectID string
 	case err != nil:
 		span.SetStatus(codes.Error, "Query data failed")
 		return nil, err
-	case raw != "":
-		if err = json.Unmarshal([]byte(raw), supplement); err != nil {
+	case raw.Valid && raw.String != "":
+		if err = json.Unmarshal([]byte(raw.String), supplement); err != nil {
 			span.SetStatus(codes.Error, "Unmarshal supplement failed")
 			return nil, err
 		}

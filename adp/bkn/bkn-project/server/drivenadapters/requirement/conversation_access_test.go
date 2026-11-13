@@ -31,7 +31,7 @@ func Test_SupplementAndConversations(t *testing.T) {
 			smock.ExpectQuery(query).WithArgs("p1").WillReturnRows(sqlmock.NewRows([]string{"f_supplement"}).
 				AddRow(`{"text":"Planning only.","by":{"id":"u1","type":"user"},"time":5}`))
 			smock.ExpectQuery(query).WithArgs("p2").WillReturnError(sql.ErrNoRows)
-			smock.ExpectQuery(query).WithArgs("p3").WillReturnRows(sqlmock.NewRows([]string{"f_supplement"}).AddRow(""))
+			smock.ExpectQuery(query).WithArgs("p3").WillReturnRows(sqlmock.NewRows([]string{"f_supplement"}).AddRow(nil))
 
 			got, err := ra.GetSupplement(ctx, "p1")
 			So(err, ShouldBeNil)

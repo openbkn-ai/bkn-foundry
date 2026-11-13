@@ -703,8 +703,10 @@ func (s *requirementService) Ask(ctx context.Context, token string, projectID st
 			return nil, internalError(ctx, "Create conversation failed", err)
 		}
 	} else {
+		// The version moves on even within the millisecond it was read, so a concurrent ask cannot
+		// write over the turn appended here.
 		read := c.UpdateTime
-		c.Turns, c.UpdateTime = append(c.Turns, turn), now
+		c.Turns, c.UpdateTime = append(c.Turns, turn), max(now, read+1)
 		written, err := s.ra.UpdateConversation(ctx, c, read)
 		if err != nil {
 			span.SetStatus(codes.Error, "Update conversation failed")

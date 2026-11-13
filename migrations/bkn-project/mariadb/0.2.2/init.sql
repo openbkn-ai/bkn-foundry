@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_requirement (
   f_drafter_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Drafter account type',
   f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Create time',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update time',
-  f_supplement TEXT NOT NULL COMMENT 'The owner''s supplement note every kinetic analysis, scenario drafting and Ask AI reads, JSON',
+  f_supplement TEXT NULL COMMENT 'The owner''s supplement note every kinetic analysis, scenario drafting and Ask AI reads, JSON',
   PRIMARY KEY (f_project_id),
   KEY idx_bkn_project_requirement_status (f_status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = 'BKN-project requirement specifications';
