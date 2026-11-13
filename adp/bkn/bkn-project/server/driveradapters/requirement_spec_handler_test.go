@@ -188,7 +188,7 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			w = serve(handler, http.MethodDelete, base+"/items/concepts/c1?update_time=soon")
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Requirement_MissingUpdateTime)
-			for _, path := range []string{"/concepts/c1/maps-to", "/conflicts/k1", "/choices/f1"} {
+			for _, path := range []string{"/concepts/c1/maps-to", "/concepts/c1/match", "/conflicts/k1", "/choices/f1"} {
 				w = serveBody(handler, http.MethodPut, base+path, []byte(`[`))
 				So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 			}
@@ -198,6 +198,10 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			rqs.EXPECT().MapConcept(gomock.Any(), "Bearer t", "p1", "c1", interfaces.RequirementMapping{UpdateTime: 7,
 				MapsTo: &interfaces.RequirementItemRef{Kind: "object_type", ID: "customer"}}, caller).Return(spec, nil)
 			rqs.EXPECT().MapConcept(gomock.Any(), "Bearer t", "p1", "c2", interfaces.RequirementMapping{UpdateTime: 7}, caller).Return(spec, nil)
+			rqs.EXPECT().MatchConcept(gomock.Any(), "Bearer t", "p1", "c3", interfaces.RequirementMatchEdit{UpdateTime: 7,
+				Target: &interfaces.RequirementMatchTarget{Kind: "table", ID: "t1"}}, caller).Return(spec, nil)
+			rqs.EXPECT().MatchConcept(gomock.Any(), "Bearer t", "p1", "c4", interfaces.RequirementMatchEdit{UpdateTime: 7,
+				Excluded: true}, caller).Return(spec, nil)
 			rqs.EXPECT().ResolveConflict(gomock.Any(), "Bearer t", "p1", "k1", interfaces.RequirementResolve{UpdateTime: 7,
 				Deferred: true, Reason: "Ask sales"}, caller).Return(spec, nil)
 			rqs.EXPECT().DecideChoice(gomock.Any(), "Bearer t", "p1", "f1", interfaces.RequirementDecide{UpdateTime: 7,
@@ -206,6 +210,8 @@ func Test_RequirementSpecRestHandler(t *testing.T) {
 			for path, body := range map[string]string{
 				"/concepts/c1/maps-to": `{"update_time":7,"maps_to":{"kind":"object_type","id":"customer"}}`,
 				"/concepts/c2/maps-to": `{"update_time":7,"maps_to":null}`,
+				"/concepts/c3/match":   `{"update_time":7,"target":{"kind":"table","id":"t1"}}`,
+				"/concepts/c4/match":   `{"update_time":7,"target":null,"excluded":true}`,
 				"/conflicts/k1":        `{"update_time":7,"deferred":true,"reason":"Ask sales"}`,
 				"/choices/f1":          `{"update_time":7,"option_id":"o2","basis":"rare"}`,
 			} {

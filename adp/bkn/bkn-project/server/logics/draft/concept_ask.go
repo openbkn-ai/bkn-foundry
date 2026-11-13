@@ -52,7 +52,11 @@ const conceptAskTask = "kind is concepts: the engineer reviews the concepts extr
 	"data tables, knowledge-base files and requirement documents before modeling them. concepts lists them, " +
 	"each with its key, name, aliases, definition, verdict (object, event, property, values, relation, " +
 	"kinetic or none, not included), state, item (the kind of draft item it is, when it is one), the " +
-	"revisions it takes, and its sources (table:<name>, document or requirement:<term>). A table's own " +
+	"revisions it takes, its sources (table:<name>, document or requirement:<term>) and its binding: table, " +
+	"bound to a data table, or dataset, bound to what a knowledge-base extraction writes. Never merge a " +
+	"concept bound to a table with one bound to a dataset, nor propose it: the two are only made one by a " +
+	"custom view of both, which this page does not make; where they are linked, add a relation concept " +
+	"naming both instead, such as Supplier holds Supplier Certificate. A table's own " +
 	"name, such as erp_material, is no business name: name such concepts in business words. Write the answer " +
 	"and every name, definition and reason in the language named in the message, whatever language the " +
 	"concepts and their sources are in. Then give revisions, only those the question asks for or the answer " +
@@ -72,7 +76,9 @@ type askConcept struct {
 	State       string   `json:"state"`
 	Item        string   `json:"item,omitempty"`
 	Sources     []string `json:"sources,omitempty"`
-	Merged      []string `json:"merged,omitempty"`
+	// Binding is table or dataset: the data the concept is bound to.
+	Binding string   `json:"binding,omitempty"`
+	Merged  []string `json:"merged,omitempty"`
 	// Revisions are those the concept takes.
 	Revisions []string `json:"revisions"`
 }
@@ -182,6 +188,9 @@ func askConceptsOf(items *interfaces.DraftItems, concepts *interfaces.DraftConce
 		if c.Item != nil {
 			a.Item = c.Item.Kind
 		}
+		if c.Binding != nil {
+			a.Binding = c.Binding.Kind
+		}
 		for _, source := range c.Sources {
 			if source.Name == "" {
 				a.Sources = append(a.Sources, source.Kind)
@@ -285,7 +294,10 @@ func checkConceptRevision(ctx context.Context, items *interfaces.DraftItems, con
 		revision.Verdict = out.Verdict
 	case interfaces.CONCEPT_REVISION_MERGE:
 		// As merging by hand: both stand on their own, and the one merged in holds none.
-		if out.Into == concept.Key || findConcept(concepts, out.Into) == nil || len(concept.Merged) > 0 {
+		// Nor are a table's concept and a knowledge-base extraction's merged.
+		into := findConcept(concepts, out.Into)
+		if out.Into == concept.Key || into == nil || len(concept.Merged) > 0 || crossBinding(concept, into) ||
+			(concept.Item != nil && into.Item != nil && concept.Item.Kind != into.Item.Kind) {
 			return nil, askDroppedInvalid
 		}
 		revision.Into = out.Into

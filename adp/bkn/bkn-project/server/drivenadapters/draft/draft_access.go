@@ -135,6 +135,9 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 		if json.Unmarshal([]byte(itemsRead), &previous) == nil {
 			draft.Items.DatasetPlans = previous.DatasetPlans
 		}
+		// What a knowledge-base extraction drafted is no table's: drafting from the tables again
+		// keeps it beside what it drafts, so neither source clears the other.
+		carriedDocuments(itemsRead, &draft.Items)
 		if itemsJSON, err = json.Marshal(draft.Items); err != nil {
 			span.SetStatus(codes.Error, "Marshal items failed")
 			return false, err
@@ -245,35 +248,19 @@ func (da *draftAccess) FailDrafting(ctx context.Context, reason string, updateTi
 	return result.RowsAffected()
 }
 
-// hasDecisions protects human decisions and document candidates from implicit
-// replacement by table redrafting. Unparseable items retain the legacy behavior.
+// hasDecisions protects human decisions from implicit replacement by table redrafting.
+// Unparseable items retain the legacy behavior.
 func hasDecisions(itemsJSON string) bool {
 	var items struct {
 		Decisions []struct {
 			Kind string `json:"kind"`
 		} `json:"decisions"`
-		Objects []struct {
-			Document json.RawMessage `json:"document"`
-		} `json:"object_types"`
-		Relations []struct {
-			Document json.RawMessage `json:"document"`
-		} `json:"relation_types"`
 	}
 	if json.Unmarshal([]byte(itemsJSON), &items) != nil {
 		return false
 	}
-	// Selected document candidates are not table-drafter output. Replacing
-	// them needs explicit discard even before a human has reviewed each item.
-	for _, object := range items.Objects {
-		if len(object.Document) > 0 && string(object.Document) != "null" {
-			return true
-		}
-	}
-	for _, relation := range items.Relations {
-		if len(relation.Document) > 0 && string(relation.Document) != "null" {
-			return true
-		}
-	}
+	// Document candidates are no table-drafter output: drafting from the tables again carries
+	// them over (carriedDocuments), so they are nothing it would discard.
 	// A decision on the draft as a whole, such as accepting a partial draft, is about that draft
 	// only: drafting again decides it anew, so it is no edit to keep.
 	for _, d := range items.Decisions {
@@ -286,6 +273,26 @@ func hasDecisions(itemsJSON string) bool {
 
 // carriedConfirmation is the confirmation of a replaced draft as its successor keeps it: the
 // definitions it wrote, no longer confirmed.
+// carriedDocuments puts into items the document object types, relation types and concepts of the
+// draft read, as they are.
+func carriedDocuments(itemsJSON string, items *interfaces.DraftItems) {
+	var read interfaces.DraftItems
+	if json.Unmarshal([]byte(itemsJSON), &read) != nil {
+		return
+	}
+	for _, ot := range read.ObjectTypes {
+		if ot != nil && ot.Document != nil {
+			items.ObjectTypes = append(items.ObjectTypes, ot)
+		}
+	}
+	for _, rt := range read.RelationTypes {
+		if rt != nil && rt.Document != nil {
+			items.RelationTypes = append(items.RelationTypes, rt)
+		}
+	}
+	items.DocumentConcepts = append(items.DocumentConcepts, read.DocumentConcepts...)
+}
+
 func carriedConfirmation(itemsJSON string) *interfaces.DraftConfirmation {
 	var items struct {
 		Confirmation *interfaces.DraftConfirmation `json:"confirmation"`

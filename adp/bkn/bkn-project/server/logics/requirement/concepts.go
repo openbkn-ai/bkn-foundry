@@ -43,7 +43,7 @@ type conceptsOutput struct {
 func conceptsResponseFormat() map[string]any {
 	citations := citationsSchema()
 	return schemaObject(map[string]any{
-		"concepts": schemaArray(conceptSchema(conceptCategoriesExtracted...)),
+		"concepts": schemaArray(withMatch(conceptSchema(conceptCategoriesExtracted...))),
 		"rules": schemaArray(schemaObject(map[string]any{
 			"statement":   schemaString(),
 			"compiles_to": schemaEnum("constraint", "metric_definition", "code_pattern", "enum", "other"),
@@ -71,6 +71,16 @@ func conceptsResponseFormat() map[string]any {
 		}, "document_id", "doc_type")),
 		"logic_needs": schemaArray(logicNeedSchema()),
 	}, "concepts", "rules", "conflicts", "choices", "doc_types", "logic_needs")
+}
+
+// withMatch adds to a concept's schema the match pass concepts proposes.
+func withMatch(concept map[string]any) map[string]any {
+	properties := map[string]any{"match": matchSchema()}
+	for name, property := range concept["properties"].(map[string]any) {
+		properties[name] = property
+	}
+	concept["properties"] = properties
+	return concept
 }
 
 // personSetType tells whether only a person sets a document to docType: the analyst is not told what
@@ -152,7 +162,7 @@ func keepForConcepts(spec *interfaces.RequirementSpec, discard bool) {
 // as keepForConcepts left it, with the server's ids; everything dropped is listed in rejected. It
 // returns the document types the Agent suggests, for known documents and types only.
 func buildConcepts(out *conceptsOutput, docs map[string]*interfaces.RequirementDocument, draft *interfaces.Draft,
-	spec *interfaces.RequirementSpec) map[string]string {
+	tables []*interfaces.VegaTable, spec *interfaces.RequirementSpec) map[string]string {
 	const run = interfaces.REQUIREMENT_RUN_CONCEPTS
 	spec.Rejected = rejectedOf(spec.Rejected, run)
 	reject := func(kind, text, reason string) {
@@ -190,6 +200,8 @@ func buildConcepts(out *conceptsOutput, docs map[string]*interfaces.RequirementD
 			ID: nextID(spec, "c", spec.Concepts, conceptID), Term: c.Term, Category: c.Category,
 			Definition: c.Definition, NotOntologyReason: c.NotOntologyReason, Citations: citations,
 			Source: interfaces.REQUIREMENT_CONCEPT_FROM_DOCUMENTS,
+			// It is matched to the data that holds it, never an item of its own.
+			Match: proposedMatch(c.Match, tables, adopted),
 		}
 		if c.MapsTo != nil && adopted[*c.MapsTo] {
 			ref := *c.MapsTo
@@ -342,15 +354,17 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 		kind: interfaces.REQUIREMENT_RUN_CONCEPTS, projectID: projectID, run: run, caller: caller,
 		format: conceptsResponseFormat(), newOut: func() any { return &conceptsOutput{} },
 	}
-	// Tables are clues: they are listed in the background, as the caller.
+	// Tables are clues, and what concepts are matched to: they are listed in the background, as the
+	// caller.
+	var tables []*interfaces.VegaTable
 	p.prepareMessage = func(ctx context.Context) (string, error) {
-		tables, _ := s.listTables(ctx, catalogIDs, caller)
+		tables, _ = s.listTables(ctx, catalogIDs, caller)
 		return buildConceptsMessage(project.NamingLanguage, cited, tables, draft, spec)
 	}
 	var types map[string]string
 	p.check = func(ctx context.Context, out any) {
 		checked := cloneSpec(spec)
-		types = buildConcepts(out.(*conceptsOutput), byID, draft, checked)
+		types = buildConcepts(out.(*conceptsOutput), byID, draft, tables, checked)
 		spec = checked
 		// The Agent's type of a document is taken only while no one has typed it.
 		for _, d := range docs {

@@ -190,6 +190,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PATCH("/projects/:project_id/requirements/items/:kind/:item_id", r.EditRequirementItemByEx)
 	apiV1.DELETE("/projects/:project_id/requirements/items/:kind/:item_id", r.DeleteRequirementItemByEx)
 	apiV1.PUT("/projects/:project_id/requirements/concepts/:concept_id/maps-to", r.MapRequirementConceptByEx)
+	apiV1.PUT("/projects/:project_id/requirements/concepts/:concept_id/match", r.MatchRequirementConceptByEx)
 	apiV1.PUT("/projects/:project_id/requirements/conflicts/:conflict_id", r.ResolveRequirementConflictByEx)
 	apiV1.PUT("/projects/:project_id/requirements/choices/:choice_id", r.DecideRequirementChoiceByEx)
 	apiV1.GET("/projects/:project_id/requirements/logic-needs", r.ListLogicNeedsByEx)

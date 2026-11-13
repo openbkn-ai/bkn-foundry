@@ -188,7 +188,11 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
 	carried := draft.Items.Confirmation
 	plans := draft.Items.DatasetPlans
-	s.run(func() { s.draft(background, projectID, catalogIDs, language, caller, carried, plans, existing) })
+	// StartDraft kept what a knowledge-base extraction drafted: it stays beside the tables' items.
+	documents := draft.Items
+	s.run(func() {
+		s.draft(background, projectID, catalogIDs, language, caller, carried, plans, existing, documents)
+	})
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -197,7 +201,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string, language string,
 	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation, plans []*interfaces.DraftDatasetPlan,
-	existing interfaces.DraftItems) {
+	existing interfaces.DraftItems, documents interfaces.DraftItems) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
@@ -213,6 +217,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	default:
 		result.Items = items
 	}
+	withDocuments(&result.Items, documents)
 	result.Items.Confirmation = confirmation
 	result.Items.DatasetPlans = plans
 	if err != nil {
@@ -224,6 +229,32 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	if err := s.da.FinishDraft(context.WithoutCancel(ctx), result); err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("Record draft of project %s failed", projectID), err)
 	}
+}
+
+// withDocuments adds to the items drafted from the tables what a knowledge-base extraction drafted:
+// its object types, unless the tables drafted one of the same id; its relation types, while both
+// ends stand; and its concepts. A failed drafting keeps them too.
+func withDocuments(items *interfaces.DraftItems, documents interfaces.DraftItems) {
+	ids := map[string]bool{}
+	for _, ot := range items.ObjectTypes {
+		ids[ot.ID] = true
+	}
+	for _, ot := range documents.ObjectTypes {
+		if ot != nil && ot.Document != nil && !ids[ot.ID] {
+			items.ObjectTypes = append(items.ObjectTypes, ot)
+			ids[ot.ID] = true
+		}
+	}
+	relations := map[string]bool{}
+	for _, rt := range items.RelationTypes {
+		relations[rt.ID] = true
+	}
+	for _, rt := range documents.RelationTypes {
+		if rt != nil && rt.Document != nil && !relations[rt.ID] && ids[rt.Source] && ids[rt.Target] {
+			items.RelationTypes = append(items.RelationTypes, rt)
+		}
+	}
+	items.DocumentConcepts = append(items.DocumentConcepts, documents.DocumentConcepts...)
 }
 
 // readCatalogs reads the tables of the catalogs as the caller, with their structure: the tables
