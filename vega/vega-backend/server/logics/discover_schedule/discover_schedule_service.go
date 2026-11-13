@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/user_mgmt"
 )
 
@@ -36,6 +37,7 @@ var (
 type discoverScheduleService struct {
 	appSetting *common.AppSetting
 	cs         interfaces.CatalogService
+	cf         interfaces.ConnectorFactory
 	dsa        interfaces.DiscoverScheduleAccess
 	dts        interfaces.DiscoverTaskService
 	ums        interfaces.UserMgmtService
@@ -47,6 +49,7 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 		dsService = &discoverScheduleService{
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
+			cf:         factory.NewConnectorFactory(appSetting),
 			dsa:        logics.DSA,
 			dts:        dts,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
@@ -77,7 +80,11 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		otellog.LogError(ctx, "Cron expression is required", nil)
 		return "", fmt.Errorf("cron_expr is required")
 	}
-	if err := dss.requireTaskManage(ctx, req.CatalogID); err != nil {
+	catalog, err := dss.requireTaskManage(ctx, req.CatalogID)
+	if err != nil {
+		return "", err
+	}
+	if err := dss.validateDiscoverCatalog(ctx, catalog); err != nil {
 		return "", err
 	}
 
@@ -136,7 +143,7 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 			WithErrorDetails(err.Error())
 	}
 	if schedule != nil {
-		if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+		if _, err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
 			return nil, err
 		}
 		if err := dss.populateDiscoverScheduleReferences(ctx, []*interfaces.DiscoverSchedule{schedule}); err != nil {
@@ -236,7 +243,11 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 		return fmt.Errorf("discover schedule not found")
 	}
 	// The handler has already resolved the schedule; use it for authorization.
-	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+	catalog, err := dss.requireTaskManage(ctx, schedule.CatalogID)
+	if err != nil {
+		return err
+	}
+	if err := dss.validateDiscoverCatalog(ctx, catalog); err != nil {
 		return err
 	}
 
@@ -283,7 +294,7 @@ func (dss *discoverScheduleService) Delete(ctx context.Context, schedule *interf
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
 	}
 	// The handler has already resolved the schedule; use it for authorization.
-	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+	if _, err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
 		return err
 	}
 	// Delete schedule
@@ -317,9 +328,18 @@ func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
 	if schedule == nil {
 		return fmt.Errorf("discover schedule not found")
 	}
+	var catalog *interfaces.Catalog
+	var err error
 	if requirePermission {
-		// The handler has already resolved the schedule; use it for authorization.
-		if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
+		catalog, err = dss.requireTaskManage(ctx, schedule.CatalogID)
+	} else if enabled {
+		catalog, err = dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
+	}
+	if err != nil {
+		return err
+	}
+	if enabled {
+		if err := dss.validateDiscoverCatalog(ctx, catalog); err != nil {
 			return err
 		}
 	}
@@ -349,14 +369,31 @@ func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
 	return nil
 }
 
-func (dss *discoverScheduleService) requireTaskManage(ctx context.Context, catalogID string) error {
-	allowed, _, err := dss.cs.CheckCatalogPermission(ctx, catalogID,
+func (dss *discoverScheduleService) requireTaskManage(ctx context.Context, catalogID string) (*interfaces.Catalog, error) {
+	allowed, catalog, err := dss.cs.CheckCatalogPermission(ctx, catalogID,
 		[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+	}
+	return catalog, nil
+}
+
+func (dss *discoverScheduleService) validateDiscoverCatalog(ctx context.Context, catalog *interfaces.Catalog) error {
+	if catalog == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+	if catalog.Type == interfaces.CatalogTypeLogical {
+		return nil
+	}
+	supported, err := dss.cf.SupportDiscover(catalog.ConnectorType)
 	if err != nil {
 		return err
 	}
-	if !allowed {
-		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+	if !supported {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("connector does not support discovery")
 	}
 	return nil
 }
@@ -398,6 +435,10 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	if catalogInfo == nil || !catalogInfo.Enabled {
 		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
 		return nil
+	}
+
+	if err := dss.validateDiscoverCatalog(ctx, catalogInfo); err != nil {
+		return err
 	}
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)

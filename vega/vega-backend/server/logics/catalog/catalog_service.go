@@ -13,14 +13,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	kwcrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
+	"github.com/mohae/deepcopy"
+	bkncrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -48,6 +48,7 @@ const (
 	catalogResourceCleanupTimeout          = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
+	connectionTestSucceededResult          = "Connection test succeeded."
 	maximumConnectionTestResultLength      = 2048
 )
 
@@ -63,13 +64,15 @@ func connectorInitializationError(ctx context.Context, err error) error {
 }
 
 var (
+	errSensitivePlaintextPrefix = errors.New("sensitive plaintext must not start with ENC: regardless of letter case")
+
 	cServiceOnce sync.Once
 	cService     interfaces.CatalogService
 )
 
 type catalogService struct {
 	appSetting *common.AppSetting
-	cipher     kwcrypto.Cipher
+	cipher     bkncrypto.Cipher
 	db         *sql.DB
 
 	ca   interfaces.CatalogAccess
@@ -87,12 +90,12 @@ type catalogService struct {
 // NewCatalogService creates a new CatalogService.
 func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService {
 	cServiceOnce.Do(func() {
-		var cipher kwcrypto.Cipher
-		if appSetting.CryptoSetting.Enabled {
+		var cipher bkncrypto.Cipher
+		if appSetting.CryptoSetting.Enabled || len(appSetting.CryptoSetting.AESKey) > 0 {
 			var err error
-			cipher, err = kwcrypto.NewRSACipher(appSetting.CryptoSetting.PrivateKey, appSetting.CryptoSetting.PublicKey)
+			cipher, err = bkncrypto.NewAESGCMCipher(appSetting.CryptoSetting.AESKey)
 			if err != nil {
-				logger.Fatalf("Failed to create RSA cipher: %v", err)
+				logger.Fatalf("Failed to create credential cipher: %v", err)
 			}
 		}
 
@@ -182,7 +185,9 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		accountInfo = v.(interfaces.AccountInfo)
 	}
 
+	storedConfig := req.ConnectorCfg
 	catalogType := interfaces.CatalogTypePhysical
+	category := ""
 	healthStatus := interfaces.CatalogHealthStatusUnchecked
 	healthResult := ""
 	if req.ConnectorType == "" {
@@ -195,23 +200,20 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	} else {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
-		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
-		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
-		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
+		// Use an independent plaintext copy for configuration and connection validation.
+		sensitiveFields, err := cs.cf.GetSensitiveFields(req.ConnectorType, req.ConnectorCfg)
 		if err != nil {
-			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+			return "", connectorInitializationError(ctx, err)
 		}
-
-		// Create a connector with the decrypted plaintext config and test the connection
-		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
+		connectorCfg := deepcopy.Copy(req.ConnectorCfg).(interfaces.ConnectorConfig)
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
 			return "", connectorInitializationError(ctx, err)
 		}
 		defer func() { _ = connector.Close(ctx) }()
+
+		category = connector.GetCategory()
 
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
@@ -224,8 +226,19 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			healthResult = connectionTestFailedResult
 		} else {
 			healthStatus = interfaces.CatalogHealthStatusHealthy
-			healthResult = "Connection test succeeded."
+			healthResult = connectionTestSucceededResult
 		}
+		encryptedConfig, err := cs.encryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
+		if err != nil {
+			if errors.Is(err, errSensitivePlaintextPrefix) {
+				return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(err.Error())
+			}
+			otellog.LogError(ctx, "Failed to encrypt catalog credentials", err)
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(err.Error())
+		}
+		storedConfig = encryptedConfig
 	}
 
 	// Perform uniqueness checks only after authorization so unauthorised callers
@@ -266,7 +279,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		Enabled:       req.Enabled,
 		Builtin:       req.Builtin,
 		ConnectorType: req.ConnectorType,
-		ConnectorCfg:  req.ConnectorCfg,
+		Category:      category,
+		ConnectorCfg:  storedConfig,
 		CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
 			HealthCheckStatus: healthStatus,
 			LastCheckTime:     now,
@@ -462,10 +476,15 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 
 	if !withSensitiveFields {
 		// Remove sensitive fields and do not return to the front end
-		cs.removeSensitiveFields(catalog)
-	} else {
-		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
-		sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
+		if err := cs.removeSensitiveFields(catalog); err != nil {
+			return nil, connectorInitializationError(ctx, err)
+		}
+	} else if catalog.ConnectorType != "" {
+		// Decrypt stored sensitive fields in an independent configuration copy.
+		sensitiveFields, err := cs.cf.GetSensitiveFields(catalog.ConnectorType, catalog.ConnectorCfg)
+		if err != nil {
+			return nil, connectorInitializationError(ctx, err)
+		}
 		decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -494,13 +513,18 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	if !withSensitiveFields {
-		cs.removeSensitiveFields(catalog)
+	if !withSensitiveFields || catalog.ConnectorType == "" {
+		if err := cs.removeSensitiveFields(catalog); err != nil {
+			return nil, connectorInitializationError(ctx, err)
+		}
 		span.SetStatus(codes.Ok, "")
 		return catalog, nil
 	}
 
-	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
+	sensitiveFields, metadataErr := cs.cf.GetSensitiveFields(catalog.ConnectorType, catalog.ConnectorCfg)
+	if metadataErr != nil {
+		return nil, connectorInitializationError(ctx, metadataErr)
+	}
 	decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to validate sensitive fields", err)
@@ -556,7 +580,9 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	// Remove sensitive fields and do not return to the front end
 	for _, c := range catalogs {
-		cs.removeSensitiveFields(c)
+		if err := cs.removeSensitiveFields(c); err != nil {
+			return nil, connectorInitializationError(ctx, err)
+		}
 	}
 
 	// Internal catalog details are restricted before bkn-safe authorization.
@@ -788,24 +814,33 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	catalog.Tags = req.Tags
 	catalog.Description = req.Description
 
-	// 未提交连接配置时只更新元数据，保留已存配置、密文及健康状态。
+	// 未提交配置时保留原配置；API 类别仍须本地校验实例可用性和已存配置。
 	updateConnection := req.ConnectorType != "" && req.ConnectorCfg != nil
-	if updateConnection {
+	if updateConnection || catalog.Category == interfaces.ConnectorCategoryAPI {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
-		// 显式提交配置（包括空对象）时，继续执行解密、连接测试和持久化。
+		// 显式配置完整替换并测试连接；省略 API 配置时只校验实例，保留健康结果。
 
-		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
-		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
-		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
-		if err != nil {
-			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+		config := req.ConnectorCfg
+		if !updateConnection {
+			config = catalog.ConnectorCfg
 		}
-
-		// Create a connector with the decrypted plaintext config and test the connection
-		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
+		sensitiveFields, err := cs.cf.GetSensitiveFields(req.ConnectorType, config)
+		if err != nil {
+			return connectorInitializationError(ctx, err)
+		}
+		var connectorCfg interfaces.ConnectorConfig
+		if updateConnection {
+			connectorCfg = deepcopy.Copy(config).(interfaces.ConnectorConfig)
+		} else {
+			decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, config)
+			if err != nil {
+				otellog.LogError(ctx, "Failed to decrypt catalog credentials", err)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+					verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
+			}
+			connectorCfg = decryptedConfig
+		}
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to create connector", err)
@@ -813,28 +848,41 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		}
 		defer func() { _ = connector.Close(ctx) }()
 
-		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", err)
-			if !allowUnhealthy {
-				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
-					WithErrorDetails(connectionTestFailedResult)
-			}
-			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
-				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
-				LastCheckTime:     time.Now().UnixMilli(),
-				HealthCheckResult: connectionTestFailedResult,
-			}
-		} else {
-			catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
-				HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
-				LastCheckTime:     time.Now().UnixMilli(),
-				HealthCheckResult: "Connection test succeeded.",
+		if updateConnection {
+			if err := cs.testConnectorConnection(ctx, connector); err != nil {
+				otellog.LogError(ctx, "Failed to test connection to data source", err)
+				if !allowUnhealthy {
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+						verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
+						WithErrorDetails(connectionTestFailedResult)
+				}
+				catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+					HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+					LastCheckTime:     time.Now().UnixMilli(),
+					HealthCheckResult: connectionTestFailedResult,
+				}
+			} else {
+				catalog.CatalogHealthCheckStatus = interfaces.CatalogHealthCheckStatus{
+					HealthCheckStatus: interfaces.CatalogHealthStatusHealthy,
+					LastCheckTime:     time.Now().UnixMilli(),
+					HealthCheckResult: connectionTestSucceededResult,
+				}
 			}
 		}
 
-		// The req. ConnectorConfig has set up a file in the validateAndDecryptSensitiveFields plus ENC: prefix
-		catalog.ConnectorCfg = req.ConnectorCfg
+		if updateConnection {
+			encryptedConfig, err := cs.encryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
+			if err != nil {
+				if errors.Is(err, errSensitivePlaintextPrefix) {
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+						verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(err.Error())
+				}
+				otellog.LogError(ctx, "Failed to encrypt catalog credentials", err)
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+					verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+			}
+			catalog.ConnectorCfg = encryptedConfig
+		}
 	}
 
 	// Get account info
@@ -1284,7 +1332,7 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 	return result, nil
 }
 
-// InternalTestConnection tests catalog connection for internal workers.
+// InternalTestConnection checks source health for workers; API probes only TCP/TLS reachability.
 func (cs *catalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection internally")
 	defer span.End()
@@ -1322,13 +1370,16 @@ func (cs *catalogService) testCatalogConnection(
 		return &result, nil
 	}
 
-	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
+	sensitiveFields, err := cs.cf.GetSensitiveFields(catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, connectorInitializationError(ctx, err)
+	}
 	config, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
-	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config), sensitiveFields)
+	result, err := cs.probeConnection(ctx, catalog.ConnectorType, config)
 	if err != nil {
 		return nil, err
 	}
@@ -1354,17 +1405,12 @@ func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 		return nil, err
 	}
 
-	sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
-	decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
-	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
-	}
-	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig), sensitiveFields)
+	config := deepcopy.Copy(req.ConnectorCfg).(interfaces.ConnectorConfig)
+	return cs.probeConnection(ctx, req.ConnectorType, config)
 }
 
 func (cs *catalogService) probeConnection(ctx context.Context, connectorType string,
-	config interfaces.ConnectorConfig, sensitiveFields []string) (*interfaces.CatalogHealthCheckStatus, error) {
+	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
 	connector, err := cs.cf.CreateConnectorInstance(ctx, connectorType, config)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create connector", err)
@@ -1378,38 +1424,20 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	if err := cs.testConnectorConnection(ctx, connector); err != nil {
 		otellog.LogError(ctx, "Failed to test connection to data source", err)
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
-		result.HealthCheckResult = sanitizeConnectionError(err, config, sensitiveFields)
+		result.HealthCheckResult = connectionErrorResult(err)
 		return result, nil
 	}
 	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy
-	result.HealthCheckResult = "Connection test succeeded."
+	result.HealthCheckResult = connectionTestSucceededResult
 	return result, nil
 }
 
-func sanitizeConnectionError(err error, config interfaces.ConnectorConfig, sensitiveFields []string) string {
+// connectionErrorResult formats the connector's credential-free error for health status storage.
+func connectionErrorResult(err error) string {
 	if err == nil {
 		return ""
 	}
-
-	result := err.Error()
-	for _, field := range sensitiveFields {
-		value, ok := config[field].(string)
-		if !ok || value == "" {
-			continue
-		}
-		for _, variant := range []string{
-			value,
-			url.QueryEscape(value),
-			strings.ReplaceAll(url.QueryEscape(value), "+", "%20"),
-			url.PathEscape(value),
-		} {
-			if variant != "" {
-				result = strings.ReplaceAll(result, variant, "******")
-			}
-		}
-	}
-
-	result = strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(result))
+	result := strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(err.Error()))
 	if result == "" {
 		return connectionTestFailedResult
 	}
@@ -1431,83 +1459,81 @@ func (cs *catalogService) testConnectorConnection(ctx context.Context, connector
 	return connector.TestConnection(testCtx)
 }
 
-// ValidateAndDecryptSensitiveFields verify whether sensitive fields as legal RSA cipher,
-// Return the decrypted plaintext config (for connection testing), and at the same time add the ENC: prefix to the original config (for storage).
-// If the cipher is nil (encryption is not enabled), directly return a copy of the original config as decryptedConfig without verification.
-func (cs *catalogService) validateAndDecryptSensitiveFields(sensitiveFields []string,
-	config map[string]any) (decryptedConfig map[string]any, err error) {
-	// Copy config as decryptedConfig
-	decryptedConfig = make(map[string]any, len(config))
-	for k, v := range config {
-		decryptedConfig[k] = v
-	}
-
-	if cs.cipher == nil {
-		return decryptedConfig, nil
-	}
-
+// encryptSensitiveFields validates plaintext and returns an independent storage configuration.
+func (cs *catalogService) encryptSensitiveFields(sensitiveFields []string,
+	config interfaces.ConnectorConfig) (encryptedConfig interfaces.ConnectorConfig, err error) {
+	encryptedConfig = deepcopy.Copy(config).(interfaces.ConnectorConfig)
+	variables, _ := encryptedConfig["variables"].(map[string]any)
+	targets := []interfaces.ConnectorConfig{encryptedConfig, variables}
 	for _, field := range sensitiveFields {
-		val, ok := config[field].(string)
-		if !ok || val == "" {
-			continue
+		for _, target := range targets {
+			value, ok := target[field].(string)
+			if ok && len(value) >= len(EncryptedPrefix) && strings.EqualFold(value[:len(EncryptedPrefix)], EncryptedPrefix) {
+				return nil, fmt.Errorf("field %s: %w", field, errSensitivePlaintextPrefix)
+			}
 		}
-		// Try to decrypt it with the private key to verify whether it is a legitimate ciphertext
-		decrypted, decryptErr := cs.cipher.Decrypt(val)
-		if decryptErr != nil {
-			return nil, fmt.Errorf("field %s: %w", field, decryptErr)
-		}
-		// Decryption successful: The plaintext is placed in decryptedConfig, and the original config is prefixed with "ENC:"
-		decryptedConfig[field] = decrypted
-		config[field] = EncryptedPrefix + val
 	}
-	return decryptedConfig, nil
+	if !cs.appSetting.CryptoSetting.Enabled {
+		return encryptedConfig, nil
+	}
+	if cs.cipher == nil {
+		return nil, errors.New("catalog encryption key is unavailable")
+	}
+	for _, field := range sensitiveFields {
+		for _, target := range targets {
+			value, ok := target[field].(string)
+			if !ok || value == "" {
+				continue
+			}
+			ciphertext, err := cs.cipher.Encrypt(value)
+			if err != nil {
+				return nil, fmt.Errorf("field %s: encryption failed", field)
+			}
+			target[field] = EncryptedPrefix + ciphertext
+		}
+	}
+	return encryptedConfig, nil
 }
 
-// removeSensitiveFields removes sensitive fields from ConnectorConfig for GET/List returns
-func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) {
+// removeSensitiveFields hides declared names in both the top level and variables.
+func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) error {
 	if catalog == nil || catalog.ConnectorType == "" {
-		return
+		return nil
 	}
-	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
-	for _, field := range sensitiveFields {
-		delete(catalog.ConnectorCfg, field)
+	fields, err := cs.cf.GetSensitiveFields(catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return err
 	}
+	config := deepcopy.Copy(catalog.ConnectorCfg).(interfaces.ConnectorConfig)
+	variables, _ := config["variables"].(map[string]any)
+	for _, field := range fields {
+		delete(config, field)
+		delete(variables, field)
+	}
+	catalog.ConnectorCfg = config
+	return nil
 }
 
-// decryptSensitiveFields verifies whether the sensitive field is a legitimate RSA ciphertext
-// Return the decrypted plaintext config (for connection). The data is obtained from the database and the ENC prefix needs to be removed first before decryption
-// If the cipher is nil (encryption is not enabled), directly return a copy of the original config as decryptedConfig without verification.
+// decryptSensitiveFields prepares credentials without changing the stored configuration.
 func (cs *catalogService) decryptSensitiveFields(sensitiveFields []string,
-	config map[string]any) (decryptedConfig map[string]any, err error) {
-
-	// Copy config as decryptedConfig
-	decryptedConfig = make(map[string]any, len(config))
-	for k, v := range config {
-		decryptedConfig[k] = v
-	}
-
-	if cs.cipher == nil {
-		return decryptedConfig, nil
-	}
-
+	config interfaces.ConnectorConfig) (decryptedConfig interfaces.ConnectorConfig, err error) {
+	decryptedConfig = deepcopy.Copy(config).(interfaces.ConnectorConfig)
+	variables, _ := decryptedConfig["variables"].(map[string]any)
 	for _, field := range sensitiveFields {
-		val, ok := config[field].(string)
-		if !ok || val == "" {
-			continue
+		for _, target := range []interfaces.ConnectorConfig{decryptedConfig, variables} {
+			value, ok := target[field].(string)
+			if !ok || value == "" || !strings.HasPrefix(value, EncryptedPrefix) {
+				continue
+			}
+			if cs.cipher == nil {
+				return nil, fmt.Errorf("field %s: decryption key is unavailable", field)
+			}
+			plaintext, err := cs.cipher.Decrypt(strings.TrimPrefix(value, EncryptedPrefix))
+			if err != nil {
+				return nil, fmt.Errorf("field %s: invalid encrypted value", field)
+			}
+			target[field] = plaintext
 		}
-		// Try to decrypt it with the private key to verify whether it is a legitimate ciphertext
-		if !strings.HasPrefix(val, EncryptedPrefix) {
-			return nil, fmt.Errorf("field %s: %w", field, errors.New("not encrypted"))
-		} else {
-			val = val[len(EncryptedPrefix):]
-		}
-		decrypted, decryptErr := cs.cipher.Decrypt(val)
-		if decryptErr != nil {
-			return nil, fmt.Errorf("field %s: %w", field, decryptErr)
-		}
-		// Decryption successful: The plaintext is placed in decryptedConfig, and the original config is prefixed with "ENC:"
-		decryptedConfig[field] = decrypted
-		config[field] = EncryptedPrefix + val
 	}
 	return decryptedConfig, nil
 }

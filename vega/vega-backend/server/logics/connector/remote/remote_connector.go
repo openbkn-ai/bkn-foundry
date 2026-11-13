@@ -71,6 +71,11 @@ func (r *RemoteConnector) GetCategory() string {
 	return r.connType.Category
 }
 
+// SupportDiscover reports the connector's existing discovery capability.
+func (r *RemoteConnector) SupportDiscover() bool {
+	return true
+}
+
 // GetEnabled returns whether the connector is enabled
 func (r *RemoteConnector) GetEnabled() bool {
 	return r.enabled
@@ -82,8 +87,8 @@ func (rc *RemoteConnector) SetEnabled(enabled bool) {
 
 // GetSensitiveFields returns the sensitive fields for this remote connector.
 // Falls back to default ["password"] if not configured.
-func (rc *RemoteConnector) GetSensitiveFields() []string {
-	return []string{"password"}
+func (rc *RemoteConnector) GetSensitiveFields(_ interfaces.ConnectorConfig) ([]string, error) {
+	return []string{"password"}, nil
 }
 
 // GetFieldConfig returns the field configuration for this remote connector.

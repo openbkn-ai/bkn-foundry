@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,11 +30,13 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 	t.Run("maria dbconnector metadata and config", func(t *testing.T) {
 		connector := &MariaDBConnector{}
 
-		assert.Equal(t, interfaces.ConnectorTypeMariaDB, connector.GetType())
-		assert.Equal(t, interfaces.ConnectorTypeMariaDB, connector.GetName())
+		assert.Equal(t, "mariadb", connector.GetType())
+		assert.Equal(t, "mariadb", connector.GetName())
 		assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
 		assert.Equal(t, interfaces.ConnectorCategoryTable, connector.GetCategory())
-		assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+		protectedFields, metadataErr := connector.GetSensitiveFields(nil)
+		require.NoError(t, metadataErr)
+		assert.Equal(t, []string{"password"}, protectedFields)
 		assert.False(t, connector.GetEnabled())
 		connector.SetEnabled(true)
 		assert.True(t, connector.GetEnabled())
@@ -58,16 +61,36 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 func TestMySQLConnectorMetadataAndConfig(t *testing.T) {
 	connector := NewMySQLConnector()
 
-	assert.Equal(t, interfaces.ConnectorTypeMySQL, connector.GetType())
-	assert.Equal(t, interfaces.ConnectorTypeMySQL, connector.GetName())
+	assert.Equal(t, "mysql", connector.GetType())
+	assert.Equal(t, "mysql", connector.GetName())
 
 	instance, err := connector.New(validMariaDBConfig(3306))
 
 	require.NoError(t, err)
-	assert.Equal(t, interfaces.ConnectorTypeMySQL, instance.GetType())
+	assert.Equal(t, "mysql", instance.GetType())
 }
 
 func TestMariaDBConnectorNew(t *testing.T) {
+	t.Run("fixed config fields require exact case", func(t *testing.T) {
+		cfg := validMariaDBConfig(3306)
+		cfg["Password"] = cfg["password"]
+		delete(cfg, "password")
+		instance, err := (&MariaDBConnector{}).New(cfg)
+		require.Error(t, err)
+		assert.Nil(t, instance)
+		cfg["password"] = "canonical-fixture"
+		cfg["Password"] = map[string]any{"ignored": true}
+		instance, err = (&MariaDBConnector{}).New(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "canonical-fixture", instance.(*MariaDBConnector).config.Password)
+	})
+	t.Run("decode errors exclude submitted credential values", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"password": map[string]any{"value": "private-fixture"}}
+		_, err := (&MariaDBConnector{}).New(cfg)
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "private-fixture")
+	})
+
 	builder := &MariaDBConnector{}
 
 	t.Run("success", func(t *testing.T) {
@@ -541,4 +564,26 @@ func TestMariaDBConnectorFilterabilityValidation(t *testing.T) {
 			assert.True(t, flag == resource.SchemaDefinition[0].Filterable)
 		}
 	})
+}
+
+func TestMariaDBConnectorConnect(t *testing.T) {
+	for _, cause := range []error{errors.New("private-driver-fixture"), &mysql.MySQLError{Number: 1045, Message: "private-driver-fixture"}, context.Canceled, context.DeadlineExceeded} {
+		t.Run("driver errors exclude source contents "+cause.Error(), func(t *testing.T) {
+			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) { return nil, cause })
+			defer patches.Reset()
+			connector := &MariaDBConnector{config: &mariadbConfig{}}
+			err := connector.Connect(context.Background())
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "private-driver-fixture")
+			var originalErr *mysql.MySQLError
+			if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+				assert.ErrorIs(t, err, cause)
+			} else if errors.As(cause, &originalErr) {
+				var sourceErr *mysql.MySQLError
+				require.ErrorAs(t, err, &sourceErr)
+				assert.Equal(t, uint16(1045), sourceErr.Number)
+			}
+		})
+	}
+
 }

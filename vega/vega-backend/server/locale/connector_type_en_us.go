@@ -20,6 +20,7 @@ var connectorTypeEnUS = i18n.I18nMessages{
 		"VegaBackend.ConnectorType.TypeExists":                   "Connector type already exists. Please use a different type",
 		"VegaBackend.ConnectorType.NameExists":                   "Connector type name already exists. Please use a different name",
 		"VegaBackend.ConnectorType.TypeMismatch":                 "The connector type in the request body does not match the path. Omit the type field in the body, or make it match the path parameter",
+		"VegaBackend.ConnectorType.InUse":                        "Connector type is referenced by a catalog and cannot be deleted. Remove the referencing catalogs first.",
 		"VegaBackend.ConnectorType.InternalError":                "Connector type internal error. Please contact the administrator",
 		"VegaBackend.ConnectorType.FieldConfigUnavailable":       "Connector field configuration is unavailable. Ensure the connector implementation is available, then try again",
 		"VegaBackend.ConnectorType.InternalError.RegisterFailed": "Failed to reqister connector type. Please contact the administrator",

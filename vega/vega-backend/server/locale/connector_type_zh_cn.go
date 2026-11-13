@@ -20,6 +20,7 @@ var connectorTypeZhCN = i18n.I18nMessages{
 		"VegaBackend.ConnectorType.TypeExists":                   "连接器类型已存在。请使用其他类型",
 		"VegaBackend.ConnectorType.NameExists":                   "连接器类型名称已存在。请使用其他名称",
 		"VegaBackend.ConnectorType.TypeMismatch":                 "请求体中的连接器类型与路径不一致。省略请求体中的 type 字段，或使其与路径参数保持一致",
+		"VegaBackend.ConnectorType.InUse":                        "连接器类型仍被目录引用，无法删除。请先删除引用该类型的目录。",
 		"VegaBackend.ConnectorType.InternalError":                "连接器类型内部错误。请联系管理员",
 		"VegaBackend.ConnectorType.FieldConfigUnavailable":       "连接器字段配置暂不可用。请确认连接器实现可用后重试",
 		"VegaBackend.ConnectorType.InternalError.RegisterFailed": "注册连接器类型失败。请联系管理员",

@@ -32,10 +32,12 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
+	cf := vmock.NewMockConnectorFactory(ctrl)
+	cf.EXPECT().SupportDiscover("postgresql").Return(true, nil).AnyTimes()
 	cs.EXPECT().
 		CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
-		Return(true, nil, nil)
+		Return(true, &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical, ConnectorType: "postgresql"}, nil)
 	cs.EXPECT().
 		ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().
@@ -43,6 +45,7 @@ func newTestDiscoverScheduleService(t *testing.T) (*discoverScheduleService, *vm
 
 	return &discoverScheduleService{
 		cs:  cs,
+		cf:  cf,
 		dsa: dsa,
 		dts: dts,
 		ums: ums,
@@ -485,7 +488,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	t.Run("skips when scheduled task is already running", func(t *testing.T) {
 		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
 		schedule := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1"}
-		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", ConnectorType: "postgresql", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), interfaces.DiscoverTaskQueryParams{
 				CatalogID:   "catalog-1",
@@ -506,7 +509,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 			Creator:   interfaces.AccountInfo{ID: "u1"},
 		}
 
-		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", ConnectorType: "postgresql", Enabled: true}, nil)
 		dts.EXPECT().
 			List(gomock.Any(), gomock.Any()).
 			Return(nil, int64(0), nil)
@@ -523,7 +526,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 
 	t.Run("returns list error", func(t *testing.T) {
 		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "", false).Return(&interfaces.Catalog{Enabled: true}, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "", false).Return(&interfaces.Catalog{ConnectorType: "postgresql", Enabled: true}, nil)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("list failed"))
 
 		err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
@@ -548,5 +551,126 @@ func newTestDiscoverScheduleExecutionService(t *testing.T) (*discoverScheduleSer
 	ctrl := gomock.NewController(t)
 	cs := vmock.NewMockCatalogService(ctrl)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
-	return &discoverScheduleService{cs: cs, dts: dts}, cs, dts
+	cf := vmock.NewMockConnectorFactory(ctrl)
+	cf.EXPECT().SupportDiscover("postgresql").Return(true, nil).AnyTimes()
+	return &discoverScheduleService{cs: cs, cf: cf, dts: dts}, cs, dts
+}
+
+func TestDiscoverScheduleServiceDiscoveryCapability(t *testing.T) {
+	t.Run("unsupported discovery", func(t *testing.T) {
+		for _, action := range []string{"create", "update", "enable", "disable", "execute"} {
+			t.Run(action, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				cs := vmock.NewMockCatalogService(ctrl)
+				dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+				cf := vmock.NewMockConnectorFactory(ctrl)
+				if action != "disable" {
+					cf.EXPECT().SupportDiscover("custom").Return(false, nil)
+				}
+				service := &discoverScheduleService{cs: cs, cf: cf, dsa: dsa}
+				catalog := &interfaces.Catalog{ID: "api", ConnectorType: "custom", Enabled: true}
+				schedule := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "api", CronExpr: "0 * * * *"}
+				var err error
+				if action == "execute" {
+					service.dts = vmock.NewMockDiscoverTaskService(ctrl)
+					cs.EXPECT().InternalGetByID(gomock.Any(), "api", false).Return(catalog, nil)
+					err = service.ExecuteSchedule(context.Background(), schedule)
+				} else {
+					cs.EXPECT().CheckCatalogPermission(gomock.Any(), "api", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, catalog, nil)
+					switch action {
+					case "create":
+						_, err = service.Create(context.Background(), &interfaces.DiscoverScheduleRequest{CatalogID: "api", CronExpr: "0 * * * *"})
+					case "update":
+						err = service.Update(context.Background(), schedule, &interfaces.DiscoverScheduleRequest{CronExpr: "0 * * * *"})
+					case "enable":
+						err = service.UpdateEnabled(context.Background(), schedule, true)
+					case "disable":
+						dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule", false, nil, schedule.UpdateTime, gomock.Any(), interfaces.AccountInfo{}).Return(int64(1), nil)
+						err = service.UpdateEnabled(context.Background(), schedule, false)
+					}
+				}
+				if action == "disable" {
+					require.NoError(t, err)
+					return
+				}
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			})
+		}
+	})
+
+	t.Run("supported discovery and lookup errors", func(t *testing.T) {
+		unknown := errors.New("connector unavailable")
+		for _, action := range []string{"create", "update", "enable", "execute"} {
+			t.Run(action, func(t *testing.T) {
+				for _, scenario := range []string{"discoverable API", "unknown connector", "missing catalog"} {
+					t.Run(scenario, func(t *testing.T) {
+						ctrl := gomock.NewController(t)
+						cs := vmock.NewMockCatalogService(ctrl)
+						cf := vmock.NewMockConnectorFactory(ctrl)
+						dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+						dts := vmock.NewMockDiscoverTaskService(ctrl)
+						svc := &discoverScheduleService{cs: cs, cf: cf, dsa: dsa, dts: dts}
+						catalog := &interfaces.Catalog{ID: "catalog", ConnectorType: "custom-api", Enabled: true}
+						if scenario == "missing catalog" {
+							catalog = nil
+						}
+						if action == "execute" {
+							cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", false).Return(catalog, nil)
+						} else {
+							cs.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, catalog, nil)
+						}
+						if catalog != nil {
+							if scenario == "unknown connector" {
+								cf.EXPECT().SupportDiscover("custom-api").Return(false, unknown)
+							} else {
+								cf.EXPECT().SupportDiscover("custom-api").Return(true, nil)
+							}
+						}
+						if scenario == "discoverable API" {
+							switch action {
+							case "create":
+								dsa.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+							case "update":
+								dsa.EXPECT().Update(gomock.Any(), gomock.Any(), int64(0)).Return(int64(1), nil)
+							case "enable":
+								dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule", true, gomock.Any(), int64(0), gomock.Any(), interfaces.AccountInfo{}).Return(int64(1), nil)
+							case "execute":
+								dts.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), nil)
+								dts.EXPECT().Create(gomock.Any(), gomock.Any()).Return("task", nil)
+							}
+						}
+						schedule := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog", CronExpr: "0 * * * *"}
+						req := &interfaces.DiscoverScheduleRequest{CatalogID: "catalog", CronExpr: "0 * * * *"}
+						var err error
+						switch action {
+						case "create":
+							_, err = svc.Create(context.Background(), req)
+						case "update":
+							err = svc.Update(context.Background(), schedule, req)
+						case "enable":
+							err = svc.UpdateEnabled(context.Background(), schedule, true)
+						case "execute":
+							err = svc.ExecuteSchedule(context.Background(), schedule)
+						}
+						switch scenario {
+						case "discoverable API":
+							require.NoError(t, err)
+						case "unknown connector":
+							require.ErrorIs(t, err, unknown)
+						case "missing catalog":
+							if action == "execute" {
+								require.NoError(t, err)
+							} else {
+								var httpErr *httperrors.HTTPError
+								require.ErrorAs(t, err, &httpErr)
+								assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+							}
+						}
+					})
+				}
+			})
+		}
+	})
 }

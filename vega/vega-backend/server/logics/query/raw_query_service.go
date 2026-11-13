@@ -522,7 +522,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
 		return nil, "", nil, "", err
 	}
-	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+	if catalog.ConnectorType != "opensearch" {
 		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
 	}
@@ -678,7 +678,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	if err := ensureCatalogEnabled(queryCtx, catalog); err != nil {
 		return nil, err
 	}
-	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
+	if catalog.ConnectorType != "opensearch" {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
 	}

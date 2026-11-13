@@ -364,16 +364,25 @@ func (cf *connectorFactory) ValidateFilterability(tp string, resource *interface
 	}
 }
 
-// GetSensitiveFields returns a list of sensitive fields based on the connector type
-func (cf *connectorFactory) GetSensitiveFields(tp string) []string {
+// SupportDiscover reads discovery capability without creating a source connection.
+func (cf *connectorFactory) SupportDiscover(tp string) (bool, error) {
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return false, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
+	}
+	return connector.SupportDiscover(), nil
+}
+
+// GetSensitiveFields delegates configuration-specific protection paths without creating a source instance.
+func (cf *connectorFactory) GetSensitiveFields(tp string, cfg interfaces.ConnectorConfig) ([]string, error) {
 	cf.mu.RLock()
 	defer cf.mu.RUnlock()
 
-	if connector, ok := cf.connectors[tp]; ok {
-		if minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]; hasMinimumEdition && !entitlement.AtLeast(minimumEdition) {
-			return nil
-		}
-		return connector.GetSensitiveFields()
+	connector, ok := cf.connectors[tp]
+	if !ok {
+		return nil, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
 	}
-	return nil
+	return connector.GetSensitiveFields(cfg)
 }

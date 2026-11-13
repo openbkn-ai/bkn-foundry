@@ -47,7 +47,7 @@ func detectPostgresqlCompatibility(ctx context.Context, db *sql.DB) (postgresqlC
 		if pq.As(err, pqerror.FeatureNotSupported, pqerror.SyntaxError, pqerror.UndefinedFunction) == nil {
 			return postgresqlCompatibility{}, fmt.Errorf("failed to detect PostgreSQL LATERAL support: %w", err)
 		}
-		logger.Warnf("Failed to detect PostgreSQL LATERAL support, using compatible metadata query: %v", err)
+		logger.Warnf("Failed to detect PostgreSQL LATERAL support, using compatible metadata query: %v", connectionError(ctx, "capability probe failed", err))
 	} else {
 		compatibility.lateral = true
 	}
@@ -55,7 +55,7 @@ func detectPostgresqlCompatibility(ctx context.Context, db *sql.DB) (postgresqlC
 		if pq.As(err, pqerror.FeatureNotSupported, pqerror.SyntaxError, pqerror.UndefinedFunction) == nil {
 			return postgresqlCompatibility{}, fmt.Errorf("failed to detect PostgreSQL WITH ORDINALITY support: %w", err)
 		}
-		logger.Warnf("Failed to detect PostgreSQL WITH ORDINALITY support, using compatible metadata query: %v", err)
+		logger.Warnf("Failed to detect PostgreSQL WITH ORDINALITY support, using compatible metadata query: %v", connectionError(ctx, "capability probe failed", err))
 	} else {
 		compatibility.withOrdinality = true
 	}

@@ -28,13 +28,32 @@ import (
 )
 
 func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
+	t.Run("fixed config fields require exact case", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"host": "search.example.com", "port": 9200, "Password": "case-fixture"}
+		instance, err := (&OpenSearchConnector{}).New(cfg)
+		require.NoError(t, err)
+		assert.Empty(t, instance.(*OpenSearchConnector).Config.Password)
+		cfg["password"] = "canonical-fixture"
+		cfg["Password"] = map[string]any{"ignored": true}
+		instance, err = (&OpenSearchConnector{}).New(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "canonical-fixture", instance.(*OpenSearchConnector).Config.Password)
+	})
+	t.Run("decode errors exclude submitted credential values", func(t *testing.T) {
+		_, err := (&OpenSearchConnector{}).New(interfaces.ConnectorConfig{"password": map[string]any{"value": "private-fixture"}})
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "private-fixture")
+	})
+
 	connector := &OpenSearchConnector{}
 
-	assert.Equal(t, interfaces.ConnectorTypeOpenSearch, connector.GetType())
-	assert.Equal(t, interfaces.ConnectorTypeOpenSearch, connector.GetName())
+	assert.Equal(t, "opensearch", connector.GetType())
+	assert.Equal(t, "opensearch", connector.GetName())
 	assert.Equal(t, interfaces.ConnectorModeLocal, connector.GetMode())
 	assert.Equal(t, interfaces.ConnectorCategoryIndex, connector.GetCategory())
-	assert.Equal(t, []string{"password"}, connector.GetSensitiveFields())
+	protectedFields, metadataErr := connector.GetSensitiveFields(nil)
+	require.NoError(t, metadataErr)
+	assert.Equal(t, []string{"password"}, protectedFields)
 
 	assert.False(t, connector.GetEnabled())
 	connector.SetEnabled(true)
@@ -1013,4 +1032,16 @@ func TestOpenSearchConnectorValidateFilterability(t *testing.T) {
 		require.NoError(t, err)
 		assert.JSONEq(t, string(before), string(storedAfter))
 	})
+}
+
+func TestOpenSearchConnectorPing(t *testing.T) {
+	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{"http://example.invalid"}, Transport: datasetTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 401, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("private-response-fixture"))}, nil
+	})})
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{client: client}
+	err = connector.Ping(context.Background())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "private-response-fixture")
+	assert.Contains(t, err.Error(), "401")
 }
