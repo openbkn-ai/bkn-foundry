@@ -126,5 +126,12 @@ cleanup merely by setting a manifest URL or deleting recovery fields. Existing
 `retry-cleanup` only accepts verified cleanup-incomplete jobs and revalidates the
 archive. Failed/unverified jobs require read-only inspection or a new normal run;
 source stays hot and historical orphan objects are not automatically deleted.
+Repeated failed runs can retain one bounded full checkpoint per failed batch and
+accumulate SQL storage, in addition to possible orphan objects. There is no
+implicit TTL or automatic garbage collection: discarding unverified recovery
+input would remove the independent evidence needed for inspection. Operators
+should inspect failures before starting repeated new runs. A retention/purge
+policy needs a separate reviewed decision covering both checkpoints and objects.
+
 Any manual data restoration, deletion or promotion of an old failed job needs a
 separate reviewed operation.

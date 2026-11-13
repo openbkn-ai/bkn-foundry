@@ -85,7 +85,17 @@ func TestLogArchiveCapacityMariaDB(t *testing.T) {
 	if err = New(db).Create(legacy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec("UPDATE bkn_trace_archive_jobs SET candidate_payloads=? WHERE archive_job_id=?", raw, legacy.ID); err == nil {
+	// Oversized packets cause the server to close the connection. Keep this
+	// deliberate negative control out of the pool used to verify the new flow.
+	faultDB, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, oldWriteErr := faultDB.Exec("UPDATE bkn_trace_archive_jobs SET candidate_payloads=? WHERE archive_job_id=?", raw, legacy.ID)
+	if err = faultDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if oldWriteErr == nil {
 		t.Fatal("old oversized checkpoint unexpectedly succeeded")
 	}
 	t.Logf("old checkpoint rejected at %d bytes; source still contains %d synthetic logs", len(raw), len(source.rows))

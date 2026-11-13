@@ -324,9 +324,9 @@ spec:
             {{- $archive := default (dict) .Values.observability.archive }}
             {{- $logLimits := default (dict) $archive.logLimits }}
             - name: BKN_OBSERVABILITY_LOG_ARCHIVE_MAX_CANDIDATES
-              value: {{ if hasKey $logLimits "maxCandidates" }}{{ $logLimits.maxCandidates | quote }}{{ else }}"10000"{{ end }}
+              value: {{ if hasKey $logLimits "maxCandidates" }}{{ $logLimits.maxCandidates | int64 | quote }}{{ else }}"10000"{{ end }}
             - name: BKN_OBSERVABILITY_LOG_ARCHIVE_MAX_PAYLOAD_BYTES
-              value: {{ if hasKey $logLimits "maxPayloadBytes" }}{{ $logLimits.maxPayloadBytes | quote }}{{ else }}"10485760"{{ end }}
+              value: {{ if hasKey $logLimits "maxPayloadBytes" }}{{ $logLimits.maxPayloadBytes | int64 | quote }}{{ else }}"10485760"{{ end }}
             {{- if $logLimits.existingConfigMap }}
             - name: BKN_OBSERVABILITY_LOG_ARCHIVE_LIMITS_FILE
               value: /etc/bkn-trace/log-archive/limits.json

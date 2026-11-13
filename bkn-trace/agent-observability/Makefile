@@ -97,6 +97,7 @@ docker-build:
 
 helm-lint:
 	helm lint $(CHART_PATH)
+	bash scripts/test_log_archive_limits_chart.sh $(CHART_PATH)
 	bash scripts/test_rolling_update_chart.sh $(CHART_PATH)
 	bash ../scripts/test_agent_observability_kafka_consumers_chart.sh
 	bash scripts/test_evidence_publisher_numeric_chart_values.sh
