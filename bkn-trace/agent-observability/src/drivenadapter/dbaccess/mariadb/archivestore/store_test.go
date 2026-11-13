@@ -20,7 +20,7 @@ import (
 )
 
 func TestProgressPersistenceAndLegacyReads(t *testing.T) {
-	for _, raw := range []string{"", `{"run_id":"run1","batch_number":2,"eligible_at_selection":2200,"verified_count":2000,"cleaned_count":1900,"cleaned_in_run":2100,"remaining_at_selection":200,"run_complete":false}`} {
+	for _, raw := range []string{"", `{"blocked":{"interaction_id":"large","stage":"sql_payload","actual":14800000,"limit":8388608,"unit":"bytes"},"run_id":"run-blocked","batch_number":2,"eligible_at_selection":2,"verified_count":0,"cleaned_count":0,"cleaned_in_run":1,"remaining_at_selection":2,"run_complete":false}`, `{"run_id":"run1","batch_number":2,"eligible_at_selection":2200,"verified_count":2000,"cleaned_count":1900,"cleaned_in_run":2100,"remaining_at_selection":200,"run_complete":false}`} {
 		t.Run(raw, func(t *testing.T) {
 			db, m, err := sqlmock.New()
 			if err != nil {

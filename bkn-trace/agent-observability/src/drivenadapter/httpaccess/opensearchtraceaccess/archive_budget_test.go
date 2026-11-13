@@ -61,6 +61,12 @@ func TestArchiveEnrichRejectsPayloadBudgets(t *testing.T) {
 			if !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) || got != nil {
 				t.Fatalf("got %d candidates, error %v", len(got), err)
 			}
+			if len(candidates) == 1 {
+				var detail *archivesvc.PayloadBudgetError
+				if !errors.As(err, &detail) || detail.InteractionID != candidates[0].ID || detail.Actual <= detail.Limit || detail.AtLeast {
+					t.Fatalf("missing exact budget detail: %v", err)
+				}
+			}
 			if (kind == "core" || kind == "batch") && requests != 0 {
 				t.Fatalf("oversized input made %d requests", requests)
 			}
@@ -89,6 +95,10 @@ func TestArchiveEnrichBoundsSearchResponse(t *testing.T) {
 	got, err := NewArchiveStore(client, "traces").Enrich(context.Background(), frozenArchiveCandidate())
 	if got != nil || !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) {
 		t.Fatalf("got %d candidates, error %v", len(got), err)
+	}
+	var detail *archivesvc.PayloadBudgetError
+	if !errors.As(err, &detail) || detail.Stage != "technical_response" || !detail.AtLeast || detail.Actual != int64(body.read) || detail.Limit != archivesvc.MaxTraceArchiveResponseBytes {
+		t.Fatalf("invalid response diagnostic: %v", err)
 	}
 	if body.read > archivesvc.MaxTraceArchiveResponseBytes+1 {
 		t.Fatalf("read %d bytes", body.read)

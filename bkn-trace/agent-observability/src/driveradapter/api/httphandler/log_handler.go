@@ -31,6 +31,7 @@ type observabilityErrorEnvelope struct {
 }
 
 type observabilityError struct {
+	Details        any    `json:"details,omitempty"`
 	Code           string `json:"code"`
 	Message        string `json:"message"`
 	Retryable      bool   `json:"retryable"`

@@ -143,13 +143,40 @@ candidates at request start. Large eligible counts alone no longer load all Trac
 payloads into memory. The object writer also checks the Trace batch budget before
 allocation/upload and bounds its verification download to the frozen length.
 
-A single oversized Interaction or unverifiable technical response stops before
-writing/deleting that batch, returning HTTP 409 `archive_incomplete_candidates`
-with a payload-budget explanation where applicable. Earlier completed batches
-remain recorded. Oversized records require operator handling; retries do not
-truncate, skip or delete them. The existing manifest and database formats are
-unchanged; no migration or streaming object protocol is introduced. SQL cleanup
-also verifies frozen source metadata under its parent row lock, as described below.
+An oversized Interaction commits only the already-frozen, fully verified prefix
+as a normal batch. Selection then stops at that Interaction; later candidates
+remain hot and the run is **not complete**. No oversized content is truncated,
+skipped or deleted. Other errors (cancellation, incomplete responses or dependency
+failures) still reject the current batch rather than committing a partial result.
+
+The blocked selection is persisted as an existing `failed` archive job, with no
+manifest, no frozen cleanup payload and `candidate_count=0`. Its `candidate_ids`
+identifies the blocker, while `batch_progress.blocked` records `interaction_id`,
+`stage`, `actual`, `limit`, `unit` and optional `at_least`. Existing progress fields
+retain the run/batch identity, prior cleaned count and the remaining selection.
+This adds optional JSON metadata to the existing column; no migration, new status,
+archive format or streaming object protocol is introduced. Legacy jobs still read
+normally. A blocked job is never eligible for `retry-cleanup` or download.
+
+POST still returns HTTP 409 `archive_incomplete_candidates`, `retryable=false`,
+with `required_action=review_oversized_interaction`. `error.details` identifies the
+persisted `archive_job_id` and the same `blocked` metadata, correlated with the
+existing `request_id`. GET/list expose the metadata after a process restart.
+Stages distinguish SQL field bytes (`sql_payload`), SQL row count (`sql_rows`),
+serialized Core (`core_json`), bounded upstream response (`technical_response`),
+raw technical document/trace/bundle, and final enriched JSON (`enriched_json`).
+`actual` is the measured quantity at that check, not a predicted final archive
+size. For a bounded response, `at_least=true` explicitly means only `limit+1`
+bytes were read; the service does not fetch the rest to learn its full size.
+
+Operators should inspect the identified Interaction's size metadata and preserve
+its source. The current release has no approved large-object export/recovery path;
+retrying unchanged input remains blocked. Raising only database packet limits,
+reducing candidate count, or deleting source facts is not a remedy. Complete large
+objects or advancing beyond a blocker requires a separately reviewed archival
+protocol; this fix deliberately keeps ordering and source-version deletion checks.
+Earlier completed batches remain independently recorded and downloadable. SQL
+cleanup still verifies frozen metadata under its parent lock, as described below.
 
 ## Technical Trace archive cleanup safety (#1724)
 

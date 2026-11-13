@@ -48,7 +48,7 @@ func TestTraceArchivePreflightRejectsBytesAndEmptyPayloadRowFloodBeforeReading(t
 		name        string
 		rows, bytes int64
 		fail        bool
-	}{{"bytes", 1, archivesvc.MaxTraceArchiveCandidateBytes + 1, true}, {"empty row flood", archivesvc.MaxTraceArchiveCandidateBytes/256 + 1, 0, true}, {"within budget", 4, 1024, false}} {
+	}{{"bytes", 1, archivesvc.MaxTraceArchiveCandidateBytes + 1, true}, {"empty row flood", archivesvc.MaxTraceArchiveCandidateBytes/256 + 1, 0, true}, {"within budget", 4, 1024, false}, {"exact byte budget", 1, archivesvc.MaxTraceArchiveCandidateBytes, false}, {"exact row budget", archivesvc.MaxTraceArchiveCandidateBytes / 256, 0, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, m, err := sqlmock.New()
 			if err != nil {
@@ -64,6 +64,12 @@ func TestTraceArchivePreflightRejectsBytesAndEmptyPayloadRowFloodBeforeReading(t
 			}
 			called := false
 			err = NewTraceArchiveSource(New(db)).readBoundedPackage(context.Background(), "i", func(isessionstore.Transaction) error { called = true; return nil })
+			if tc.fail {
+				var detail *archivesvc.PayloadBudgetError
+				if !errors.As(err, &detail) || detail.InteractionID != "i" || detail.Actual <= detail.Limit || (tc.bytes > 0 && detail.Stage != "sql_payload") || (tc.bytes == 0 && detail.Stage != "sql_rows") {
+					t.Fatalf("missing size diagnostic: %v", err)
+				}
+			}
 			if errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) != tc.fail || called == tc.fail || (!tc.fail && err != nil) {
 				t.Fatalf("err=%v loaded payload=%v", err, called)
 			}
@@ -155,6 +161,28 @@ func TestTraceArchiveOversizedPackageFailsBatchBeforeAnyPayloadRead(t *testing.T
 	batch, err := NewTraceArchiveSource(New(db)).FreezeBatch(context.Background(), observabilityvo.ArchiveKindTrace, observabilityvo.ArchiveRange{To: now})
 	if !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) || len(batch.Candidates) != 0 {
 		t.Fatalf("oversized package produced candidates: %+v %v", batch, err)
+	}
+	if err = m.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTraceArchiveSQLBudgetKeepsSafePrefix(t *testing.T) {
+	db, m, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC()
+	m.ExpectQuery(`SELECT COUNT\(\*\)`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
+	m.ExpectQuery(`SELECT interaction_id .*LIMIT \?`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("small").AddRow("large").AddRow("suffix")).RowsWillBeClosed()
+	expectBoundedArchivePackage(m, "small", 128, now)
+	m.ExpectBegin()
+	m.ExpectQuery(`SELECT SUM\(row_count\),SUM\(payload_bytes\)`).WithArgs("large", "large", "large", "large").WillReturnRows(sqlmock.NewRows([]string{"rows", "bytes"}).AddRow(112, 12598557))
+	m.ExpectRollback()
+	batch, err := NewTraceArchiveSource(New(db)).FreezeBatch(context.Background(), observabilityvo.ArchiveKindTrace, observabilityvo.ArchiveRange{To: now})
+	if err != nil || len(batch.Candidates) != 1 || batch.Candidates[0].ID != "small" || batch.EligibleCount != 3 {
+		t.Fatalf("lost prefix: %+v %v", batch, err)
 	}
 	if err = m.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
