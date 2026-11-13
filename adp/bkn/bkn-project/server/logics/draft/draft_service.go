@@ -308,6 +308,7 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	if err != nil {
 		return items, err
 	}
+	s.nameInLanguage(ctx, caller, &items, d.language(), tables)
 	recorded := d.recorded
 	if len(existing.ObjectTypes) > 0 || len(existing.RelationTypes) > 0 {
 		// The ids of what existing tables drafted are not registered: those tables keep the network's.

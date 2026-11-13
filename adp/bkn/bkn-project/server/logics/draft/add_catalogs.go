@@ -321,6 +321,7 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 	if err != nil {
 		return nil, err
 	}
+	s.nameInLanguage(ctx, caller, &drafted, d.language(), tables)
 	result := &addedDraft{drafted: drafted, tables: tables, existingTables: left, existing: existing,
 		catalogOf: map[string]string{}}
 	for _, t := range all {

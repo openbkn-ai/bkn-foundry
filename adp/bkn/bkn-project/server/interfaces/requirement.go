@@ -769,6 +769,10 @@ type RequirementAccess interface {
 	// the specification is replaced only while its update time is still readUpdateTime, as read for
 	// what drafting keeps; otherwise it returns ErrRequirementChanged.
 	StartDrafting(ctx context.Context, req *Requirement, staleBefore int64, readUpdateTime int64) (bool, error)
+	// StartEmpty writes req, an empty ready specification, as the project's when it has none (a row
+	// holding only the supplement note has none); it reports whether it did, false when one was
+	// written meanwhile.
+	StartEmpty(ctx context.Context, req *Requirement) (bool, error)
 	// UpdateRequirement writes the spec and update time of a ready specification whose update
 	// time is still readUpdateTime; false means someone changed it meanwhile.
 	UpdateRequirement(ctx context.Context, req *Requirement, readUpdateTime int64) (bool, error)

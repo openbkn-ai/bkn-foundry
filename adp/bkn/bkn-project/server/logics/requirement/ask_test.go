@@ -292,3 +292,96 @@ func Test_AskAndAdopt(t *testing.T) {
 		So(c.Page, ShouldEqual, interfaces.REQUIREMENT_PAGE_SCENARIOS)
 	})
 }
+
+func Test_AskFromNothing(t *testing.T) {
+	Convey("Asked before any analysis, the empty list takes adds, and adopting one starts the list\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		ba := pmock.NewMockBknAgentAccess(ctrl)
+		rla := pmock.NewMockReleaseAccess(ctrl)
+		nextID := 0
+		svc := &requirementService{ps: ps, ra: ra, da: da, ba: ba, rla: rla,
+			now:   func() int64 { return 100 },
+			newID: func() string { nextID++; return "id" + string(rune('0'+nextID)) },
+			run:   func(fn func()) { fn() }, sleep: func(time.Duration) {}}
+		ctx := context.Background()
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", Owner: caller,
+			NamingLanguage: interfaces.NAMING_LANGUAGE_EN_US}}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil).AnyTimes()
+		ra.EXPECT().GetSupplement(gomock.Any(), "p1").Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(nil, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(kineticDraft(), true, nil).AnyTimes()
+		rla.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		st := &runStore{}
+		ra.EXPECT().GetRequirement(gomock.Any(), "p1").DoAndReturn(
+			func(context.Context, string) (*interfaces.Requirement, bool, error) { return st.read() }).AnyTimes()
+		ra.EXPECT().UpdateRequirement(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *interfaces.Requirement, read int64) (bool, error) {
+				if st.req == nil || st.req.UpdateTime != read {
+					return false, nil
+				}
+				st.req = req
+				return true, nil
+			}).AnyTimes()
+		cs := &conversationStore{}
+		cs.expect(ra)
+		output := `{"answer":"Track the share of late lines.","proposals":[
+			{"op":"add","kind":"logic_needs","item":{"logic_kind":"metric","name":"Late rate","object_type_ids":["customer"]},"reason":"Asked for."},
+			{"op":"delete","kind":"logic_needs","target_id":"n1","reason":"Nothing to delete."}]}`
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				var msg askMessage
+				So(json.Unmarshal([]byte(req.Message[strings.Index(req.Message, "{"):]), &msg), ShouldBeNil)
+				So(msg.LogicNeeds, ShouldBeEmpty)
+				So(msg.LogicNeeds, ShouldNotBeNil)
+				So(msg.Editable["logic_needs"], ShouldContain, "add")
+				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
+			})
+
+		c, err := svc.Ask(ctx, token, "p1", "", interfaces.RequirementAskRequest{Page: "kinetic",
+			Question: "What should we measure for late deliveries?"}, caller)
+		So(err, ShouldBeNil)
+		turn := cs.list[0].Turns[0]
+		So(turn.Status, ShouldEqual, interfaces.REQUIREMENT_TURN_READY)
+		So(len(turn.Proposals), ShouldEqual, 1)
+		So(turn.Proposals[0].Op, ShouldEqual, interfaces.REQUIREMENT_PROPOSAL_ADD)
+		So(turn.Dropped, ShouldEqual, 1)
+
+		Convey("Adopting with no update time writes the empty list first, then the add\n", func() {
+			ra.EXPECT().StartEmpty(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement) (bool, error) {
+					So(req.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+					So(req.Version, ShouldEqual, 1)
+					So(req.Spec.LogicNeeds, ShouldBeEmpty)
+					st.req = req
+					return true, nil
+				})
+
+			result, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
+				interfaces.RequirementProposalsDecision{Adopt: []int{0}}, caller)
+
+			So(err, ShouldBeNil)
+			So(ids(st.req.Spec.LogicNeeds, logicNeedID), ShouldResemble, []string{result.Conversation.Turns[0].Proposals[0].ResultID})
+			So(st.req.Spec.LogicNeeds[0].Name, ShouldEqual, "Late rate")
+			So(st.req.Spec.LogicNeeds[0].Source, ShouldEqual, interfaces.REQUIREMENT_SOURCE_ASK)
+			So(result.Requirement, ShouldNotBeNil)
+		})
+
+		Convey("Adopting with no update time once the list exists is stale, not written over\n", func() {
+			st.req = askSpec()
+			_, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
+				interfaces.RequirementProposalsDecision{Adopt: []int{0}}, caller)
+			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_Stale)
+		})
+
+		Convey("Adopting with no update time while another writes the list first is stale\n", func() {
+			ra.EXPECT().StartEmpty(gomock.Any(), gomock.Any()).Return(false, nil)
+			_, err := svc.DecideProposals(ctx, token, "p1", c.ID, turn.ID,
+				interfaces.RequirementProposalsDecision{Adopt: []int{0}}, caller)
+			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Requirement_Stale)
+		})
+	})
+}

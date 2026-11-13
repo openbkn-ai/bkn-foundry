@@ -449,6 +449,21 @@ func (mr *MockRequirementAccessMockRecorder) UpdateGuidance(ctx, g, readUpdateTi
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).UpdateGuidance), ctx, g, readUpdateTime)
 }
 
+// StartEmpty mocks base method.
+func (m *MockRequirementAccess) StartEmpty(ctx context.Context, req *interfaces.Requirement) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartEmpty", ctx, req)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartEmpty indicates an expected call of StartEmpty.
+func (mr *MockRequirementAccessMockRecorder) StartEmpty(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartEmpty", reflect.TypeOf((*MockRequirementAccess)(nil).StartEmpty), ctx, req)
+}
+
 // UpdateRequirement mocks base method.
 func (m *MockRequirementAccess) UpdateRequirement(ctx context.Context, req *interfaces.Requirement, readUpdateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
