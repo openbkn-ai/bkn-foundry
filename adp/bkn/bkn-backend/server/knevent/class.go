@@ -380,8 +380,8 @@ func (c *classes) remove(ctx context.Context, eventType interfaces.KnEventType) 
 		return versioned, false, err
 	}
 	if len(users) > 0 {
-		return versioned, false, httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnEvent_EventTypeInUse).
-			WithErrorDetails("the event class " + id + " is used by " + strings.Join(users, ", "))
+		return versioned, false, httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnEvent_EventClassInUse).
+			WithErrorDetails(map[string]any{"event_class": id, "used_by": users})
 	}
 	if err := c.definitions.removeRelationType(ctx, eventType.KNID, branch, relationID); err != nil {
 		return versioned, true, err
