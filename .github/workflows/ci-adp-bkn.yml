@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'adp/bkn/**'
+      - 'infra/sandbox/runtime/sandbox_sdk/**'
       - '.github/workflows/ci-adp-bkn.yml'
 
 permissions:
