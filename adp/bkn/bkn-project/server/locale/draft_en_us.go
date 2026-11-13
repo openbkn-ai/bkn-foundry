@@ -27,6 +27,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Draft.ProjectArchived":             "Project Archived. Unarchive the project before changing its draft.",
 		"BknProject.Draft.ExistingItem":                "Already in the Network. Edit what the network already has in the knowledge network.",
 		"BknProject.Draft.CrossBindingMerge":           "Cannot Merge. A concept bound to a data table and one bound to knowledge-base extraction data are not merged; making them one needs a custom view that maps the properties of both. Link them with a relation instead.",
+		"BknProject.Draft.MergeKindMismatch":           "Cannot Merge. An object merges only into an object, and a relation only into a relation.",
 		"BknProject.Draft.NotReady":                    "Draft Not Ready. Only a draft that finished drafting can be changed.",
 		"BknProject.Draft.Stale":                       "Draft Changed. Someone changed the draft after you loaded it; reload it and try again.",
 		"BknProject.Draft.HasDecisions":                "Draft Has Decisions. Drafting again discards existing decisions and document candidates; confirm discarding them to draft again.",

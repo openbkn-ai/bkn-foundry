@@ -27,6 +27,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.ProjectArchived":             "项目已归档 请先取消归档，再修改草稿。",
 		"BknProject.Draft.ExistingItem":                "网络已有的内容 网络已有的内容请到知识网络中修改。",
 		"BknProject.Draft.CrossBindingMerge":           "不能合并 绑定数据表的概念和绑定知识库抽取数据的概念不合并；确需合并要先做自定义视图对应两边的属性。两者有联系的，可以建一条关系。",
+		"BknProject.Draft.MergeKindMismatch":           "不能合并 对象只能合并到对象，关系只能合并到关系。",
 		"BknProject.Draft.NotReady":                    "草稿未就绪 只有起草完成的草稿才能修改。",
 		"BknProject.Draft.Stale":                       "草稿已被修改 加载之后草稿已被他人修改，请重新加载后再试。",
 		"BknProject.Draft.HasDecisions":                "草稿已有决定 重新起草会丢弃草稿上已做的决定和文档候选，确认丢弃后才能重新起草。",

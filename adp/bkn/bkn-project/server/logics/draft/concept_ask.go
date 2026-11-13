@@ -296,7 +296,8 @@ func checkConceptRevision(ctx context.Context, items *interfaces.DraftItems, con
 		// As merging by hand: both stand on their own, and the one merged in holds none.
 		// Nor are a table's concept and a knowledge-base extraction's merged.
 		into := findConcept(concepts, out.Into)
-		if out.Into == concept.Key || into == nil || len(concept.Merged) > 0 || crossBinding(concept, into) {
+		if out.Into == concept.Key || into == nil || len(concept.Merged) > 0 || crossBinding(concept, into) ||
+			(concept.Item != nil && into.Item != nil && concept.Item.Kind != into.Item.Kind) {
 			return nil, askDroppedInvalid
 		}
 		revision.Into = out.Into

@@ -630,7 +630,10 @@ func judgeConcept(ctx context.Context, items *interfaces.DraftItems, c *interfac
 	}
 	// Unjudged, the verdict is what drafting did: an item it left out is not included, as
 	// accepting the suggestions records it, until a person judges it otherwise.
-	if c.Judged == nil && c.Item != nil && !c.Item.Adopted && adoptsAs(c.Item.Kind, c.Verdict) {
+	// What a knowledge-base extraction proposes waits for a person as proposed: it was never left
+	// out by drafting.
+	if c.Judged == nil && c.Item != nil && !c.Item.Adopted && adoptsAs(c.Item.Kind, c.Verdict) &&
+		(c.Binding == nil || c.Binding.Kind != interfaces.CONCEPT_BINDING_DATASET) {
 		c.Verdict = interfaces.CONCEPT_VERDICT_NONE
 	}
 	switch {
@@ -941,6 +944,11 @@ func (s *draftService) MergeConcept(ctx context.Context, token string, projectID
 		if len(from.Merged) > 0 {
 			span.SetStatus(codes.Error, "Concept holds merged concepts")
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody)
+		}
+		// An object merges into an object, a relation into a relation: never across.
+		if from.Item != nil && into.Item != nil && from.Item.Kind != into.Item.Kind {
+			span.SetStatus(codes.Error, "Concepts of different kinds")
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MergeKindMismatch)
 		}
 		// A table's concept and a knowledge-base extraction's are never one: that needs a custom view.
 		if crossBinding(from, into) {

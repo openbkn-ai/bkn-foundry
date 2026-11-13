@@ -215,3 +215,52 @@ func Test_MergeAcrossBindings(t *testing.T) {
 		})
 	})
 }
+
+func Test_KnowledgeBaseProposals(t *testing.T) {
+	Convey("Test what a knowledge-base extraction proposes, and drafting from the tables beside it\n", t, func() {
+		Convey("A proposed object no one judged waits as proposed, not left out\n", func() {
+			concepts := conceptsOf(context.Background(), "p1", matchDraft(), matchRequirement(), true)
+			order := conceptByKey(concepts, "object_types/order_doc")
+			So(order.Verdict, ShouldEqual, interfaces.CONCEPT_VERDICT_OBJECT)
+			So(order.State, ShouldEqual, interfaces.CONCEPT_STATE_PENDING)
+		})
+
+		Convey("Drafting from the tables keeps the extraction's items whose ends stand\n", func() {
+			items := interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{{ID: "supplier"}}}
+			doc := &interfaces.DraftDocumentModel{Role: "entity"}
+			withDocuments(&items, interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{{ID: "invoice", Document: doc}, {ID: "supplier", Document: doc}},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "invoice_supplier", Source: "invoice", Target: "supplier", Document: doc},
+					{ID: "invoice_gone", Source: "invoice", Target: "gone", Document: doc},
+				},
+				DocumentConcepts: []*interfaces.DraftDocumentConcept{{ID: "c1"}},
+			})
+			So(items.ObjectTypes, ShouldHaveLength, 2)
+			So(items.ObjectTypes[1].ID, ShouldEqual, "invoice")
+			So(items.RelationTypes, ShouldHaveLength, 1)
+			So(items.RelationTypes[0].ID, ShouldEqual, "invoice_supplier")
+			So(items.DocumentConcepts, ShouldHaveLength, 1)
+		})
+	})
+}
+
+func Test_MergeAcrossItemKinds(t *testing.T) {
+	Convey("Test that an object is not merged into a relation\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		da := pmock.NewMockDraftAccess(ctrl)
+		ps := pmock.NewMockProjectService(ctrl)
+		rqa := pmock.NewMockRequirementAccess(ctrl)
+		svc := &draftService{setting: testSetting, da: da, ps: ps, rqa: rqa}
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil).AnyTimes()
+		rqa.EXPECT().GetRequirement(gomock.Any(), "p1").Return(conceptRequirement(), true, nil).AnyTimes()
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(candidateDraft(), true, nil).AnyTimes()
+
+		_, err := svc.MergeConcept(context.Background(), token, "p1", interfaces.DraftConceptMerge{UpdateTime: readTime,
+			Key: "object_types/items", Into: "relation_types/items_to_stores"}, caller)
+		var httpErr *httperrors.HTTPError
+		So(errors.As(err, &httpErr), ShouldBeTrue)
+		So(httpErr.BaseError.ErrorCode, ShouldEqual, perrors.BknProject_Draft_MergeKindMismatch)
+	})
+}
