@@ -6,6 +6,7 @@ package action_scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -282,6 +283,11 @@ func actionPermissionInvalid(ctx context.Context, detail string) error {
 }
 
 func actionPermissionUnavailable(ctx context.Context, err error) error {
+	var downstream *httperrors.HTTPError
+	if errors.As(err, &downstream) &&
+		(downstream.HTTPCode == http.StatusUnauthorized || downstream.HTTPCode == http.StatusForbidden) {
+		return downstream
+	}
 	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }
