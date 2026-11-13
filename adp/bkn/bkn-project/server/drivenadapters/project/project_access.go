@@ -342,7 +342,7 @@ func (pa *projectAccess) RenameProject(ctx context.Context, id string, name stri
 var projectOwnedTables = []string{
 	"t_bkn_project_draft", "t_bkn_project_check", "t_bkn_project_id", "t_bkn_project_index_build",
 	"t_bkn_project_requirement_document", "t_bkn_project_requirement", "t_bkn_project_question_guidance",
-	"t_bkn_project_regression",
+	"t_bkn_project_regression", "t_bkn_project_requirement_conversation",
 }
 
 func (pa *projectAccess) DeleteProject(ctx context.Context, id string) error {
