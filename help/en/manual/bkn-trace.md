@@ -18,6 +18,18 @@ See [resource and Agent / Trace capacity planning](bkn-trace-resources.md) for w
 
 For retained 0.2.0 installations, see [Evidence enablement and explanation acceptance](bkn-trace-evidence-enablement.md), including topic-record preservation and explicit regeneration after repair.
 
+## Function actions with capture disabled
+
+Disabling Trace/Evidence capture does not remove the managed lifecycle needed
+by a Function action's SDK queries. An authenticated, authorized asynchronous
+Function action still creates its own real Conversation and Interaction and
+uses the original caller's runtime credential. Under disabled capture it does
+not register a Function Operation or supply a fabricated parent Operation ID;
+the SDK keeps the two lifecycle IDs, and normal query authorization still applies.
+Success and failure both finish the owned Interaction. Cancellation and semantic
+refusals remain execution gates. Trace infrastructure failure is a separate
+degraded state and must not be interpreted as a confirmed disabled policy.
+
 ## Community and EE API boundary
 
 Community exposes authorized recorded facts and technical Trace reads. Native
