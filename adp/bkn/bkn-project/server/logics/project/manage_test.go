@@ -205,6 +205,12 @@ func Test_ProjectPackage(t *testing.T) {
 			Inputs:       &interfaces.DraftInputs{CatalogIDs: []string{"c1"}, Tables: []interfaces.DraftInputTable{{ResourceID: "t1"}}},
 			Confirmation: &interfaces.DraftConfirmation{Commit: "abc", Files: []string{"object_types/order.bkn"}},
 		}}, true, nil)
+		rqa.EXPECT().GetSupplement(gomock.Any(), "p1").Return(&interfaces.RequirementSupplement{Text: "Planning only."}, nil)
+		rqa.EXPECT().ListConversations(gomock.Any(), "p1", interfaces.REQUIREMENT_PAGE_KINETIC).Return(
+			[]*interfaces.RequirementConversation{{ID: "c1", ProjectID: "p1", Page: interfaces.REQUIREMENT_PAGE_KINETIC, Title: "Why?",
+				Turns: []*interfaces.RequirementConversationTurn{{ID: "t1", Question: "Why?", Status: interfaces.REQUIREMENT_TURN_PENDING,
+					RunID: "r1", By: interfaces.AccountInfo{ID: "u0"}}}, Creator: interfaces.AccountInfo{ID: "u0"}}}, nil)
+		rqa.EXPECT().ListConversations(gomock.Any(), "p1", interfaces.REQUIREMENT_PAGE_SCENARIOS).Return(nil, nil)
 		f.va.EXPECT().GetTables(gomock.Any(), owner, []string{"t1"}).Return([]*interfaces.VegaTable{{ID: "t1", CatalogID: "c1", Name: "orders"}}, nil)
 		gs.EXPECT().ReadTree(gomock.Any(), "orders", "abc").Return(map[string][]byte{
 			"object_types/order.bkn": []byte("order"), "object_types/other.bkn": []byte("other"),
@@ -221,7 +227,7 @@ func Test_ProjectPackage(t *testing.T) {
 		So(preview.KN, ShouldResemble, interfaces.PackageNetwork{ID: "orders", Name: "Orders"})
 		So(preview.Catalogs, ShouldResemble, []interfaces.PackageCatalog{{ID: "c1", Name: "ERP"}})
 		So(preview.Contents, ShouldResemble, interfaces.PackageContents{Documents: 1, Requirement: true, Draft: true,
-			ConfirmedFiles: 1, Editions: []string{"terms"}})
+			ConfirmedFiles: 1, Editions: []string{"terms"}, Supplement: true, Conversations: 1})
 
 		Convey("A package whose material does not read is refused before anything is created\n", func() {
 			_, err := readMaterial(ctx, map[string][]byte{packageDraft: []byte(`{"object_types":"x"}`)})
@@ -257,6 +263,18 @@ func Test_ProjectPackage(t *testing.T) {
 				req = r
 				return true, nil
 			})
+			var supplement *interfaces.RequirementSupplement
+			rqa.EXPECT().SetSupplement(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, s *interfaces.RequirementSupplement) error {
+					supplement = s
+					return nil
+				})
+			var conversation *interfaces.RequirementConversation
+			rqa.EXPECT().CreateConversation(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, c *interfaces.RequirementConversation) error {
+					conversation = c
+					return nil
+				})
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), int64(0), false).Return(true, nil)
 			var draft *interfaces.Draft
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, d *interfaces.Draft) error {
@@ -286,6 +304,12 @@ func Test_ProjectPackage(t *testing.T) {
 			So(draft.Items.ObjectTypes[1].Name, ShouldEqual, "t1")
 			So(draft.Items.ObjectTypes[1].Table, ShouldResemble, interfaces.DraftTable{ResourceID: "t9", CatalogID: "c9", Name: "orders"})
 			So(hooks.imported["terms"]["terms.json"], ShouldResemble, []byte(`[]`))
+			// The supplement note and conversations come along, the importer's, a turn left unanswered failed.
+			So(supplement.Text, ShouldEqual, "Planning only.")
+			So(conversation.ProjectID, ShouldEqual, created.ID)
+			So(conversation.ID, ShouldNotEqual, "c1")
+			So(conversation.Creator, ShouldResemble, owner)
+			So(conversation.Turns[0].Status, ShouldEqual, interfaces.REQUIREMENT_TURN_FAILED)
 			So(hooks.replace["t1"], ShouldEqual, "t9")
 		})
 	})

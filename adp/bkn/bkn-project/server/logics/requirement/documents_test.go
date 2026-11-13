@@ -147,6 +147,7 @@ func Test_Documents(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		ids := 0
 		svc := &requirementService{ps: ps, ra: ra, now: func() int64 { return 100 },
 			newID: func() string { ids++; return "d" + string(rune('0'+ids)) }}

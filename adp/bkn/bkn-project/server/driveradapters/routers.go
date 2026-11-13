@@ -196,6 +196,16 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id/requirements/logic-needs/:need_id/candidates", r.LogicNeedCandidatesByEx)
 	apiV1.PUT("/projects/:project_id/requirements/logic-needs/:need_id/link", r.LinkLogicNeedByEx)
 	apiV1.DELETE("/projects/:project_id/requirements/logic-needs/:need_id/link", r.UnlinkLogicNeedByEx)
+	// The supplement note both AI-assisted pages share, and their Ask AI conversations.
+	apiV1.GET("/projects/:project_id/requirements/supplement", r.GetRequirementSupplementByEx)
+	apiV1.PUT("/projects/:project_id/requirements/supplement", r.SetRequirementSupplementByEx)
+	apiV1.GET("/projects/:project_id/requirements/conversations", r.ListRequirementConversationsByEx)
+	apiV1.POST("/projects/:project_id/requirements/conversations", r.StartRequirementConversationByEx)
+	apiV1.GET("/projects/:project_id/requirements/conversations/:conversation_id", r.GetRequirementConversationByEx)
+	apiV1.DELETE("/projects/:project_id/requirements/conversations/:conversation_id", r.DeleteRequirementConversationByEx)
+	apiV1.POST("/projects/:project_id/requirements/conversations/:conversation_id/turns", r.AskRequirementConversationByEx)
+	apiV1.PUT("/projects/:project_id/requirements/conversations/:conversation_id/turns/:turn_id/proposals",
+		r.DecideRequirementProposalsByEx)
 
 	// Test questions and development guidance of a scenario question.
 	apiV1.POST("/projects/:project_id/requirements/questions/:question_id/:action", r.QuestionActionByEx)

@@ -37,9 +37,12 @@ const (
 	packageManifest      = "manifest.json"
 	packageDocuments     = "requirements/documents.json"
 	packageSpecification = "requirements/specification.json"
-	packageDraft         = "model/draft.json"
-	packageConfirmed     = "model/confirmed/"
-	packageEditions      = "editions/"
+	// packageAssist holds the supplement note and the Ask AI conversations of kinetic modeling and
+	// business scenarios.
+	packageAssist    = "requirements/assist.json"
+	packageDraft     = "model/draft.json"
+	packageConfirmed = "model/confirmed/"
+	packageEditions  = "editions/"
 	// packageMaxFiles bounds the entries a package may hold, so a crafted one cannot exhaust memory.
 	packageMaxFiles = 10000
 )
@@ -60,6 +63,69 @@ type packageSpec struct {
 	Version int                           `json:"version"`
 	Spec    interfaces.RequirementSpec    `json:"spec"`
 	Inputs  *interfaces.RequirementInputs `json:"inputs,omitempty"`
+}
+
+// packageAssistPart is the supplement note and the conversations as a package carries them.
+type packageAssistPart struct {
+	Supplement    string                                `json:"supplement,omitempty"`
+	Conversations []*interfaces.RequirementConversation `json:"conversations"`
+}
+
+// assistOf reads the project's supplement note and conversations for a package; nil when it has
+// neither.
+func (s *projectService) assistOf(ctx context.Context, id string) (*packageAssistPart, error) {
+	supplement, err := s.rqa.GetSupplement(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	part := &packageAssistPart{Supplement: supplement.Text, Conversations: []*interfaces.RequirementConversation{}}
+	for _, page := range []string{interfaces.REQUIREMENT_PAGE_KINETIC, interfaces.REQUIREMENT_PAGE_SCENARIOS} {
+		list, err := s.rqa.ListConversations(ctx, id, page)
+		if err != nil {
+			return nil, err
+		}
+		part.Conversations = append(part.Conversations, list...)
+	}
+	if part.Supplement == "" && len(part.Conversations) == 0 {
+		return nil, nil
+	}
+	return part, nil
+}
+
+// restoreAssist writes a package's supplement note and conversations into the project, by owner;
+// a turn the exporter left unanswered stays so, as failed.
+func (s *projectService) restoreAssist(ctx context.Context, projectID string, raw []byte, owner interfaces.AccountInfo,
+	now int64) error {
+	part := packageAssistPart{}
+	if err := json.Unmarshal(raw, &part); err != nil {
+		return err
+	}
+	if part.Supplement != "" {
+		if err := s.rqa.SetSupplement(ctx, projectID, &interfaces.RequirementSupplement{Text: part.Supplement,
+			By: &interfaces.RequirementAuthor{ID: owner.ID, Type: owner.Type}, Time: now}); err != nil {
+			return err
+		}
+	}
+	for _, c := range part.Conversations {
+		if c == nil || (c.Page != interfaces.REQUIREMENT_PAGE_KINETIC && c.Page != interfaces.REQUIREMENT_PAGE_SCENARIOS) {
+			continue
+		}
+		id, err := uuid.NewV7()
+		if err != nil {
+			return err
+		}
+		c.ID, c.ProjectID, c.Creator = id.String(), projectID, owner
+		for _, t := range c.Turns {
+			t.By, t.RunID = owner, ""
+			if t.Status == interfaces.REQUIREMENT_TURN_PENDING {
+				t.Status, t.Error = interfaces.REQUIREMENT_TURN_FAILED, "interrupted"
+			}
+		}
+		if err := s.rqa.CreateConversation(ctx, c); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ExportProject packs the project: its manifest, requirement documents, specification, draft, the
@@ -128,6 +194,15 @@ func (s *projectService) ExportProject(ctx context.Context, token string, id str
 			return nil, "", internalError(ctx, "Pack requirement failed", err)
 		}
 		manifest.Contents.Requirement = true
+	}
+	if assist, err := s.assistOf(ctx, id); err != nil {
+		span.SetStatus(codes.Error, "Read conversations failed")
+		return nil, "", internalError(ctx, "Read supplement and conversations failed", err)
+	} else if assist != nil {
+		if err = put(packageAssist, assist); err != nil {
+			return nil, "", internalError(ctx, "Pack supplement and conversations failed", err)
+		}
+		manifest.Contents.Supplement, manifest.Contents.Conversations = assist.Supplement != "", len(assist.Conversations)
 	}
 	draft, found, err := s.da.GetDraft(ctx, id)
 	if err != nil {
@@ -319,9 +394,9 @@ func (s *projectService) ImportPackage(ctx context.Context, token string, pkg []
 
 // packageMaterial is what a package restores, read and checked before the project is created.
 type packageMaterial struct {
-	docs              []packageDocument
-	spec, draft       []byte
-	hasSpec, hasDraft bool
+	docs                []packageDocument
+	spec, draft, assist []byte
+	hasSpec, hasDraft   bool
 }
 
 // readMaterial checks that the documents, specification and draft of a package read as such.
@@ -337,6 +412,12 @@ func readMaterial(ctx context.Context, files map[string][]byte) (*packageMateria
 			return nil, invalidPackage(ctx, err)
 		}
 		m.spec, m.hasSpec = raw, true
+	}
+	if raw, ok := files[packageAssist]; ok {
+		if err := json.Unmarshal(raw, &packageAssistPart{}); err != nil {
+			return nil, invalidPackage(ctx, err)
+		}
+		m.assist = raw
 	}
 	if raw, ok := files[packageDraft]; ok {
 		if err := json.Unmarshal(raw, &interfaces.DraftItems{}); err != nil {
@@ -426,6 +507,11 @@ func (s *projectService) restore(ctx context.Context, token string, project *int
 		req.Status, req.Spec, req.Inputs = interfaces.REQUIREMENT_STATUS_READY, spec.Spec, spec.Inputs
 		if _, err := s.rqa.FinishDrafting(ctx, req); err != nil {
 			return internalError(ctx, "Restore requirement failed", err)
+		}
+	}
+	if material.assist != nil {
+		if err := s.restoreAssist(ctx, project.ID, material.assist, owner, now); err != nil {
+			return internalError(ctx, "Restore supplement and conversations failed", err)
 		}
 	}
 	if material.hasDraft {

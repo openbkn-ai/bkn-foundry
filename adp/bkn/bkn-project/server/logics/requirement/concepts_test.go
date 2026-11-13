@@ -261,6 +261,7 @@ func Test_ExtractConcepts(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)

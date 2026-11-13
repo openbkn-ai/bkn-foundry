@@ -94,6 +94,7 @@ func Test_GetNetworkDocument(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		bba := pmock.NewMockBknBackendAccess(ctrl)
 		gs := pmock.NewMockGitStore(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, bba: bba, gs: gs}
@@ -144,6 +145,7 @@ func Test_ExtractConceptsCitesNetworkBackground(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
@@ -196,6 +198,7 @@ func Test_EditExampleFromNetworkBackground(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		bba := pmock.NewMockBknBackendAccess(ctrl)
 		gs := pmock.NewMockGitStore(ctrl)

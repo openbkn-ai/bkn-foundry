@@ -63,6 +63,7 @@ func Test_RequirementEdits(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
 		ctx := context.Background()
@@ -445,6 +446,7 @@ func Test_QuestionInputEdits(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
 		ctx := context.Background()
@@ -658,6 +660,7 @@ func Test_LogicNeedEdits(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		svc := &requirementService{ps: ps, ra: ra, da: da, now: func() int64 { return 100 }}
 		ctx := context.Background()

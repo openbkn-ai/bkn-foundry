@@ -66,6 +66,10 @@ type PackageContents struct {
 	Requirement    bool `json:"requirement"`
 	Draft          bool `json:"draft"`
 	ConfirmedFiles int  `json:"confirmed_files"`
+	// Supplement says the package holds the supplement note; Conversations counts the Ask AI
+	// conversations it holds, of both pages.
+	Supplement    bool `json:"supplement,omitempty"`
+	Conversations int  `json:"conversations,omitempty"`
 	// Editions are the parts an edition added, by name.
 	Editions []string `json:"editions"`
 }

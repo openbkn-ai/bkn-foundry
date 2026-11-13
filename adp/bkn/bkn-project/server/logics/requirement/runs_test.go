@@ -76,6 +76,7 @@ func Test_FailInterruptedRuns(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		svc := &requirementService{ra: ra, now: func() int64 { return 1000 }}
 		ctx := context.Background()
 
@@ -241,6 +242,7 @@ func Test_RunOutlivedByEdits(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		ba := pmock.NewMockBknAgentAccess(ctrl)
 		svc := &requirementService{ra: ra, ba: ba, now: func() int64 { return 1000 }}
 		ctx := context.Background()
@@ -277,6 +279,7 @@ func Test_RunOutlivedByEdits(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		svc := &requirementService{ra: ra, now: func() int64 { return 1000 }, newID: func() string { return "new" }}
 		inputs := &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{{ID: "d1"}}}
 		previous := &interfaces.Requirement{UpdateTime: 7, Spec: interfaces.RequirementSpec{Runs: map[string]*interfaces.RequirementRun{

@@ -213,6 +213,8 @@ type RequirementScenario struct {
 	Accepted bool `json:"accepted"`
 	// OntologyChanged, computed when read, says the items one of its questions rests on changed.
 	OntologyChanged bool `json:"ontology_changed,omitempty"`
+	// Source is ask for a scenario adopted from Ask AI; empty otherwise.
+	Source string `json:"source,omitempty"`
 }
 
 type RequirementCapability struct {
@@ -303,6 +305,8 @@ type RequirementQuestion struct {
 	// OntologyChanged, computed when read, says those items changed since: the question may be out
 	// of date. Names and descriptions do not count.
 	OntologyChanged bool `json:"ontology_changed,omitempty"`
+	// Source is ask for a question adopted from Ask AI; empty otherwise.
+	Source string `json:"source,omitempty"`
 }
 
 // RequirementInput is a value a scenario question is asked about: a record named by a property of
@@ -343,6 +347,8 @@ type RequirementRule struct {
 	CompilesTo string                `json:"compiles_to"`
 	Citations  []RequirementCitation `json:"citations"`
 	Edited     bool                  `json:"edited"`
+	// Source is ask for a rule adopted from Ask AI; empty otherwise.
+	Source string `json:"source,omitempty"`
 }
 
 type RequirementConflict struct {
@@ -750,6 +756,23 @@ type RequirementAccess interface {
 	// ProjectsWithRunning lists the projects whose specification records a run still running.
 	ProjectsWithRunning(ctx context.Context) ([]string, error)
 
+	// GetSupplement returns the project's supplement note, empty when none was written.
+	GetSupplement(ctx context.Context, projectID string) (*RequirementSupplement, error)
+	// SetSupplement writes the supplement note, leaving the specification and its update time as
+	// they are; a project without a specification row gets one that holds only the note.
+	SetSupplement(ctx context.Context, projectID string, supplement *RequirementSupplement) error
+	// ListConversations returns the project's conversations of page, the last updated first.
+	ListConversations(ctx context.Context, projectID string, page string) ([]*RequirementConversation, error)
+	// GetConversation returns one conversation, and false when the project has no such one.
+	GetConversation(ctx context.Context, projectID string, conversationID string) (*RequirementConversation, bool, error)
+	// CreateConversation stores a new conversation.
+	CreateConversation(ctx context.Context, conversation *RequirementConversation) error
+	// UpdateConversation writes the title, turns and update time of a conversation whose update
+	// time is still readUpdateTime; false means it changed or went meanwhile.
+	UpdateConversation(ctx context.Context, conversation *RequirementConversation, readUpdateTime int64) (bool, error)
+	// DeleteConversation removes a conversation; false when the project has no such one.
+	DeleteConversation(ctx context.Context, projectID string, conversationID string) (bool, error)
+
 	// GetGuidance returns a question's test questions and guidance, and false when it has none.
 	GetGuidance(ctx context.Context, projectID string, questionID string) (*QuestionGuidance, bool, error)
 	// ListGuidance returns the test questions and guidance of every question of the project.
@@ -890,6 +913,25 @@ type RequirementService interface {
 	// publishing and the regression after a release, which check visibility themselves. A
 	// project without a ready specification has none; that is no error.
 	ScenarioQuestions(ctx context.Context, projectID string) (*ScenarioQuestions, error)
+	// GetSupplement returns the project's supplement note; SetSupplement replaces it. Kinetic
+	// analysis, scenario drafting and Ask AI read it.
+	GetSupplement(ctx context.Context, token string, projectID string) (*RequirementSupplement, error)
+	SetSupplement(ctx context.Context, token string, projectID string, edit RequirementSupplementEdit,
+		caller AccountInfo) (*RequirementSupplement, error)
+	// ListConversations lists the Ask AI conversations of a page; GetConversation reads one.
+	ListConversations(ctx context.Context, token string, projectID string, page string) ([]*RequirementConversation, error)
+	GetConversation(ctx context.Context, token string, projectID string, conversationID string) (*RequirementConversation, error)
+	// Ask asks a question, in a new conversation of req.Page when conversationID is empty, and
+	// answers it in the background: the turn it returns is pending.
+	Ask(ctx context.Context, token string, projectID string, conversationID string, req RequirementAskRequest,
+		caller AccountInfo) (*RequirementConversation, error)
+	// DeleteConversation deletes a whole conversation; what was adopted from it stays.
+	DeleteConversation(ctx context.Context, token string, projectID string, conversationID string, caller AccountInfo) error
+	// DecideProposals adopts and declines proposals of a turn: adopting writes them into the
+	// specification as accepted items, all or none.
+	DecideProposals(ctx context.Context, token string, projectID string, conversationID string, turnID string,
+		decision RequirementProposalsDecision, caller AccountInfo) (*RequirementProposalsResult, error)
+
 	// RecordTests fills the template of each fillable question named with a record from the data,
 	// as the caller, and checks it as guidance checks its tests. A question the data has no record
 	// for maps to nil; one whose data could not be read is left out, as is one it cannot fill.

@@ -44,7 +44,7 @@ func Test_ScenariosCoverTheWholeModel(t *testing.T) {
 				{Type: interfaces.LOGIC_LINK_ACTION_TYPE, ID: "a1", Name: "Hold order", OwnerObjectTypeID: "sales_order"},
 			}
 			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, networkDraft(),
-				emptySpec(), emptySpec(), items)
+				emptySpec(), emptySpec(), items, "")
 			So(err, ShouldBeNil)
 			var msg draftMessage
 			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &msg), ShouldBeNil)
@@ -119,6 +119,7 @@ func Test_ScenarioDraftingOnNetworks(t *testing.T) {
 		defer ctrl.Finish()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
 		ba := pmock.NewMockBknAgentAccess(ctrl)
