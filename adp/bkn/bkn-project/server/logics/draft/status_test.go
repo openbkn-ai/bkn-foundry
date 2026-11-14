@@ -1310,13 +1310,19 @@ func Test_dataSourcesCountTables(t *testing.T) {
 		// Two items on one table, and one reading the dataset an extraction writes.
 		d.Items.ObjectTypes[2].Table = d.Items.ObjectTypes[1].Table
 		d.Items.ObjectTypes[0].Document = &interfaces.DraftDocumentModel{}
+		// A relation drafted from documents links through a dataset too.
+		for _, rt := range d.Items.RelationTypes {
+			if rt.LinkTable != nil {
+				rt.Document = &interfaces.DraftDocumentModel{}
+			}
+		}
 		project := &interfaces.Project{ID: "p1"}
 		va.EXPECT().MissingTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
 
 		ds := svc.dataSources(context.Background(), project, d, false, caller)
 
-		// The shared table and a relation's link table; the dataset is left out.
-		So(ds.Tables.Total, ShouldEqual, 2)
+		// The shared table only: the datasets of the document object and relation are left out.
+		So(ds.Tables.Total, ShouldEqual, 1)
 		So(ds.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
 	})
 }

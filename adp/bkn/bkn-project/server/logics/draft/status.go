@@ -223,7 +223,7 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 	}
 	for _, rt := range draft.Items.RelationTypes {
 		if rt.Adopted && !rt.Existing && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
-			bound = append(bound, boundTable{resourceID: rt.LinkTable.ResourceID, item: interfaces.ProjectStatusAffected{
+			bound = append(bound, boundTable{resourceID: rt.LinkTable.ResourceID, dataset: rt.Document != nil, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Table: rt.LinkTable.Name,
 				SourceTable: rt.LinkTable.SourceName,
 			}})
