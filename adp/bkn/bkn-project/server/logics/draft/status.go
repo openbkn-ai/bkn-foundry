@@ -201,7 +201,9 @@ func (s *draftService) withCatalogsHint(ctx context.Context, entry *interfaces.P
 // boundTable is a table a draft item reads its records from.
 type boundTable struct {
 	resourceID string
-	item       interfaces.ProjectStatusAffected
+	// dataset is the dataset a knowledge-base extraction writes, which no catalog table is.
+	dataset bool
+	item    interfaces.ProjectStatusAffected
 }
 
 // boundTables are the tables of a ready draft's adopted object types and the link tables of its
@@ -213,7 +215,7 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 	bound := []boundTable{}
 	for _, ot := range draft.Items.ObjectTypes {
 		if ot.Adopted && !ot.Existing && ot.Table.ResourceID != "" {
-			bound = append(bound, boundTable{resourceID: ot.Table.ResourceID, item: interfaces.ProjectStatusAffected{
+			bound = append(bound, boundTable{resourceID: ot.Table.ResourceID, dataset: ot.Document != nil, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Table: ot.Table.Name,
 				SourceTable: ot.Table.SourceName,
 			}})
@@ -257,7 +259,15 @@ func (s *draftService) dataSources(ctx context.Context, project *interfaces.Proj
 	}
 
 	bound := boundTables(draft)
-	ds.Tables = interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND, Total: len(bound)}
+	// Counted as tables, each once, however many items read it: a knowledge-base dataset is no
+	// table, though one that is gone still blocks.
+	tables := map[string]bool{}
+	for _, b := range bound {
+		if !b.dataset {
+			tables[b.resourceID] = true
+		}
+	}
+	ds.Tables = interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND, Total: len(tables)}
 	if len(bound) == 0 {
 		return ds
 	}
@@ -284,7 +294,12 @@ func (s *draftService) dataSources(ctx context.Context, project *interfaces.Proj
 			ds.Tables.Affected = append(ds.Tables.Affected, b.item)
 		}
 	}
-	if ds.Tables.Missing = len(ds.Tables.Affected); ds.Tables.Missing > 0 {
+	for id := range tables {
+		if gone[id] {
+			ds.Tables.Missing++
+		}
+	}
+	if len(ds.Tables.Affected) > 0 {
 		ds.Tables.State = interfaces.DATA_SOURCE_MISSING
 	}
 	return ds
@@ -306,8 +321,13 @@ func withDataSources(s *interfaces.ProjectStatus, project *interfaces.Project, c
 		{ds.Tables, interfaces.BLOCKER_TABLE_MISSING},
 	} {
 		if d.dep.State == interfaces.DATA_SOURCE_MISSING {
+			// A gone table blocks each item that reads it.
+			count := d.dep.Missing
+			if d.code == interfaces.BLOCKER_TABLE_MISSING {
+				count = len(d.dep.Affected)
+			}
 			blockers = append(blockers, interfaces.ProjectStatusBlocker{
-				Code: d.code, Count: d.dep.Missing, WaitingFor: interfaces.WAITING_FOR_OWNER,
+				Code: d.code, Count: count, WaitingFor: interfaces.WAITING_FOR_OWNER,
 			})
 		}
 	}
