@@ -55,6 +55,8 @@ type projectReleaseService struct {
 	kva interfaces.KNVersionAccess
 	// va tells which tables the types on the branch read are gone.
 	va interfaces.VegaAccess
+	// bba tells which tables the network's object types read now.
+	bba interfaces.BknBackendAccess
 	// rs reads the scenario questions of the project's requirement specification; without it a
 	// review has none.
 	rs interfaces.RequirementService
@@ -77,6 +79,7 @@ func NewProjectReleaseService(appSetting *common.AppSetting) interfaces.ProjectR
 			ra:  logics.RA,
 			kva: logics.KVA,
 			va:  logics.VA,
+			bba: logics.BBA,
 			rs:  requirement.NewRequirementService(),
 			rgs: NewRegressionService(),
 			rga: logics.RGA,
@@ -180,7 +183,9 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 			review.Refusals = append(review.Refusals, r)
 		}
 	}
-	bound := boundTables(branchFiles)
+	// An object type the release leaves as main has it is checked by the table the network reads
+	// now, as preparing writes it.
+	bound := boundTables(logics.WithNetworkTables(branchFiles, mainFiles, s.networkTables(ctx, token, entry.KNID)))
 	var missingTables []string
 	var tablesErr error
 	if len(bound) > 0 {
@@ -581,4 +586,18 @@ func (s *projectReleaseService) versionLabel(ctx context.Context, token string, 
 		return ""
 	}
 	return v.Label
+}
+
+// networkTables are the tables the network's object types read now, by object type id; nil when
+// bkn-backend does not tell, and the branch's stand.
+func (s *projectReleaseService) networkTables(ctx context.Context, token string, knID string) map[string]string {
+	if s.bba == nil {
+		return nil
+	}
+	tables, err := logics.NetworkTables(ctx, s.bba, token, knID)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network's object types read: %v", err))
+		return nil
+	}
+	return tables
 }

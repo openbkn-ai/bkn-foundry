@@ -37,7 +37,7 @@ func (s *draftService) GetExistingIndex(ctx context.Context, token string, proje
 	} else if exist {
 		owned = ownedPaths(draft.Items.Confirmation)
 	}
-	existing, err := s.readExisting(ctx, entry.KNID, entry.Branch, owned)
+	existing, err := s.readExisting(ctx, token, entry.KNID, entry.Branch, owned)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read branch failed")
 		return nil, internalError(ctx, "Read branch failed", err)
