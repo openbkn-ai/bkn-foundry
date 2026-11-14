@@ -29,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_schedule"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog_health_check_schedule"
@@ -58,6 +59,7 @@ type restHandler struct {
 	proxyAuditRecorder proxyReadAuditRecorder
 	as                 interfaces.AuthService
 	bts                interfaces.BuildTaskService
+	bss                interfaces.BuildScheduleService
 	cs                 interfaces.CatalogService
 	cts                interfaces.ConnectorTypeService
 	ds                 interfaces.DatasetService
@@ -88,6 +90,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditR
 	rs := resource.NewResourceService(appSetting, ds)
 	pas := proxy_authorization.NewProxyAuthorizationService(logics.PAA)
 	bts := build_task.NewBuildTaskService(appSetting, rs)
+	bss := build_schedule.NewBuildScheduleService(appSetting, bts, rs)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 	ums := user_mgmt.NewUserMgmtService(appSetting)
 
@@ -97,6 +100,7 @@ func NewRestHandler(appSetting *common.AppSetting, auditRecorder operationAuditR
 		auditTelemetry: auditTelemetry,
 		as:             as,
 		bts:            bts,
+		bss:            bss,
 		cs:             cs,
 		cts:            cts,
 		ds:             ds,
@@ -198,6 +202,18 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			discoverSchedules.DELETE("/:id", r.DeleteDiscoverScheduleByEx)
 			discoverSchedules.POST("/:id/enable", r.EnableDiscoverScheduleByEx)
 			discoverSchedules.POST("/:id/disable", r.DisableDiscoverScheduleByEx)
+		}
+
+		// 构建计划采用顶层资源，与探查计划保持一致。
+		buildSchedules := apiV1.Group("/build-schedules")
+		{
+			buildSchedules.POST("", r.verifyJsonContentType(), r.CreateBuildScheduleByEx)
+			buildSchedules.GET("", r.ListBuildSchedulesByEx)
+			buildSchedules.GET("/:id", r.GetBuildScheduleByEx)
+			buildSchedules.PUT("/:id", r.verifyJsonContentType(), r.UpdateBuildScheduleByEx)
+			buildSchedules.DELETE("/:id", r.DeleteBuildScheduleByEx)
+			buildSchedules.POST("/:id/enable", r.EnableBuildScheduleByEx)
+			buildSchedules.POST("/:id/disable", r.DisableBuildScheduleByEx)
 		}
 
 		// BuildTask APIs - External
@@ -309,6 +325,18 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			discoverSchedules.DELETE("/:id", r.DeleteDiscoverScheduleByIn)
 			discoverSchedules.POST("/:id/enable", r.EnableDiscoverScheduleByIn)
 			discoverSchedules.POST("/:id/disable", r.DisableDiscoverScheduleByIn)
+		}
+
+		// 构建计划采用顶层资源，与探查计划保持一致。
+		buildSchedules := apiInV1.Group("/build-schedules")
+		{
+			buildSchedules.POST("", r.verifyJsonContentType(), r.CreateBuildScheduleByIn)
+			buildSchedules.GET("", r.ListBuildSchedulesByIn)
+			buildSchedules.GET("/:id", r.GetBuildScheduleByIn)
+			buildSchedules.PUT("/:id", r.verifyJsonContentType(), r.UpdateBuildScheduleByIn)
+			buildSchedules.DELETE("/:id", r.DeleteBuildScheduleByIn)
+			buildSchedules.POST("/:id/enable", r.EnableBuildScheduleByIn)
+			buildSchedules.POST("/:id/disable", r.DisableBuildScheduleByIn)
 		}
 
 		// BuildTask APIs - Internal

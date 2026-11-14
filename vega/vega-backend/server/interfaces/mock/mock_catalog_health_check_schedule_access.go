@@ -42,6 +42,36 @@ func (m *MockCatalogHealthCheckScheduleAccess) EXPECT() *MockCatalogHealthCheckS
 	return m.recorder
 }
 
+// ClaimRun mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) ClaimRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64, runID string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimRun", ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimRun indicates an expected call of ClaimRun.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) ClaimRun(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimRun", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).ClaimRun), ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID)
+}
+
+// CompleteRun mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) CompleteRun(ctx context.Context, id, runID string, result interfaces.ScheduleRunResult) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompleteRun", ctx, id, runID, result)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompleteRun indicates an expected call of CompleteRun.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) CompleteRun(ctx, id, runID, result any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteRun", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).CompleteRun), ctx, id, runID, result)
+}
+
 // Create mocks base method.
 func (m *MockCatalogHealthCheckScheduleAccess) Create(ctx context.Context, tx *sql.Tx, schedule *interfaces.CatalogHealthCheckSchedule) error {
 	m.ctrl.T.Helper()
@@ -70,6 +100,21 @@ func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) DeleteByCatalogID(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).DeleteByCatalogID), ctx, tx, catalogID)
 }
 
+// DisableInvalid mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) DisableInvalid(ctx context.Context, id string, expectedUpdateTime, expectedNextRun int64, message string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisableInvalid", ctx, id, expectedUpdateTime, expectedNextRun, message)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DisableInvalid indicates an expected call of DisableInvalid.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) DisableInvalid(ctx, id, expectedUpdateTime, expectedNextRun, message any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisableInvalid", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).DisableInvalid), ctx, id, expectedUpdateTime, expectedNextRun, message)
+}
+
 // GetByCatalogID mocks base method.
 func (m *MockCatalogHealthCheckScheduleAccess) GetByCatalogID(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckSchedule, error) {
 	m.ctrl.T.Helper()
@@ -83,6 +128,21 @@ func (m *MockCatalogHealthCheckScheduleAccess) GetByCatalogID(ctx context.Contex
 func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) GetByCatalogID(ctx, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCatalogID", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).GetByCatalogID), ctx, catalogID)
+}
+
+// InitializeNextRun mocks base method.
+func (m *MockCatalogHealthCheckScheduleAccess) InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InitializeNextRun", ctx, id, expectedUpdateTime, expectedNextRun, nextRun)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InitializeNextRun indicates an expected call of InitializeNextRun.
+func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) InitializeNextRun(ctx, id, expectedUpdateTime, expectedNextRun, nextRun any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InitializeNextRun", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).InitializeNextRun), ctx, id, expectedUpdateTime, expectedNextRun, nextRun)
 }
 
 // ListDue mocks base method.
@@ -127,19 +187,4 @@ func (m *MockCatalogHealthCheckScheduleAccess) UpdateInheritedNextRun(ctx contex
 func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateInheritedNextRun(ctx, now, nextRun any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateInheritedNextRun", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateInheritedNextRun), ctx, now, nextRun)
-}
-
-// UpdateRunMetadata mocks base method.
-func (m *MockCatalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context, catalogID string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, catalogID, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateRunMetadata indicates an expected call of UpdateRunMetadata.
-func (mr *MockCatalogHealthCheckScheduleAccessMockRecorder) UpdateRunMetadata(ctx, catalogID, expectedUpdateTime, expectedNextRun, lastRun, nextRun any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockCatalogHealthCheckScheduleAccess)(nil).UpdateRunMetadata), ctx, catalogID, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }

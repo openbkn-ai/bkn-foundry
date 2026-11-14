@@ -19,6 +19,10 @@ type CatalogHealthCheckSchedule struct {
 	LastRun   int64  `json:"last_run"`
 	NextRun   int64  `json:"next_run"`
 
+	LastStatus  string `json:"last_status"`
+	LastMessage string `json:"last_message"`
+	RunID       string `json:"-"`
+
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
 	Updater    AccountInfo `json:"updater"`

@@ -91,6 +91,8 @@ func TestLogArchiveCapacityMariaDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Do not retain the deliberately broken connection for pool shutdown.
+	faultDB.SetMaxIdleConns(0)
 	_, oldWriteErr := faultDB.Exec("UPDATE bkn_trace_archive_jobs SET candidate_payloads=? WHERE archive_job_id=?", raw, legacy.ID)
 	if err = faultDB.Close(); err != nil {
 		t.Fatal(err)

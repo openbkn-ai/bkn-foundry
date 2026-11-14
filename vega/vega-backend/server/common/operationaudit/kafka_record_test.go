@@ -48,10 +48,13 @@ func TestBuildKafkaAuditRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(value, &record))
 	assert.Equal(t, "discovery_schedule", record["target"].(map[string]any)["type"])
-	for _, targetType := range []string{"connector_type", "discover_task", "semantic_understanding_task"} {
+	for _, targetType := range []string{"connector_type", "discover_task", "semantic_understanding_task", "build_schedule"} {
 		entry.TargetType = targetType
-		_, err = BuildKafkaAuditRecord(entry, "test")
+		value, err = BuildKafkaAuditRecord(entry, "test")
 		assert.NoError(t, err, targetType)
+		if targetType == "build_schedule" {
+			assert.Contains(t, string(value), "构建计划")
+		}
 	}
 
 	entry.TargetID = strings.Repeat("x", 257)

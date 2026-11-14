@@ -53,8 +53,9 @@ type ResourceAccess interface {
 	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.
 	UpdateDiscoverStatus(ctx context.Context, id string, status string) error
-	// DeleteByIDs deletes Resources by IDs; onlyIfStale requires every row to be stale and missing.
-	DeleteByIDs(ctx context.Context, ids []string, onlyIfStale bool) error
+	// DeleteByIDs 仅删除资源，onlyIfStale 要求每条资源均处于 stale 且 missing 状态。
+	// 事务的提交、回滚及关联记录删除由调用方负责。
+	DeleteByIDs(ctx context.Context, tx *sql.Tx, ids []string, onlyIfStale bool) error
 
 	// ListAuthResourceEntries lists resource authorization entries with filters.
 	ListAuthResourceEntries(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)

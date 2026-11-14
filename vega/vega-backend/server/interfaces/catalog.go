@@ -50,6 +50,7 @@ type CatalogDeletionImpact struct {
 	BuildTasks                  CatalogDeletionTaskImpact `json:"build_tasks"`
 	DiscoverTasks               CatalogDeletionTaskImpact `json:"discover_tasks"`
 	SemanticUnderstandingTasks  CatalogDeletionTaskImpact `json:"semantic_understanding_tasks"`
+	BuildSchedules              int64                     `json:"build_schedules"`
 	DiscoverSchedules           int64                     `json:"discover_schedules"`
 	CatalogHealthCheckSchedules int64                     `json:"catalog_health_check_schedules"`
 	Resources                   int                       `json:"resources"`

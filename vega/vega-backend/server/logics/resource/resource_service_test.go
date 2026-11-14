@@ -1249,7 +1249,7 @@ func TestResourceServiceInternalCreate(t *testing.T) {
 					sqlMock.ExpectCommit()
 					return nil
 				})
-				ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				ps.EXPECT().DeleteResourceParents(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				ds.EXPECT().Delete(gomock.Any(), gomock.Any()).Times(0)
 				req := &interfaces.ResourceRequest{ID: "dataset-id", CatalogID: catalogID, Category: interfaces.ResourceCategoryDataset}
@@ -1284,7 +1284,7 @@ func TestResourceServiceInternalCreate(t *testing.T) {
 						require.NoError(t, db.Close())
 						require.NoError(t, sqlMock.ExpectationsWereMet())
 					})
-					ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					ra.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 					creationCtx, cancelCreation := context.WithCancel(t.Context())
 					defer cancelCreation()
 					failure := errors.New("creation failed at " + phase)
@@ -1564,7 +1564,7 @@ func TestResourceServiceCreate(t *testing.T) {
 		rs.ps = parentPS
 		expectResourceServiceTransaction(t, rs, false)
 		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID: "cat1", Name: "resource", Category: interfaces.ResourceCategoryDataset,
@@ -1897,6 +1897,103 @@ func expectDeleteGrantedByCatalog(_ *vmock.MockResourceAccess,
 		Return(granted, nil)
 }
 
+func TestResourceServiceDeleteTransaction(t *testing.T) {
+	failure := errors.New("database unavailable")
+	for _, tc := range []struct {
+		name        string
+		onlyIfStale bool
+		beginErr    error
+		resourceErr error
+		scheduleErr error
+		commitErr   error
+		rollbackErr error
+	}{
+		{name: "ordinary deletion"},
+		{name: "guarded deletion", onlyIfStale: true},
+		{name: "begin failure", beginErr: failure},
+		{name: "resource failure", resourceErr: failure},
+		{name: "schedule failure", scheduleErr: failure},
+		{name: "guarded schedule failure", onlyIfStale: true, scheduleErr: failure},
+		{name: "commit failure", commitErr: failure},
+		{name: "condition conflict", onlyIfStale: true, resourceErr: interfaces.ErrResourceDeleteConditionNotMet},
+		{name: "condition rollback failure", onlyIfStale: true, resourceErr: interfaces.ErrResourceDeleteConditionNotMet, rollbackErr: failure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+			mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+			rs.bsa = mockBSA
+			db, dbMock, err := sqlmock.New()
+			require.NoError(t, err)
+			rs.db = db
+			t.Cleanup(func() {
+				assert.NoError(t, db.Close())
+				assert.NoError(t, dbMock.ExpectationsWereMet())
+			})
+
+			ids := []string{"r1", "r2"}
+			expectDeleteGrantedByCatalog(mockRA, mockPS, ids, "cat1")
+			mockRA.EXPECT().GetByIDs(gomock.Any(), ids).Return(map[string]*interfaces.Resource{
+				"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
+					Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
+				"r2": {ID: "r2", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
+					Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
+			}, nil)
+			for _, id := range ids {
+				expectResourceBuildTasksForDelete(t, mockBTA, id, nil)
+			}
+			dbMock.ExpectBegin().WillReturnError(tc.beginErr)
+			var deletionTx *sql.Tx
+			if tc.beginErr == nil {
+				deleteResources := mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Not(gomock.Nil()), ids, tc.onlyIfStale).
+					DoAndReturn(func(_ context.Context, tx *sql.Tx, _ []string, _ bool) error {
+						deletionTx = tx
+						return tc.resourceErr
+					})
+				if tc.resourceErr == nil {
+					mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), ids).
+						After(deleteResources).
+						DoAndReturn(func(_ context.Context, tx *sql.Tx, _ []string) error {
+							assert.Same(t, deletionTx, tx)
+							return tc.scheduleErr
+						})
+				}
+				if tc.resourceErr != nil || tc.scheduleErr != nil {
+					dbMock.ExpectRollback().WillReturnError(tc.rollbackErr)
+				} else {
+					dbMock.ExpectCommit().WillReturnError(tc.commitErr)
+				}
+			}
+			dbMock.ExpectClose()
+			success := tc.beginErr == nil && tc.resourceErr == nil && tc.scheduleErr == nil && tc.commitErr == nil
+			parentPS := &parentAwarePermissionService{MockPermissionService: mockPS}
+			rs.ps = parentPS
+			if success {
+				parentPS.onDeleteParents = func(string, []string) error {
+					assert.ErrorIs(t, deletionTx.Rollback(), sql.ErrTxDone)
+					return nil
+				}
+				mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ids).Return(nil)
+			}
+
+			err = rs.DeleteByIDs(context.Background(), ids, false, tc.onlyIfStale)
+			if success {
+				require.NoError(t, err)
+				assert.Equal(t, 1, parentPS.deleteParentCalls)
+			} else {
+				code := verrors.VegaBackend_Resource_InternalError_DeleteFailed
+				status := http.StatusInternalServerError
+				if errors.Is(tc.resourceErr, interfaces.ErrResourceDeleteConditionNotMet) && tc.rollbackErr == nil {
+					code = verrors.VegaBackend_Resource_DeleteConflict
+					status = http.StatusConflict
+				}
+				httpErr := requireResourceHTTPError(t, err, code)
+				assert.Equal(t, status, httpErr.HTTPCode)
+				assert.Zero(t, parentPS.deleteParentCalls)
+			}
+		})
+	}
+}
+
 func TestResourceServiceDeleteByIDs(t *testing.T) {
 	t.Run("rejects incompatible delete options", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
@@ -1913,6 +2010,10 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("delete by ids success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		ctrl := gomock.NewController(t)
 		mockLIM := vmock.NewMockLocalIndexManager(ctrl)
 		rs.lim = mockLIM
@@ -1920,7 +2021,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return(map[string]*interfaces.Resource{"r1": {ID: "r1", Category: "table", LocalIndexName: "vega-build-r1-t1"}}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, false)
 		if err != nil {
@@ -1942,6 +2043,10 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("ignores missing resources after authorizing existing resources", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).
 			Return([]interfaces.PermissionCheckResult{
 				{ResourceType: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ResourceID: "r1", Operation: interfaces.OPERATION_TYPE_DELETE, Allowed: true},
@@ -1951,7 +2056,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1", "missing"}, true, false))
@@ -1970,6 +2075,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("does not touch parent edge when local deletion fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
 		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
 		}
@@ -1980,7 +2086,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			"r1": {ID: "r1", CatalogID: "cat1"},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(errors.New("delete resource failed"))
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(errors.New("delete resource failed"))
 
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, false)
 		require.Error(t, err)
@@ -1989,6 +2095,10 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("deletes parent edge after local resource deletion", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		localDeleted := false
 		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
@@ -2006,8 +2116,8 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			"r1": {ID: "r1", CatalogID: "cat1"},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).DoAndReturn(
-			func(_ context.Context, _ []string, _ bool) error {
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, _ []string, _ bool) error {
 				localDeleted = true
 				return nil
 			})
@@ -2019,8 +2129,18 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("finishes external cleanup after request cancellation", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
+			onDeleteParents: func(string, []string) error {
+				cancel()
+				return nil
+			},
 			onDeleteResources: func(ctx context.Context, resourceType string, resourceIDs []string) error {
 				assert.NoError(t, ctx.Err())
 				deadline, ok := ctx.Deadline()
@@ -2038,14 +2158,16 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			"r1": {ID: "r1", CatalogID: "cat1"},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
 		require.NoError(t, rs.DeleteByIDs(ctx, []string{"r1"}, false, false))
 	})
 	t.Run("does not fail after durable deletion when permission cleanup fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		parentPS := &parentAwarePermissionService{
 			MockPermissionService: mockPS,
 			onDeleteResources: func(context.Context, string, []string) error {
@@ -2059,7 +2181,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			"r1": {ID: "r1", CatalogID: "cat1"},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil)
 
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}, false, false))
 	})
@@ -2085,6 +2207,10 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("deletes resource before dataset", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		gomock.InOrder(
 			mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
@@ -2096,7 +2222,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 					assert.Equal(t, 1, params.Limit)
 					return nil, nil
 				}),
-			mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil),
+			mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil),
 			mockDS.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil),
 			mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil),
 		)
@@ -2105,11 +2231,12 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("does not delete dataset when resource deletion fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return(map[string]*interfaces.Resource{"r1": {ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(errors.New("delete resource failed"))
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(errors.New("delete resource failed"))
 
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, false)
 		require.Error(t, err)
@@ -2128,12 +2255,16 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("allows deletion while build task is pending", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return(map[string]*interfaces.Resource{"r1": {ID: "r1"}}, nil)
 		// The access query excludes pending tasks when deleting a resource.
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, false).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, false).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}, false, false))
@@ -2153,13 +2284,14 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 
 	t.Run("does not clean up when the SQL condition no longer matches", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
 			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
 				Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, true).
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, true).
 			Return(interfaces.ErrResourceDeleteConditionNotMet)
 
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, true)
@@ -2167,31 +2299,19 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 
-	t.Run("reports a guarded delete rollback failure as an internal error", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
-		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
-			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
-				Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
-		}, nil)
-		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, true).
-			Return(errors.New("rollback failed"))
-
-		err := rs.DeleteByIDs(context.Background(), []string{"r1"}, false, true)
-		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_DeleteFailed)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-	})
-
 	t.Run("deletes a still-missing resource", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, true)
+		mockBSA := vmock.NewMockBuildScheduleAccess(gomock.NewController(t))
+		rs.bsa = mockBSA
+		mockBSA.EXPECT().DeleteByResourceIDs(gomock.Any(), gomock.Not(gomock.Nil()), []string{"r1"}).Return(nil)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).Return(map[string]*interfaces.Resource{
 			"r1": {ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
 				Status: interfaces.ResourceStatusStale, LastDiscoverStatus: interfaces.DiscoverStatusMissing},
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}, true).Return(nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), []string{"r1"}, true).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}, false, true))
@@ -2199,6 +2319,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 
 	t.Run("does not clean up a partially matched batch", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
 		ids := []string{"r1", "r2"}
 		expectDeleteGrantedByCatalog(mockRA, mockPS, ids, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), ids).Return(map[string]*interfaces.Resource{
@@ -2209,7 +2330,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		}, nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		expectResourceBuildTasksForDelete(t, mockBTA, "r2", nil)
-		mockRA.EXPECT().DeleteByIDs(gomock.Any(), ids, true).
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any(), ids, true).
 			Return(interfaces.ErrResourceDeleteConditionNotMet)
 
 		err := rs.DeleteByIDs(context.Background(), ids, false, true)

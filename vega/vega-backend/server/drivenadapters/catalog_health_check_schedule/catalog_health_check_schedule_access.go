@@ -46,6 +46,9 @@ func scanSchedule(row scanner) (*interfaces.CatalogHealthCheckSchedule, error) {
 		&s.CronExpr,
 		&s.LastRun,
 		&s.NextRun,
+		&s.LastStatus,
+		&s.LastMessage,
+		&s.RunID,
 		&s.Creator.ID,
 		&s.Creator.Type,
 		&s.CreateTime,
@@ -63,6 +66,9 @@ func scheduleColumns() []string {
 		"f_cron_expr",
 		"f_last_run",
 		"f_next_run",
+		"f_last_status",
+		"f_last_message",
+		"f_run_id",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -108,6 +114,9 @@ func (chcsa *catalogHealthCheckScheduleAccess) Create(ctx context.Context, tx *s
 			s.CronExpr,
 			s.LastRun,
 			s.NextRun,
+			s.LastStatus,
+			s.LastMessage,
+			s.RunID,
 			s.Creator.ID,
 			s.Creator.Type,
 			s.CreateTime,
@@ -291,53 +300,6 @@ func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *in
 	return affected, nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context,
-	catalogID string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog health check schedule run metadata")
-	defer span.End()
-
-	span.SetAttributes(
-		attr.Key("catalog_id").String(catalogID),
-		attr.Key("expected_update_time").Int64(expectedUpdateTime),
-		attr.Key("expected_next_run").Int64(expectedNextRun),
-		attr.Key("last_run").Int64(lastRun),
-		attr.Key("next_run").Int64(nextRun),
-	)
-
-	query, args, err := sq.Update(tableName).
-		Set("f_last_run", lastRun).
-		Set("f_next_run", nextRun).
-		Where(sq.Eq{"f_catalog_id": catalogID}).
-		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
-		Where(sq.Eq{"f_next_run": expectedNextRun}).
-		Where(sq.Eq{"f_mode": []string{
-			interfaces.CatalogHealthCheckScheduleModeInherit,
-			interfaces.CatalogHealthCheckScheduleModeEnabled,
-		}}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build run metadata update SQL failed")
-		otellog.LogError(ctx, "Build catalog health check schedule run metadata update SQL failed", err)
-		return 0, err
-	}
-
-	result, err := chcsa.db.ExecContext(ctx, query, args...)
-	if err != nil {
-		span.SetStatus(codes.Error, "Update failed")
-		otellog.LogError(ctx, "Update catalog health check schedule run metadata failed", err)
-		return 0, err
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		span.SetStatus(codes.Error, "Get affected rows failed")
-		otellog.LogError(ctx, "Get affected rows after updating catalog health check schedule run metadata failed", err)
-		return 0, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return rowsAffected, nil
-}
-
 func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Delete catalog health check schedule")
 	defer span.End()
@@ -366,4 +328,63 @@ func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogID(ctx context.Con
 
 	span.SetStatus(codes.Ok, "")
 	return err
+}
+
+// InitializeNextRun 只初始化时间，保留最近触发结果。
+func (chcsa *catalogHealthCheckScheduleAccess) InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error) {
+	builder := sq.Update(tableName).
+		Set("f_next_run", nextRun).
+		Where(sq.Eq{"f_catalog_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_mode": []string{interfaces.CatalogHealthCheckScheduleModeInherit, interfaces.CatalogHealthCheckScheduleModeEnabled}})
+
+	return chcsa.updateRun(ctx, builder)
+}
+
+// ClaimRun 原子推进时间并记录本次触发身份。
+func (chcsa *catalogHealthCheckScheduleAccess) ClaimRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64, runID string) (int64, error) {
+	builder := sq.Update(tableName).
+		Set("f_last_run", lastRun).
+		Set("f_next_run", nextRun).
+		Set("f_last_status", interfaces.ScheduleStatusTriggering).
+		Set("f_last_message", "").
+		Set("f_run_id", runID).
+		Where(sq.Eq{"f_catalog_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_mode": []string{interfaces.CatalogHealthCheckScheduleModeInherit, interfaces.CatalogHealthCheckScheduleModeEnabled}})
+
+	return chcsa.updateRun(ctx, builder)
+}
+
+// CompleteRun 与触发身份绑定，配置修改和启停不撤销已经抢占的调用。
+func (chcsa *catalogHealthCheckScheduleAccess) CompleteRun(ctx context.Context, id, runID string, result interfaces.ScheduleRunResult) (int64, error) {
+	builder := sq.Update(tableName).
+		Set("f_last_status", result.Status).
+		Set("f_last_message", result.Message).
+		Where(sq.Eq{"f_catalog_id": id, "f_run_id": runID, "f_last_status": interfaces.ScheduleStatusTriggering})
+
+	return chcsa.updateRun(ctx, builder)
+}
+
+// DisableInvalid 只处理仍与扫描快照一致的非法计划。
+func (chcsa *catalogHealthCheckScheduleAccess) DisableInvalid(ctx context.Context, id string, expectedUpdateTime, expectedNextRun int64, message string) (int64, error) {
+	builder := sq.Update(tableName).
+		Set("f_mode", interfaces.CatalogHealthCheckScheduleModeDisabled).
+		Set("f_last_status", interfaces.ScheduleStatusFailed).
+		Set("f_last_message", message).
+		Set("f_run_id", "").
+		Where(sq.Eq{"f_catalog_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_mode": []string{interfaces.CatalogHealthCheckScheduleModeInherit, interfaces.CatalogHealthCheckScheduleModeEnabled}})
+
+	return chcsa.updateRun(ctx, builder)
+}
+
+func (chcsa *catalogHealthCheckScheduleAccess) updateRun(ctx context.Context, builder sq.UpdateBuilder) (int64, error) {
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return 0, err
+	}
+	result, err := chcsa.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

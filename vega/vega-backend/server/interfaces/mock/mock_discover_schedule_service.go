@@ -71,11 +71,12 @@ func (mr *MockDiscoverScheduleServiceMockRecorder) Delete(ctx, schedule any) *go
 }
 
 // ExecuteSchedule mocks base method.
-func (m *MockDiscoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
+func (m *MockDiscoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteSchedule", ctx, schedule)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(interfaces.ScheduleRunResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // ExecuteSchedule indicates an expected call of ExecuteSchedule.
@@ -155,19 +156,4 @@ func (m *MockDiscoverScheduleService) UpdateEnabled(ctx context.Context, schedul
 func (mr *MockDiscoverScheduleServiceMockRecorder) UpdateEnabled(ctx, schedule, enabled any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnabled", reflect.TypeOf((*MockDiscoverScheduleService)(nil).UpdateEnabled), ctx, schedule, enabled)
-}
-
-// UpdateRunMetadata mocks base method.
-func (m *MockDiscoverScheduleService) UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateRunMetadata indicates an expected call of UpdateRunMetadata.
-func (mr *MockDiscoverScheduleServiceMockRecorder) UpdateRunMetadata(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockDiscoverScheduleService)(nil).UpdateRunMetadata), ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }

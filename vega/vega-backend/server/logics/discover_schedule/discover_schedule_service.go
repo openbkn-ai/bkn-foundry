@@ -8,6 +8,7 @@ package discover_schedule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -56,11 +58,6 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 		}
 	})
 	return dsService
-}
-
-func (dss *discoverScheduleService) UpdateRunMetadata(ctx context.Context,
-	id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	return dss.dsa.UpdateRunMetadata(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }
 
 /**
@@ -114,6 +111,7 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		Strategy:  req.Strategy,
 		NextRun:   nextRun.UnixMilli(),
 
+		LastStatus: interfaces.ScheduleStatusNever,
 		Creator:    accountInfo,
 		CreateTime: now,
 		Updater:    accountInfo,
@@ -265,7 +263,7 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	schedule.EndTime = req.EndTime
 	schedule.Strategy = req.Strategy
 	schedule.Updater = accountInfo
-	schedule.UpdateTime = now
+	schedule.UpdateTime = max(now, schedule.UpdateTime+1)
 	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, nowTime, schedule.StartTime)
 	if err != nil {
 		return err
@@ -357,7 +355,8 @@ func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
 
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	rowsAffected, err := dss.dsa.UpdateEnabled(
-		ctx, schedule.ID, enabled, nextRun, schedule.UpdateTime, nowTime.UnixMilli(), accountInfo)
+		ctx, schedule.ID, enabled, nextRun, schedule.UpdateTime,
+		max(nowTime.UnixMilli(), schedule.UpdateTime+1), accountInfo)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to update discover schedule enabled state", err)
 		return err
@@ -415,7 +414,7 @@ func calculateScheduleNextRun(cronExpr string, now time.Time, startTime int64) (
 
 // ExecuteSchedule is a method for executing plan discovery tasks
 // It takes a context and a planned discovery task as parameters and returns an error
-func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
+func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
 	// Create a span to monitor and trace request execution.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.ExecuteSchedule")
 	defer span.End() // End the span when the function returns.
@@ -423,22 +422,26 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	// Check whether the DiscoverTaskService has been set up
 	if dss.dts == nil {
 		otellog.LogError(ctx, "DiscoverTaskService not set", nil)
-		return fmt.Errorf("DiscoverTaskService not set")
+		return discoverScheduleFailure(ctx, fmt.Errorf("DiscoverTaskService not set"), "VegaBackend.Schedule.Result.DiscoverServiceUnavailable")
 	}
 
 	// The scheduler supplies the persisted schedule. Only the catalog's current state is rechecked.
 	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)
-		return err
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCatalogReadFailed")
 	}
 	if catalogInfo == nil || !catalogInfo.Enabled {
 		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
-		return nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.DiscoverCatalogUnavailable", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 
 	if err := dss.validateDiscoverCatalog(ctx, catalogInfo); err != nil {
-		return err
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCatalogReadFailed")
 	}
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
@@ -451,11 +454,15 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to check running tasks", err)
-		return err
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverActiveTasksCheckFailed")
 	}
 	if tasks > 0 {
 		logger.Warnf("There is already a running discover task for catalog %s, skipping execution", schedule.CatalogID)
-		return nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.DiscoverTaskActive", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 
 	// Create a pending discover task; the local database-backed worker will pick it up.
@@ -467,9 +474,25 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create discover task", err)
-		return err
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCreateFailed")
 	}
 
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
-	return nil
+	return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}, nil
+}
+
+// discoverScheduleFailure 只保存公开错误分类，不暴露底层错误详情。
+func discoverScheduleFailure(ctx context.Context, err error, messageID string) (interfaces.ScheduleRunResult, error) {
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden {
+		messageID = "VegaBackend.Schedule.Result.DiscoverPermissionDenied"
+	}
+	message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return interfaces.ScheduleRunResult{
+		Status:  interfaces.ScheduleStatusFailed,
+		Message: message,
+	}, err
 }

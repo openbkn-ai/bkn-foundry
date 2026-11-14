@@ -80,6 +80,7 @@ type catalogService struct {
 	ra   interfaces.ResourceAccess
 	ps   interfaces.PermissionService
 	ums  interfaces.UserMgmtService
+	bsa  interfaces.BuildScheduleAccess
 	bta  interfaces.BuildTaskAccess
 	dsa  interfaces.DiscoverScheduleAccess
 	dta  interfaces.DiscoverTaskAccess
@@ -108,6 +109,7 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 			cipher:     cipher,
 			db:         logics.DB,
 
+			bsa:  logics.BSA,
 			bta:  logics.BTA,
 			ca:   logics.CA,
 			cf:   cf,
@@ -1039,7 +1041,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 	if err != nil {
 		return nil, err
 	}
-	var buildTotal, buildExecuting, scheduleTotal, discoverTotal, runningDiscover int64
+	var buildTotal, buildExecuting, scheduleTotal, buildScheduleTotal, discoverTotal, runningDiscover int64
 	healthCheckScheduleTotal := int64(0)
 	if catalog.Type == interfaces.CatalogTypePhysical {
 		_, buildTotal, err = cs.bta.List(ctx, interfaces.BuildTasksQueryParams{
@@ -1061,6 +1063,13 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 			return nil, err
 		}
 		_, scheduleTotal, err = cs.dsa.List(ctx, interfaces.DiscoverScheduleQueryParams{
+			PaginationQueryParams: page,
+			CatalogID:             id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, buildScheduleTotal, err = cs.bsa.List(ctx, interfaces.BuildScheduleQueryParams{
 			PaginationQueryParams: page,
 			CatalogID:             id,
 		})
@@ -1146,6 +1155,7 @@ func (cs *catalogService) getDeletionImpact(ctx context.Context, catalog *interf
 			WillDelete: semanticTotal,
 			Blocking:   semanticRunning,
 		},
+		BuildSchedules:              buildScheduleTotal,
 		DiscoverSchedules:           scheduleTotal,
 		CatalogHealthCheckSchedules: healthCheckScheduleTotal,
 		Resources:                   len(resources),
@@ -1211,6 +1221,9 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	}
 	if err == nil {
 		err = cs.dsa.DeleteByCatalogID(ctx, tx, id)
+	}
+	if err == nil {
+		err = cs.bsa.DeleteByCatalogID(ctx, tx, id)
 	}
 	if err == nil {
 		err = cs.hcss.DeleteByCatalogID(ctx, tx, id)
@@ -1342,7 +1355,11 @@ func (cs *catalogService) InternalTestConnection(ctx context.Context, catalogID 
 		return nil, err
 	}
 	if catalog == nil {
-		return nil, fmt.Errorf("catalog not found: %s", catalogID)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+	}
+
+	if !catalog.Enabled {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled)
 	}
 
 	result, err := cs.testCatalogConnection(ctx, catalog)

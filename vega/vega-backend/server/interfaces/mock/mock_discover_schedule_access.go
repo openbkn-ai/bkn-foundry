@@ -42,6 +42,36 @@ func (m *MockDiscoverScheduleAccess) EXPECT() *MockDiscoverScheduleAccessMockRec
 	return m.recorder
 }
 
+// ClaimRun mocks base method.
+func (m *MockDiscoverScheduleAccess) ClaimRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64, runID string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimRun", ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimRun indicates an expected call of ClaimRun.
+func (mr *MockDiscoverScheduleAccessMockRecorder) ClaimRun(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimRun", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).ClaimRun), ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun, runID)
+}
+
+// CompleteRun mocks base method.
+func (m *MockDiscoverScheduleAccess) CompleteRun(ctx context.Context, id, runID string, result interfaces.ScheduleRunResult) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompleteRun", ctx, id, runID, result)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompleteRun indicates an expected call of CompleteRun.
+func (mr *MockDiscoverScheduleAccessMockRecorder) CompleteRun(ctx, id, runID, result any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteRun", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).CompleteRun), ctx, id, runID, result)
+}
+
 // Create mocks base method.
 func (m *MockDiscoverScheduleAccess) Create(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
 	m.ctrl.T.Helper()
@@ -84,6 +114,21 @@ func (mr *MockDiscoverScheduleAccessMockRecorder) DeleteByCatalogID(ctx, tx, cat
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).DeleteByCatalogID), ctx, tx, catalogID)
 }
 
+// DisableInvalid mocks base method.
+func (m *MockDiscoverScheduleAccess) DisableInvalid(ctx context.Context, id string, expectedUpdateTime, expectedNextRun int64, message string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisableInvalid", ctx, id, expectedUpdateTime, expectedNextRun, message)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DisableInvalid indicates an expected call of DisableInvalid.
+func (mr *MockDiscoverScheduleAccessMockRecorder) DisableInvalid(ctx, id, expectedUpdateTime, expectedNextRun, message any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisableInvalid", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).DisableInvalid), ctx, id, expectedUpdateTime, expectedNextRun, message)
+}
+
 // GetByID mocks base method.
 func (m *MockDiscoverScheduleAccess) GetByID(ctx context.Context, id string) (*interfaces.DiscoverSchedule, error) {
 	m.ctrl.T.Helper()
@@ -97,6 +142,21 @@ func (m *MockDiscoverScheduleAccess) GetByID(ctx context.Context, id string) (*i
 func (mr *MockDiscoverScheduleAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).GetByID), ctx, id)
+}
+
+// InitializeNextRun mocks base method.
+func (m *MockDiscoverScheduleAccess) InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InitializeNextRun", ctx, id, expectedUpdateTime, expectedNextRun, nextRun)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InitializeNextRun indicates an expected call of InitializeNextRun.
+func (mr *MockDiscoverScheduleAccessMockRecorder) InitializeNextRun(ctx, id, expectedUpdateTime, expectedNextRun, nextRun any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InitializeNextRun", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).InitializeNextRun), ctx, id, expectedUpdateTime, expectedNextRun, nextRun)
 }
 
 // List mocks base method.
@@ -158,19 +218,4 @@ func (m *MockDiscoverScheduleAccess) UpdateEnabled(ctx context.Context, id strin
 func (mr *MockDiscoverScheduleAccessMockRecorder) UpdateEnabled(ctx, id, enabled, nextRun, expectedUpdateTime, updateTime, updater any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnabled", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).UpdateEnabled), ctx, id, enabled, nextRun, expectedUpdateTime, updateTime, updater)
-}
-
-// UpdateRunMetadata mocks base method.
-func (m *MockDiscoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRunMetadata", ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateRunMetadata indicates an expected call of UpdateRunMetadata.
-func (mr *MockDiscoverScheduleAccessMockRecorder) UpdateRunMetadata(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRunMetadata", reflect.TypeOf((*MockDiscoverScheduleAccess)(nil).UpdateRunMetadata), ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }

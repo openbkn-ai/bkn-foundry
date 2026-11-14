@@ -55,6 +55,9 @@ func discoverScheduleColumns() []string {
 		"f_strategy",
 		"f_last_run",
 		"f_next_run",
+		"f_last_status",
+		"f_last_message",
+		"f_run_id",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -78,6 +81,9 @@ func scanDiscoverSchedule(scanner discoverScheduleScanner) (*interfaces.Discover
 		&schedule.Strategy,
 		&schedule.LastRun,
 		&schedule.NextRun,
+		&schedule.LastStatus,
+		&schedule.LastMessage,
+		&schedule.RunID,
 		&schedule.Creator.ID,
 		&schedule.Creator.Type,
 		&schedule.CreateTime,
@@ -193,6 +199,9 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			"f_strategy",
 			"f_last_run",
 			"f_next_run",
+			"f_last_status",
+			"f_last_message",
+			"f_run_id",
 			"f_creator",
 			"f_creator_type",
 			"f_create_time",
@@ -211,6 +220,9 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			schedule.Strategy,
 			schedule.LastRun,
 			schedule.NextRun,
+			schedule.LastStatus,
+			schedule.LastMessage,
+			schedule.RunID,
 			schedule.Creator.ID,
 			schedule.Creator.Type,
 			schedule.CreateTime,
@@ -505,50 +517,6 @@ func (dsa *discoverScheduleAccess) ListDue(ctx context.Context, now int64) ([]*i
 	return schedules, nil
 }
 
-// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id string,
-	expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update run metadata for discover_schedule")
-	defer span.End()
-
-	span.SetAttributes(
-		attr.Key("schedule_id").String(id),
-		attr.Key("expected_update_time").Int64(expectedUpdateTime),
-		attr.Key("expected_next_run").Int64(expectedNextRun),
-		attr.Key("last_run").Int64(lastRun),
-		attr.Key("next_run").Int64(nextRun),
-	)
-
-	sqlStr, vals, err := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
-		Set("f_last_run", lastRun).
-		Set("f_next_run", nextRun).
-		Where(sq.Eq{"f_id": id}).
-		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
-		Where(sq.Eq{"f_next_run": expectedNextRun}).
-		Where(sq.Eq{"f_enabled": true}).
-		ToSql()
-	if err != nil {
-		otellog.LogError(ctx, "Failed to build update run metadata discover_schedule sql", err)
-		return 0, err
-	}
-
-	result, err := dsa.db.ExecContext(ctx, sqlStr, vals...)
-	if err != nil {
-		otellog.LogError(ctx, "Update run metadata discover_schedule failed", err)
-		return 0, err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		logger.Errorf("Get affected rows after updating discover schedule run metadata failed: %v", err)
-		span.SetStatus(codes.Error, "Get rows affected failed")
-		return 0, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return rowsAffected, nil
-}
-
 // The unique ID makes pagination deterministic when primary sort values tie.
 func buildOrderByClause(sort, direction string) string {
 	dir := "DESC"
@@ -569,4 +537,63 @@ func buildOrderByClause(sort, direction string) string {
 		column = "f_update_time"
 	}
 	return fmt.Sprintf("%s %s, f_id %s", column, dir, dir)
+}
+
+// InitializeNextRun 只初始化时间，保留最近触发结果。
+func (dsa *discoverScheduleAccess) InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error) {
+	builder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
+		Set("f_next_run", nextRun).
+		Where(sq.Eq{"f_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_enabled": true})
+
+	return dsa.updateRun(ctx, builder)
+}
+
+// ClaimRun 原子推进时间并记录本次触发身份。
+func (dsa *discoverScheduleAccess) ClaimRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64, runID string) (int64, error) {
+	builder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
+		Set("f_last_run", lastRun).
+		Set("f_next_run", nextRun).
+		Set("f_last_status", interfaces.ScheduleStatusTriggering).
+		Set("f_last_message", "").
+		Set("f_run_id", runID).
+		Where(sq.Eq{"f_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_enabled": true})
+
+	return dsa.updateRun(ctx, builder)
+}
+
+// CompleteRun 与触发身份绑定，配置修改和启停不撤销已经抢占的调用。
+func (dsa *discoverScheduleAccess) CompleteRun(ctx context.Context, id, runID string, result interfaces.ScheduleRunResult) (int64, error) {
+	builder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
+		Set("f_last_status", result.Status).
+		Set("f_last_message", result.Message).
+		Where(sq.Eq{"f_id": id, "f_run_id": runID, "f_last_status": interfaces.ScheduleStatusTriggering})
+
+	return dsa.updateRun(ctx, builder)
+}
+
+// DisableInvalid 只处理仍与扫描快照一致的非法计划。
+func (dsa *discoverScheduleAccess) DisableInvalid(ctx context.Context, id string, expectedUpdateTime, expectedNextRun int64, message string) (int64, error) {
+	builder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
+		Set("f_enabled", false).
+		Set("f_last_status", interfaces.ScheduleStatusFailed).
+		Set("f_last_message", message).
+		Set("f_run_id", "").
+		Where(sq.Eq{"f_id": id, "f_update_time": expectedUpdateTime, "f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_enabled": true})
+
+	return dsa.updateRun(ctx, builder)
+}
+
+func (dsa *discoverScheduleAccess) updateRun(ctx context.Context, builder sq.UpdateBuilder) (int64, error) {
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return 0, err
+	}
+	result, err := dsa.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

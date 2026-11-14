@@ -254,6 +254,10 @@ paths:
         若任一 Resource 存在 `pending` 或 `running` 的资源元数据刷新任务，返回 409
         `VegaBackend.DiscoverTask.ResourceRefreshInProgress`，整批不删；需等待该任务进入终态。
 
+        删除 Resource 时，在同一数据库事务中删除实际待删资源绑定的全部 BuildSchedule；
+        不影响其他资源的计划，也不删除或修改已有 BuildTask 历史。
+        删除绑定计划失败时，资源删除一并回滚，整批不删。
+
         可选 `?ignore_missing=true`：忽略不存在的 id（视为已删除），其它 id 正常删。
 
         可选 `?only_if_stale=true`：要求所有资源在删除瞬间仍为

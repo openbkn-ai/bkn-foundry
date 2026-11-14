@@ -15,11 +15,17 @@ import (
 
 const cronMinuteMask = uint64(1<<60) - 1
 
+// 三类计划的持久化列采用 VARCHAR(100)，入口统一拒绝过长表达式。
+const MaxScheduleCronExprLength = 100
+
 var errCronTooFrequent = errors.New("cron_expr minimum interval is 1 hour")
 
 // ParseHourlyCronExpr parses a Cron expression and requires at least one hour
 // between adjacent executions.
 func ParseHourlyCronExpr(cronExpr string) (cron.Schedule, error) {
+	if len(cronExpr) > MaxScheduleCronExprLength {
+		return nil, errors.New("cron_expr must not exceed 100 bytes")
+	}
 	schedule, err := cron.ParseStandard(cronExpr)
 	if err != nil {
 		return nil, err

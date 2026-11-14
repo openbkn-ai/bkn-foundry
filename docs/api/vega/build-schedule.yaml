@@ -1,0 +1,501 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+---
+openapi: 3.1.1
+info:
+  title: VEGA 引擎 · 构建调度 API
+  version: 0.2.2
+  description: 'BuildSchedule 为一个 table Resource 定期创建新的 batch BuildTask。每个 Resource 可有多个计划。
+
+    计划与执行历史分离；full/incremental 显式选择，每次触发使用计划创建者身份重新检查权限及资源可用性，复用当前 Resource 配置快照和构建校验。增量基线不足不退化为全量。
+
+    启动及每分钟扫描数据库；先通过条件更新抢占并推进 last_run/next_run，再创建任务。遇到 pending/running/stopping 构建任务跳过本次。失败不重试、不排队、不历史回填；停机恢复最多尝试一次并遵守有效期。抢占后进程退出可能丢失本次任务创建，不承诺
+    exactly-once。
+
+    last_status/last_message 为最近一次触发结果，不是任务执行结果；success 表示 Task 已创建。初始化 next_run=0 只计算未来时间，不执行业务。非法已保存
+    cron 禁用并保存失败说明。配置修改、启停保留最近结果。
+
+    外部端点均有 /api/vega-backend/in/v1 下同形的内部版本；本文仅列外部 API。'
+servers:
+- url: /api/vega-backend/v1
+security:
+- OAuth2: []
+paths:
+  /build-schedules:
+    post:
+      operationId: createBuildSchedule
+      summary: 创建构建调度
+      description: 需要 Resource 所属 Catalog 的 task_manage 权限。Resource 必须为 table；创建计划不要求增量基线已存在，执行时再次校验。enabled
+        默认 false。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildScheduleRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - id
+                properties:
+                  id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      operationId: listBuildSchedules
+      summary: 获取构建调度列表
+      description: 按授权 Catalog 集合在数据库查询前过滤，entries 与 total_count 使用同一权限及筛选条件。
+      parameters:
+      - name: name
+        description: 名称包含匹配
+        in: query
+        schema:
+          type: string
+      - name: resource_id
+        description: 绑定 Resource ID
+        in: query
+        schema:
+          type: string
+      - name: catalog_id
+        description: 归属 Catalog ID
+        in: query
+        schema:
+          type: string
+      - name: enabled
+        description: 是否启用
+        in: query
+        schema:
+          type: boolean
+      - name: execute_type
+        description: 批处理执行类型
+        in: query
+        schema:
+          type: string
+          enum:
+          - full
+          - incremental
+      - name: offset
+        description: 分页偏移
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+      - name: limit
+        description: 每页数量；-1 表示不分页
+        in: query
+        schema:
+          type: integer
+          format: int64
+          minimum: -1
+          maximum: 1000
+          default: 20
+      - name: sort
+        description: 排序字段
+        in: query
+        schema:
+          type: string
+          enum:
+          - name
+          - create_time
+          - update_time
+          - next_run
+          default: update_time
+      - name: direction
+        description: 排序方向
+        in: query
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+          default: desc
+      responses:
+        '200':
+          description: 调度列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListBuildSchedules'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /build-schedules/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: BuildSchedule ID
+      schema:
+        type: string
+    get:
+      operationId: getBuildSchedule
+      summary: 获取构建调度详情
+      responses:
+        '200':
+          description: 调度详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      operationId: updateBuildSchedule
+      summary: 全量更新构建调度配置
+      description: resource_id 必须等于当前绑定值；enabled 必须等于当前状态，切换状态使用 enable/disable。expected_update_time 必填，取最近响应
+        update_time。重新计算 next_run，保留 last_status/last_message。只读字段不能修改；创建者身份不变。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/BuildScheduleRequest'
+              - type: object
+                required:
+                - expected_update_time
+      responses:
+        '204':
+          description: 更新成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '406':
+          $ref: '#/components/responses/NotAcceptable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteBuildSchedule
+      summary: 删除构建调度
+      description: 不删除已产生的 BuildTask。删除在抢占前生效会阻止该次触发；已抢占的调用可以继续，结果回写不恢复已删除计划。
+      responses:
+        '204':
+          description: 删除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /build-schedules/{id}/enable:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: BuildSchedule ID
+      schema:
+        type: string
+    post:
+      operationId: enableBuildSchedule
+      summary: 启用构建调度
+      description: 启用并重新计算未来 next_run。保留最近触发结果。
+      responses:
+        '204':
+          description: 操作成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /build-schedules/{id}/disable:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: BuildSchedule ID
+      schema:
+        type: string
+    post:
+      operationId: disableBuildSchedule
+      summary: 停用构建调度
+      description: 阻止后续未抢占的触发；不撤销已抢占调用及已产生任务。保留最近触发结果。
+      responses:
+        '204':
+          description: 操作成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: ../_shared/auth.yaml#/components/securitySchemes/OAuth2
+  responses:
+    BadRequest:
+      description: '请求字段、cron、表达式内时区、最小间隔、执行类型或有效期非法。稳定错误码：
+
+        - VegaBackend.BuildSchedule.InvalidParameter
+
+        - VegaBackend.BuildSchedule.InvalidCronExpr
+
+        - VegaBackend.BuildSchedule.InvalidExecuteType
+
+        - VegaBackend.BuildSchedule.InvalidTimeRange
+
+        - VegaBackend.InvalidParameter.RequestBody（请求体或并发版本参数非法）'
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    Unauthorized:
+      description: 认证失败。
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    Forbidden:
+      description: 缺少绑定 Catalog 的 task_manage 权限。
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    NotFound:
+      description: '计划、Resource 或 Catalog 不存在。稳定错误码：
+
+        - VegaBackend.BuildSchedule.NotFound
+
+        - VegaBackend.Resource.NotFound
+
+        - VegaBackend.Catalog.NotFound'
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    Conflict:
+      description: '绑定资源或 enabled 与当前值不一致，或配置版本发生冲突。稳定错误码：
+
+        - VegaBackend.BuildSchedule.ResourceMismatch
+
+        - VegaBackend.BuildSchedule.EnabledFieldNotAllowed
+
+        - VegaBackend.BuildSchedule.UpdateConflict'
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    NotAcceptable:
+      description: Content-Type 必须为 application/json。
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+    InternalServerError:
+      description: '服务内部错误。稳定错误码：
+
+        - VegaBackend.BuildSchedule.InternalError.GetFailed
+
+        - VegaBackend.BuildSchedule.InternalError.CreateFailed
+
+        - VegaBackend.BuildSchedule.InternalError.UpdateFailed
+
+        - VegaBackend.BuildSchedule.InternalError.DeleteFailed'
+      content:
+        application/json:
+          schema:
+            $ref: ../_shared/errors.yaml#/components/schemas/Error
+  schemas:
+    BuildSchedule:
+      type: object
+      required:
+      - id
+      - name
+      - resource_id
+      - catalog_id
+      - cron_expr
+      - execute_type
+      - enabled
+      - last_run
+      - next_run
+      - last_status
+      - last_message
+      - creator
+      - create_time
+      - updater
+      - update_time
+      properties:
+        id:
+          type: string
+          description: 全局唯一计划 ID
+        name:
+          type: string
+          maxLength: 255
+        resource_id:
+          type: string
+          description: 绑定 Resource，创建后不可修改
+        resource_name:
+          type: string
+          description: 当前资源名称，响应时补齐
+        catalog_id:
+          type: string
+          readOnly: true
+          description: 绑定 Resource 所属 Catalog
+        catalog_name:
+          type: string
+          description: 当前目录名称，响应时补齐
+        cron_expr:
+          maxLength: 100
+          type: string
+          description: 公共 cron 解析规则；相邻执行至少一小时。支持表达式内时区，省略时使用进程本地时区，无独立 timezone 字段。
+        execute_type:
+          type: string
+          enum:
+          - full
+          - incremental
+          description: 显式指定 batch 类型；增量条件不满足直接失败，不退化为全量
+        start_time:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+          description: 生效起始时间，Unix 毫秒；0 表示无起始限制
+        end_time:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+          description: 生效结束时间，Unix 毫秒；0 表示无结束限制。非零时不得早于 start_time
+        enabled:
+          type: boolean
+          description: 创建默认 false；后续切换使用 enable/disable
+        last_run:
+          type: integer
+          format: int64
+          readOnly: true
+          description: 最近触发尝试时间，Unix 毫秒，不表示任务创建或执行成功
+        next_run:
+          type: integer
+          format: int64
+          readOnly: true
+          description: 下一次触发时间，Unix 毫秒
+        last_status:
+          $ref: discover-schedule.yaml#/components/schemas/ScheduleLastStatus
+        last_message:
+          $ref: discover-schedule.yaml#/components/schemas/ScheduleLastMessage
+        creator:
+          $ref: discover-schedule.yaml#/components/schemas/AccountInfo
+        create_time:
+          type: integer
+          format: int64
+        updater:
+          $ref: discover-schedule.yaml#/components/schemas/AccountInfo
+        update_time:
+          type: integer
+          format: int64
+          description: 配置版本；PUT 的 expected_update_time 使用此值
+    BuildScheduleRequest:
+      type: object
+      required:
+      - name
+      - resource_id
+      - cron_expr
+      - execute_type
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        resource_id:
+          type: string
+          description: 绑定 Resource，创建后不可修改
+        cron_expr:
+          maxLength: 100
+          type: string
+          description: 公共 cron 解析规则；相邻执行至少一小时。支持表达式内时区，省略时使用进程本地时区，无独立 timezone 字段。
+        execute_type:
+          type: string
+          enum:
+          - full
+          - incremental
+          description: 显式指定 batch 类型；增量条件不满足直接失败，不退化为全量
+        start_time:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+          description: 生效起始时间，Unix 毫秒；0 表示无起始限制
+        end_time:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+          description: 生效结束时间，Unix 毫秒；0 表示无结束限制。非零时不得早于 start_time
+        enabled:
+          type: boolean
+          description: 创建默认 false；后续切换使用 enable/disable
+          default: false
+        expected_update_time:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 仅 PUT 必填，取最近响应 update_time
+    ListBuildSchedules:
+      type: object
+      required:
+      - entries
+      - total_count
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildSchedule'
+        total_count:
+          type: integer
+          format: int64

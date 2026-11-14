@@ -21,6 +21,10 @@ info:
     （`DELETE /build-tasks/{ids}`，逗号分隔），不提供 `/resources/{id}/build-tasks`
     嵌套列表视图——按父资源过滤一律走 `GET /build-tasks?resource_id={id}`。
 
+    `schedule_id` 和 `trigger_type` 是服务端写入的只读来源字段。手动任务的
+    `schedule_id` 为空，`trigger_type=manual`；由 BuildSchedule 创建的任务为 `scheduled`。
+    删除调度不删除已生成任务，也不清除其 schedule_id。手动创建接口不能伪造这些字段。
+
     每个新任务均有服务端分配的只读 `index_name`。Full BuildTask 使用新的
     `vega-build-<uuidv7>` 物理索引；Incremental BuildTask 快照创建时 Resource 的当前
     `index_name`，不会新建索引。索引名不承载 Resource 或 Task ID，调用方不得根据其解析业务 ID。
@@ -33,8 +37,19 @@ paths:
   /build-tasks:
     get:
       summary: 获取构建任务列表
-      description: 分页获取构建任务；支持按 resource_id / catalog_id / status / mode / execute_type 过滤。
+      description: 分页获取构建任务；支持按 resource_id / catalog_id / schedule_id / trigger_type / status / mode / execute_type 过滤。
       parameters:
+        - name: schedule_id
+          description: 按触发任务的 BuildSchedule ID 过滤；计划删除后仍可查询已有任务
+          in: query
+          schema:
+            type: string
+        - name: trigger_type
+          description: 按手动或调度来源过滤
+          in: query
+          schema:
+            type: string
+            enum: [manual, scheduled]
         - name: resource_id
           description: 按归属 resource 过滤
           in: query
@@ -386,6 +401,7 @@ components:
         - id
         - resource_id
         - catalog_id
+        - trigger_type
         - status
         - mode
         - total_count
@@ -402,6 +418,15 @@ components:
         catalog_id:
           description: 关联 Catalog ID（冗余存储以加速过滤）
           type: string
+        schedule_id:
+          description: 触发本任务的 BuildSchedule ID；手动任务为空，计划删除后保留
+          type: string
+          readOnly: true
+        trigger_type:
+          description: 服务端确定的任务来源；历史任务按 manual 返回
+          type: string
+          readOnly: true
+          enum: [manual, scheduled]
         resource_name:
           description: 关联 Resource 的当前名称；响应时按当前任务集合批量补齐，不落库
           type: string
@@ -474,10 +499,18 @@ components:
     BuildTaskSummary:
       description: 构建任务列表摘要；索引配置快照和 failure_detail 请调用单条详情接口获取。
       type: object
-      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, synced_mark, creator, create_time]
+      required: [id, resource_id, catalog_id, trigger_type, status, mode, total_count, synced_count, synced_mark, creator, create_time]
       properties:
         id: { type: string }
         resource_id: { type: string }
+        schedule_id:
+          type: string
+          readOnly: true
+          description: BuildSchedule ID；手动任务为空，计划删除后保留
+        trigger_type:
+          type: string
+          readOnly: true
+          enum: [manual, scheduled]
         resource_name: { type: string }
         catalog_id: { type: string }
         catalog_name: { type: string }
@@ -580,7 +613,7 @@ components:
             analyzer:
               type: string
     CreateBuildTaskRequest:
-      description: 创建构建任务请求体
+      description: 创建手动构建任务请求体；schedule_id 和 trigger_type 由服务端维护，客户端不能指定
       type: object
       required:
         - resource_id

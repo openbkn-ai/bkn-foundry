@@ -7,14 +7,19 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/robfig/cron/v3"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
@@ -120,6 +125,10 @@ func (chcw *CatalogHealthCheckWorker) runDue(ctx context.Context) {
 }
 
 func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule) {
+	chcw.runScheduleAt(ctx, schedule, time.Now())
+}
+
+func (chcw *CatalogHealthCheckWorker) runScheduleAt(ctx context.Context, schedule *interfaces.CatalogHealthCheckSchedule, now time.Time) {
 	catalogID := schedule.CatalogID
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -127,7 +136,6 @@ func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule 
 		}
 	}()
 
-	now := time.Now()
 	if schedule.Mode == interfaces.CatalogHealthCheckScheduleModeDisabled || schedule.NextRun > now.UnixMilli() {
 		return
 	}
@@ -139,28 +147,74 @@ func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule 
 		var err error
 		cronSchedule, err = common.ParseHourlyCronExpr(schedule.CronExpr)
 		if err != nil {
-			logger.Errorf("Parse catalog health check cron expression failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
+			message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.CronInvalid", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			if _, disableErr := chcw.chcsa.DisableInvalid(ctx, catalogID, schedule.UpdateTime,
+				schedule.NextRun, message); disableErr != nil {
+				logger.Errorf("Disable invalid catalog health check schedule failed: catalog_id=%s, error=%v", catalogID, disableErr)
+			}
 			return
 		}
 	}
 
-	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
-	// Missed historical cycles will not be made up for one by one after recovery.
 	nextRun := cronSchedule.Next(now)
-	rowsAffected, err := chcw.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID,
-		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli())
+	if nextRun.IsZero() {
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.CronNoFuture", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		if _, err := chcw.chcsa.DisableInvalid(ctx, catalogID, schedule.UpdateTime,
+			schedule.NextRun, message); err != nil {
+			logger.Errorf("Disable unsatisfiable catalog health check schedule failed: catalog_id=%s, error=%v", catalogID, err)
+		}
+		return
+	}
+	if schedule.NextRun == 0 {
+		if _, err := chcw.chcsa.InitializeNextRun(ctx, catalogID,
+			schedule.UpdateTime, schedule.NextRun, nextRun.UnixMilli()); err != nil {
+			logger.Errorf("Initialize catalog health check schedule failed: catalog_id=%s, error=%v", catalogID, err)
+		}
+		return
+	}
+	runID, err := uuid.NewV7()
 	if err != nil {
-		logger.Errorf("Update catalog health check run metadata failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
+		logger.Errorf("Generate catalog health check run ID failed: %v", err)
+		return
+	}
+	rowsAffected, err := chcw.chcsa.ClaimRun(ctx, catalogID, schedule.UpdateTime,
+		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID.String())
+	if err != nil {
+		logger.Errorf("Claim catalog health check schedule failed: catalog_id=%s, error=%v", catalogID, err)
 		return
 	}
 	if rowsAffected == 0 {
 		return
 	}
-
-	if _, err := chcw.cs.InternalTestConnection(ctx, schedule.CatalogID); err != nil {
-		logger.Errorf("Run catalog health check failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
-		return
+	result := interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}
+	if _, err := chcw.cs.InternalTestConnection(ctx, catalogID); err != nil {
+		logger.Errorf("Run catalog health check failed: catalog_id=%s, error=%v", catalogID, err)
+		status := interfaces.ScheduleStatusFailed
+		messageID := "VegaBackend.Schedule.Result.HealthCheckFailed"
+		var httpErr *httperrors.HTTPError
+		if errors.As(err, &httpErr) {
+			switch httpErr.ErrorCode {
+			case verrors.VegaBackend_Catalog_IsDisabled:
+				status = interfaces.ScheduleStatusSkipped
+				messageID = "VegaBackend.Schedule.Result.HealthCatalogDisabled"
+			case verrors.VegaBackend_Catalog_NotFound:
+				status = interfaces.ScheduleStatusSkipped
+				messageID = "VegaBackend.Schedule.Result.HealthCatalogMissing"
+			}
+		}
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		result = interfaces.ScheduleRunResult{Status: status, Message: message}
 	}
-
-	logger.Infof("Executed catalog health check schedule: id=%s", schedule.CatalogID)
+	if _, err := chcw.chcsa.CompleteRun(ctx, catalogID, runID.String(), result); err != nil {
+		logger.Errorf("Save catalog health check result failed: catalog_id=%s, error=%v", catalogID, err)
+	}
 }

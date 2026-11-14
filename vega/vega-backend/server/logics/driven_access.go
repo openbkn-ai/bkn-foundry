@@ -17,6 +17,7 @@ var (
 	DB    *sql.DB
 	AA    interfaces.AuthAccess
 	BAA   interfaces.BknAgentAccess
+	BSA   interfaces.BuildScheduleAccess
 	BTA   interfaces.BuildTaskAccess
 	CA    interfaces.CatalogAccess
 	CHCSA interfaces.CatalogHealthCheckScheduleAccess
@@ -42,6 +43,10 @@ func SetAuthAccess(aa interfaces.AuthAccess) {
 
 func SetBuildTaskAccess(bta interfaces.BuildTaskAccess) {
 	BTA = bta
+}
+
+func SetBuildScheduleAccess(bsa interfaces.BuildScheduleAccess) {
+	BSA = bsa
 }
 
 func SetCatalogAccess(ca interfaces.CatalogAccess) {

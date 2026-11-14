@@ -384,6 +384,36 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 }
 
 func TestBuildTaskServiceCreate(t *testing.T) {
+	for _, scheduled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("persists server assigned provenance scheduled=%t", scheduled), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			cs := vmock.NewMockCatalogService(ctrl)
+			bta := vmock.NewMockBuildTaskAccess(ctrl)
+			service := &buildTaskService{cf: buildTaskTestConnectorFactory(t), rs: rs, cs: cs, bta: bta}
+			resource := buildTaskTestResource()
+			rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), resource.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+			cs.EXPECT().GetByID(gomock.Any(), resource.CatalogID, false).Return(&interfaces.Catalog{ID: resource.CatalogID, Enabled: true}, nil)
+			bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+			req := &interfaces.CreateBuildTaskRequest{ResourceID: resource.ID, Mode: interfaces.BuildTaskModeBatch}
+			wantTrigger := interfaces.BuildTaskTriggerManual
+			if scheduled {
+				req.ScheduleID = "plan-1"
+				req.TriggerType = interfaces.BuildTaskTriggerScheduled
+				wantTrigger = interfaces.BuildTaskTriggerScheduled
+			}
+			bta.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.BuildTask) error {
+				assert.Equal(t, wantTrigger, task.TriggerType)
+				assert.Equal(t, req.ScheduleID, task.ScheduleID)
+				assert.Equal(t, interfaces.BuildTaskStatusPending, task.Status)
+				return nil
+			})
+			id, err := service.Create(context.Background(), req)
+			require.NoError(t, err)
+			assert.NotEmpty(t, id)
+		})
+	}
 	for _, source := range []string{"resource", "catalog"} {
 		for _, status := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable, http.StatusInternalServerError} {
 			t.Run(fmt.Sprintf("%s lookup error %d", source, status), func(t *testing.T) {

@@ -6,6 +6,7 @@
 package common
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,8 @@ func TestParseHourlyCronExpr(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "accepts hourly", cronExpr: "0 * * * *"},
+		{name: "accepts explicit timezone", cronExpr: "CRON_TZ=Asia/Shanghai 0 * * * *"},
+		{name: "rejects invalid timezone", cronExpr: "CRON_TZ=Invalid/Zone 0 * * * *", wantErr: "unknown time zone"},
 		{name: "accepts less frequent standard cron", cronExpr: "30 0,12 * * *"},
 		{name: "accepts hourly descriptor", cronExpr: "@hourly"},
 		{name: "accepts hourly fixed delay", cronExpr: "@every 1h"},
@@ -25,6 +28,7 @@ func TestParseHourlyCronExpr(t *testing.T) {
 		{name: "rejects multiple runs in one hour", cronExpr: "0,30 * * * *", wantErr: "minimum interval is 1 hour"},
 		{name: "rejects short fixed delay", cronExpr: "@every 30m", wantErr: "minimum interval is 1 hour"},
 		{name: "rejects invalid expression", cronExpr: "invalid", wantErr: "expected exactly 5 fields"},
+		{name: "rejects oversized valid expression before persistence", cronExpr: "0 " + strings.Repeat("0,", 50) + "0 * * *", wantErr: "must not exceed 100 bytes"},
 	}
 
 	for _, tt := range tests {
