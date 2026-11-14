@@ -260,8 +260,11 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 	// What was looked for in vain lately is not looked for again until the catalogs or the tables
 	// gone change, or a while passed: an owner's status is read often.
 	miss := rebindMissKey(draft.ProjectID, missing, catalogIDs)
-	if at, ok := s.rebindMisses.Load(miss); ok && time.Since(at.(time.Time)) < rebindRetryAfter {
-		return 0, nil
+	if at, ok := s.rebindMisses.Load(miss); ok {
+		if time.Since(at.(time.Time)) < rebindRetryAfter {
+			return 0, nil
+		}
+		s.rebindMisses.Delete(miss)
 	}
 	names, err := s.va.CatalogNames(ctx, caller, catalogIDs)
 	if err != nil {
@@ -272,6 +275,8 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 	// Only the catalogs some gone table is looked for in are read, each once; one that cannot be
 	// read is passed over, so the others are still looked in.
 	listed := map[string][]*interfaces.VegaTable{}
+	// A miss is only remembered when every catalog was read: a passing read failure is no answer.
+	allRead := true
 	for _, t := range gone {
 		for _, catalogID := range rebindScope(t, catalogIDs, names) {
 			if _, read := listed[catalogID]; read {
@@ -281,6 +286,7 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 			if err != nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("List tables of catalog %s: %v", catalogID, err))
 				tables = nil
+				allRead = false
 			}
 			listed[catalogID] = tables
 		}
@@ -293,7 +299,9 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 	}
 	if len(tableIDs) == 0 {
-		s.rebindMisses.Store(miss, time.Now())
+		if allRead {
+			s.rebindMisses.Store(miss, time.Now())
+		}
 		return 0, nil
 	}
 	slices.Sort(tableIDs)
@@ -316,7 +324,9 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 	}
 	matches := rebindMatches(gone, catalogIDs, names, listed, bound)
 	if len(matches) == 0 {
-		s.rebindMisses.Store(miss, time.Now())
+		if allRead {
+			s.rebindMisses.Store(miss, time.Now())
+		}
 		return 0, nil
 	}
 	decisions := applyRebind(&draft.Items, refs, matches, names)

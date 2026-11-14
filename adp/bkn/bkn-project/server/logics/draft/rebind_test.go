@@ -26,6 +26,8 @@ type vegaWorld struct {
 	tables   []*interfaces.VegaTable
 	// lists counts the catalogs listed.
 	lists int
+	// failLists makes that many listings fail as a passing vega error would.
+	failLists int
 }
 
 func (w *vegaWorld) table(id string) *interfaces.VegaTable {
@@ -61,6 +63,10 @@ func (w *vegaWorld) mock(ctrl *gomock.Controller) *pmock.MockVegaAccess {
 	va.EXPECT().ListTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaTable, error) {
 			w.lists++
+			if w.failLists > 0 {
+				w.failLists--
+				return nil, errors.New("vega-backend returned HTTP 503")
+			}
 			if _, ok := w.catalogs[catalogID]; !ok {
 				return nil, errors.New("vega-backend returned HTTP 404")
 			}
@@ -277,6 +283,23 @@ func Test_RebindOnStatus(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(writes, ShouldEqual, 1)
 			})
+		})
+
+		Convey("A listing that fails is not remembered as no table found: the next read binds again\n", func() {
+			w.failLists = 2
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 0)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
+
+			s, err = svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 1)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
 		})
 
 		Convey("A deleted catalog the project still lists does not stop the others being looked in\n", func() {
