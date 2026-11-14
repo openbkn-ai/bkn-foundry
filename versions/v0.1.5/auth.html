@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authentication · BKN Foundry API Documentation</title>
+<link rel="icon" type="image/png" href="./favicon.png">
+<style>
+  :root{--bg:#fff;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:48px 24px 96px}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+  .lede{color:var(--muted);font-size:15px;margin:0 0 8px}
+  h2{font-size:19px;margin:34px 0 6px}
+  h3{font-size:15px;margin:20px 0 6px}
+  p{margin:8px 0;font-size:14.5px}
+  .muted{color:var(--muted);font-size:13.5px}
+  code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:13px;background:#f2f5f8;border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+  pre{background:#0d1117;color:#e6edf3;border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.55;margin:10px 0}
+  pre code{background:none;border:0;padding:0;color:inherit;font-size:inherit}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f2f5f8;font-weight:600;white-space:nowrap}
+  .note{border-left:3px solid var(--acc);background:var(--acc-bg);padding:10px 14px;border-radius:0 8px 8px 0;font-size:13.5px;margin:12px 0}
+  /* Syntax highlighting (highlight.js github-dark) on dark code blocks */
+  pre code.hljs{padding:0;background:none}
+</style>
+<link rel="stylesheet" href="https://cdn.staticfile.org/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.staticfile.org/highlight.js/11.9.0/highlight.min.js"></script>
+<script>window.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('pre code').forEach(function(el){window.hljs&&hljs.highlightElement(el);});});</script>
+</head>
+<body>
+<div class="wrap">
+<h1>🔑 Authentication</h1>
+<p class="lede">Except for internal <code>/in/v1</code> APIs, every API requires an <code>Authorization: Bearer &lt;token&gt;</code> HTTP header.</p>
+<pre><code class="language-bash">curl -H "Authorization: Bearer &lt;token&gt;" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
+<p class="muted">For deployments that use self-signed certificates, append <code>-k</code> (<code>--insecure</code>) to the <code>curl</code> and <code>openbkn</code> commands on this page. Skipping TLS verification is suitable only for development environments.</p>
+<p>Choose one of these token acquisition methods:</p>
+<table>
+  <tr><th>Method</th><th>Use case</th><th>Coverage</th></tr>
+  <tr><td>CLI login</td><td>Personal or interactive use</td><td>All service APIs</td></tr>
+  <tr><td>AppKey (<code>bak_</code>)</td><td>Scripts and automation</td><td><b>Context Loader only</b> (retrieval and MCP, <b>read-only</b>)</td></tr>
+  <tr><td>Device authorization flow</td><td>Applications acting on behalf of users</td><td>All service APIs</td></tr>
+</table>
+
+<h2>Method 1 · CLI login (recommended for personal use)</h2>
+<p>Sign in once with the <code>openbkn</code> CLI from <a href="https://github.com/openbkn-ai/bkn-sdk">bkn-sdk</a>. Subsequent commands send and refresh the token automatically. Login uses the OAuth2 <b>device authorization flow</b> (RFC 8628).</p>
+<pre><code class="language-bash"># Browser login: prints a URL and user code for browser confirmation
+# Add -k for a deployment with a self-signed certificate
+openbkn auth login https://&lt;your-instance&gt;
+
+# Headless or CI login: the CLI completes login and consent with credentials
+openbkn auth login https://&lt;your-instance&gt; -u &lt;account&gt; -p &lt;password&gt; -k</code></pre>
+<p>Use the <code>token</code> subcommand when another tool or curl needs the raw token. An expired token is refreshed automatically.</p>
+<pre><code class="language-bash">openbkn auth token           # Print the current access token
+openbkn auth status          # Show login status and current platform
+openbkn auth whoami          # Show the current identity
+
+# Use the token directly with curl
+curl -H "Authorization: Bearer $(openbkn auth token)" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks</code></pre>
+
+<h2>Method 2 · AppKey (recommended for automation)</h2>
+<div class="note"><b>Coverage:</b> An AppKey is a long-lived credential for <b>Context Loader</b> retrieval and MCP APIs under <code>/api/agent-retrieval/...</code>. It supports <b>read-only operations only</b>. Write APIs intentionally reject AppKeys. Requests run as the issuer and have the same read scope as the issuer's OAuth token. Use an OAuth token for writes or other services.</div>
+<p>Create and manage an AppKey in the BKN Studio profile page or issue it through the API with an authenticated OAuth token. An AppKey cannot issue another AppKey. <code>name</code> is required; omitting <code>expires_at</code> uses a one-year lifetime.</p>
+<pre><code class="language-bash"># Issue a key with an authenticated OAuth token
+curl -X POST https://&lt;your-instance&gt;/api/safe/v1/me/api-keys \
+  -H "Authorization: Bearer $(openbkn auth token)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-key","expires_at":"2027-01-01T00:00:00Z"}'
+
+# 201 response. The plaintext key appears only once; store it securely
+# {"id":"...","key_id":"2882bb603277","name":"my-key",
+#  "key":"bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua",
+#  "masked":"bak_2882****SWua","expires_at":"...","enabled":true}
+
+# Use the Bearer header with a Context Loader API. kn_id is required and can
+# alternatively be sent in X-Kn-ID
+curl -X POST https://&lt;your-instance&gt;/api/agent-retrieval/v1/kn/search_schema \
+  -H "Authorization: Bearer bak_2882bb603277_BSxTZHTBiJXk4QoUBc0u17zSWua" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"customer","kn_id":"&lt;knowledge-network-id&gt;"}'</code></pre>
+<p class="muted">CLI equivalent: <code>openbkn appkey create --name my-key</code>. Use it with <code>openbkn --token bak_... context ...</code>. Management APIs: <code>GET /api/safe/v1/me/api-keys</code> lists keys, <code>DELETE /api/safe/v1/me/api-keys/{id}</code> revokes one, and <code>POST /api/safe/v1/me/api-keys/{id}/regenerate</code> rotates one.</p>
+<h3>Python example</h3>
+<pre><code class="language-python">import requests
+
+BASE = "https://&lt;your-instance&gt;"
+oauth_token = "&lt;OAuth access token&gt;"  # For example, openbkn auth token output
+
+# Issue a key. The plaintext key appears only once; store it securely
+resp = requests.post(
+    f"{BASE}/api/safe/v1/me/api-keys",
+    headers={"Authorization": f"Bearer {oauth_token}"},
+    json={"name": "my-key"},          # Optional expires_at; defaults to one year
+)
+app_key = resp.json()["key"]          # bak_...
+
+# Use a read-only Context Loader retrieval API. kn_id is required and can also
+# be sent in X-Kn-ID
+r = requests.post(
+    f"{BASE}/api/agent-retrieval/v1/kn/search_schema",
+    headers={"Authorization": f"Bearer {app_key}"},
+    json={"query": "customer", "kn_id": "&lt;knowledge-network-id&gt;"},
+)</code></pre>
+<p class="muted">For self-signed certificates, add <code>verify=False</code> to every request or configure it once on a <code>requests.Session()</code>.</p>
+
+<h2>Method 3 · Integrate login into an application</h2>
+<p>An application can call platform APIs without registering a client or involving an administrator. Every deployment includes the public <code>openbkn-sdk</code> client for the OAuth2 device authorization flow (RFC 8628). The application asks the user to sign in once in a browser, receives a token with that user's permissions, and then uses the refresh token for long-running access.</p>
+<h3>Step 1 · Start device authorization</h3>
+<pre><code class="language-bash">curl -X POST https://&lt;your-instance&gt;/oauth2/device/auth \
+  -d "client_id=openbkn-sdk" -d "scope=openid offline"
+# -&gt; {"device_code":"ory_dc_...","user_code":"EKgw7AQa",
+#     "verification_uri_complete":"https://&lt;your-instance&gt;/oauth2/device/verify?user_code=EKgw7AQa",
+#     "expires_in":600,"interval":5}</code></pre>
+<h3>Step 2 · Confirm in the user's browser</h3>
+<p>Present <code>verification_uri_complete</code> as a link or QR code. The user opens it, confirms the device code, signs in, and grants consent.</p>
+<h3>Step 3 · Poll for tokens</h3>
+<pre><code class="language-bash">curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  -d "device_code=ory_dc_..." \
+  -d "client_id=openbkn-sdk"
+# Before login completes: {"error":"authorization_pending"}. Retry after the
+# number of seconds in interval
+# After completion -&gt; {"access_token":"...","refresh_token":"...","expires_in":3600,
+#                       "scope":"openid offline","token_type":"bearer"}</code></pre>
+<h3>Step 4 · Call APIs and refresh the token</h3>
+<pre><code class="language-bash"># Call any service API with the signed-in user's permissions
+curl -H "Authorization: Bearer &lt;access_token&gt;" \
+     https://&lt;your-instance&gt;/api/bkn-backend/v1/knowledge-networks
+
+# The access token lasts one hour. Refresh it without another login.
+# Every refresh rotates refresh_token; always store the latest value
+curl -X POST https://&lt;your-instance&gt;/oauth2/token \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=&lt;refresh_token&gt;" \
+  -d "client_id=openbkn-sdk"</code></pre>
+<h3>Complete Python example</h3>
+<pre><code class="language-python">import time
+import requests
+
+BASE = "https://&lt;your-instance&gt;"
+CLIENT_ID = "openbkn-sdk"
+
+s = requests.Session()
+# s.verify = False   # Enable for a deployment with a self-signed certificate
+
+# 1. Start device authorization
+da = s.post(f"{BASE}/oauth2/device/auth",
+            data={"client_id": CLIENT_ID, "scope": "openid offline"}).json()
+print("Open this URL in a browser and sign in:", da["verification_uri_complete"])
+
+# 2. Poll until the user completes login
+while True:
+    time.sleep(da.get("interval", 5))
+    r = s.post(f"{BASE}/oauth2/token", data={
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        "device_code": da["device_code"],
+        "client_id": CLIENT_ID,
+    }).json()
+    if "access_token" in r:
+        tokens = r
+        break
+    if r.get("error") not in ("authorization_pending", "slow_down"):
+        raise RuntimeError(r)
+
+# 3. Call an API with the signed-in user's permissions
+kns = s.get(f"{BASE}/api/bkn-backend/v1/knowledge-networks",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"}).json()
+
+# 4. Refresh after the one-hour access-token lifetime without another login.
+#    Refreshing rotates refresh_token, so overwrite the stored value
+tokens = s.post(f"{BASE}/oauth2/token", data={
+    "grant_type": "refresh_token",
+    "refresh_token": tokens["refresh_token"],
+    "client_id": CLIENT_ID,
+}).json()</code></pre>
+<div class="note">Tokens are <b>user-delegated</b> credentials. The application acts as the user who completed login, and its permissions change with that user's grants. Fully automated services should use a dedicated service account for browser login once, then continue with refresh tokens. If the refresh token expires through inactivity or revocation, the account must sign in again.</div>
+<p class="muted"><code>openbkn-sdk</code> is a public client with no secret; PKCE and the device authorization flow provide its security. Any application can use it directly. A headless script that submits the login or consent pages must URL-decode the percent-encoded <code>*_challenge</code> query parameter before submitting the form to avoid double encoding.</p>
+
+<p class="muted">The interactive login in Method 1 uses the Method 3 device flow internally; the CLI automates it.</p>
+</div>
+</body>
+</html>
