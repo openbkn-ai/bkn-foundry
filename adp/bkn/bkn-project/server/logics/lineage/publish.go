@@ -595,6 +595,18 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	// references can move to the copies, is settled here; the copies are made when preparing,
 	// before the draft is written, so the draft points at them.
 	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, checked.copyFrom, copySuffix(lineageID, version))
+	// A toolbox or Skill that cannot be read is named as the network knows it, with the definitions
+	// that use it, so a person can relink or remove them in the network.
+	var unread *capability.ItemError
+	if errors.As(err, &unread) {
+		if network, loadErr := loadNetwork(pkg); loadErr == nil {
+			name, uses := capability.Uses(network, unread.Kind, unread.ID)
+			if unread.Name == "" {
+				unread.Name = name
+			}
+			unread.Uses, unread.NetworkID = uses, lineageID
+		}
+	}
 	var refusal *httperrors.HTTPError
 	if errors.As(err, &refusal) {
 		refuse(refusal)
