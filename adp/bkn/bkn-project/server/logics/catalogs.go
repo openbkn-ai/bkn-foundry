@@ -36,10 +36,25 @@ func NewProjectCatalogs() *ProjectCatalogs {
 // models are left out: on a network the project created they are all its own, so it has none.
 func (pc *ProjectCatalogs) NetworkCatalogs(ctx context.Context, token string, caller interfaces.AccountInfo,
 	project *interfaces.Project) ([]string, error) {
+	catalogs, _, err := pc.networkCatalogs(ctx, token, caller, project)
+	return catalogs, err
+}
+
+// networkCatalogs is NetworkCatalogs, with the network's object types it read; those are nil when
+// the read failed.
+func (pc *ProjectCatalogs) networkCatalogs(ctx context.Context, token string, caller interfaces.AccountInfo,
+	project *interfaces.Project) ([]string, []*interfaces.KNObjectTypeSource, error) {
 	objectTypes, err := pc.BBA.ListObjectTypeSources(ctx, token, project.KNID)
 	if err != nil {
-		return nil, fmt.Errorf("list object types of network %s: %w", project.KNID, err)
+		return nil, nil, fmt.Errorf("list object types of network %s: %w", project.KNID, err)
 	}
+	catalogs, err := pc.catalogsOf(ctx, caller, project, objectTypes)
+	return catalogs, objectTypes, err
+}
+
+// catalogsOf is the catalogs of the tables objectTypes read, the project's own left out.
+func (pc *ProjectCatalogs) catalogsOf(ctx context.Context, caller interfaces.AccountInfo,
+	project *interfaces.Project, objectTypes []*interfaces.KNObjectTypeSource) ([]string, error) {
 	own := map[string]bool{}
 	draft, exist, err := pc.DA.GetDraft(ctx, project.ID)
 	if err != nil {
@@ -93,17 +108,10 @@ func (pc *ProjectCatalogs) NetworkCatalogs(ctx context.Context, token string, ca
 }
 
 // TableReaders names, by the resource id of each table, the object types of the network that read
-// it now, in the order the network lists them; system object types are left out. A nil
-// ProjectCatalogs, or a project without a network, reads none.
-func (pc *ProjectCatalogs) TableReaders(ctx context.Context, token string, project *interfaces.Project) (map[string][]string, error) {
+// it, in the order the network lists them: those Resolve read. System object types and those
+// reading no table are left out; one without a name is named by its id.
+func TableReaders(objectTypes []*interfaces.KNObjectTypeSource) map[string][]string {
 	readers := map[string][]string{}
-	if pc == nil || pc.BBA == nil || project == nil || project.KNID == "" {
-		return readers, nil
-	}
-	objectTypes, err := pc.BBA.ListObjectTypeSources(ctx, token, project.KNID)
-	if err != nil {
-		return readers, fmt.Errorf("list object types of network %s: %w", project.KNID, err)
-	}
 	for _, ot := range objectTypes {
 		source := ot.DataSource
 		if interfaces.IsSystemObjectType(ot.ID) || source == nil || source.ID == "" ||
@@ -118,7 +126,7 @@ func (pc *ProjectCatalogs) TableReaders(ctx context.Context, token string, proje
 			readers[source.ID] = append(readers[source.ID], name)
 		}
 	}
-	return readers, nil
+	return readers
 }
 
 // objectTypeOfPath is the id of the object type a definition path holds, object_types/<id>.bkn.
@@ -139,16 +147,23 @@ func objectTypeOfPath(path string) (string, bool) {
 // does a read that fails.
 func (pc *ProjectCatalogs) Resolve(ctx context.Context, token string, caller interfaces.AccountInfo,
 	entry *interfaces.ProjectEntry) {
+	pc.ResolveReading(ctx, token, caller, entry)
+}
+
+// ResolveReading is Resolve, and hands back the network's object types it read, so a caller that
+// needs them too reads the network once. They are nil when nothing was read or the read failed.
+func (pc *ProjectCatalogs) ResolveReading(ctx context.Context, token string, caller interfaces.AccountInfo,
+	entry *interfaces.ProjectEntry) []*interfaces.KNObjectTypeSource {
 	if pc == nil || entry == nil || entry.Project == nil {
-		return
+		return nil
 	}
-	network, err := pc.NetworkCatalogs(ctx, token, caller, entry.Project)
+	network, objectTypes, err := pc.networkCatalogs(ctx, token, caller, entry.Project)
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Read the catalogs the network of project %s reads: %v", entry.ID, err))
-		return
+		return objectTypes
 	}
 	if len(network) == 0 {
-		return
+		return objectTypes
 	}
 	added, err := pc.Added(ctx, caller, network, entry.CatalogIDs)
 	if err != nil {
@@ -156,6 +171,7 @@ func (pc *ProjectCatalogs) Resolve(ctx context.Context, token string, caller int
 	}
 	entry.CatalogIDs = append(slices.Clone(network), added...)
 	entry.NetworkCatalogIDs = network
+	return objectTypes
 }
 
 // Added are the catalogs of stored outside network that still exist, in their order. When vega

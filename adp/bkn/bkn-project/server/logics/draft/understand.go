@@ -17,6 +17,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 // Semantic understanding of the tables in a project's data catalogs: vega-backend's tasks fill in
@@ -148,13 +149,9 @@ func (s *draftService) GetUnderstanding(ctx context.Context, token string, proje
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
-	s.pc.Resolve(ctx, token, caller, entry)
-	// The tables the network's object types read are named by the network already; a read that
-	// fails marks none.
-	readers, err := s.pc.TableReaders(ctx, token, entry.Project)
-	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network of project %s reads: %v", projectID, err))
-	}
+	// The tables the network's object types read are named by the network already: read with the
+	// catalogs, once; a read that fails marks none.
+	readers := logics.TableReaders(s.pc.ResolveReading(ctx, token, caller, entry))
 	understanding := &interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{}}
 	for _, catalogID := range entry.CatalogIDs {
 		tasks, visible, err := s.va.ListSemanticTasks(ctx, caller, catalogID)

@@ -33,7 +33,7 @@ func Test_ProjectCatalogs(t *testing.T) {
 			return &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", CatalogIDs: stored}}
 		}
 
-		Convey("TableReaders names the object types reading each table, leaving out what reads no table\n", func() {
+		Convey("Resolving hands back the network's object types it read, and TableReaders names them by table\n", func() {
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
 				{ID: "purchase_order", Name: "Purchase order", DataSource: resource("r-po")},
 				{ID: "po_view", DataSource: resource("r-po")},
@@ -41,24 +41,24 @@ func Test_ProjectCatalogs(t *testing.T) {
 				{ID: "note", Name: "Note"},
 				{ID: "rate", Name: "Rate", DataSource: &interfaces.KNDataSource{Type: "api", ID: "a1"}},
 			}, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r-po"}).Return([]*interfaces.VegaTable{
+				{ID: "r-po", CatalogID: "c-new"}}, nil)
+			e := entry()
 
-			readers, err := pc.TableReaders(ctx, "t", entry().Project)
+			read := pc.ResolveReading(ctx, "t", caller, e)
 
-			So(err, ShouldBeNil)
+			So(e.CatalogIDs, ShouldResemble, []string{"c-new"})
 			// One without a name is named by its id.
-			So(readers, ShouldResemble, map[string][]string{"r-po": {"Purchase order", "po_view"}})
+			So(TableReaders(read), ShouldResemble, map[string][]string{"r-po": {"Purchase order", "po_view"}})
 		})
 
-		Convey("TableReaders reads none when the network cannot be read, or without a network\n", func() {
+		Convey("Nothing read names no table\n", func() {
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return(nil, errors.New("down"))
-			readers, err := pc.TableReaders(ctx, "t", entry().Project)
-			So(err, ShouldNotBeNil)
-			So(readers, ShouldBeEmpty)
-
+			So(pc.ResolveReading(ctx, "t", caller, entry()), ShouldBeNil)
 			var none *ProjectCatalogs
-			readers, err = none.TableReaders(ctx, "t", entry().Project)
-			So(err, ShouldBeNil)
-			So(readers, ShouldBeEmpty)
+			So(none.ResolveReading(ctx, "t", caller, entry()), ShouldBeNil)
+			So(TableReaders(nil), ShouldBeEmpty)
 		})
 
 		Convey("After the network's catalog is installed again, the project reads the new one and drops the old silently\n", func() {

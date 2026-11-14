@@ -168,10 +168,10 @@ func Test_Understand(t *testing.T) {
 			entry := project("", "c1")
 			entry.KNID = "kn1"
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(entry, nil)
-			// Resolving the catalogs and naming the tables both read the network's object types.
+			// Resolving the catalogs reads the network's object types once, and they name the tables.
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "kn1").Return([]*interfaces.KNObjectTypeSource{
 				{ID: "order", Name: "Order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "r_orders"}},
-			}, nil).Times(2)
+			}, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{
 				{ID: "r_orders", CatalogID: "c1"}}, nil)
