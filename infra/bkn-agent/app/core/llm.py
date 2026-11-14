@@ -246,10 +246,7 @@ def normalize_response_format(rf: Optional[dict[str, Any]]) -> Optional[dict[str
 
 
 def build_chat_model(
-    agent_model: str,
-    streaming: bool = True,
-    max_output_tokens: Optional[int] = None,
-    thinking_mode: Optional[str] = None,
+    agent_model: str, streaming: bool = True, max_output_tokens: Optional[int] = None
 ) -> ChatOpenAI:
     """Every model call goes through mf-model-api (in-cluster /api/private). An
     empty model means the system default, resolved on the mf-model-api side; no
@@ -262,12 +259,9 @@ def build_chat_model(
     max_output_tokens (limits.max_output_tokens) is passed through as the
     OpenAI-compatible max_tokens: a provider default output cap is commonly
     around 4096, which truncates long JSON such as catalog semantic
-    understanding.
-
-    thinking_mode, when given, overrides the task's thinking mode for this
-    model: enabled or disabled."""
+    understanding."""
     kwargs = {"max_tokens": max_output_tokens} if max_output_tokens else {}
-    thinking_mode = thinking_mode or current_thinking_mode()
+    thinking_mode = current_thinking_mode()
     if thinking_mode:
         kwargs["default_headers"] = {"x-bkn-model-thinking-mode": thinking_mode}
     return TraceChatOpenAI(

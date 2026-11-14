@@ -348,9 +348,8 @@ class _FakeCM:
 def _wire(monkeypatch, captured):
     monkeypatch.setattr(runner, "create_agent", lambda *a, **k: _FakeGraph())
 
-    def fake_model(m, streaming=True, max_output_tokens=None, thinking_mode=None):
+    def fake_model(m, streaming=True, max_output_tokens=None):
         captured.setdefault("streaming", []).append(streaming)
-        captured.setdefault("thinking", []).append(thinking_mode)
         return object()
 
     monkeypatch.setattr(runner, "build_chat_model", fake_model)
@@ -400,8 +399,6 @@ def test_run_with_response_format_serializes(monkeypatch):
     ))
     assert json.loads(out) == {"greeting": "pong"}
     assert False in captured["streaming"]  # 抽结构化用非流式模型
-    # The structured call does not reason unless the task asked it to.
-    assert captured["thinking"][-1] == "disabled"
     # #556 回归：抽取是另起的一次模型调用，agent 系统提示词必须一并传下去，
     # 否则模型在零约束下填 schema（实测表现为把技术字段名原样抄进 display_name）
     assert captured["extract_system_prompt"] == "sys\n[技能] demo"
@@ -495,15 +492,3 @@ def test_normalize_response_format():
     assert normalize_response_format({"title": "X", "type": "object"}) == {"title": "X", "type": "object"}
     assert normalize_response_format(None) is None
 
-
-def test_build_chat_model_thinking_override():
-    from app.core import llm as llm_mod
-
-    token = llm_mod.set_thinking_mode("enabled")
-    try:
-        assert llm_mod.build_chat_model("m").default_headers["x-bkn-model-thinking-mode"] == "enabled"
-        model = llm_mod.build_chat_model("m", thinking_mode="disabled")
-        assert model.default_headers["x-bkn-model-thinking-mode"] == "disabled"
-    finally:
-        llm_mod.reset_thinking_mode(token)
-    assert not (llm_mod.build_chat_model("m").default_headers or {}).get("x-bkn-model-thinking-mode")
