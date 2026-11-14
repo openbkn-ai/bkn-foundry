@@ -546,7 +546,7 @@ func reboundObjectTypes(items *interfaces.DraftItems) map[string][]*interfaces.D
 // followReboundTypes retypes, as the caller, the properties of the object types bound again by name
 // whose fields' types the table bound gives differently, as binding again does now, and writes the
 // draft; drafts bound again before kept the types of the table gone. It returns how many object
-// types it retyped. A draft found in step is not read again until it changes, or a while passed.
+// types it wrote a decision for, retyped or only marked as followed. A draft found in step is not read again until it changes, or a while passed.
 func (s *draftService) followReboundTypes(ctx context.Context, caller interfaces.AccountInfo,
 	draft *interfaces.Draft) (int, error) {
 	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY {
@@ -590,8 +590,18 @@ func (s *draftService) followReboundTypes(ctx context.Context, caller interfaces
 			retyped++
 		}
 	}
-	if err := s.commit(ctx, draft, decisions, caller); err != nil {
+	// Only marking types that were in step changes nothing a confirmation read: one current before
+	// stays current.
+	keep := retyped == 0 && draft.Items.Confirmation != nil && draft.Items.Confirmation.UpdateTime == draft.UpdateTime
+	write := func(ctx context.Context, d *interfaces.Draft, read int64) (bool, error) {
+		if keep {
+			d.Items.Confirmation.UpdateTime = d.UpdateTime
+		}
+		return s.da.UpdateDraft(ctx, d, read)
+	}
+	if err := s.commitUsing(ctx, draft, decisions, caller, write); err != nil {
 		return 0, err
 	}
-	return retyped, nil
+	// What was written is read again by the caller, retyped or only marked.
+	return len(decisions), nil
 }

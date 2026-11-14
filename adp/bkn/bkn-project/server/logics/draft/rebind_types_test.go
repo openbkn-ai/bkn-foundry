@@ -177,6 +177,32 @@ func Test_RebindFollowsFieldTypes(t *testing.T) {
 			})
 		})
 
+		Convey("A confirmed draft bound again before with its types in step stays confirmed once marked\n", func() {
+			w.tables[len(w.tables)-1] = typedTable("new_regions", "c_new", "Region list", "regions",
+				"region_id", "string", "population", "string")
+			ot := regionsWithFields()
+			before := ot.Table
+			ot.Table = interfaces.DraftTable{ResourceID: "new_regions", Name: "Region list", CatalogID: "c_new",
+				CatalogName: "sample", SourceName: "regions"}
+			d := draftWith(ot)
+			d.Items.Decisions = append(d.Items.Decisions, &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES,
+				ItemID: "regions", Action: interfaces.DRAFT_DECISION_REBIND, Before: before, After: ot.Table, Time: readTime - 1})
+			if d.Items.Confirmation == nil {
+				d.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "c1"}
+			}
+			d.Items.Confirmation.UpdateTime = d.UpdateTime
+			store(d)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 1)
+			So(typeOf("population"), ShouldEqual, "string")
+			So(s.Confirmation.Current, ShouldBeTrue)
+			// The status read after writing tells the draft as written.
+			So(s.Draft.UpdateTime, ShouldEqual, stored.UpdateTime)
+		})
+
 		Convey("A table never bound again keeps its types: a changed field is a source change for a person\n", func() {
 			ot := regionsWithFields()
 			ot.Table = interfaces.DraftTable{ResourceID: "new_regions", Name: "Region list", CatalogID: "c_new",
