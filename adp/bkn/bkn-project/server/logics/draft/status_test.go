@@ -828,8 +828,10 @@ func Test_GetStatus(t *testing.T) {
 			s, err := svc.GetStatus(ctx, token, "p1", other)
 
 			So(err, ShouldBeNil)
-			So(s.DataSources.Tables.Total, ShouldEqual, 4)
-			So(s.DataSources.Tables.Missing, ShouldEqual, 2)
+			// Tables are counted once each, the items reading a gone one all named.
+			So(s.DataSources.Tables.Total, ShouldEqual, 3)
+			So(s.DataSources.Tables.Missing, ShouldEqual, 1)
+			So(s.DataSources.Tables.Affected, ShouldHaveLength, 2)
 			So(s.DataSources.Tables.Affected[1].ID, ShouldEqual, "products")
 			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
 				{Code: interfaces.BLOCKER_TABLE_MISSING, Count: 2, WaitingFor: interfaces.WAITING_FOR_OWNER},
@@ -1295,5 +1297,32 @@ func Test_GetStatus(t *testing.T) {
 
 			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
 		})
+	})
+}
+
+func Test_dataSourcesCountTables(t *testing.T) {
+	Convey("The data sources count each table once, and no knowledge-base dataset as a table\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		va := pmock.NewMockVegaAccess(ctrl)
+		svc := &draftService{va: va}
+		d := confirmableDraft()
+		// Two items on one table, and one reading the dataset an extraction writes.
+		d.Items.ObjectTypes[2].Table = d.Items.ObjectTypes[1].Table
+		d.Items.ObjectTypes[0].Document = &interfaces.DraftDocumentModel{}
+		// A relation drafted from documents links through a dataset too.
+		for _, rt := range d.Items.RelationTypes {
+			if rt.LinkTable != nil {
+				rt.Document = &interfaces.DraftDocumentModel{}
+			}
+		}
+		project := &interfaces.Project{ID: "p1"}
+		va.EXPECT().MissingTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
+
+		ds := svc.dataSources(context.Background(), project, d, false, caller)
+
+		// The shared table only: the datasets of the document object and relation are left out.
+		So(ds.Tables.Total, ShouldEqual, 1)
+		So(ds.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
 	})
 }
