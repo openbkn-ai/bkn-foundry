@@ -375,9 +375,10 @@ func (s *requirementService) ExtractConcepts(ctx context.Context, token string, 
 	// as the caller.
 	var listed sync.Once
 	var tables []*interfaces.VegaTable
-	p.prepareMessage = func(ctx context.Context, part int) (string, error) {
+	p.halves = func(part int) bool { return blockCount(parts[part].docs) > 1 }
+	p.prepareMessage = func(ctx context.Context, part int, half int) (string, error) {
 		listed.Do(func() { tables, _ = s.listTables(ctx, catalogIDs, caller) })
-		return buildConceptsMessage(project.NamingLanguage, parts[part].docs, tables, draft, spec)
+		return buildConceptsMessage(project.NamingLanguage, halfOf(parts[part].docs, half), tables, draft, spec)
 	}
 	var types map[string]string
 	p.check = func(ctx context.Context, _ int, out any) {

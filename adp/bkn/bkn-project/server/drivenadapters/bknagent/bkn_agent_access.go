@@ -28,6 +28,8 @@ import (
 const (
 	headerAccountID   = "x-account-id"
 	headerAccountType = "x-account-type"
+	// headerThinkingMode turns the model's reasoning on or off for one task.
+	headerThinkingMode = "x-bkn-agent-thinking-mode"
 )
 
 var (
@@ -77,7 +79,11 @@ func (ba *bknAgentAccess) RunTask(ctx context.Context, account interfaces.BknAge
 	httpUrl := ba.baseUrl + "/run"
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
 
-	respCode, respBody, err := ba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers(account), req)
+	runHeaders := headers(account)
+	if req.ThinkingMode != "" {
+		runHeaders[headerThinkingMode] = req.ThinkingMode
+	}
+	respCode, respBody, err := ba.httpClient.PostNoUnmarshal(ctx, httpUrl, runHeaders, req)
 	logger.Debugf("RunBknAgentTask finished, agent_id is [%s], response code is [%d]", req.AgentID, respCode)
 	if err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http run task failed")

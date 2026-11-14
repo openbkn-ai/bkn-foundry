@@ -260,10 +260,11 @@ func Test_RequirementSpecification(t *testing.T) {
 		})
 
 		Convey("FinishDrafting records the outcome only for the run that is drafting\n", func() {
-			done := &interfaces.Requirement{ProjectID: "p1", Status: "ready", RunID: "run1", AgentTaskID: "task1",
+			done := &interfaces.Requirement{ProjectID: "p1", Version: 2, Status: "ready", RunID: "run1", AgentTaskID: "task1",
 				Inputs: &interfaces.RequirementInputs{RulesVersion: 1}, UpdateTime: 9}
-			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_status = ?, f_spec = ?, f_inputs = ?, f_error = ?, f_agent_task_id = ?, f_update_time = ? WHERE f_project_id = ? AND f_status = ? AND f_run_id = ?")).
-				WithArgs("ready", emptySpec, `{"rules_version":1,"documents":null,"catalog_ids":null,"naming_language":""}`, "", "task1", int64(9), "p1", "drafting", "run1").
+			// A drafting that failed over a ready specification goes back to its version.
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_requirement SET f_version = ?, f_status = ?, f_spec = ?, f_inputs = ?, f_error = ?, f_agent_task_id = ?, f_update_time = ? WHERE f_project_id = ? AND f_status = ? AND f_run_id = ?")).
+				WithArgs(2, "ready", emptySpec, `{"rules_version":1,"documents":null,"catalog_ids":null,"naming_language":""}`, "", "task1", int64(9), "p1", "drafting", "run1").
 				WillReturnResult(sqlmock.NewResult(0, 0))
 
 			ok, err := ra.FinishDrafting(ctx, done)

@@ -395,7 +395,7 @@ func (ra *requirementAccess) FinishDrafting(ctx context.Context, req *interfaces
 		return false, err
 	}
 	sqlStr, vals, err := sq.Update(REQUIREMENT_TABLE_NAME).
-		Set("f_status", req.Status).Set("f_spec", specJSON).Set("f_inputs", inputsJSON).
+		Set("f_version", req.Version).Set("f_status", req.Status).Set("f_spec", specJSON).Set("f_inputs", inputsJSON).
 		Set("f_error", req.Error).Set("f_agent_task_id", req.AgentTaskID).Set("f_update_time", req.UpdateTime).
 		Where(sq.Eq{"f_project_id": req.ProjectID}).
 		Where(sq.Eq{"f_status": interfaces.REQUIREMENT_STATUS_DRAFTING}).

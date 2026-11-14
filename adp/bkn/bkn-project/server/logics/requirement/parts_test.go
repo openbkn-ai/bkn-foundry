@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,10 +163,22 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{}, nil)
-		// Cut off at the model's output cap: not asked again.
-		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
-			Status: interfaces.BKN_AGENT_TASK_FAILED, FailureDetail: "StructuredOutputError: structured output failed: " +
-				"not supported natively and the prompt fallback was still invalid (output truncated at the output limit)"}, nil)
+		// Cut off at the model's output cap: not asked the same again, but half by half, without
+		// reasoning; the halves are cut off too (as the OpenAI SDK says it).
+		var asked []*interfaces.BknAgentRunRequest
+		var mu sync.Mutex
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				asked = append(asked, req)
+				detail := "StructuredOutputError: structured output failed: not supported natively and the prompt " +
+					"fallback was still invalid (output truncated at the output limit)"
+				if len(asked) > 1 {
+					detail = "LengthFinishReasonError: Could not parse response content as the length limit was reached"
+				}
+				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_FAILED, FailureDetail: detail}, nil
+			}).Times(3)
 
 		_, err := svc.ExtractConcepts(context.Background(), token, "p1", caller, false)
 
@@ -173,8 +186,67 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		run := st.req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
 		So(run.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_FAILED)
 		So(run.Error, ShouldEqual, failureOutputTooLong)
-		So(run.Retried, ShouldBeFalse)
+		So(run.Retried, ShouldBeTrue)
 		So(run.PendingParts, ShouldResemble, pending)
+		for _, req := range asked {
+			So(req.ThinkingMode, ShouldEqual, "disabled")
+		}
+		// The halves read one block each.
+		halves := []string{asked[1].Message, asked[2].Message}
+		if !strings.Contains(halves[0], "Requests by email") {
+			halves[0], halves[1] = halves[1], halves[0]
+		}
+		So(halves[0], ShouldContainSubstring, "Requests by email")
+		So(halves[0], ShouldNotContainSubstring, "within 2 working days")
+		So(halves[1], ShouldContainSubstring, "within 2 working days")
+		So(halves[1], ShouldNotContainSubstring, "Requests by email")
+	})
+
+	Convey("A part cut off at the output cap is read half by half, and what the halves give is written\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ps := pmock.NewMockProjectService(ctrl)
+		ra := pmock.NewMockRequirementAccess(ctrl)
+		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
+		ra.EXPECT().SuggestDocumentType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+		da := pmock.NewMockDraftAccess(ctrl)
+		va := pmock.NewMockVegaAccess(ctrl)
+		ba := pmock.NewMockBknAgentAccess(ctrl)
+		svc := &requirementService{ps: ps, ra: ra, da: da, va: va, ba: ba,
+			now: func() int64 { return 1000 }, newID: func() string { return "run1" },
+			run: func(fn func()) { fn() }, sleep: func(time.Duration) {}}
+		owned := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, CatalogIDs: []string{"c1"}}}
+		docs := testDocuments()[1:]
+		st := &runStore{}
+		st.expect(ra)
+		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{}, nil)
+		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				whole := strings.Contains(req.Message, "Requests by email") && strings.Contains(req.Message, "within 2 working days")
+				switch {
+				case whole:
+					return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_FAILED,
+						FailureDetail: "LengthFinishReasonError: length limit was reached"}, nil
+				case strings.Contains(req.Message, "Requests by email"):
+					return &interfaces.BknAgentTask{TaskID: "t2", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+						Output: `{"concepts":[{"id":"a","term":"Signed change","category":"event","citations":[{"document_id":"pol","quote":"only a signed change does"}]}]}`}, nil
+				default:
+					return &interfaces.BknAgentTask{TaskID: "t3", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+						Output: `{"concepts":[{"id":"a","term":"Reply time","category":"property","citations":[{"document_id":"pol","quote":"within 2 working days"}]}]}`}, nil
+				}
+			}).Times(3)
+
+		_, err := svc.ExtractConcepts(context.Background(), token, "p1", caller, false)
+
+		So(err, ShouldBeNil)
+		run := st.req.Spec.Runs[interfaces.REQUIREMENT_RUN_CONCEPTS]
+		So(run.Status, ShouldEqual, interfaces.REQUIREMENT_RUN_READY)
+		So(run.Error, ShouldEqual, "")
+		So(run.PendingParts, ShouldBeEmpty)
+		So(ids(st.req.Spec.Concepts, conceptID), ShouldResemble, []string{"c1", "c2"})
 	})
 
 	Convey("Documents added or changed since the run that left parts to read are all read again\n", t, func() {

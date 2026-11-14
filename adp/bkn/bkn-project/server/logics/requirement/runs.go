@@ -33,12 +33,25 @@ func (s *requirementService) staleRunBefore() int64 {
 	return s.now() - draftDeadline.Milliseconds() - time.Minute.Milliseconds()
 }
 
+// askOptions are how a run asks the Agent. retryCutOff asks once more for an answer cut off at
+// the model's output cap; a caller that can ask for less at a time does that instead. thinking
+// turns the model's reasoning on or off, empty leaving the model's default.
+type askOptions struct {
+	retryCutOff bool
+	thinking    string
+}
+
+// longAnswer is how the runs that write the specification ask: their answer is one long JSON
+// document, and reasoning spends the model's output cap before it (a thinking model once used
+// all 16384 tokens on it), so it is off.
+var longAnswer = askOptions{retryCutOff: true, thinking: requirementThinkingMode}
+
 // askAgent runs the Agent once with message and the response format and waits for it up to
 // agentDeadline, decoding its answer into out: the failure code with why, or none.
 func (s *requirementService) askAgent(ctx context.Context, caller interfaces.AccountInfo, message string,
-	format map[string]any, out any, taskID *string) (string, error) {
+	format map[string]any, out any, taskID *string, thinking string) (string, error) {
 	task, err := s.ba.RunTask(ctx, caller, &interfaces.BknAgentRunRequest{
-		AgentID: requirementAgentID, Message: message, ResponseFormat: format,
+		AgentID: requirementAgentID, Message: message, ResponseFormat: format, ThinkingMode: thinking,
 	})
 	if err != nil {
 		return startFailure(err), err
@@ -67,27 +80,33 @@ func (s *requirementService) askAgent(ctx context.Context, caller interfaces.Acc
 	return "", nil
 }
 
+// cutOff tells whether the Agent failed for an answer cut off at the model's output cap: as
+// bkn-agent names it, or as the OpenAI SDK does when bkn-agent passes its error on.
+func cutOff(failure string, err error) bool {
+	return failure == failureAgentFailed && err != nil &&
+		(strings.Contains(err.Error(), structuredOutputTruncated) || strings.Contains(err.Error(), lengthFinishReason))
+}
+
 // askTwice asks the Agent, and once more when its answer was not the JSON the schema asks for: a
 // model without structured output sometimes writes a field missing or broken, and asked again,
-// writes it whole. A run that ran out of time is not asked again. It reports whether it asked again.
+// writes it whole; see askOptions for an answer cut off at the model's output cap. A run that ran
+// out of time is not asked again. It reports whether it asked again.
 func (s *requirementService) askTwice(ctx context.Context, projectID string, caller interfaces.AccountInfo,
-	message string, format map[string]any, newOut func() any, taskID *string) (any, bool, string, error) {
+	message string, format map[string]any, newOut func() any, taskID *string, opts askOptions) (any, bool, string, error) {
 	out := newOut()
-	failure, err := s.askAgent(ctx, caller, message, format, out, taskID)
-	// An answer cut off at the model's output cap is no likelier whole asked again: bkn-agent has
-	// already asked for a shorter one.
-	if failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputTruncated) {
+	failure, err := s.askAgent(ctx, caller, message, format, out, taskID, opts.thinking)
+	if cutOff(failure, err) && !opts.retryCutOff {
 		return out, false, failureOutputTooLong, err
 	}
 	retried := failure == failureOutputInvalid ||
-		failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputFailed)
+		failure == failureAgentFailed && (strings.Contains(err.Error(), structuredOutputFailed) || cutOff(failure, err))
 	if retried {
 		logger.Warnf("Requirement run of project %s asks the Agent again (%s): %v", projectID, failure, err)
 		out = newOut()
-		failure, err = s.askAgent(ctx, caller, message, format, out, taskID)
-		if failure == failureAgentFailed && strings.Contains(err.Error(), structuredOutputTruncated) {
-			failure = failureOutputTooLong
-		}
+		failure, err = s.askAgent(ctx, caller, message, format, out, taskID, opts.thinking)
+	}
+	if cutOff(failure, err) {
+		failure = failureOutputTooLong
 	}
 	return out, retried, failure, err
 }
@@ -105,9 +124,13 @@ type partRun struct {
 	// per part, all side by side, and a part that fails leaves what the others found. A run without
 	// parts asks once, as part 0.
 	parts []string
+	// halves, of a run in parts, tells whether a part can be split in two halves: a part whose
+	// answer was cut off at the model's output cap is then asked for half by half, once. Nil for a
+	// run that cannot.
+	halves func(part int) bool
 	// prepareMessage builds the message of a part, in the background: it may read what is slow to
-	// read.
-	prepareMessage func(ctx context.Context, part int) (string, error)
+	// read. half is 0 for the whole part, 1 or 2 for its first or second half.
+	prepareMessage func(ctx context.Context, part int, half int) (string, error)
 	// check checks the answer of a part, outside the write: it may write what the specification
 	// does not hold. Parts are checked one at a time, in order.
 	check func(ctx context.Context, part int, out any)
@@ -119,7 +142,8 @@ type partRun struct {
 
 // partAnswer is what asking the Agent for one part came to.
 type partAnswer struct {
-	out     any
+	// outs are the answers that came: the part's, or its halves'.
+	outs    []any
 	retried bool
 	failure string
 	err     error
@@ -130,14 +154,51 @@ type partAnswer struct {
 // they would outlast the time a run is given.
 func (s *requirementService) ask(ctx context.Context, p *partRun) []partAnswer {
 	answers := make([]partAnswer, max(len(p.parts), 1))
-	askPart := func(i int) {
-		a := &answers[i]
-		message, err := p.prepareMessage(ctx, i)
+	// A run that can halve a part asks for less rather than the same again.
+	opts := askOptions{retryCutOff: p.halves == nil, thinking: requirementThinkingMode}
+	askHalf := func(a *partAnswer, i int, half int) {
+		message, err := p.prepareMessage(ctx, i, half)
 		if err != nil {
 			a.failure, a.err = failureAgentUnavailable, err
 			return
 		}
-		a.out, a.retried, a.failure, a.err = s.askTwice(ctx, p.projectID, p.caller, message, p.format, p.newOut, &a.taskID)
+		out, retried, failure, err := s.askTwice(ctx, p.projectID, p.caller, message, p.format, p.newOut, &a.taskID, opts)
+		a.retried = a.retried || retried
+		if failure != "" {
+			a.failure, a.err = failure, err
+			return
+		}
+		a.outs = append(a.outs, out)
+	}
+	askPart := func(i int) {
+		a := &answers[i]
+		askHalf(a, i, 0)
+		if a.failure != failureOutputTooLong || p.halves == nil || !p.halves(i) {
+			return
+		}
+		// Cut off at the model's output cap: each half asks for about half the answer, both side
+		// by side, for the run to end in about the time of two asks.
+		logger.Warnf("Requirement %s run of project %s reads part %d in halves: %v", p.kind, p.projectID, i+1, a.err)
+		halves := [2]partAnswer{}
+		var wg sync.WaitGroup
+		for h := range halves {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				askHalf(&halves[h], i, h+1)
+			}()
+		}
+		wg.Wait()
+		a.failure, a.err, a.retried = "", nil, true
+		for _, half := range halves {
+			a.outs = append(a.outs, half.outs...)
+			if half.taskID != "" {
+				a.taskID = half.taskID
+			}
+			if half.failure != "" {
+				a.failure, a.err = half.failure, half.err
+			}
+		}
 	}
 	if len(answers) == 1 {
 		askPart(0)
@@ -197,6 +258,11 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 		if a.taskID != "" {
 			taskID = a.taskID
 		}
+		// What came is kept, of a part one half of which failed too; the part stays to read.
+		for _, out := range a.outs {
+			p.check(ctx, i, out)
+			done++
+		}
 		if a.failure != "" {
 			failure, err = a.failure, a.err
 			if i < len(p.parts) {
@@ -204,10 +270,7 @@ func (s *requirementService) execute(ctx context.Context, p *partRun) {
 			}
 			logger.Errorf("Requirement %s run of project %s failed on part %d of %d (%s, asked again: %t): %v",
 				p.kind, p.projectID, i+1, max(len(p.parts), 1), a.failure, a.retried, a.err)
-			continue
 		}
-		p.check(ctx, i, a.out)
-		done++
 	}
 	lastFailure := failure
 	if done > 0 {
