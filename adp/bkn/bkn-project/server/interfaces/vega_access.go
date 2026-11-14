@@ -13,8 +13,10 @@ import (
 
 // VegaTable is a table resource of vega-backend with the structure discovery recorded.
 type VegaTable struct {
-	ID          string
-	CatalogID   string
+	ID        string
+	CatalogID string
+	// CatalogName is the catalog's name, where the reader looked it up; vega's resources do not carry it.
+	CatalogName string
 	Name        string
 	Description string
 	// SourceName and SourceSchema name the physical table; foreign keys refer to it by them.

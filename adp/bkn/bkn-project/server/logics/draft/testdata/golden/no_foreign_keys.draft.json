@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_c",
         "name": "customers",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "customers"
       },
       "primary_keys": [
         "customer_id"
@@ -51,7 +52,8 @@
       "table": {
         "resource_id": "r_o",
         "name": "orders",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "orders"
       },
       "primary_keys": [
         "order_id"
@@ -103,7 +105,8 @@
       "table": {
         "resource_id": "r_p",
         "name": "products",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "products"
       },
       "primary_keys": [
         "product_id"

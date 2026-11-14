@@ -110,7 +110,12 @@ func Test_GenerateDraftOnExistingNetwork(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
+		var networkMissing []string
 		va := pmock.NewMockVegaAccess(ctrl)
+		va.EXPECT().CatalogNames(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).AnyTimes()
+		// The tables the network reads outside the catalogs drafted are there unless a test says otherwise.
+		va.EXPECT().MissingTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, []string) ([]string, error) { return networkMissing, nil }).AnyTimes()
 		ps := pmock.NewMockProjectService(ctrl)
 		gs := pmock.NewMockGitStore(ctrl)
 		setting := testSetting
@@ -289,7 +294,12 @@ func Test_AddCatalogsOnExistingNetwork(t *testing.T) {
 	Convey("Test adding a catalog to a draft made before it held what the network has\n", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
+		var networkMissing []string
 		va := pmock.NewMockVegaAccess(ctrl)
+		va.EXPECT().CatalogNames(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).AnyTimes()
+		// The tables the network reads outside the catalogs drafted are there unless a test says otherwise.
+		va.EXPECT().MissingTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, []string) ([]string, error) { return networkMissing, nil }).AnyTimes()
 		setting := testSetting
 		setting.QueryTimeout = 60
 		svc := &draftService{setting: setting, va: va, ira: &fakeIDRegistry{}}

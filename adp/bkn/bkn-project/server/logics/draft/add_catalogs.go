@@ -284,6 +284,10 @@ func (s *draftService) draftCatalogs(ctx context.Context, draft *interfaces.Draf
 	if err != nil {
 		return nil, err
 	}
+	// The network's tables are known by name too, once a catalog was created again.
+	if err := s.rebindExisting(ctx, caller, &existing, tables); err != nil {
+		return nil, err
+	}
 	tables, unreadable, left := withoutExistingTables(tables, unreadable, existingTableIDs(&existing))
 	// The new tables may relate to what the network already has, as to the draft's own items.
 	withNetwork := withExisting(draft.Items, existing)
