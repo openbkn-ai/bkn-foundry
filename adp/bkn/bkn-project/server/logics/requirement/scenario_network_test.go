@@ -44,7 +44,7 @@ func Test_ScenariosCoverTheWholeModel(t *testing.T) {
 				{Type: interfaces.LOGIC_LINK_ACTION_TYPE, ID: "a1", Name: "Hold order", OwnerObjectTypeID: "sales_order"},
 			}
 			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, networkDraft(),
-				emptySpec(), emptySpec(), items, "")
+				emptySpec(), emptySpec(), items, "", interfaces.RequirementKnowledge{})
 			So(err, ShouldBeNil)
 			var msg draftMessage
 			So(json.Unmarshal([]byte(message[strings.Index(message, "{"):]), &msg), ShouldBeNil)

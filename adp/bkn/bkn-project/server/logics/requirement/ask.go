@@ -107,11 +107,13 @@ func askResponseFormat() map[string]any {
 
 // askMessage is the user message of pass ask.
 type askMessage struct {
-	Page       string                `json:"page"`
-	Question   string                `json:"question"`
-	History    []askHistoryTurn      `json:"history"`
-	Refs       []string              `json:"refs"`
-	Supplement string                `json:"supplement,omitempty"`
+	Page       string           `json:"page"`
+	Question   string           `json:"question"`
+	History    []askHistoryTurn `json:"history"`
+	Refs       []string         `json:"refs"`
+	Supplement string           `json:"supplement,omitempty"`
+	// Knowledge is what the knowledge base holds: its concepts and rules, absent when none.
+	Knowledge  *messageKnowledge     `json:"knowledge,omitempty"`
 	Documents  []messageDocument     `json:"documents"`
 	ObjectType []messageObjectType   `json:"object_types"`
 	Relations  []messageRelationType `json:"relation_types"`
@@ -160,11 +162,13 @@ type askInputs struct {
 	draft      *interfaces.Draft
 	spec       *interfaces.RequirementSpec
 	items      []*interfaces.LogicNetworkItem
+	knowledge  interfaces.RequirementKnowledge
 }
 
 func buildAskMessage(page string, question string, refs []interfaces.RequirementAskRef, history []askHistoryTurn,
 	in *askInputs) (string, error) {
 	msg := askMessage{Page: page, Question: question, History: history, Refs: []string{}, Supplement: in.supplement,
+		Knowledge: messageKnowledgeOf(in.knowledge),
 		Documents: messageDocumentsOf(in.docs), Concepts: messageConceptsOf(in.spec.Concepts), Rules: []askRule{},
 		LogicNeeds: messageLogicNeedsOf(in.spec.LogicNeeds), Editable: map[string][]string{}}
 	for _, ref := range refs {
@@ -676,6 +680,7 @@ func (s *requirementService) Ask(ctx context.Context, token string, projectID st
 	in.docs = s.withBackground(ctx, token, entry, docs)
 	if draft, found, err := s.da.GetDraft(ctx, projectID); err == nil && found {
 		in.draft = draft
+		in.knowledge = knowledgeOf(ctx, draft)
 	}
 	if items, err := s.kineticNetworkItems(ctx, token, entry.KNID); err == nil {
 		in.items = items

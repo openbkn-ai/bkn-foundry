@@ -200,6 +200,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// The supplement note both AI-assisted pages share, and their Ask AI conversations.
 	apiV1.GET("/projects/:project_id/requirements/supplement", r.GetRequirementSupplementByEx)
 	apiV1.PUT("/projects/:project_id/requirements/supplement", r.SetRequirementSupplementByEx)
+	// What the knowledge base holds for both pages: the concepts and rules AI reads.
+	apiV1.GET("/projects/:project_id/requirements/knowledge", r.GetRequirementKnowledgeByEx)
 	apiV1.GET("/projects/:project_id/requirements/conversations", r.ListRequirementConversationsByEx)
 	apiV1.POST("/projects/:project_id/requirements/conversations", r.StartRequirementConversationByEx)
 	apiV1.GET("/projects/:project_id/requirements/conversations/:conversation_id", r.GetRequirementConversationByEx)

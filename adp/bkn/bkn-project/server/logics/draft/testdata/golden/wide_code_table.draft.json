@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_st",
         "name": "status_codes",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "status_codes"
       },
       "primary_keys": [
         "code"
@@ -87,7 +88,8 @@
       "table": {
         "resource_id": "r_t",
         "name": "tickets",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "tickets"
       },
       "primary_keys": [
         "ticket_id"

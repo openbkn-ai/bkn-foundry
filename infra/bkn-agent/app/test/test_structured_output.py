@@ -256,6 +256,58 @@ def test_fallback_network_failure_is_not_hidden():
         asyncio.run(structured_extract(m, [], SCHEMA))
 
 
+def _length_error(reasoning_tokens):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+
+    completion = ChatCompletion.model_validate({
+        "id": "c", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0, "finish_reason": "length",
+                     "message": {"role": "assistant", "content": ""}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 16384, "total_tokens": 16385,
+                  "completion_tokens_details": {"reasoning_tokens": reasoning_tokens}},
+    })
+    return LengthFinishReasonError(completion=completion)
+
+
+def test_reply_parsed_and_cut_off_is_retried_shorter(caplog):
+    """langchain-openai parses a response_format reply through the SDK, which
+    raises at the output cap; that is a truncated reply, asked again shorter."""
+    m = _JsonMode([('{"greeting": "short"}', "stop")])
+    calls = {"n": 0}
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise _length_error(16384)
+                return m._reply(messages)
+
+        return _Bound()
+
+    m.bind = bind
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "short"}
+    assert "cut off" in str(m.seen[0][-1])
+    assert "reasoning_tokens=16384" in caplog.text
+
+
+def test_reply_cut_off_twice_names_truncation():
+    m = _JsonMode([])
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                raise _length_error(15000)
+
+        return _Bound()
+
+    m.bind = bind
+    with pytest.raises(structured.StructuredOutputError, match=structured.TRUNCATED):
+        asyncio.run(structured_extract(m, [], SCHEMA))
+
+
 def test_fallback_accepts_raw_newline_in_string():
     m = _JsonMode([('{"greeting": "a' + chr(10) + 'b"}', "stop")])
     out = asyncio.run(structured_extract(m, [], SCHEMA))
@@ -439,3 +491,4 @@ def test_normalize_response_format():
     assert normalize_response_format({"type": "object", "properties": {}})["title"] == "StructuredResponse"
     assert normalize_response_format({"title": "X", "type": "object"}) == {"title": "X", "type": "object"}
     assert normalize_response_format(None) is None
+
