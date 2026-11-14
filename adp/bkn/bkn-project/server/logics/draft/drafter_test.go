@@ -204,7 +204,7 @@ func Test_Drafter(t *testing.T) {
 			So(customers.Key, ShouldResemble, interfaces.DraftKeyEvidence{
 				Source: interfaces.DRAFT_KEY_PRIMARY_KEY, Computed: true, Rows: 60, Distinct: 60,
 			})
-			So(customers.Table, ShouldResemble, interfaces.DraftTable{ResourceID: "r_customers", Name: "customers", CatalogID: "c1"})
+			So(customers.Table, ShouldResemble, interfaces.DraftTable{ResourceID: "r_customers", Name: "customers", CatalogID: "c1", SourceName: "customers"})
 			id := customers.Properties[0]
 			So(id.DisplayName, ShouldEqual, "Customer number")
 			So(id.MappedField, ShouldEqual, "customer_id")

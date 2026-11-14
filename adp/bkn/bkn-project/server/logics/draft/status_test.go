@@ -503,6 +503,12 @@ func Test_GetStatus(t *testing.T) {
 				askedTables = append(askedTables, ids)
 				return missingTables, tablesErr
 			}).AnyTimes()
+		// The catalogs' names; none unless a test sets some.
+		catalogNames := map[string]string{}
+		va.EXPECT().CatalogNames(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+			func(context.Context, interfaces.VegaAccount, []string) (map[string]string, error) {
+				return catalogNames, nil
+			}).AnyTimes()
 		// The structure of the tables read; none unless a test sets some, which compares nothing.
 		var structure []*interfaces.VegaTable
 		va.EXPECT().GetTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(

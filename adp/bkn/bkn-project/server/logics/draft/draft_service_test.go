@@ -68,6 +68,7 @@ func Test_DraftService(t *testing.T) {
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
+		va.EXPECT().CatalogNames(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).AnyTimes()
 		ps := pmock.NewMockProjectService(ctrl)
 		setting := testSetting
 		setting.Timeout = time.Minute

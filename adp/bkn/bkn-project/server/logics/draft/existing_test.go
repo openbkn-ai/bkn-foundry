@@ -159,6 +159,7 @@ func Test_GenerateDraftLeavesOutExistingTables(t *testing.T) {
 		defer ctrl.Finish()
 		da := pmock.NewMockDraftAccess(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
+		va.EXPECT().CatalogNames(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).AnyTimes()
 		ps := pmock.NewMockProjectService(ctrl)
 		gs := pmock.NewMockGitStore(ctrl)
 		setting := testSetting

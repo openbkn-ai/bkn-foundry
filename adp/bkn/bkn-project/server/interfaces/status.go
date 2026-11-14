@@ -163,6 +163,9 @@ type ProjectStatusDataSources struct {
 	// Tables are those of the adopted object types and the link tables of adopted relation types; a
 	// value type keeps its values in the definitions.
 	Tables ProjectStatusDependency `json:"tables"`
+	// Reconnected counts the tables bound again by catalog name and table name since the draft was
+	// last confirmed, after they were deleted and created again; absent when none were.
+	Reconnected int `json:"reconnected,omitempty"`
 }
 
 // ProjectStatusDependency is the state of one kind of dependency, with how many there are and how
@@ -181,6 +184,8 @@ type ProjectStatusAffected struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Table string `json:"table"`
+	// SourceTable is the physical table's name, when the draft recorded it.
+	SourceTable string `json:"source_table,omitempty"`
 }
 
 type ProjectStatusDraft struct {

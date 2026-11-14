@@ -88,7 +88,8 @@ func sourceName(catalogID string, schema string, name string) string {
 }
 
 func draftTable(table *interfaces.VegaTable) interfaces.DraftTable {
-	return interfaces.DraftTable{ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID}
+	return interfaces.DraftTable{ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID,
+		CatalogName: table.CatalogName, SourceName: table.SourceName}
 }
 
 // draft runs every rule over the tables, in order: classify, object types and their keys,

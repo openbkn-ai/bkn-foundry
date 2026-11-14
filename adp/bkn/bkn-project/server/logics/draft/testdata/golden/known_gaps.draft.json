@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_dept",
         "name": "departments",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "departments"
       },
       "primary_keys": [
         "dept_id"
@@ -51,7 +52,8 @@
       "table": {
         "resource_id": "r_emp",
         "name": "employees",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "employees"
       },
       "primary_keys": [
         "employee_id"
@@ -103,7 +105,8 @@
       "table": {
         "resource_id": "r_staff",
         "name": "staff",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "staff"
       },
       "primary_keys": [
         "staff_id"
@@ -155,7 +158,8 @@
       "table": {
         "resource_id": "r_link",
         "name": "staff_teams",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "staff_teams"
       },
       "primary_keys": null,
       "display_key": "",
@@ -249,7 +253,8 @@
       "code_table": {
         "resource_id": "r_team",
         "name": "teams",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "teams"
       },
       "used_by": [
         {

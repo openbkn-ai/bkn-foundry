@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_s",
         "name": "stock",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "stock"
       },
       "primary_keys": [
         "stock_id"
@@ -60,7 +61,8 @@
       "table": {
         "resource_id": "r_w",
         "name": "warehouse",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "warehouse"
       },
       "primary_keys": [
         "warehouse_id"

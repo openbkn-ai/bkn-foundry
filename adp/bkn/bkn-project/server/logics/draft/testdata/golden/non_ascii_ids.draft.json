@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_supplier",
         "name": "supplier",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "supplier"
       },
       "primary_keys": [
         "id"
@@ -51,7 +52,8 @@
       "table": {
         "resource_id": "r_ck",
         "name": "仓库",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "仓库"
       },
       "primary_keys": [
         "p_fc1477"
@@ -85,7 +87,8 @@
       "table": {
         "resource_id": "r_gys",
         "name": "供应商",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "供应商"
       },
       "primary_keys": [
         "p_fc1477"
@@ -137,7 +140,8 @@
       "table": {
         "resource_id": "r_wl",
         "name": "物料",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "物料"
       },
       "primary_keys": [
         "p_fc1477"
@@ -171,7 +175,8 @@
       "table": {
         "resource_id": "r_cgd",
         "name": "采购单",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "采购单"
       },
       "primary_keys": [
         "p_5c2eb0"
