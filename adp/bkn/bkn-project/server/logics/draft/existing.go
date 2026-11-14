@@ -6,15 +6,18 @@ package draft
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 const relationTypesDir = "relation_types/"
@@ -37,7 +40,7 @@ func (s *draftService) GetExisting(ctx context.Context, token string, projectID 
 	} else if exist {
 		owned = ownedPaths(draft.Items.Confirmation)
 	}
-	existing, err := s.readExisting(ctx, entry.KNID, entry.Branch, owned)
+	existing, err := s.readExisting(ctx, token, entry.KNID, entry.Branch, owned)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read branch failed")
 		return nil, internalError(ctx, "Read branch failed", err)
@@ -55,14 +58,39 @@ func ownedPaths(confirmation *interfaces.DraftConfirmation) []string {
 }
 
 // readExisting parses the definitions of the branch outside owned. A file that does not parse is
-// left out, as the release review leaves it.
-func (s *draftService) readExisting(ctx context.Context, lineageID string, branch string,
+// left out, as the release review leaves it. Each object type reads the table the network's reads
+// now: a branch keeps the ids it was written with, and a network bound again to tables created
+// anew reads other ids, as the catalogs the project lists from the network do.
+func (s *draftService) readExisting(ctx context.Context, token string, lineageID string, branch string,
 	owned []string) (*interfaces.DraftExisting, error) {
 	files, err := s.gs.ReadTree(ctx, lineageID, "refs/heads/"+branch)
 	if err != nil {
 		return nil, err
 	}
-	return existingOf(files, owned), nil
+	existing := existingOf(files, owned)
+	if tables := s.networkTables(ctx, token, lineageID); tables != nil {
+		for _, ot := range existing.ObjectTypes {
+			if id := tables[ot.ID]; id != "" && ot.TableID != "" {
+				ot.TableID = id
+			}
+		}
+	}
+	return existing, nil
+}
+
+// networkTables are the tables the network's object types read now, by object type id, as
+// bkn-backend tells: the network is what runs, and what the project lists as the tables the network
+// uses. nil when it cannot tell; the definitions read stand then.
+func (s *draftService) networkTables(ctx context.Context, token string, knID string) map[string]string {
+	if s.pc == nil || s.pc.BBA == nil {
+		return nil
+	}
+	tables, err := logics.NetworkTables(ctx, s.pc.BBA, token, knID)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network's object types read: %v", err))
+		return nil
+	}
+	return tables
 }
 
 // existingDefinitions parses the object and relation types of the branch outside owned, by id,

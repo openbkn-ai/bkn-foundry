@@ -117,6 +117,29 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			return &written, &recorded
 		}
 
+		Convey("Preparing keeps the tables the network reads now for what the release does not change\n", func() {
+			id := newLineageID()
+			setUp(id)
+			// The network was bound again to tables created anew: both its object types read others now.
+			bba := pmock.NewMockBknBackendAccess(mockCtrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, id).Return([]*interfaces.KNObjectTypeSource{
+				{ID: "part", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "view_part_new"}},
+				{ID: "supplier", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "view_supplier_new"}},
+			}, nil)
+			svc.bba = bba
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+			written, _ := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			So(err, ShouldBeNil)
+			// The supplier the release leaves as it was reads the network's table, not the one gone.
+			So(string((*written)["object_types/supplier.bkn"]), ShouldContainSubstring, "| view_supplier_new |")
+			So(string((*written)["object_types/supplier.bkn"]), ShouldNotContainSubstring, "| view_supplier |")
+			// The part the project edited is written as the project wrote it.
+			So(string((*written)["object_types/part.bkn"]), ShouldContainSubstring, "| view_part |")
+		})
+
 		Convey("Preparing writes the branch into the draft at the revision read and records a prepared release\n", func() {
 			id := newLineageID()
 			_, branchHead := setUp(id)

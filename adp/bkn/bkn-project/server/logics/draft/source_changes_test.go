@@ -18,6 +18,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 // syncedDraft binds customers to t_customers, orders to t_orders, and customer tags through the
@@ -465,6 +466,26 @@ func Test_GetSourceChanges(t *testing.T) {
 			So(got.MissingTables, ShouldResemble, []interfaces.ProjectStatusAffected{
 				{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: "regions", Name: "Regions", Table: "regions"},
 			})
+		})
+
+		Convey("A type only published reads the table the network reads now, not the one published\n", func() {
+			// The network was bound again to its tables, created anew: regions reads t_regions_new.
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "regions", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "t_regions_new"}},
+			}, nil)
+			svc.pc = &logics.ProjectCatalogs{BBA: bba}
+			now := []string{"t_customers", "t_orders", "t_customer_tags", "t_regions_new"}
+			va.EXPECT().MissingTables(gomock.Any(), caller, now).Return(nil, nil)
+			regions := &interfaces.VegaTable{ID: "t_regions_new", Columns: []interfaces.VegaColumn{
+				{Name: "code", Type: "string"}, {Name: "label", Type: "string"}}}
+			va.EXPECT().GetTables(gomock.Any(), caller, now).
+				Return([]*interfaces.VegaTable{customersTable(), ordersTable(), customerTagsTable(), regions}, nil)
+
+			got, err := svc.GetSourceChanges(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(got.MissingTables, ShouldBeEmpty)
 		})
 
 		Convey("vega not answering is unreachable, not in step\n", func() {

@@ -441,6 +441,15 @@ func (s *draftService) GetSourceChanges(ctx context.Context, token string, proje
 		return nil, internalError(ctx, "Read definitions failed", err)
 	}
 	published := publishedObjectTypes(files)
+	// The network reads what it reads now, which a network bound again to tables created anew
+	// changed after the definitions were published.
+	if tables := s.networkTables(ctx, token, entry.KNID); tables != nil {
+		for _, ot := range published {
+			if id := tables[ot.ID]; id != "" {
+				ot.DataSource.ID = id
+			}
+		}
+	}
 
 	ids := draftSourceIDs(draft)
 	documents := map[string]bool{}
