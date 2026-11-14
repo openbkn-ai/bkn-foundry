@@ -389,6 +389,9 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 	Convey("On a network the project started on, the analysis builds on what the network has\n", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
+		// The knowledge base's rules go with the rest, as the edition reads them from the draft.
+		defer withKnowledge(interfaces.RequirementKnowledge{Rules: []*interfaces.RequirementKnowledgeItem{
+			{Name: "Partial invoicing", Description: "Invoice each delivered batch", Kind: interfaces.CONCEPT_VERDICT_KINETIC}}})()
 		ps := pmock.NewMockProjectService(ctrl)
 		ra := pmock.NewMockRequirementAccess(ctrl)
 		ra.EXPECT().GetSupplement(gomock.Any(), gomock.Any()).Return(&interfaces.RequirementSupplement{}, nil).AnyTimes()
@@ -455,6 +458,8 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 					{ID: "kept-network-2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Window check", Definition: "d"},
 				})
 				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
+				So(msg.Knowledge, ShouldResemble, &messageKnowledge{Concepts: []messageKnowledgeItem{},
+					Rules: []messageKnowledgeItem{{Name: "Partial invoicing", Definition: "Invoice each delivered batch"}}})
 				So(msg.Documents[len(msg.Documents)-1].ID, ShouldEqual, interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID)
 				So(msg.Documents[len(msg.Documents)-1].Blocks[0].Text, ShouldContainSubstring, "kit availability")
 				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
@@ -464,10 +469,14 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 
 		So(err, ShouldBeNil)
 		spec := st.req.Spec
-		// Only the gap is a new need: what the network has, or covers, is not given again.
-		So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4"})
-		So(spec.LogicNeeds[3].Name, ShouldEqual, "On-time rate")
-		So(spec.LogicNeeds[3].Link, ShouldBeNil)
+		// What the network has is not given again; a need it covers is added linked to it, and only
+		// the gap is left to implement.
+		So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4", "n5"})
+		So(spec.LogicNeeds[3].Name, ShouldEqual, "Working days in window")
+		So(spec.LogicNeeds[3].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION,
+			ID: "f1", BoxID: "box1", By: caller, At: 1000})
+		So(spec.LogicNeeds[4].Name, ShouldEqual, "On-time rate")
+		So(spec.LogicNeeds[4].Link, ShouldBeNil)
 		// The stated need the Agent says a function covers is linked to it.
 		So(spec.LogicNeeds[2].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION,
 			ID: "f1", BoxID: "box1", By: caller, At: 1000})

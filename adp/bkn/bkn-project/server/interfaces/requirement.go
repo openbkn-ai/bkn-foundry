@@ -963,6 +963,9 @@ type RequirementService interface {
 	GetSupplement(ctx context.Context, token string, projectID string) (*RequirementSupplement, error)
 	SetSupplement(ctx context.Context, token string, projectID string, edit RequirementSupplementEdit,
 		caller AccountInfo) (*RequirementSupplement, error)
+	// GetKnowledge returns what the project's knowledge base holds for kinetic analysis, scenario
+	// drafting and Ask AI: the concepts and rules they read beside the documents and the model.
+	GetKnowledge(ctx context.Context, token string, projectID string) (*RequirementKnowledge, error)
 	// ListConversations lists the Ask AI conversations of a page; GetConversation reads one.
 	ListConversations(ctx context.Context, token string, projectID string, page string) ([]*RequirementConversation, error)
 	GetConversation(ctx context.Context, token string, projectID string, conversationID string) (*RequirementConversation, error)
