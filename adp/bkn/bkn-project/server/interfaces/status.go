@@ -30,6 +30,9 @@ const (
 	BLOCKER_NEEDS_IDENTITY  = "needs_identity"
 	BLOCKER_UNADOPTED_ENDS  = "unadopted_ends"
 	BLOCKER_NOTHING_ADOPTED = "nothing_adopted"
+	// BLOCKER_LINK_TYPES_MISMATCH: an adopted relation links records by two fields whose types of
+	// value can never match, so it would find no link until one of the types changes.
+	BLOCKER_LINK_TYPES_MISMATCH = "link_types_mismatch"
 	// What the project branch would refuse confirming for, read ahead.
 	BLOCKER_BRANCH_NOT_V3     = "branch_not_v3"
 	BLOCKER_LINEAGE_NOT_V3    = "lineage_not_v3"

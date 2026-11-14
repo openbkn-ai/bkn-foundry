@@ -176,6 +176,20 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 		})
 	}
 
+	// A relation whose linking fields can never match is settled by changing a field's type, in the
+	// item itself, or by leaving the relation out.
+	linkMismatch := pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH]
+	for _, rt := range relationTypes {
+		if !slices.Contains(linkMismatch, rt.ID) {
+			continue
+		}
+		p.Items = append(p.Items, interfaces.PendingItem{
+			Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: rt.ID, Name: rt.Name, Blocking: true,
+			Reason: interfaces.BLOCKER_LINK_TYPES_MISMATCH, Evidence: rt.Evidence,
+			Options: []interfaces.PendingOption{setAdopted(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, false, interfaces.ACTION_UNADOPT)},
+		})
+	}
+
 	// Then what drafting left out and no one decided on: taking it in is the person's choice, and
 	// confirming without leaves it out only when accepted.
 	for _, u := range undecidedItems(&draft.Items) {

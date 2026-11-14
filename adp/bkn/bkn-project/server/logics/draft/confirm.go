@@ -17,11 +17,13 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
 // pendingItems lists what waits for a person before a draft can be confirmed: adopted object
-// types without an identity, and adopted relations whose ends are not both adopted. An object
+// types without an identity, adopted relations whose ends are not both adopted, and adopted
+// relations whose linking fields can never match, as the edition tells. An object
 // type that is not adopted waits for no one; it is not written.
 func pendingItems(items *interfaces.DraftItems) map[string][]string {
 	pending := map[string][]string{}
@@ -34,6 +36,13 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 		// What the network already has waits for no one here: it is not written.
 		if rt.Adopted && !rt.Existing && !(objectTypeAdopted(items, rt.Source) && objectTypeAdopted(items, rt.Target)) {
 			pending["unadopted_ends"] = append(pending["unadopted_ends"], rt.ID)
+		}
+	}
+	if checker, ok := documentHooks().(projecthooks.LinkChecker); ok {
+		for _, rt := range items.RelationTypes {
+			if rt.Adopted && !rt.Existing && checker.LinkTypesMismatch(items, rt) {
+				pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH] = append(pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH], rt.ID)
+			}
 		}
 	}
 	return pending

@@ -172,6 +172,14 @@ type KnowledgeReader interface {
 	Knowledge(concepts []interfaces.DraftConcept) (held []interfaces.DraftConcept, rules []interfaces.DraftConcept)
 }
 
+// LinkChecker is what an edition's Drafts add when their relations link records by the values of
+// one field on each side: it tells an adopted relation whose two fields hold types of value that
+// can never match, so it would find no link. It is asserted on Drafts like KnowledgeReader; without
+// it no relation waits for this.
+type LinkChecker interface {
+	LinkTypesMismatch(items *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool
+}
+
 // DocumentConcept is what a document item is as a concept.
 type DocumentConcept struct {
 	// Evidence locates a business item's text: it follows its business items and is no concept.
