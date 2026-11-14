@@ -126,6 +126,17 @@ func (s *draftService) getStatus(ctx context.Context, token string, projectID st
 				return s.getStatus(ctx, token, projectID, caller, false)
 			}
 		}
+		// Tables bound again before their fields' types were followed are followed now.
+		if rebind && status.Stage != interfaces.PROJECT_STAGE_ARCHIVED && caller.ID == entry.Owner.ID {
+			n, err := s.followReboundTypes(ctx, caller, draft)
+			if err != nil {
+				otellog.LogWarn(ctx, fmt.Sprintf("Follow the field types of the tables of project %s bound again: %v", projectID, err))
+			}
+			if n > 0 {
+				span.SetStatus(codes.Ok, "")
+				return s.getStatus(ctx, token, projectID, caller, false)
+			}
+		}
 		status.DataSources.Reconnected = reconnectedTables(draft)
 		withDataSources(status, entry.Project, caller)
 		s.withSourceChanges(ctx, status, entry.Project, draft, caller)

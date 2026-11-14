@@ -203,6 +203,11 @@ func applyRebind(items *interfaces.DraftItems, refs []draftTableRef, matches map
 			Kind: ref.kind, ItemID: ref.itemID, Action: interfaces.DRAFT_DECISION_REBIND,
 			Before: before, After: *ref.table,
 		})
+		if ref.kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+			if d := followFieldTypes(findObjectType(items, ref.itemID), table); d != nil {
+				decisions = append(decisions, d)
+			}
+		}
 	}
 	if items.Inputs == nil {
 		return decisions
@@ -467,4 +472,104 @@ func tableIDOf(v any) string {
 		return id
 	}
 	return ""
+}
+
+// followFieldTypes retypes the properties of ot that map a field of table, its table bound again,
+// to the type the field drafts as now: checking and knowledge-base builds read the field by the
+// property's type. It returns the decision recording what it retyped, nil when nothing. A field
+// gone, of a type BKN does not map, or one that would leave a key of a type no key may have, is
+// left as it is, to be told as a source change.
+func followFieldTypes(ot *interfaces.DraftObjectType, table *interfaces.VegaTable) *interfaces.DraftDecision {
+	if ot == nil || table == nil || len(table.Columns) == 0 {
+		return nil
+	}
+	retyped := []interfaces.SourceColumnChange{}
+	for _, p := range ot.Properties {
+		if p.MappedField == "" {
+			continue
+		}
+		c, ok := column(table, p.MappedField)
+		if !ok {
+			continue
+		}
+		to := bknTypes[c.Type]
+		if to == "" || to == p.Type || slices.Contains(ot.PrimaryKeys, p.Name) && !keyTypes[to] {
+			continue
+		}
+		retyped = append(retyped, interfaces.SourceColumnChange{
+			Change: interfaces.SOURCE_CHANGE_RETYPED, Field: p.MappedField, Property: p.Name,
+			PropertyName: p.DisplayName, FromType: p.Type, ToType: to, Key: slices.Contains(ot.PrimaryKeys, p.Name),
+		})
+		p.Type = to
+	}
+	if len(retyped) == 0 {
+		return nil
+	}
+	return &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID,
+		Action: interfaces.DRAFT_DECISION_SYNC, After: retyped}
+}
+
+// reboundObjectTypes are the object types whose table was bound again by name, to the table they
+// read now, by that table's id.
+func reboundObjectTypes(items *interfaces.DraftItems) map[string][]*interfaces.DraftObjectType {
+	rebound := map[string]bool{}
+	for _, d := range items.Decisions {
+		if d.Action == interfaces.DRAFT_DECISION_REBIND && d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+			rebound[d.ItemID+"|"+tableIDOf(d.After)] = true
+		}
+	}
+	byTable := map[string][]*interfaces.DraftObjectType{}
+	for _, ot := range items.ObjectTypes {
+		if id := ot.Table.ResourceID; id != "" && rebound[ot.ID+"|"+id] {
+			byTable[id] = append(byTable[id], ot)
+		}
+	}
+	return byTable
+}
+
+// followReboundTypes retypes, as the caller, the properties of the object types bound again by name
+// whose fields' types the table bound gives differently, as binding again does now, and writes the
+// draft; drafts bound again before kept the types of the table gone. It returns how many object
+// types it retyped. A draft found in step is not read again until it changes, or a while passed.
+func (s *draftService) followReboundTypes(ctx context.Context, caller interfaces.AccountInfo,
+	draft *interfaces.Draft) (int, error) {
+	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY {
+		return 0, nil
+	}
+	byTable := reboundObjectTypes(&draft.Items)
+	if len(byTable) == 0 {
+		return 0, nil
+	}
+	inStep := fmt.Sprintf("types|%s|%d", draft.ProjectID, draft.UpdateTime)
+	if at, ok := s.rebindMisses.Load(inStep); ok {
+		if time.Since(at.(time.Time)) < rebindRetryAfter {
+			return 0, nil
+		}
+		s.rebindMisses.Delete(inStep)
+	}
+	ids := make([]string, 0, len(byTable))
+	for id := range byTable {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	tables, err := s.va.GetTables(ctx, caller, ids)
+	if err != nil {
+		return 0, fmt.Errorf("read the tables bound again: %w", err)
+	}
+	decisions := []*interfaces.DraftDecision{}
+	for _, table := range tables {
+		for _, ot := range byTable[table.ID] {
+			if d := followFieldTypes(ot, table); d != nil {
+				decisions = append(decisions, d)
+			}
+		}
+	}
+	if len(decisions) == 0 {
+		s.rebindMisses.Store(inStep, time.Now())
+		return 0, nil
+	}
+	if err := s.commit(ctx, draft, decisions, caller); err != nil {
+		return 0, err
+	}
+	return len(decisions), nil
 }
