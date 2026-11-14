@@ -795,7 +795,8 @@ func Test_RequirementDrafting(t *testing.T) {
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
-			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+			// Drafting over a ready specification that fails leaves it ready, saying why.
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 			So(finished.Error, ShouldEqual, failureAgentTimeout)
 			So(reads, ShouldBeLessThanOrEqualTo, int(agentDeadline/pollInterval))
 			So(clock-1000, ShouldBeGreaterThanOrEqualTo, agentDeadline.Milliseconds())
@@ -834,7 +835,8 @@ func Test_RequirementDrafting(t *testing.T) {
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
 				So(err, ShouldBeNil)
-				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				// Drafting over a ready specification that fails leaves it ready, saying why.
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 				So(finished.Error, ShouldEqual, failureInterrupted)
 			}
 		})
@@ -900,6 +902,12 @@ func Test_RequirementDrafting(t *testing.T) {
 					ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
 						Status: interfaces.BKN_AGENT_TASK_RUNNING}, nil).Times(int(agentDeadline / pollInterval))
 				}, failureAgentTimeout},
+				// An answer cut off at the model's output cap is asked for again, once, and says so.
+				{"cut off", func() {
+					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil).Times(2)
+					ba.EXPECT().GetTask(gomock.Any(), caller, "t1").Return(&interfaces.BknAgentTask{TaskID: "t1",
+						Status: interfaces.BKN_AGENT_TASK_FAILED, FailureDetail: "LengthFinishReasonError: length limit was reached"}, nil).Times(2)
+				}, failureOutputTooLong},
 				// An answer that is no JSON is asked for again, once.
 				{"output not JSON", func() {
 					ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1"}, nil).Times(2)
@@ -916,12 +924,67 @@ func Test_RequirementDrafting(t *testing.T) {
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
 				So(err, ShouldBeNil)
-				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				// Drafting over a ready specification that fails leaves it ready, saying why.
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 				So(finished.Error, ShouldEqual, c.code)
 				So(finished.Spec.Scenarios, ShouldBeEmpty)
 				// Only an answer that does not parse was asked for again.
-				So(finished.Spec.DraftRetried, ShouldEqual, c.code == failureOutputInvalid)
+				So(finished.Spec.DraftRetried, ShouldEqual, c.code == failureOutputInvalid || c.code == failureOutputTooLong)
 			}
+		})
+
+		Convey("A drafting that fails keeps the ready specification it started over as it was, its version and inputs too\n", func() {
+			inputs := &interfaces.RequirementInputs{RulesVersion: 1}
+			previous := withConcepts(&interfaces.Requirement{ProjectID: "p1", Version: 2, Status: interfaces.REQUIREMENT_STATUS_READY,
+				UpdateTime: 900, Inputs: inputs})
+			previous.Spec.Scenarios = []*interfaces.RequirementScenario{{ID: "s1", Name: "Kept", Accepted: false}}
+			// Confirmed against v2: drafting writes v3, and starts over.
+			draft := confirmedDraft()
+			draft.Items.Confirmation.RequirementVersion = 2
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(previous, true, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(900)).DoAndReturn(
+				func(_ context.Context, req *interfaces.Requirement, _ int64, _ int64) (bool, error) {
+					So(req.Version, ShouldEqual, 3)
+					So(req.Spec.Scenarios, ShouldBeEmpty)
+					return true, nil
+				})
+			expectContext()
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("connection refused"))
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, true)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+			So(finished.Error, ShouldEqual, failureAgentUnavailable)
+			So(finished.Version, ShouldEqual, 2)
+			So(finished.Inputs, ShouldEqual, inputs)
+			So(ids(finished.Spec.Scenarios, scenarioID), ShouldResemble, []string{"s1"})
+		})
+
+		Convey("A first drafting that fails, over no specification, fails\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), int64(0)).Return(true, nil)
+			expectContext()
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+					// The answer is long: no reasoning before it.
+					So(req.ThinkingMode, ShouldEqual, "disabled")
+					return nil, errors.New("connection refused")
+				})
+			expectFinish()
+
+			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+			So(finished.Error, ShouldEqual, failureAgentUnavailable)
 		})
 
 		Convey("An answer the Agent could not give as the schema asks is asked for once more\n", func() {
@@ -976,7 +1039,8 @@ func Test_RequirementDrafting(t *testing.T) {
 				_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
 				So(err, ShouldBeNil)
-				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
+				// Drafting over a ready specification that fails leaves it ready, saying why.
+				So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
 				So(finished.Error, ShouldEqual, failureAgentFailed)
 				So(finished.Spec.DraftRetried, ShouldBeTrue)
 			})

@@ -742,7 +742,7 @@ func (s *requirementService) answer(ctx context.Context, projectID string, conve
 		var out any
 		var retried bool
 		out, retried, failure, err = s.askTwice(ctx, projectID, caller, message, askResponseFormat(),
-			func() any { return &askOutput{} }, &taskID)
+			func() any { return &askOutput{} }, &taskID, askOptions{retryCutOff: true})
 		if failure == "" {
 			answer := out.(*askOutput)
 			proposals, dropped := checkProposals(page, answer.Proposals, in.spec, in.draft, in.items)

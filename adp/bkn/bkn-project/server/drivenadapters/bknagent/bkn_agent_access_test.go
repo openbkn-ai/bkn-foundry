@@ -22,14 +22,15 @@ import (
 func Test_BknAgentAccess(t *testing.T) {
 	Convey("Test bknAgentAccess\n", t, func() {
 		type request struct {
-			method, path, accountID, accountType string
+			method, path, accountID, accountType, thinking string
 			body                                 map[string]any
 		}
 		var got []request
 		status, respBody := http.StatusOK, ""
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req := request{method: r.Method, path: r.URL.EscapedPath(),
-				accountID: r.Header.Get("x-account-id"), accountType: r.Header.Get("x-account-type")}
+				accountID: r.Header.Get("x-account-id"), accountType: r.Header.Get("x-account-type"),
+				thinking: r.Header.Get("x-bkn-agent-thinking-mode")}
 			if data, _ := io.ReadAll(r.Body); len(data) > 0 {
 				_ = json.Unmarshal(data, &req.body)
 			}
@@ -70,6 +71,18 @@ func Test_BknAgentAccess(t *testing.T) {
 			_, err := ba.RunTask(ctx, account, &interfaces.BknAgentRunRequest{AgentID: "a1", Message: "m"})
 
 			So(err, ShouldBeNil)
+			So(got[0].body, ShouldResemble, map[string]any{"agent_id": "a1", "message": "m"})
+			So(got[0].thinking, ShouldEqual, "")
+		})
+
+		Convey("RunTask sends the thinking mode as a header, not in the body\n", func() {
+			respBody = `{"task_id":"t1","agent_id":"a1","status":"pending","create_time":5,"update_time":5}`
+
+			_, err := ba.RunTask(ctx, account, &interfaces.BknAgentRunRequest{AgentID: "a1", Message: "m",
+				ThinkingMode: "disabled"})
+
+			So(err, ShouldBeNil)
+			So(got[0].thinking, ShouldEqual, "disabled")
 			So(got[0].body, ShouldResemble, map[string]any{"agent_id": "a1", "message": "m"})
 		})
 

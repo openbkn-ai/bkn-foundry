@@ -75,7 +75,13 @@ const (
 const (
 	structuredOutputFailed    = "StructuredOutputError"
 	structuredOutputTruncated = "output truncated"
+	// lengthFinishReason is how the OpenAI SDK names an answer cut off at the output cap.
+	lengthFinishReason = "LengthFinishReasonError"
 )
+
+// requirementThinkingMode is the model's reasoning for the requirements Agent's runs: off, for
+// the answer to fit the output cap.
+const requirementThinkingMode = "disabled"
 
 // taskReadTimeout bounds one read of the Agent's task, so a bkn-agent that takes the connection
 // and never answers cannot hold drafting past its deadline.
@@ -1049,7 +1055,7 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 	networkItems := s.scenarioNetworkItems(ctx, token, entry.KNID, base)
 	supplement := s.supplementOf(ctx, projectID)
 	runCtx := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(runCtx, req, project, catalogIDs, docs, cited, networkItems, supplement, caller) })
+	s.run(func() { s.draft(runCtx, req, prev, project, catalogIDs, docs, cited, networkItems, supplement, caller) })
 	span.SetStatus(codes.Ok, "")
 	return req, nil
 }
@@ -1095,14 +1101,23 @@ func (s *requirementService) listTables(ctx context.Context, catalogIDs []string
 }
 
 // draft runs the Agent and records the checked specification, or why drafting failed.
-// What drafting started from stays when it fails. The Agent reads and cites cited, the documents
-// and the network's background; the run records the documents as its inputs.
-func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, project *interfaces.Project,
-	catalogIDs []string, docs []*interfaces.RequirementDocument, cited []*interfaces.RequirementDocument,
-	networkItems []*interfaces.LogicNetworkItem, supplement string, caller interfaces.AccountInfo) {
+// What drafting started from stays when it fails: the ready specification it was started over
+// (prev), as it was, its version and inputs too, so it stays the one people edit and adopt into,
+// with why drafting failed; without one, what drafting started from, failed. The Agent reads and
+// cites cited, the documents and the network's background; the run records the documents as its
+// inputs.
+func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirement, prev *interfaces.Requirement,
+	project *interfaces.Project, catalogIDs []string, docs []*interfaces.RequirementDocument,
+	cited []*interfaces.RequirementDocument, networkItems []*interfaces.LogicNetworkItem, supplement string,
+	caller interfaces.AccountInfo) {
 	finish := func(status, failure string, spec *interfaces.RequirementSpec, inputs *interfaces.RequirementInputs) {
 		done := *req
 		done.Status, done.Error, done.Spec, done.Inputs, done.UpdateTime = status, failure, *spec, inputs, s.now()
+		if status == interfaces.REQUIREMENT_STATUS_FAILED && prev != nil && prev.Status == interfaces.REQUIREMENT_STATUS_READY {
+			kept := cloneSpec(&prev.Spec)
+			kept.DraftRetried = spec.DraftRetried
+			done.Status, done.Spec, done.Inputs, done.Version = interfaces.REQUIREMENT_STATUS_READY, *kept, prev.Inputs, prev.Version
+		}
 		if _, err := s.ra.FinishDrafting(ctx, &done); err != nil {
 			logger.Errorf("Record requirement drafting of project %s failed: %v", req.ProjectID, err)
 		}
@@ -1128,7 +1143,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		return
 	}
 	answer, retried, failure, err := s.askTwice(ctx, req.ProjectID, caller, message, draftResponseFormat(),
-		func() any { return &draftOutput{} }, &req.AgentTaskID)
+		func() any { return &draftOutput{} }, &req.AgentTaskID, longAnswer)
 	if failure != "" {
 		logger.Errorf("Requirement drafting of project %s failed (%s, asked again: %t): %v", req.ProjectID, failure, retried, err)
 		failed := base

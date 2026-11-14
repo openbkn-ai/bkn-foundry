@@ -455,8 +455,9 @@ func Test_RedraftKeeps(t *testing.T) {
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
-			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_FAILED)
-			So(ids(finished.Spec.Questions, questionID), ShouldResemble, []string{"q1", "q2"})
+			// It stays the ready specification it was, what drafting would have dropped too.
+			So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+			So(ids(finished.Spec.Questions, questionID), ShouldResemble, []string{"q1", "q2", "q3", "q7"})
 		})
 	})
 
@@ -515,7 +516,9 @@ func Test_RedraftKeeps(t *testing.T) {
 		_, err := svc.GenerateRequirement(context.Background(), token, "p1", caller, true)
 
 		So(err, ShouldBeNil)
-		So(finished.Spec.Questions, ShouldBeEmpty)
+		// Starting over that fails takes nothing away: the specification stays as it was read.
+		So(finished.Status, ShouldEqual, interfaces.REQUIREMENT_STATUS_READY)
+		So(finished.Spec.Questions, ShouldNotBeEmpty)
 		So(ids(finished.Spec.Rules, ruleID), ShouldResemble, []string{"r1", "r2"})
 	})
 }

@@ -257,7 +257,7 @@ func Test_RunOutlivedByEdits(t *testing.T) {
 		wrote := false
 		p := &partRun{kind: interfaces.REQUIREMENT_RUN_CONCEPTS, projectID: "p1", run: run, caller: caller,
 			newOut:         func() any { return &conceptsOutput{} },
-			prepareMessage: func(context.Context, int) (string, error) { return "m", nil },
+			prepareMessage: func(context.Context, int, int) (string, error) { return "m", nil },
 			check:          func(context.Context, int, any) {},
 			write:          func(*interfaces.Requirement) { wrote = true },
 			inputs:         &interfaces.RequirementInputs{Documents: []interfaces.RequirementInputDocument{{ID: "d1", SHA256: "b"}}}}

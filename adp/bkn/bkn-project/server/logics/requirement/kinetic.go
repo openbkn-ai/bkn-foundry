@@ -324,7 +324,7 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	p := &partRun{
 		kind: interfaces.REQUIREMENT_RUN_KINETIC, projectID: projectID, run: run, caller: caller,
 		format: kineticResponseFormat(), newOut: func() any { return &kineticOutput{} },
-		prepareMessage: func(context.Context, int) (string, error) {
+		prepareMessage: func(context.Context, int, int) (string, error) {
 			return buildKineticMessage(project.NamingLanguage, cited, draft, spec, items, supplement)
 		},
 	}
