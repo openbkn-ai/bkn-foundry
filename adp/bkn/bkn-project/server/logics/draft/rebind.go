@@ -476,9 +476,11 @@ func tableIDOf(v any) string {
 
 // followFieldTypes retypes the properties of ot that map a field of table, its table bound again,
 // to the type the field drafts as now: checking and knowledge-base builds read the field by the
-// property's type. It returns the decision recording what it retyped, nil when nothing. A field
-// gone, of a type BKN does not map, or one that would leave a key of a type no key may have, is
-// left as it is, to be told as a source change.
+// property's type. It returns the decision recording what it retyped, with nothing retyped when
+// the types were in step already: either way it marks the types as followed once, so a later change
+// of the table goes the way of any source change, to a person. Nil when it could not compare. A
+// field gone, of a type BKN does not map, or one that would leave a key of a type no key may have,
+// is left as it is, to be told as a source change.
 func followFieldTypes(ot *interfaces.DraftObjectType, table *interfaces.VegaTable) *interfaces.DraftDecision {
 	if ot == nil || table == nil || len(table.Columns) == 0 {
 		return nil
@@ -502,9 +504,6 @@ func followFieldTypes(ot *interfaces.DraftObjectType, table *interfaces.VegaTabl
 		})
 		p.Type = to
 	}
-	if len(retyped) == 0 {
-		return nil
-	}
 	return &interfaces.DraftDecision{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: ot.ID,
 		Action: interfaces.DRAFT_DECISION_SYNC, After: retyped}
 }
@@ -512,10 +511,27 @@ func followFieldTypes(ot *interfaces.DraftObjectType, table *interfaces.VegaTabl
 // reboundObjectTypes are the object types whose table was bound again by name, to the table they
 // read now, by that table's id.
 func reboundObjectTypes(items *interfaces.DraftItems) map[string][]*interfaces.DraftObjectType {
+	// Only a binding again whose types were not followed yet: once followed, a later change of the
+	// table is a source change for a person to decide.
 	rebound := map[string]bool{}
 	for _, d := range items.Decisions {
-		if d.Action == interfaces.DRAFT_DECISION_REBIND && d.Kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		if d.Kind != interfaces.DRAFT_KIND_OBJECT_TYPES {
+			continue
+		}
+		switch d.Action {
+		case interfaces.DRAFT_DECISION_REBIND:
+			for key := range rebound {
+				if strings.HasPrefix(key, d.ItemID+"|") {
+					delete(rebound, key)
+				}
+			}
 			rebound[d.ItemID+"|"+tableIDOf(d.After)] = true
+		case interfaces.DRAFT_DECISION_SYNC:
+			for key := range rebound {
+				if strings.HasPrefix(key, d.ItemID+"|") {
+					delete(rebound, key)
+				}
+			}
 		}
 	}
 	byTable := map[string][]*interfaces.DraftObjectType{}
@@ -568,8 +584,14 @@ func (s *draftService) followReboundTypes(ctx context.Context, caller interfaces
 		s.rebindMisses.Store(inStep, time.Now())
 		return 0, nil
 	}
+	retyped := 0
+	for _, d := range decisions {
+		if changes, ok := d.After.([]interfaces.SourceColumnChange); ok && len(changes) > 0 {
+			retyped++
+		}
+	}
 	if err := s.commit(ctx, draft, decisions, caller); err != nil {
 		return 0, err
 	}
-	return len(decisions), nil
+	return retyped, nil
 }

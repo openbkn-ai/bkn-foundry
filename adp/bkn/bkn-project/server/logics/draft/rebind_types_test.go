@@ -113,6 +113,17 @@ func Test_RebindFollowsFieldTypes(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(writes, ShouldEqual, 1)
 			})
+
+			Convey("A field retyped in the table after binding is a source change, not followed\n", func() {
+				w.tables[len(w.tables)-1] = typedTable("new_regions", "c_new", "Region list", "regions",
+					"region_id", "large_integer", "population", "string")
+
+				_, err := svc.GetStatus(ctx, token, "p1", caller)
+
+				So(err, ShouldBeNil)
+				So(writes, ShouldEqual, 1)
+				So(typeOf("population"), ShouldEqual, "integer")
+			})
 		})
 
 		Convey("A key is not retyped to a type no key may have\n", func() {
@@ -154,6 +165,15 @@ func Test_RebindFollowsFieldTypes(t *testing.T) {
 				_, err = svc.GetStatus(ctx, token, "p1", caller)
 				So(err, ShouldBeNil)
 				So(writes, ShouldEqual, 1)
+
+				// Followed once: the table changing again later is for a person to decide.
+				w.tables[len(w.tables)-1] = typedTable("new_regions", "c_new", "Region list", "regions",
+					"region_id", "large_integer", "population", "string")
+				svc.rebindMisses.Range(func(k, _ any) bool { svc.rebindMisses.Delete(k); return true })
+				_, err = svc.GetStatus(ctx, token, "p1", caller)
+				So(err, ShouldBeNil)
+				So(writes, ShouldEqual, 1)
+				So(typeOf("population"), ShouldEqual, "integer")
 			})
 		})
 

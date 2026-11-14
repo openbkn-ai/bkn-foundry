@@ -227,9 +227,15 @@ func Test_RebindOnStatus(t *testing.T) {
 			So(customers.PrimaryKeys, ShouldResemble, []string{"customer_id"})
 			So(customers.Properties[0].MappedField, ShouldEqual, "customer_id")
 			So(findRelationType(&stored.Items, "orders_to_products").LinkTable.ResourceID, ShouldEqual, "new_order_lines")
-			// The decision made before stays, and each rebinding is one decision more.
+			// The decision made before stays, each rebinding is one decision more, and each object type
+			// bound again records once that its types followed the table.
 			So(stored.Items.Decisions[0].Action, ShouldEqual, interfaces.DRAFT_DECISION_UNADOPT)
-			So(stored.Items.Decisions, ShouldHaveLength, 6)
+			actions := map[string]int{}
+			for _, d := range stored.Items.Decisions[1:] {
+				actions[d.Action]++
+			}
+			So(actions[interfaces.DRAFT_DECISION_REBIND], ShouldEqual, 5)
+			So(actions[interfaces.DRAFT_DECISION_SYNC], ShouldEqual, len(stored.Items.Decisions)-6)
 			So(stored.Items.Inputs.CatalogIDs, ShouldResemble, []string{"c_new"})
 			So(stored.Items.Inputs.Tables[0], ShouldResemble,
 				interfaces.DraftInputTable{ResourceID: "new_customers", Fingerprint: "f_customers"})
