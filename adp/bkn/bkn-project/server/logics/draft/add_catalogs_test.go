@@ -214,6 +214,7 @@ func Test_AddCatalogs(t *testing.T) {
 		da := pmock.NewMockDraftAccess(ctrl)
 		ps := pmock.NewMockProjectService(ctrl)
 		va := pmock.NewMockVegaAccess(ctrl)
+		va.EXPECT().CatalogNames(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).AnyTimes()
 		ira := &fakeIDRegistry{}
 		setting := testSetting
 		setting.Timeout = time.Minute

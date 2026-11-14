@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_bz",
         "name": "bz",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "bz"
       },
       "primary_keys": [
         "bz_id"
@@ -45,7 +46,8 @@
       "table": {
         "resource_id": "r_cp",
         "name": "Product",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "cp"
       },
       "primary_keys": [
         "cp_id"
@@ -85,7 +87,8 @@
       "table": {
         "resource_id": "r_dd",
         "name": "Order",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "dd"
       },
       "primary_keys": [
         "dd_id"
@@ -138,7 +141,8 @@
       "table": {
         "resource_id": "r_kh",
         "name": "Customer",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "kh"
       },
       "primary_keys": [
         "kh_id"
@@ -243,7 +247,8 @@
       "link_table": {
         "resource_id": "r_ddcp",
         "name": "Order line",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "ddcp"
       },
       "source_mapping": [
         {
@@ -290,7 +295,8 @@
       "code_table": {
         "resource_id": "r_dm_dj",
         "name": "Customer level",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "dm_dj"
       },
       "used_by": [
         {

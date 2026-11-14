@@ -277,8 +277,18 @@ func (s *draftService) readCatalogs(ctx context.Context, catalogIDs []string,
 	if err != nil {
 		return nil, nil, fmt.Errorf("read tables: %w", err)
 	}
+	// The catalogs' names are recorded with the tables, so a catalog created again under its name
+	// is found by it; drafting does without them when vega does not tell.
+	names, err := s.va.CatalogNames(ctx, caller, catalogIDs)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the names of catalogs %v: %v", catalogIDs, err))
+	}
+	for _, table := range listed {
+		table.CatalogName = names[table.CatalogID]
+	}
 	byID := map[string]*interfaces.VegaTable{}
 	for _, table := range read {
+		table.CatalogName = names[table.CatalogID]
 		byID[table.ID] = table
 	}
 
@@ -289,11 +299,13 @@ func (s *draftService) readCatalogs(ctx context.Context, catalogIDs []string,
 		switch {
 		case !ok:
 			unreadable = append(unreadable, &interfaces.DraftTable{
-				ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID, Reason: unreadableNotVisible,
+				ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID, CatalogName: table.CatalogName,
+				SourceName: table.SourceName, Reason: unreadableNotVisible,
 			})
 		case len(full.Columns) == 0:
 			unreadable = append(unreadable, &interfaces.DraftTable{
-				ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID, Reason: unreadableNoStructure,
+				ResourceID: table.ID, Name: table.Name, CatalogID: table.CatalogID, CatalogName: table.CatalogName,
+				SourceName: full.SourceName, Reason: unreadableNoStructure,
 			})
 		default:
 			tables = append(tables, full)
@@ -309,6 +321,10 @@ func (s *draftService) draftFromTables(ctx context.Context, projectID string, ca
 	caller interfaces.AccountInfo, existing interfaces.DraftItems) (interfaces.DraftItems, error) {
 	listed, unreadable, err := s.readCatalogs(ctx, catalogIDs, caller)
 	if err != nil {
+		return interfaces.DraftItems{}, err
+	}
+	// The network's tables are known by name too, once a catalog was created again.
+	if err := s.rebindExisting(ctx, caller, &existing, listed); err != nil {
 		return interfaces.DraftItems{}, err
 	}
 	used := existingTableIDs(&existing)
