@@ -221,7 +221,13 @@ async def _run_agent_once_core(
             if response_format:
                 # Extract the structure separately once the tool loop is done:
                 # native support first, prompt-based degradation otherwise.
-                struct_model = build_chat_model(agent.model, streaming=False, max_output_tokens=max_out)
+                # The structured call writes up what the turn found; reasoning
+                # spends the output cap before the JSON (a thinking DeepSeek
+                # once used all 16384 tokens on it). Off unless the task asked.
+                struct_model = build_chat_model(
+                    agent.model, streaming=False, max_output_tokens=max_out,
+                    thinking_mode=llm.current_thinking_mode() or "disabled",
+                )
                 obj, validation_path = await structured_extract_with_path(
                     struct_model, result["messages"], response_format, system_prompt
                 )

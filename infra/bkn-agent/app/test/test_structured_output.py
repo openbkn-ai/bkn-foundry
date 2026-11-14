@@ -256,6 +256,58 @@ def test_fallback_network_failure_is_not_hidden():
         asyncio.run(structured_extract(m, [], SCHEMA))
 
 
+def _length_error(reasoning_tokens):
+    from openai import LengthFinishReasonError
+    from openai.types.chat import ChatCompletion
+
+    completion = ChatCompletion.model_validate({
+        "id": "c", "object": "chat.completion", "created": 0, "model": "m",
+        "choices": [{"index": 0, "finish_reason": "length",
+                     "message": {"role": "assistant", "content": ""}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 16384, "total_tokens": 16385,
+                  "completion_tokens_details": {"reasoning_tokens": reasoning_tokens}},
+    })
+    return LengthFinishReasonError(completion=completion)
+
+
+def test_reply_parsed_and_cut_off_is_retried_shorter(caplog):
+    """langchain-openai parses a response_format reply through the SDK, which
+    raises at the output cap; that is a truncated reply, asked again shorter."""
+    m = _JsonMode([('{"greeting": "short"}', "stop")])
+    calls = {"n": 0}
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise _length_error(16384)
+                return m._reply(messages)
+
+        return _Bound()
+
+    m.bind = bind
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "short"}
+    assert "cut off" in str(m.seen[0][-1])
+    assert "reasoning_tokens=16384" in caplog.text
+
+
+def test_reply_cut_off_twice_names_truncation():
+    m = _JsonMode([])
+
+    def bind(**kwargs):
+        class _Bound:
+            async def ainvoke(self, messages):
+                raise _length_error(15000)
+
+        return _Bound()
+
+    m.bind = bind
+    with pytest.raises(structured.StructuredOutputError, match=structured.TRUNCATED):
+        asyncio.run(structured_extract(m, [], SCHEMA))
+
+
 def test_fallback_accepts_raw_newline_in_string():
     m = _JsonMode([('{"greeting": "a' + chr(10) + 'b"}', "stop")])
     out = asyncio.run(structured_extract(m, [], SCHEMA))
@@ -296,8 +348,9 @@ class _FakeCM:
 def _wire(monkeypatch, captured):
     monkeypatch.setattr(runner, "create_agent", lambda *a, **k: _FakeGraph())
 
-    def fake_model(m, streaming=True, max_output_tokens=None):
+    def fake_model(m, streaming=True, max_output_tokens=None, thinking_mode=None):
         captured.setdefault("streaming", []).append(streaming)
+        captured.setdefault("thinking", []).append(thinking_mode)
         return object()
 
     monkeypatch.setattr(runner, "build_chat_model", fake_model)
@@ -347,6 +400,8 @@ def test_run_with_response_format_serializes(monkeypatch):
     ))
     assert json.loads(out) == {"greeting": "pong"}
     assert False in captured["streaming"]  # 抽结构化用非流式模型
+    # The structured call does not reason unless the task asked it to.
+    assert captured["thinking"][-1] == "disabled"
     # #556 回归：抽取是另起的一次模型调用，agent 系统提示词必须一并传下去，
     # 否则模型在零约束下填 schema（实测表现为把技术字段名原样抄进 display_name）
     assert captured["extract_system_prompt"] == "sys\n[技能] demo"
@@ -439,3 +494,16 @@ def test_normalize_response_format():
     assert normalize_response_format({"type": "object", "properties": {}})["title"] == "StructuredResponse"
     assert normalize_response_format({"title": "X", "type": "object"}) == {"title": "X", "type": "object"}
     assert normalize_response_format(None) is None
+
+
+def test_build_chat_model_thinking_override():
+    from app.core import llm as llm_mod
+
+    token = llm_mod.set_thinking_mode("enabled")
+    try:
+        assert llm_mod.build_chat_model("m").default_headers["x-bkn-model-thinking-mode"] == "enabled"
+        model = llm_mod.build_chat_model("m", thinking_mode="disabled")
+        assert model.default_headers["x-bkn-model-thinking-mode"] == "disabled"
+    finally:
+        llm_mod.reset_thinking_mode(token)
+    assert not (llm_mod.build_chat_model("m").default_headers or {}).get("x-bkn-model-thinking-mode")
