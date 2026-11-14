@@ -237,9 +237,10 @@ func coveringItem(items []*interfaces.LogicNetworkItem, need *interfaces.Require
 }
 
 // uncovered leaves out of proposed the needs the network's items already are: one the Agent gives
-// again by an item's id, and a new one of the same kind and name as an item it says covers nothing.
-// A new need the Agent says an item covers stays, as the documents ask for it, to be linked to that
-// item; so does a kept need given again. covered gives, by the kept needs' ids and by coveredKey of
+// again by an item's id, a new one of the same kind and name as an item it says covers nothing, and
+// a new one it says an item covers that cannot be linked to it. A new need the Agent says an item
+// of its kind covers stays, as the documents ask for it, to be linked to that item; so does a kept
+// need given again. covered gives, by the kept needs' ids and by coveredKey of
 // the new ones, the item the Agent said covers each.
 func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) (
 	[]agentLogicNeed, map[string]*interfaces.LogicNetworkItem) {
@@ -252,14 +253,18 @@ func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) 
 		id := strings.TrimSpace(p.ID)
 		by := networkItemOf(items, p.CoveredBy)
 		kept := strings.HasPrefix(id, keptPrefix) && !strings.HasPrefix(id, networkItemPrefix)
+		// A new need stays only when the item can be linked to it: of its kind, and no API, which
+		// only a person links; otherwise the item covers it and it is not added, as before.
+		links := by != nil && p.Kind != interfaces.LOGIC_NEED_API && cmp.Or(by.Kind, networkNeedKind(by.Type)) == p.Kind
 		switch {
 		case kept && by != nil:
 			covered[strings.TrimPrefix(id, keptPrefix)] = by
-		case !kept && by != nil:
+		case !kept && links:
 			covered[coveredKey(p.Kind, p.Name)] = by
 		}
 		switch {
 		case strings.HasPrefix(id, networkItemPrefix):
+		case !kept && by != nil && !links:
 		case !kept && by == nil && len(coveringItems(items, p.Kind, p.Name)) > 0:
 		default:
 			out = append(out, p)

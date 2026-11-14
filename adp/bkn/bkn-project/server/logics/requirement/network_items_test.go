@@ -76,6 +76,9 @@ func Test_LinkCovered(t *testing.T) {
 			// New ones the documents ask for that an item covers stay, to be linked to it.
 			{ID: "x", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "BOM gross requirement", CoveredBy: "kept-network-1"},
 			{ID: "y", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Promisable quantity", CoveredBy: " kept-network-2 "},
+			// One said covered by an item of another kind, or an API one, cannot be linked: not added.
+			{ID: "w", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Gross requirement", CoveredBy: "kept-network-1"},
+			{ID: "v", Kind: interfaces.LOGIC_NEED_API, Name: "Shortage API", CoveredBy: "kept-network-1"},
 			// An id that names no item leaves the need new.
 			{ID: "z", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Lead time", CoveredBy: "kept-network-9"},
 			// Kept needs stay, to be linked to the item that covers them.
