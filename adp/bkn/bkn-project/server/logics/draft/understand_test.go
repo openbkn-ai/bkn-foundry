@@ -15,8 +15,8 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 func Test_Understand(t *testing.T) {
