@@ -236,6 +236,25 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE).Passed, ShouldBeTrue)
 		})
 
+		Convey("A type the release leaves as main has is checked by the table the network reads now\n", func() {
+			// The network was bound again to tables created anew; main and the branch keep the old ids.
+			bba := pmock.NewMockBknBackendAccess(mockCtrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), reviewToken, "supply").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "supplier", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "view_supplier_new"}},
+				// What the release adds is the project's to bind, whatever the network says.
+				{ID: "purchase_order", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "elsewhere"}},
+			}, nil)
+			svc.bba = bba
+			goneTables = []string{"view_supplier"}
+			expect()
+			expectIndex()
+
+			r := review()
+
+			So(askedTables, ShouldResemble, [][]string{{"view_part", "view_purchase_order", "view_supplier_new"}})
+			So(checkOf(r, interfaces.RELEASE_CHECK_DATA_SOURCE).Passed, ShouldBeTrue)
+		})
+
 		Convey("A table gone blocks publishing and names what reads it; it cannot be accepted\n", func() {
 			branchFiles["object_types/supplier_copy.bkn"] = []byte(strings.Replace(string(objectTypeBKN("supplier_copy", "Supplier copy", true)),
 				"view_supplier_copy", "view_supplier", 1))

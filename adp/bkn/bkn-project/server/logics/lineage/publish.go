@@ -31,6 +31,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
 )
@@ -579,7 +580,9 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 		return nil, err
 	}
 	preview.Changes = drift.DiffFiles(stored, files)
-	pkg, err := buildPackage(files, lineageID)
+	// What the release does not change keeps the tables the network reads now: written as main has
+	// it, an object type bound again since would read a table that is gone.
+	pkg, err := buildPackage(logics.WithNetworkTables(files, stored, s.networkTables(ctx, token, lineageID)), lineageID)
 	if err != nil {
 		refuse(httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error()))
@@ -785,4 +788,18 @@ func setNetworkHeader(text string, id string, name string) (string, error) {
 		}
 		return nil
 	})
+}
+
+// networkTables are the tables the network's object types read now, by object type id; nil when
+// bkn-backend does not tell, and the branch's stand.
+func (s *lineageService) networkTables(ctx context.Context, token string, knID string) map[string]string {
+	if s.bba == nil {
+		return nil
+	}
+	tables, err := logics.NetworkTables(ctx, s.bba, token, knID)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network's object types read: %v", err))
+		return nil
+	}
+	return tables
 }
