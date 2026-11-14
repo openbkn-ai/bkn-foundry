@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -645,5 +646,58 @@ func Test_DraftSourceChanges(t *testing.T) {
 			_, errCode := codeOf(err)
 			So(errCode, ShouldEqual, perrors.BknProject_Draft_NotReady)
 		})
+	})
+}
+
+// A knowledge-base item is stored in a Dataset bkn-project prepares, not in a project table: a
+// table sync once read its Dataset as a table, took every field away and asked for an identity.
+func Test_SourceChangesLeaveKnowledgeBaseItemsAlone(t *testing.T) {
+	Convey("Knowledge-base items are neither read as tables nor changed by a table sync\n", t, func() {
+		draft := syncedDraft()
+		invoice := &interfaces.DraftObjectType{
+			ID: "invoice_doc", Name: "Invoice", Adopted: true, PrimaryKeys: []string{"_id"},
+			Table:    interfaces.DraftTable{ResourceID: "d_invoice", Name: "Invoice"},
+			Document: &interfaces.DraftDocumentModel{Role: "in_document"},
+			Properties: []*interfaces.DraftProperty{
+				{Name: "_id", Type: "string", ReadOnly: true, MappedField: "bkn_record_id"},
+				{Name: "invoice_no", Type: "string", MappedField: "invoice_no"},
+			},
+		}
+		evidence := &interfaces.DraftRelationType{
+			ID: "invoice_source", Name: "Invoice source", Source: "invoice_doc", Target: "invoice_doc", Adopted: true,
+			LinkTable: &interfaces.DraftTable{ResourceID: "d_invoice_source", Name: "Invoice source"},
+			Document:  &interfaces.DraftDocumentModel{Role: "evidence_link"},
+		}
+		draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, invoice)
+		draft.Items.RelationTypes = append(draft.Items.RelationTypes, evidence)
+
+		So(draftSourceIDs(draft), ShouldNotContain, "d_invoice")
+		So(draftSourceIDs(draft), ShouldNotContain, "d_invoice_source")
+
+		// Even read and changed, or missing, the Dataset is not the draft's table to sync.
+		read := readOf([]string{"d_invoice_source"}, customersTable(), ordersTable(), customerTagsTable(),
+			&interfaces.VegaTable{ID: "d_invoice", Columns: []interfaces.VegaColumn{{Name: "other", Type: "string"}}})
+		got := draftSourceChanges(draft, read, testSetting.PrivacyKeywords)
+		So(got.State, ShouldEqual, interfaces.SOURCE_CHANGES_IN_STEP)
+		So(got.MissingTables, ShouldBeEmpty)
+		So(got.ObjectTypes, ShouldBeEmpty)
+
+		// Syncing what was found leaves the item's fields and key as they are.
+		decisions := applySourceChanges(&draft.Items, got, read, newDrafter(testSetting, nil))
+		So(decisions, ShouldBeEmpty)
+		So(len(invoice.Properties), ShouldEqual, 2)
+		So(invoice.PrimaryKeys, ShouldResemble, []string{"_id"})
+
+		// Published under the same id, it is not compared as a table either, changed or missing.
+		published := []*bkn.BknObjectType{{
+			BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{ID: "invoice_doc", Name: "Invoice"},
+			DataSource:               &bkn.ResourceInfo{Type: "resource", ID: "d_invoice", Name: "Invoice"},
+			DataProperties:           []*bkn.DataProperty{{Name: "invoice_no", MappedField: "invoice_no", Type: "string"}},
+		}}
+		withPublished(got, draft, published, read, testSetting.PrivacyKeywords, "en-US")
+		So(got.ObjectTypes, ShouldBeEmpty)
+		So(got.MissingTables, ShouldBeEmpty)
+		withPublished(got, draft, published, readOf([]string{"d_invoice"}), testSetting.PrivacyKeywords, "en-US")
+		So(got.MissingTables, ShouldBeEmpty)
 	})
 }
