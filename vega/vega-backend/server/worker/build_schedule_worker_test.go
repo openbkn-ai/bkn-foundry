@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	mock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,14 @@ func buildScheduleWorkerFixture(t *testing.T) (*BuildScheduleWorker, *mock.MockB
 
 func TestBuildScheduleWorkerRunSchedule(t *testing.T) {
 	now := time.Date(2026, 11, 14, 12, 15, 0, 0, time.UTC)
+	t.Run("invalid cron message follows context language", func(t *testing.T) {
+		w, access, _, s := buildScheduleWorkerFixture(t)
+		s.CronExpr = "invalid"
+		access.EXPECT().DisableInvalid(gomock.Any(), s.ID, s.UpdateTime, s.NextRun,
+			"Invalid schedule expression; correct it and enable the schedule again.").Return(int64(1), nil)
+		ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
+		w.runScheduleAt(ctx, s, now)
+	})
 	t.Run("zero next run only initializes time", func(t *testing.T) {
 		w, access, _, s := buildScheduleWorkerFixture(t)
 		s.NextRun = 0

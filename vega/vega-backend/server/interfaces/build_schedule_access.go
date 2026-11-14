@@ -19,6 +19,8 @@ type BuildScheduleAccess interface {
 	UpdateEnabled(context.Context, string, bool, *int64, int64, int64, AccountInfo) (int64, error)
 	Delete(context.Context, string) error
 	DeleteByCatalogID(context.Context, *sql.Tx, string) error
+	// DeleteByResourceIDs 使用调用方事务删除资源绑定的计划。
+	DeleteByResourceIDs(ctx context.Context, tx *sql.Tx, ids []string) error
 	ListDue(context.Context, int64) ([]*BuildSchedule, error)
 	InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error)
 	ClaimRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64, runID string) (int64, error)

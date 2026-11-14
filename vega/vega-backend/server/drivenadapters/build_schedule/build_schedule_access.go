@@ -250,6 +250,25 @@ func (a *buildScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx,
 	return err
 }
 
+// DeleteByResourceIDs 只删除指定资源绑定的计划，由调用方管理关联删除事务。
+func (a *buildScheduleAccess) DeleteByResourceIDs(ctx context.Context, tx *sql.Tx, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	query, args, err := sq.Delete(tableName).
+		Where(sq.Eq{"f_resource_id": ids}).
+		ToSql()
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		_, err = a.db.ExecContext(ctx, query, args...)
+	}
+	return err
+}
+
 func (a *buildScheduleAccess) ListDue(ctx context.Context, now int64) ([]*interfaces.BuildSchedule, error) {
 	builder := sq.Select(columns()...).
 		From(tableName).

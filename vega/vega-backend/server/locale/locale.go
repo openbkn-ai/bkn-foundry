@@ -22,6 +22,8 @@ func Register() {
 		i18n.RegisterI18n(&buildTaskZhCN)
 		i18n.RegisterI18n(&buildScheduleEnUS)
 		i18n.RegisterI18n(&buildScheduleZhCN)
+		i18n.RegisterI18n(&scheduleTextEnUS)
+		i18n.RegisterI18n(&scheduleTextZhCN)
 		i18n.RegisterI18n(&catalogEnUS)
 		i18n.RegisterI18n(&catalogHealthCheckScheduleEnUS)
 		i18n.RegisterI18n(&catalogHealthCheckScheduleZhCN)

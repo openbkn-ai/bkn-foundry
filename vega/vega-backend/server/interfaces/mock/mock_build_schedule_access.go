@@ -114,6 +114,20 @@ func (mr *MockBuildScheduleAccessMockRecorder) DeleteByCatalogID(arg0, arg1, arg
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByCatalogID", reflect.TypeOf((*MockBuildScheduleAccess)(nil).DeleteByCatalogID), arg0, arg1, arg2)
 }
 
+// DeleteByResourceIDs mocks base method.
+func (m *MockBuildScheduleAccess) DeleteByResourceIDs(ctx context.Context, tx *sql.Tx, ids []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByResourceIDs", ctx, tx, ids)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByResourceIDs indicates an expected call of DeleteByResourceIDs.
+func (mr *MockBuildScheduleAccessMockRecorder) DeleteByResourceIDs(ctx, tx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByResourceIDs", reflect.TypeOf((*MockBuildScheduleAccess)(nil).DeleteByResourceIDs), ctx, tx, ids)
+}
+
 // DisableInvalid mocks base method.
 func (m *MockBuildScheduleAccess) DisableInvalid(ctx context.Context, id string, expectedUpdateTime, expectedNextRun int64, message string) (int64, error) {
 	m.ctrl.T.Helper()

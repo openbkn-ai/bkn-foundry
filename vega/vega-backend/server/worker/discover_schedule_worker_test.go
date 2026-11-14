@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -128,20 +129,46 @@ func TestDiscoverScheduleWorkerRunScheduleAt(t *testing.T) {
 			(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
 		})
 	}
-	for _, expr := range []string{"invalid", "*/30 * * * *", "0 0 31 2 *"} {
-		t.Run("disables invalid persisted expression "+expr, func(t *testing.T) {
+	for _, tc := range []struct {
+		expression string
+		message    string
+	}{
+		{"invalid", "The schedule expression is invalid or runs more than once per hour; correct it before enabling."},
+		{"*/30 * * * *", "The schedule expression is invalid or runs more than once per hour; correct it before enabling."},
+		{"0 0 31 2 *", "The schedule expression has no valid future trigger time; correct it before enabling."},
+	} {
+		t.Run("disables invalid persisted expression "+tc.expression, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			access := vmock.NewMockDiscoverScheduleAccess(ctrl)
 			schedule := newSchedule()
-			schedule.CronExpr = expr
-			access.EXPECT().DisableInvalid(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _, _ int64, message string) (int64, error) {
-				assert.NotEmpty(t, message)
-				assert.NotContains(t, message, expr)
-				return 1, nil
-			})
-			(&DiscoverScheduleWorker{dsa: access}).runScheduleAt(context.Background(), schedule, now)
+			schedule.CronExpr = tc.expression
+			access.EXPECT().DisableInvalid(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, tc.message).Return(int64(1), nil)
+			ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
+			(&DiscoverScheduleWorker{dsa: access}).runScheduleAt(ctx, schedule, now)
 		})
 	}
+	for _, tc := range []struct {
+		language i18n.Language
+		message  string
+	}{
+		{i18n.SimplifiedChinese, "无法创建探查任务，请检查目录配置与权限"},
+		{i18n.AmericanEnglish, "Could not create a discovery task; check the catalog configuration and permissions."},
+	} {
+		t.Run("localizes task creation fallback/"+string(tc.language), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+			service := vmock.NewMockDiscoverScheduleService(ctrl)
+			schedule := newSchedule()
+			gomock.InOrder(
+				access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).Return(int64(1), nil),
+				service.EXPECT().ExecuteSchedule(gomock.Any(), schedule).Return(interfaces.ScheduleRunResult{}, errors.New("private task error")),
+				access.EXPECT().CompleteRun(gomock.Any(), schedule.ID, gomock.Any(), interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: tc.message}).Return(int64(1), nil),
+			)
+			ctx := i18n.WithLanguage(context.Background(), tc.language)
+			(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(ctx, schedule, now)
+		})
+	}
+
 	t.Run("retains triggering when task call panics", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		access := vmock.NewMockDiscoverScheduleAccess(ctrl)

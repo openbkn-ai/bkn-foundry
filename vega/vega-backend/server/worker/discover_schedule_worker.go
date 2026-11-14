@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -125,8 +126,12 @@ func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *
 
 	cronSchedule, err := common.ParseHourlyCronExpr(schedule.CronExpr)
 	if err != nil {
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.CronInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		if _, disableErr := dsw.dsa.DisableInvalid(ctx, schedule.ID, schedule.UpdateTime,
-			schedule.NextRun, "调度表达式无效或执行间隔不足一小时，请修正后启用"); disableErr != nil {
+			schedule.NextRun, message); disableErr != nil {
 			logger.Errorf("Disable invalid discover schedule failed: schedule_id=%s, error=%v", schedule.ID, disableErr)
 		}
 		return
@@ -138,8 +143,12 @@ func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *
 	}
 	nextRun := cronSchedule.Next(from)
 	if nextRun.IsZero() {
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.CronNoFuture", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		if _, disableErr := dsw.dsa.DisableInvalid(ctx, schedule.ID, schedule.UpdateTime,
-			schedule.NextRun, "调度表达式没有有效的未来触发时间，请修正后启用"); disableErr != nil {
+			schedule.NextRun, message); disableErr != nil {
 			logger.Errorf("Disable unsatisfiable discover schedule failed: schedule_id=%s, error=%v", schedule.ID, disableErr)
 		}
 		return
@@ -171,8 +180,12 @@ func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *
 	if err != nil {
 		logger.Errorf("Execute discover schedule failed: schedule_id=%s, error=%v", schedule.ID, err)
 		if result.Status == "" {
-			result = interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed,
-				Message: "无法创建探查任务，请检查目录配置与权限"}
+			message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.DiscoverCreateFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			result = interfaces.ScheduleRunResult{
+				Status: interfaces.ScheduleStatusFailed, Message: message}
 		}
 	}
 	if _, err := dsw.dsa.CompleteRun(ctx, schedule.ID, runID.String(), result); err != nil {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -421,22 +422,26 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	// Check whether the DiscoverTaskService has been set up
 	if dss.dts == nil {
 		otellog.LogError(ctx, "DiscoverTaskService not set", nil)
-		return discoverScheduleFailure(fmt.Errorf("DiscoverTaskService not set"), "探查任务服务不可用")
+		return discoverScheduleFailure(ctx, fmt.Errorf("DiscoverTaskService not set"), "VegaBackend.Schedule.Result.DiscoverServiceUnavailable")
 	}
 
 	// The scheduler supplies the persisted schedule. Only the catalog's current state is rechecked.
 	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)
-		return discoverScheduleFailure(err, "无法读取或校验探查目录")
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCatalogReadFailed")
 	}
 	if catalogInfo == nil || !catalogInfo.Enabled {
 		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
-		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "探查目录不存在或已停用"}, nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.DiscoverCatalogUnavailable", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 
 	if err := dss.validateDiscoverCatalog(ctx, catalogInfo); err != nil {
-		return discoverScheduleFailure(err, "无法读取或校验探查目录")
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCatalogReadFailed")
 	}
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
@@ -449,11 +454,15 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to check running tasks", err)
-		return discoverScheduleFailure(err, "无法检查正在执行的探查任务")
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverActiveTasksCheckFailed")
 	}
 	if tasks > 0 {
 		logger.Warnf("There is already a running discover task for catalog %s, skipping execution", schedule.CatalogID)
-		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "目录已有正在执行的定时探查任务"}, nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.DiscoverTaskActive", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 
 	// Create a pending discover task; the local database-backed worker will pick it up.
@@ -465,7 +474,7 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create discover task", err)
-		return discoverScheduleFailure(err, "无法创建探查任务，请检查目录配置与权限")
+		return discoverScheduleFailure(ctx, err, "VegaBackend.Schedule.Result.DiscoverCreateFailed")
 	}
 
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
@@ -473,11 +482,14 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 }
 
 // discoverScheduleFailure 只保存公开错误分类，不暴露底层错误详情。
-func discoverScheduleFailure(err error, fallback string) (interfaces.ScheduleRunResult, error) {
-	message := fallback
+func discoverScheduleFailure(ctx context.Context, err error, messageID string) (interfaces.ScheduleRunResult, error) {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden {
-		message = "计划创建者无目录任务管理权限，无法创建探查任务"
+		messageID = "VegaBackend.Schedule.Result.DiscoverPermissionDenied"
+	}
+	message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
 	}
 	return interfaces.ScheduleRunResult{
 		Status:  interfaces.ScheduleStatusFailed,

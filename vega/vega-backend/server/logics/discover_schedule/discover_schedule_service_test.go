@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -577,22 +578,32 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		assert.Equal(t, interfaces.ScheduleStatusSkipped, result.Status)
 		assert.NotEmpty(t, result.Message)
 	})
-	t.Run("reports revoked creator permission without leaking downstream details", func(t *testing.T) {
-		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
-		account := interfaces.AccountInfo{ID: "creator", Type: "user"}
-		schedule := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog", Creator: account}
-		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", false).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: "postgresql", Enabled: true}, nil)
-		denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails("private connector details")
-		dts.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, _ interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
-			assert.Equal(t, account, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
-			return nil, 0, denied
+	for _, tc := range []struct {
+		name     string
+		language i18n.Language
+		message  string
+	}{
+		{"Chinese", i18n.SimplifiedChinese, "计划创建者无目录任务管理权限，无法创建探查任务"},
+		{"English", i18n.AmericanEnglish, "The schedule creator lacks catalog task management permission; a discovery task cannot be created."},
+	} {
+		t.Run("reports revoked creator permission without leaking downstream details/"+tc.name, func(t *testing.T) {
+			ctx := i18n.WithLanguage(context.Background(), tc.language)
+			service, cs, dts := newTestDiscoverScheduleExecutionService(t)
+			account := interfaces.AccountInfo{ID: "creator", Type: "user"}
+			schedule := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog", Creator: account}
+			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", false).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: "postgresql", Enabled: true}, nil)
+			denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails("private connector details")
+			dts.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, _ interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+				assert.Equal(t, account, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
+				return nil, 0, denied
+			})
+			result, err := service.ExecuteSchedule(ctx, schedule)
+			require.ErrorIs(t, err, denied)
+			assert.Equal(t, interfaces.ScheduleStatusFailed, result.Status)
+			assert.Equal(t, tc.message, result.Message)
+			assert.NotContains(t, result.Message, "private")
 		})
-		result, err := service.ExecuteSchedule(context.Background(), schedule)
-		require.ErrorIs(t, err, denied)
-		assert.Equal(t, interfaces.ScheduleStatusFailed, result.Status)
-		assert.Contains(t, result.Message, "权限")
-		assert.NotContains(t, result.Message, "private")
-	})
+	}
 
 }
 

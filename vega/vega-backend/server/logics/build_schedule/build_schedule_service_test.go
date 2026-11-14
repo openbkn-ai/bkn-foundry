@@ -13,6 +13,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	mock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -87,6 +88,32 @@ func TestBuildScheduleServiceCreate(t *testing.T) {
 }
 
 func TestBuildScheduleServiceExecuteSchedule(t *testing.T) {
+	t.Run("background calls use the service default language", func(t *testing.T) {
+		original := i18n.DefaultLanguage
+		i18n.SetDefaultLocale(i18n.AmericanEnglish)
+		t.Cleanup(func() { i18n.SetDefaultLocale(original) })
+		service := &buildScheduleService{}
+		result, err := service.ExecuteSchedule(context.Background(), &interfaces.BuildSchedule{})
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ScheduleStatusFailed, result.Status)
+		assert.Equal(t, "The schedule execution identity is invalid; recreate the schedule.", result.Message)
+	})
+	for _, tc := range []struct {
+		language i18n.Language
+		message  string
+	}{
+		{language: i18n.SimplifiedChinese, message: "调度执行身份无效，请重新创建调度"},
+		{language: i18n.AmericanEnglish, message: "The schedule execution identity is invalid; recreate the schedule."},
+	} {
+		t.Run("invalid creator message in "+string(tc.language), func(t *testing.T) {
+			service := &buildScheduleService{}
+			ctx := i18n.WithLanguage(context.Background(), tc.language)
+			result, err := service.ExecuteSchedule(ctx, &interfaces.BuildSchedule{})
+			require.NoError(t, err)
+			assert.Equal(t, interfaces.ScheduleStatusFailed, result.Status)
+			assert.Equal(t, tc.message, result.Message)
+		})
+	}
 	for _, tc := range []struct {
 		name                    string
 		enabled                 bool

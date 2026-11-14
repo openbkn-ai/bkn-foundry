@@ -134,3 +134,39 @@ func TestBuildScheduleAccessDeleteByCatalogID(t *testing.T) {
 	m.ExpectRollback()
 	require.NoError(t, tx.Rollback())
 }
+
+func TestBuildScheduleAccessDeleteByResourceIDs(t *testing.T) {
+	t.Run("skips empty resource ids", func(t *testing.T) {
+		a, _ := newAccessFixture(t)
+		require.NoError(t, a.DeleteByResourceIDs(context.Background(), nil, nil))
+	})
+	t.Run("deletes bound schedules without an existing transaction", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		m.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_schedule WHERE f_resource_id IN (?,?)")).
+			WithArgs("resource-1", "resource-2").WillReturnResult(sqlmock.NewResult(0, 3))
+		require.NoError(t, a.DeleteByResourceIDs(context.Background(), nil, []string{"resource-1", "resource-2"}))
+	})
+	t.Run("uses caller transaction without committing it", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		m.ExpectBegin()
+		tx, err := a.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		m.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_schedule WHERE f_resource_id IN (?)")).
+			WithArgs("resource-1").WillReturnResult(sqlmock.NewResult(0, 0))
+		require.NoError(t, a.DeleteByResourceIDs(context.Background(), tx, []string{"resource-1"}))
+		m.ExpectCommit()
+		require.NoError(t, tx.Commit())
+	})
+	t.Run("propagates deletion error without rolling back caller transaction", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		m.ExpectBegin()
+		tx, err := a.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		deleteErr := errors.New("delete schedule failed")
+		m.ExpectExec(regexp.QuoteMeta("DELETE FROM t_build_schedule WHERE f_resource_id IN (?)")).
+			WithArgs("resource-1").WillReturnError(deleteErr)
+		require.ErrorIs(t, a.DeleteByResourceIDs(context.Background(), tx, []string{"resource-1"}), deleteErr)
+		m.ExpectRollback()
+		require.NoError(t, tx.Rollback())
+	})
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -94,45 +95,55 @@ func TestCatalogHealthCheckWorkerRunScheduleAt(t *testing.T) {
 		assert.Equal(t, "previous failure", schedule.LastMessage)
 	})
 	for _, tc := range []struct {
-		name     string
-		status   string
-		probeErr error
-		health   string
+		name           string
+		status         string
+		probeErr       error
+		health         string
+		chineseMessage string
+		englishMessage string
 	}{
 		{name: "healthy", status: interfaces.ScheduleStatusSuccess, health: "healthy"},
 		{name: "unhealthy is completed check", status: interfaces.ScheduleStatusSuccess, health: "unhealthy"},
-		{name: "invocation error", status: interfaces.ScheduleStatusFailed, probeErr: errors.New("private connector details")},
-		{name: "catalog disabled after due scan", status: interfaces.ScheduleStatusSkipped, probeErr: httperrors.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).WithErrorDetails("private detail")},
-		{name: "catalog deleted after due scan", status: interfaces.ScheduleStatusSkipped, probeErr: httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).WithErrorDetails("private detail")},
+		{name: "invocation error", status: interfaces.ScheduleStatusFailed, probeErr: errors.New("private connector details"), chineseMessage: "无法完成连接健康检查，请检查目录配置", englishMessage: "Could not complete the connection health check; check the catalog configuration."},
+		{name: "catalog disabled after due scan", status: interfaces.ScheduleStatusSkipped, probeErr: httperrors.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).WithErrorDetails("private detail"), chineseMessage: "目录已停用，跳过本次健康检查", englishMessage: "The catalog is disabled; this health check was skipped."},
+		{name: "catalog deleted after due scan", status: interfaces.ScheduleStatusSkipped, probeErr: httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound).WithErrorDetails("private detail"), chineseMessage: "目录不存在，跳过本次健康检查", englishMessage: "The catalog does not exist; this health check was skipped."},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
-			cs := vmock.NewMockCatalogService(ctrl)
-			schedule := newSchedule()
-			var runID string
-			gomock.InOrder(
-				sa.EXPECT().ClaimRun(gomock.Any(), "catalog", schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _, _, _, _ int64, token string) (int64, error) {
-					assert.NotEmpty(t, token)
-					runID = token
-					return 1, nil
-				}),
-				cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog").Return(&interfaces.CatalogHealthCheckStatus{HealthCheckStatus: tc.health}, tc.probeErr),
-				sa.EXPECT().CompleteRun(gomock.Any(), "catalog", gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _, token string, result interfaces.ScheduleRunResult) (int64, error) {
-					assert.Equal(t, runID, token)
-					assert.Equal(t, tc.status, result.Status)
-					if tc.probeErr != nil {
-						assert.NotEmpty(t, result.Message)
-						assert.NotContains(t, result.Message, "private")
-					} else {
-						assert.Empty(t, result.Message)
-					}
-					return 1, nil
-				}),
-			)
-			newCatalogHealthCheckWorker(&common.AppSetting{}, cs, sa).runScheduleAt(context.Background(), schedule, now)
-		})
+		for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+			t.Run(tc.name+"/"+string(language), func(t *testing.T) {
+				ctx := i18n.WithLanguage(context.Background(), language)
+				ctrl := gomock.NewController(t)
+				sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+				cs := vmock.NewMockCatalogService(ctrl)
+				schedule := newSchedule()
+				var runID string
+				gomock.InOrder(
+					sa.EXPECT().ClaimRun(gomock.Any(), "catalog", schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _, _, _, _ int64, token string) (int64, error) {
+						assert.NotEmpty(t, token)
+						runID = token
+						return 1, nil
+					}),
+					cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog").Return(&interfaces.CatalogHealthCheckStatus{HealthCheckStatus: tc.health}, tc.probeErr),
+					sa.EXPECT().CompleteRun(gomock.Any(), "catalog", gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _, token string, result interfaces.ScheduleRunResult) (int64, error) {
+						assert.Equal(t, runID, token)
+						assert.Equal(t, tc.status, result.Status)
+						if tc.probeErr != nil {
+							message := tc.chineseMessage
+							if language == i18n.AmericanEnglish {
+								message = tc.englishMessage
+							}
+							assert.Equal(t, message, result.Message)
+							assert.NotContains(t, result.Message, "private")
+						} else {
+							assert.Empty(t, result.Message)
+						}
+						return 1, nil
+					}),
+				)
+				newCatalogHealthCheckWorker(&common.AppSetting{}, cs, sa).runScheduleAt(ctx, schedule, now)
+			})
+		}
 	}
+
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -145,17 +156,26 @@ func TestCatalogHealthCheckWorkerRunScheduleAt(t *testing.T) {
 			newCatalogHealthCheckWorker(&common.AppSetting{}, vmock.NewMockCatalogService(ctrl), sa).runScheduleAt(context.Background(), schedule, now)
 		})
 	}
-	for _, expr := range []string{"invalid", "*/30 * * * *", "0 0 31 2 *"} {
-		t.Run("invalid persisted cron "+expr, func(t *testing.T) {
+	for _, tc := range []struct {
+		expression string
+		message    string
+	}{
+		{"invalid", "The schedule expression is invalid or runs more than once per hour; correct it before enabling."},
+		{"*/30 * * * *", "The schedule expression is invalid or runs more than once per hour; correct it before enabling."},
+		{"0 0 31 2 *", "The schedule expression has no valid future trigger time; correct it before enabling."},
+	} {
+		t.Run("invalid persisted cron "+tc.expression, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
 			schedule := newSchedule()
 			schedule.Mode = "enabled"
-			schedule.CronExpr = expr
-			sa.EXPECT().DisableInvalid(gomock.Any(), "catalog", schedule.UpdateTime, schedule.NextRun, gomock.Any()).Return(int64(1), nil)
-			newCatalogHealthCheckWorker(&common.AppSetting{}, vmock.NewMockCatalogService(ctrl), sa).runScheduleAt(context.Background(), schedule, now)
+			schedule.CronExpr = tc.expression
+			sa.EXPECT().DisableInvalid(gomock.Any(), "catalog", schedule.UpdateTime, schedule.NextRun, tc.message).Return(int64(1), nil)
+			ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
+			newCatalogHealthCheckWorker(&common.AppSetting{}, vmock.NewMockCatalogService(ctrl), sa).runScheduleAt(ctx, schedule, now)
 		})
 	}
+
 	t.Run("completion write failure does not invoke check again", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)

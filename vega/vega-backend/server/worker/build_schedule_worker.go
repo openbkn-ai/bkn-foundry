@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -83,7 +84,11 @@ func (w *BuildScheduleWorker) runSchedule(ctx context.Context, s *interfaces.Bui
 
 func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.BuildSchedule, now time.Time) {
 	var runID string
-	result := interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: "构建调度调用异常，请联系管理员"}
+	message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildCallFailed", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	result := interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: message}
 	defer func() {
 		if recover() != nil {
 			logger.Errorf("Build schedule execution panicked: schedule_id=%s", s.ID)
@@ -107,7 +112,11 @@ func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.B
 	}
 	cronSchedule, err := common.ParseHourlyCronExpr(s.CronExpr)
 	if err != nil {
-		if _, disableErr := w.sa.DisableInvalid(ctx, s.ID, s.UpdateTime, s.NextRun, "调度表达式无效，请修正后重新启用"); disableErr != nil {
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildCronInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		if _, disableErr := w.sa.DisableInvalid(ctx, s.ID, s.UpdateTime, s.NextRun, message); disableErr != nil {
 			logger.Errorf("Disable invalid build schedule failed: schedule_id=%s", s.ID)
 		}
 		return
@@ -118,7 +127,11 @@ func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.B
 	}
 	next := cronSchedule.Next(from)
 	if next.IsZero() {
-		if _, disableErr := w.sa.DisableInvalid(ctx, s.ID, s.UpdateTime, s.NextRun, "调度表达式没有可用的未来触发时间"); disableErr != nil {
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildCronNoFuture", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		if _, disableErr := w.sa.DisableInvalid(ctx, s.ID, s.UpdateTime, s.NextRun, message); disableErr != nil {
 			logger.Errorf("Disable exhausted build schedule failed: schedule_id=%s", s.ID)
 		}
 		return
@@ -148,6 +161,10 @@ func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.B
 		logger.Errorf("Build schedule call failed: schedule_id=%s", s.ID)
 	}
 	if result.Status == "" {
-		result = interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: "无法创建构建任务，请联系管理员"}
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildCreateUnavailable", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		result = interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: message}
 	}
 }

@@ -60,6 +60,7 @@ type resourceService struct {
 	ra         interfaces.ResourceAccess
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess
+	bsa        interfaces.BuildScheduleAccess
 	dta        interfaces.DiscoverTaskAccess
 	lim        interfaces.LocalIndexManager
 	cf         interfaces.ConnectorFactory
@@ -78,6 +79,7 @@ func NewResourceService(appSetting *common.AppSetting, datasetService interfaces
 			ra:         logics.RA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			bta:        logics.BTA,
+			bsa:        logics.BSA,
 			dta:        logics.DTA,
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			cf:         factory.NewConnectorFactory(appSetting),
@@ -1273,8 +1275,28 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 		}
 	}
 
-	if err := rs.ra.DeleteByIDs(ctx, existingIDs, onlyIfStale); err != nil {
+	tx, err := rs.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin resource deletion transaction failed")
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+			WithErrorDetails("failed to delete resources")
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	err = rs.ra.DeleteByIDs(ctx, tx, existingIDs, onlyIfStale)
+	if err == nil {
+		err = rs.bsa.DeleteByResourceIDs(ctx, tx, existingIDs)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
 		if errors.Is(err, interfaces.ErrResourceDeleteConditionNotMet) {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				span.SetStatus(codes.Error, "Rollback conditional resource deletion failed")
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+					WithErrorDetails("failed to delete resources")
+			}
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
 		}
 		span.SetStatus(codes.Error, "Delete resources failed")

@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -325,52 +326,68 @@ func (s *buildScheduleService) setEnabled(ctx context.Context, current *interfac
 func (s *buildScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.BuildSchedule) (interfaces.ScheduleRunResult, error) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 	if schedule.Creator.ID == "" || schedule.Creator.Type == "" {
-		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: "调度执行身份无效，请重新创建调度"}, nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.InvalidCreator", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: message}, nil
 	}
 	cat, err := s.requireTaskManage(ctx, schedule.CatalogID)
 	if err != nil {
-		return failedBuildResult(err), err
+		return failedBuildResult(ctx, err), err
 	}
 	resource, err := s.rs.InternalGetByID(ctx, nil, schedule.ResourceID)
 	if err != nil {
-		return failedBuildResult(err), err
+		return failedBuildResult(ctx, err), err
 	}
 	if resource == nil || resource.CatalogID != schedule.CatalogID {
-		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "资源不存在或已不属于调度目录"}, nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildResourceMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 	if !cat.Enabled || !resource.Enabled {
-		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "资源或目录已停用"}, nil
+		message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Schedule.Result.BuildTargetDisabled", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: message}, nil
 	}
 	_, err = s.bts.Create(ctx, &interfaces.CreateBuildTaskRequest{ResourceID: schedule.ResourceID, Mode: interfaces.BuildTaskModeBatch, ExecuteType: schedule.ExecuteType, ScheduleID: schedule.ID, TriggerType: interfaces.BuildTaskTriggerScheduled})
 	if err != nil {
-		return failedBuildResult(err), err
+		return failedBuildResult(ctx, err), err
 	}
 	return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}, nil
 }
 
-func failedBuildResult(err error) interfaces.ScheduleRunResult {
-	result := interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed, Message: "无法创建构建任务，请检查资源配置或联系管理员"}
+func failedBuildResult(ctx context.Context, err error) interfaces.ScheduleRunResult {
+	status := interfaces.ScheduleStatusFailed
+	messageID := "VegaBackend.Schedule.Result.BuildCreateFailed"
 	var httpErr *httperrors.HTTPError
-	if !errors.As(err, &httpErr) {
-		return result
-	}
-	switch httpErr.ErrorCode {
-	case verrors.VegaBackend_BuildTask_Exist:
-		result.Status = interfaces.ScheduleStatusSkipped
-		result.Message = "资源已有待执行、运行中或停止中的构建任务"
-	case verrors.VegaBackend_Catalog_IsDisabled:
-		result.Status = interfaces.ScheduleStatusSkipped
-		result.Message = "目录已停用"
-	case verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields:
-		result.Message = "资源主键配置无效，无法创建构建任务"
-	case verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields:
-		result.Message = "资源增量字段配置无效，无法创建构建任务"
-	case verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable:
-		result.Message = "增量构建缺少可用索引或有效基线"
-	default:
-		if httpErr.HTTPCode == http.StatusForbidden || httpErr.HTTPCode == http.StatusUnauthorized {
-			result.Message = "调度执行者没有当前目录或资源的构建权限"
+	if errors.As(err, &httpErr) {
+		switch httpErr.ErrorCode {
+		case verrors.VegaBackend_BuildTask_Exist:
+			status = interfaces.ScheduleStatusSkipped
+			messageID = "VegaBackend.Schedule.Result.BuildTaskActive"
+		case verrors.VegaBackend_Catalog_IsDisabled:
+			status = interfaces.ScheduleStatusSkipped
+			messageID = "VegaBackend.Schedule.Result.CatalogDisabled"
+		case verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields:
+			messageID = "VegaBackend.Schedule.Result.BuildPrimaryKeyInvalid"
+		case verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields:
+			messageID = "VegaBackend.Schedule.Result.BuildIncrementalFieldsInvalid"
+		case verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable:
+			messageID = "VegaBackend.Schedule.Result.BuildBaselineUnavailable"
+		default:
+			if httpErr.HTTPCode == http.StatusForbidden || httpErr.HTTPCode == http.StatusUnauthorized {
+				messageID = "VegaBackend.Schedule.Result.BuildPermissionDenied"
+			}
 		}
 	}
-	return result
+	message, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return interfaces.ScheduleRunResult{Status: status, Message: message}
 }
