@@ -361,6 +361,24 @@ func Test_LineageService_PrepareRelease_Capabilities(t *testing.T) {
 			So(details["operation"], ShouldEqual, capability.OPERATION_COPY)
 		})
 
+		Convey("A toolbox gone from the platform is named with what uses it in the network\n", func() {
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil,
+				&interfaces.ExecutionFactoryError{HTTPCode: http.StatusNotFound})
+
+			_, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusNotFound)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_CapabilityRequestFailed)
+			details := errorDetails(err).(map[string]any)
+			So(details["id"], ShouldEqual, capBoxID)
+			So(details["network_id"], ShouldEqual, id)
+			uses := details["used_by"].([]capability.Use)
+			So(uses, ShouldNotBeEmpty)
+			So(uses[0].Kind, ShouldEqual, capability.USE_ACTION_TYPE)
+		})
+
 		Convey("A preview lists what preparing would do with each function and Skill, and copies nothing\n", func() {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			expectExport()

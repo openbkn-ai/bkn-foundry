@@ -30,6 +30,10 @@ type ItemError struct {
 	Name      string
 	Operation string
 	Err       error
+	// Uses are the definitions of the network that reference the item, and NetworkID that
+	// network, where a person relinks or removes them; set where the network is known.
+	Uses      []Use
+	NetworkID string
 }
 
 func (e *ItemError) Error() string {

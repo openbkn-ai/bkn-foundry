@@ -365,6 +365,17 @@ func Test_RewritePackage(t *testing.T) {
 			boxes, skills := References(network)
 			So(boxes, ShouldResemble, []string{boxID, "other-box"})
 			So(skills, ShouldResemble, []string{skillID})
+
+			// What uses a toolbox is named, with the name the network records for it.
+			name, uses := Uses(network, KIND_FUNCTION, boxID)
+			So(name, ShouldEqual, "supply_tools")
+			So(uses, ShouldContain, Use{Kind: USE_ACTION_TYPE, ID: "replenish", Name: network.ActionTypes[0].Name})
+			So(uses, ShouldContain, Use{Kind: USE_CAPABILITY})
+			name, uses = Uses(network, KIND_SKILL, skillID)
+			So(name, ShouldEqual, "plan-supply")
+			So(uses, ShouldResemble, []Use{{Kind: USE_CAPABILITY}})
+			_, uses = Uses(network, KIND_FUNCTION, "gone-box")
+			So(uses, ShouldBeEmpty)
 		})
 	})
 }

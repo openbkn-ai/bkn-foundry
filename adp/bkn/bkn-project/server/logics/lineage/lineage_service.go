@@ -554,6 +554,9 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 		status := http.StatusBadGateway
 		details := map[string]any{"kind": itemErr.Kind, "id": itemErr.ID, "name": itemErr.Name,
 			"operation": itemErr.Operation, "error": itemErr.Err.Error()}
+		if itemErr.NetworkID != "" {
+			details["network_id"], details["used_by"] = itemErr.NetworkID, itemErr.Uses
+		}
 		var efaErr *interfaces.ExecutionFactoryError
 		if errors.As(err, &efaErr) {
 			if efaErr.HTTPCode >= http.StatusBadRequest && efaErr.HTTPCode < http.StatusInternalServerError {
