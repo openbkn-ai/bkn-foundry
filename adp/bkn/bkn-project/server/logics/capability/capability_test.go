@@ -530,3 +530,34 @@ func Test_Apply(t *testing.T) {
 		})
 	})
 }
+
+func Test_RelinkFunction(t *testing.T) {
+	Convey("Test RelinkFunction\n", t, func() {
+		network := &bkn.BknNetwork{
+			ActionTypes: []*bkn.BknActionType{{ActionSource: &bkn.ActionSource{Type: "tool", BoxID: "old", ToolID: "t-run"}}},
+			BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{Capabilities: &bkn.BknCapabilities{Functions: []*bkn.BknCapabilityFunction{
+				{BoxID: "old", ToolID: "t-check", BoxName: "supply_tools", ToolName: "check"}}}},
+		}
+		to, err := NewFunction([]byte(`{"toolbox":{"configs":[{"box_id":"new","box_name":"supply_tools",` +
+			`"tools":[{"tool_id":"n-run","name":"run"},{"tool_id":"n-check","name":"check"}]}]}}`))
+		So(err, ShouldBeNil)
+
+		Convey("Tools move as given, else by the name the network records\n", func() {
+			c, err := RelinkFunction(network, "old", to, map[string]string{"t-run": "n-run"})
+			So(err, ShouldBeNil)
+			So(c.NewID, ShouldEqual, "new")
+			So(c.NewName, ShouldEqual, "supply_tools")
+			So(c.ToolIDs, ShouldResemble, map[string]string{"t-run": "n-run", "t-check": "n-check"})
+		})
+
+		Convey("A tool with no recorded name and none given has no match\n", func() {
+			_, err := RelinkFunction(network, "old", to, nil)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("A tool given that the toolbox does not hold has no match\n", func() {
+			_, err := RelinkFunction(network, "old", to, map[string]string{"t-run": "elsewhere"})
+			So(err, ShouldNotBeNil)
+		})
+	})
+}

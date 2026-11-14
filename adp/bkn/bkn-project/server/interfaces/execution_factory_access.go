@@ -17,6 +17,9 @@ const (
 	SKILL_STATUS_EDITING   = "editing"
 )
 
+// TOOLBOX_STATUS_PUBLISHED is a toolbox's status once published.
+const TOOLBOX_STATUS_PUBLISHED = "published"
+
 // Import modes of the execution-factory impex API.
 const (
 	// IMPEX_MODE_CREATE refuses a toolbox whose id already exists.
@@ -49,6 +52,9 @@ type ExecutionFactoryAccess interface {
 	// ImportToolbox imports an impex export in IMPEX_MODE_CREATE or IMPEX_MODE_UPSERT.
 	// The toolbox and tool ids are taken from data.
 	ImportToolbox(ctx context.Context, token string, data []byte, mode string) error
+	// FindToolboxes returns the ids of the published toolboxes named exactly name that the caller
+	// can see.
+	FindToolboxes(ctx context.Context, token string, name string) ([]string, error)
 	// GetReleasedSkill returns the files of the published release of a Skill,
 	// keyed by their path in the Skill package; SKILL.md is always among them.
 	GetReleasedSkill(ctx context.Context, token string, skillID string) (map[string][]byte, error)

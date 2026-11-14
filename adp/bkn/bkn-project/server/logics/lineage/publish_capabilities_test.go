@@ -68,6 +68,12 @@ func capabilityExport(code string) []byte {
 "metadata_type":"function","tools":[{"tool_id":%q,"name":"expand_bom","code":%q}]}]}}`, capBoxID, capToolID, code))
 }
 
+// toolboxExport is the export of toolbox boxID with the one tool expand_bom, as toolID.
+func toolboxExport(boxID string, toolID string) []byte {
+	return []byte(fmt.Sprintf(`{"toolbox":{"configs":[{"box_id":%q,"box_name":"supply_tools","box_svc_url":"http://box",
+"metadata_type":"function","tools":[{"tool_id":%q,"name":"expand_bom","code":"x"}]}]}}`, boxID, toolID))
+}
+
 func releasedSkill(body string) map[string][]byte {
 	return map[string][]byte{"SKILL.md": []byte("---\nname: plan-supply\ndescription: Plans.\n---\n" + body)}
 }
@@ -377,6 +383,129 @@ func Test_LineageService_PrepareRelease_Capabilities(t *testing.T) {
 			uses := details["used_by"].([]capability.Use)
 			So(uses, ShouldNotBeEmpty)
 			So(uses[0].Kind, ShouldEqual, capability.USE_ACTION_TYPE)
+		})
+
+		Convey("Toolboxes and Skills made again under the same names", func() {
+			bba := pmock.NewMockBknBackendAccess(mockCtrl)
+			svc := &lineageService{gs: realGS, kva: kva, efa: efa, ra: ra, bba: bba}
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, id).Return(nil, nil).AnyTimes()
+			const newBoxID, newToolID, newSkillID = "box-again", "tool-again", "skill-again"
+			gone := &interfaces.ExecutionFactoryError{HTTPCode: http.StatusNotFound}
+			// The branch's network also lists the toolbox's tool among its capabilities, by name.
+			withFunction := func() {
+				files := capabilityDefinitions(id, "A part, edited.")
+				files["network.bkn"] = []byte(strings.Replace(string(files["network.bkn"]), "capabilities:\n",
+					"capabilities:\n  functions:\n    - box_id: "+capBoxID+"\n      tool_id: "+capToolID+
+						"\n      box_name: supply_tools\n      tool_name: expand_bom\n", 1))
+				_, err := realGS.CommitFiles(ctx, id, branch, files, "list the function", author)
+				So(err, ShouldBeNil)
+			}
+			expectNewBox := func(times int) {
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, newBoxID).Return(toolboxExport(newBoxID, newToolID), nil).Times(times)
+			}
+			networkUses := func(boxID string, toolID string) {
+				bba.EXPECT().ListActionTypes(gomock.Any(), token, id, "").Return([]*interfaces.KNActionType{{ID: "replenish",
+					Source: interfaces.KNActionTypeSource{Type: "tool", BoxID: boxID, ToolID: toolID}}}, nil)
+			}
+
+			Convey("A gone toolbox follows the one the network's action types use now, and the review passes\n", func() {
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil, gone)
+				networkUses(newBoxID, newToolID)
+				expectNewBox(2)
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill(skillBody), nil)
+
+				preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+				So(err, ShouldBeNil)
+				So(preview.Refusals, ShouldBeEmpty)
+				So(preview.Relinked, ShouldResemble, []interfaces.CapabilityRelink{{Kind: string(capability.KIND_FUNCTION),
+					Name: "supply_tools", PreviousID: capBoxID, ID: newBoxID, By: interfaces.RELINK_BY_NETWORK}})
+				So(preview.Capabilities[0].ID, ShouldEqual, newBoxID)
+			})
+
+			Convey("Preparing writes the toolbox the network uses now, and the branch keeps what it holds\n", func() {
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil, gone)
+				networkUses(newBoxID, newToolID)
+				expectNewBox(2)
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill(skillBody), nil)
+				written, _ := expectWrite(8)
+
+				_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+				So(err, ShouldBeNil)
+				network, err := loadNetwork(*written)
+				So(err, ShouldBeNil)
+				So(network.ActionTypes[0].ActionSource.BoxID, ShouldEqual, newBoxID)
+				So(network.ActionTypes[0].ActionSource.ToolID, ShouldEqual, newToolID)
+				onBranch, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+				So(err, ShouldBeNil)
+				So(string(onBranch["action_types/replenish.bkn"]), ShouldContainSubstring, capBoxID)
+			})
+
+			Convey("Else it follows the one published toolbox of the name the network records, tools matched by name\n", func() {
+				withFunction()
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil, gone)
+				// The network itself still names the gone toolbox.
+				networkUses(capBoxID, capToolID)
+				efa.EXPECT().FindToolboxes(gomock.Any(), token, "supply_tools").Return([]string{newBoxID}, nil)
+				expectNewBox(2)
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill(skillBody), nil)
+
+				preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+				So(err, ShouldBeNil)
+				So(preview.Relinked, ShouldHaveLength, 1)
+				So(preview.Relinked[0].By, ShouldEqual, interfaces.RELINK_BY_NAME)
+				So(preview.Relinked[0].ID, ShouldEqual, newBoxID)
+			})
+
+			Convey("Several toolboxes of the name leave the gone one named as before\n", func() {
+				withFunction()
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil, gone)
+				networkUses(capBoxID, capToolID)
+				efa.EXPECT().FindToolboxes(gomock.Any(), token, "supply_tools").Return([]string{newBoxID, "box-other"}, nil)
+
+				_, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+				status, code := httpCode(err)
+				So(status, ShouldEqual, http.StatusNotFound)
+				So(code, ShouldEqual, perrors.BknProject_Lineage_CapabilityRequestFailed)
+				So(errorDetails(err).(map[string]any)["id"], ShouldEqual, capBoxID)
+			})
+
+			Convey("A toolbox whose tool has no match of the same name is not followed\n", func() {
+				withFunction()
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(nil, gone)
+				networkUses(capBoxID, capToolID)
+				efa.EXPECT().FindToolboxes(gomock.Any(), token, "supply_tools").Return([]string{"box-renamed-tools"}, nil)
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, "box-renamed-tools").Return(
+					[]byte(strings.Replace(string(toolboxExport("box-renamed-tools", newToolID)), "expand_bom", "explode_bom", 1)), nil)
+
+				_, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+				status, _ := httpCode(err)
+				So(status, ShouldEqual, http.StatusNotFound)
+			})
+
+			Convey("A gone Skill follows the published Skill of its name\n", func() {
+				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
+				// Read again when the release is planned once more.
+				efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(capabilityExport(functionCode), nil).Times(2)
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(nil, gone)
+				efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply").Return(newSkillID, interfaces.SKILL_STATUS_PUBLISHED, nil)
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, newSkillID).Return(releasedSkill(skillBody), nil)
+
+				preview, err := svc.PreviewRelease(ctx, token, id, branch, "1.0.0")
+
+				So(err, ShouldBeNil)
+				So(preview.Relinked, ShouldResemble, []interfaces.CapabilityRelink{{Kind: string(capability.KIND_SKILL),
+					Name: "plan-supply", PreviousID: capSkillID, ID: newSkillID, By: interfaces.RELINK_BY_NAME}})
+			})
 		})
 
 		Convey("A preview lists what preparing would do with each function and Skill, and copies nothing\n", func() {

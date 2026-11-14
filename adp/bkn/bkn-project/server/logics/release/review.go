@@ -165,6 +165,7 @@ func (s *projectReleaseService) ReviewRelease(ctx context.Context, token string,
 		},
 		Questions:    releaseQuestions(questions, branchFiles, mainFiles, preview.Changes),
 		Capabilities: preview.Capabilities,
+		Relinked:     append([]interfaces.CapabilityRelink{}, preview.Relinked...),
 	}
 	// Before the lineage's first release, a network a project started from may run a version
 	// already: the release goes on from it.
