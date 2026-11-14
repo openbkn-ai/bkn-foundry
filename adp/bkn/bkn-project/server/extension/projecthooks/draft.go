@@ -161,6 +161,16 @@ type Drafts interface {
 	FollowEvidence(items *interfaces.DraftItems) []*interfaces.DraftDecision
 }
 
+// KnowledgeReader is what an edition's Drafts add to kinetic analysis, scenario drafting and Ask
+// AI, when they implement it: the concepts and rules its sources beyond tables hold, which those
+// read beside the documents and the model. It is asserted on Drafts rather than part of it, so an
+// edition built before it keeps building; without it they read none.
+type KnowledgeReader interface {
+	// Knowledge picks the edition's own of the draft's concepts, as the concepts page lists them
+	// with a person's judgments: those it judged left out are none, those judged kinetic are rules.
+	Knowledge(concepts []interfaces.DraftConcept) interfaces.RequirementKnowledge
+}
+
 // DocumentConcept is what a document item is as a concept.
 type DocumentConcept struct {
 	// Evidence locates a business item's text: it follows its business items and is no concept.

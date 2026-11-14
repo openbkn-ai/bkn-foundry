@@ -356,7 +356,7 @@ func Test_BuildSpecKeeps(t *testing.T) {
 
 		Convey("The message names the kept items by prefixed ids, and the concepts, rules and needs by their own\n", func() {
 			spec := base()
-			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), spec, spec, nil, "")
+			message, _, _, err := buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), spec, spec, nil, "", interfaces.RequirementKnowledge{})
 
 			So(err, ShouldBeNil)
 			var body draftMessage
@@ -372,7 +372,7 @@ func Test_BuildSpecKeeps(t *testing.T) {
 			So(body.LogicNeeds[0], ShouldResemble, messageLogicNeed{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Headcount",
 				Definition: "employees per department"})
 
-			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), emptySpec(), emptySpec(), nil, "")
+			message, _, _, _ = buildDraftMessage(interfaces.NAMING_LANGUAGE_EN_US, nil, nil, staffOntology(), emptySpec(), emptySpec(), nil, "", interfaces.RequirementKnowledge{})
 			So(message, ShouldNotContainSubstring, `"kept"`)
 		})
 	})

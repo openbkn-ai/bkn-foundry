@@ -60,6 +60,31 @@ type RequirementSupplement struct {
 	Time int64              `json:"time"`
 }
 
+// RequirementKnowledge is what the project's sources beyond tables hold for kinetic analysis,
+// scenario drafting and Ask AI, as an edition reads it from the draft: the concepts drafted from
+// knowledge-base files, and the rules they state. The open core has none of its own.
+type RequirementKnowledge struct {
+	// Files counts the files the concepts and rules were drafted from.
+	Files    int                         `json:"files"`
+	Concepts []*RequirementKnowledgeItem `json:"concepts"`
+	Rules    []*RequirementKnowledgeItem `json:"rules"`
+}
+
+// RequirementKnowledgeItem is a concept or rule of the knowledge base: Kind is its verdict on the
+// concepts page (object, event, relation, property or values; kinetic for a rule), Adopted says
+// the model adopted its item.
+type RequirementKnowledgeItem struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Kind        string `json:"kind"`
+	Adopted     bool   `json:"adopted"`
+}
+
+// Empty tells knowledge with neither concepts nor rules.
+func (k *RequirementKnowledge) Empty() bool {
+	return k == nil || len(k.Concepts) == 0 && len(k.Rules) == 0
+}
+
 // RequirementAuthor is an account with its display name, named only in replies.
 type RequirementAuthor struct {
 	ID   string `json:"id"`

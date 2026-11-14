@@ -330,6 +330,8 @@ type draftMessage struct {
 	Kept          *messageKept          `json:"kept,omitempty"`
 	// Supplement is the owner's supplement note, absent when none was written.
 	Supplement string `json:"supplement,omitempty"`
+	// Knowledge is what the knowledge base holds: its concepts and rules, absent when none.
+	Knowledge *messageKnowledge `json:"knowledge,omitempty"`
 }
 
 // messageConcept is a concept of the specification, by its own id.
@@ -532,10 +534,10 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 // needs. It also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
 	draft *interfaces.Draft, base *interfaces.RequirementSpec, kept *interfaces.RequirementSpec,
-	networkItems []*interfaces.LogicNetworkItem, supplement string) (string, int, int, error) {
+	networkItems []*interfaces.LogicNetworkItem, supplement string, knowledge interfaces.RequirementKnowledge) (string, int, int, error) {
 	msg := draftMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(base.Concepts),
 		Rules: messageRulesOf(base.Rules), LogicNeeds: messageLogicNeedsOf(base.LogicNeeds), Kept: messageKeptOf(kept),
-		Supplement: supplement}
+		Supplement: supplement, Knowledge: messageKnowledgeOf(knowledge)}
 	var tablesOmitted, propertiesOmitted int
 	msg.Tables, tablesOmitted = messageTablesOf(tables)
 	msg.ObjectTypes, msg.RelationTypes, propertiesOmitted = messageOntologyOf(draft, true)
@@ -1122,7 +1124,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		return
 	}
 	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base,
-		networkItems, supplement)
+		networkItems, supplement, knowledgeOf(ctx, draft))
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return

@@ -236,10 +236,11 @@ func coveringItem(items []*interfaces.LogicNetworkItem, need *interfaces.Require
 	return named[0]
 }
 
-// uncovered leaves out of proposed the needs the network's items already cover: one the Agent
-// gives again by an item's id, one it says an item covers, and a new one of the same kind and name
-// as an item. A kept need given again stays, to be linked with the rest; covered gives, by their
-// ids, the kept needs the Agent said an item covers, with that item.
+// uncovered leaves out of proposed the needs the network's items already are: one the Agent gives
+// again by an item's id, and a new one of the same kind and name as an item it says covers nothing.
+// A new need the Agent says an item covers stays, as the documents ask for it, to be linked to that
+// item; so does a kept need given again. covered gives, by the kept needs' ids and by coveredKey of
+// the new ones, the item the Agent said covers each.
 func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) (
 	[]agentLogicNeed, map[string]*interfaces.LogicNetworkItem) {
 	covered := map[string]*interfaces.LogicNetworkItem{}
@@ -251,17 +252,25 @@ func uncovered(proposed []agentLogicNeed, items []*interfaces.LogicNetworkItem) 
 		id := strings.TrimSpace(p.ID)
 		by := networkItemOf(items, p.CoveredBy)
 		kept := strings.HasPrefix(id, keptPrefix) && !strings.HasPrefix(id, networkItemPrefix)
-		if kept && by != nil {
+		switch {
+		case kept && by != nil:
 			covered[strings.TrimPrefix(id, keptPrefix)] = by
+		case !kept && by != nil:
+			covered[coveredKey(p.Kind, p.Name)] = by
 		}
 		switch {
 		case strings.HasPrefix(id, networkItemPrefix):
-		case !kept && (by != nil || len(coveringItems(items, p.Kind, p.Name)) > 0):
+		case !kept && by == nil && len(coveringItems(items, p.Kind, p.Name)) > 0:
 		default:
 			out = append(out, p)
 		}
 	}
 	return out, covered
+}
+
+// coveredKey keys a new need in covered by its kind and name, as it has no id before it is added.
+func coveredKey(kind string, name string) string {
+	return "new:" + kind + ":" + squeezed(name)
 }
 
 // linkCovered links each need no one linked or changed to the network's item that covers it, by
@@ -274,6 +283,9 @@ func linkCovered(spec *interfaces.RequirementSpec, items []*interfaces.LogicNetw
 			continue
 		}
 		item := covered[n.ID]
+		if item == nil {
+			item = covered[coveredKey(n.Kind, n.Name)]
+		}
 		if item == nil || n.Kind == interfaces.LOGIC_NEED_API || cmp.Or(item.Kind, networkNeedKind(item.Type)) != n.Kind {
 			item = coveringItem(items, n)
 		}
