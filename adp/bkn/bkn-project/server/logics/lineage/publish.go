@@ -474,7 +474,8 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	branch string, version string, all bool) (*releaseCheck, error) {
 	checked := &releaseCheck{preview: &interfaces.ReleasePreview{
 		LineageID: lineageID, Branch: branch, Version: version, Tag: "v" + version, NetworkID: lineageID,
-		LiveNetworkID: lineageID, Capabilities: []interfaces.CapabilityPlan{}, Refusals: []interfaces.ReleaseRefusal{},
+		LiveNetworkID: lineageID, Capabilities: []interfaces.CapabilityPlan{}, Relinked: []interfaces.CapabilityRelink{},
+		Refusals: []interfaces.ReleaseRefusal{},
 	}}
 	preview := checked.preview
 	// refuse records a refusal and tells whether to stop.
@@ -595,6 +596,18 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 	// references can move to the copies, is settled here; the copies are made when preparing,
 	// before the draft is written, so the draft points at them.
 	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, checked.copyFrom, copySuffix(lineageID, version))
+	// A toolbox or Skill gone since the definitions were written, as after a sample was installed
+	// again, is followed to the one that took its place, one at a time.
+	for gone := (*capability.ItemError)(nil); errors.As(err, &gone) && gone.Gone() &&
+		len(preview.Relinked) < maxRelinks; {
+		relinked, relink := s.relinkGone(ctx, token, lineageID, pkg, gone)
+		if relink == nil {
+			break
+		}
+		pkg = relinked
+		preview.Relinked = append(preview.Relinked, *relink)
+		steps, err = s.planCapabilities(ctx, token, pkg, previous, tracked, checked.copyFrom, copySuffix(lineageID, version))
+	}
 	// A toolbox or Skill that cannot be read is named as the network knows it, with the definitions
 	// that use it, so a person can relink or remove them in the network.
 	var unread *capability.ItemError

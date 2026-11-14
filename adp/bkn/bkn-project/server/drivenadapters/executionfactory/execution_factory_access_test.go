@@ -179,6 +179,23 @@ func Test_ExecutionFactoryAccess(t *testing.T) {
 			So(id, ShouldBeEmpty)
 		})
 
+		Convey("FindToolboxes picks the published toolboxes of the exact name out of the substring matches\n", func() {
+			handlers["GET "+prefix+"/tool-box/list"] = func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{"total": 3, "data": []map[string]string{
+					{"box_id": "a", "box_name": "supply_tools_v2", "status": "published"},
+					{"box_id": "b", "box_name": "supply_tools", "status": "published"},
+					{"box_id": "c", "box_name": "supply_tools", "status": "unpublish"},
+				}})
+			}
+
+			ids, err := efa.FindToolboxes(ctx, token, "supply_tools")
+			So(err, ShouldBeNil)
+			So(ids, ShouldResemble, []string{"b"})
+			So(requests, ShouldHaveLength, 1)
+			So(requests[0].query, ShouldContainSubstring, "status=published")
+			So(requests[0].auth, ShouldEqual, token)
+		})
+
 		Convey("RegisterSkill uploads a zip and PublishSkill publishes the new id\n", func() {
 			handlers["POST "+prefix+"/skills"] = func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(`{"skill_id":"new1","status":"unpublish"}`))

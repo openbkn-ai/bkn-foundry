@@ -143,7 +143,28 @@ type ReleasePreview struct {
 	// Capabilities is what the release would do with each toolbox and Skill the definitions use;
 	// empty when the package could not be built.
 	Capabilities []CapabilityPlan `json:"capabilities"`
-	Refusals     []ReleaseRefusal `json:"refusals"`
+	// Relinked are the toolboxes and Skills the definitions named that no longer exist, each moved
+	// to the one the network uses now or to the one published under the same name.
+	Relinked []CapabilityRelink `json:"relinked"`
+	Refusals []ReleaseRefusal   `json:"refusals"`
+}
+
+// How a CapabilityRelink found what it moved to.
+const (
+	// RELINK_BY_NETWORK: the network's own definition of the same item uses it now.
+	RELINK_BY_NETWORK = "network"
+	// RELINK_BY_NAME: it is the one published toolbox or Skill of the same name.
+	RELINK_BY_NAME = "name"
+)
+
+// CapabilityRelink is a toolbox (kind function) or Skill gone from the platform that a release
+// moves the definitions' references off, onto ID.
+type CapabilityRelink struct {
+	Kind       string `json:"kind"`
+	Name       string `json:"name"`
+	PreviousID string `json:"previous_id"`
+	ID         string `json:"id"`
+	By         string `json:"by"`
 }
 
 // CapabilityPlan is what a release does with one toolbox (kind function) or Skill: reuse it under

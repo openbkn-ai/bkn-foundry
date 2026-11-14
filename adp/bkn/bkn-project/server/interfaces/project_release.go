@@ -85,6 +85,9 @@ type ReleaseReview struct {
 	Questions ReleaseQuestions `json:"questions"`
 	// Capabilities is what the release does with each function and Skill.
 	Capabilities []CapabilityPlan `json:"capabilities"`
+	// Relinked are the functions and Skills that no longer exist which the release moves the
+	// definitions off, onto the ones that took their places.
+	Relinked []CapabilityRelink `json:"relinked"`
 	// Signature stands for what the review was made from; publishing refuses another.
 	Signature string `json:"signature"`
 }

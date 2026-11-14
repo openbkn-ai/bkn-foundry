@@ -690,6 +690,8 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 				Removed: []string{"object_types/supplier.bkn"},
 			}
 			preview.Capabilities = []interfaces.CapabilityPlan{{Kind: "function", ID: "b", Copy: true}, {Kind: "skill", ID: "s"}}
+			preview.Relinked = []interfaces.CapabilityRelink{{Kind: "function", Name: "supply_tools", PreviousID: "a", ID: "b",
+				By: interfaces.RELINK_BY_NETWORK}}
 			delete(branchFiles, "object_types/supplier.bkn")
 			expect()
 			expectIndex()
@@ -708,6 +710,7 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			})
 			So(r.Risks.Copies, ShouldEqual, 1)
 			So(r.Capabilities, ShouldResemble, preview.Capabilities)
+			So(r.Relinked, ShouldResemble, preview.Relinked)
 		})
 
 		Convey("A changed definition of another kind is not an addition either\n", func() {

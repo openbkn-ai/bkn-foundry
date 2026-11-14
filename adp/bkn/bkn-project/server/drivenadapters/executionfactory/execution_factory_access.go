@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -30,6 +31,10 @@ import (
 const (
 	// skillMD is the entry file of every Skill package.
 	skillMD = "SKILL.md"
+	// toolboxListPageSize is the largest page the toolbox list serves, and toolboxListPages how
+	// many of them FindToolboxes reads at most.
+	toolboxListPageSize = "100"
+	toolboxListPages    = 10
 	// skillListPageSize is the largest page the Skill list serves.
 	skillListPageSize = "100"
 	// skillStatusUnpublished is a Skill never published.
@@ -64,6 +69,16 @@ type skillList struct {
 	Data []struct {
 		SkillID string `json:"skill_id"`
 		Name    string `json:"name"`
+		Status  string `json:"status"`
+	} `json:"data"`
+}
+
+// toolboxList is the body of GET /tool-box/list.
+type toolboxList struct {
+	Total int `json:"total"`
+	Data  []struct {
+		BoxID   string `json:"box_id"`
+		BoxName string `json:"box_name"`
 		Status  string `json:"status"`
 	} `json:"data"`
 }
@@ -200,6 +215,38 @@ func (efa *executionFactoryAccess) FindSkill(ctx context.Context, token string, 
 		}
 	}
 	return draftID, draftStatus, nil
+}
+
+// FindToolboxes calls GET /tool-box/list?name=&status=published a page at a time. The name
+// filter matches substrings, so the exact name is picked out.
+func (efa *executionFactoryAccess) FindToolboxes(ctx context.Context, token string, name string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "FindToolboxes")
+	defer span.End()
+
+	ids := []string{}
+	for page, seen := 1, 0; page <= toolboxListPages; page++ {
+		query := url.Values{"name": {name}, "status": {interfaces.TOOLBOX_STATUS_PUBLISHED},
+			"page": {strconv.Itoa(page)}, "page_size": {toolboxListPageSize}}
+		respBody, err := efa.do(ctx, span, http.MethodGet, fmt.Sprintf("%s/tool-box/list?%s", efa.baseUrl, query.Encode()),
+			token, nil, "")
+		if err != nil {
+			return nil, fmt.Errorf("find toolbox %s: %w", name, err)
+		}
+		list := &toolboxList{}
+		if err := json.Unmarshal(respBody, list); err != nil {
+			return nil, fmt.Errorf("unmarshal toolbox list: %w", err)
+		}
+		for _, b := range list.Data {
+			if b.BoxName == name && b.Status == interfaces.TOOLBOX_STATUS_PUBLISHED {
+				ids = append(ids, b.BoxID)
+			}
+		}
+		seen += len(list.Data)
+		if len(list.Data) == 0 || seen >= list.Total {
+			break
+		}
+	}
+	return ids, nil
 }
 
 // RegisterSkill calls POST /skills with file_type=zip and the package as the multipart file "file".
