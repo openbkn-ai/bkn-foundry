@@ -82,11 +82,15 @@ func draftSourceIDs(draft *interfaces.Draft) []string {
 			ids = append(ids, id)
 		}
 	}
+	// What a knowledge-base extraction drafted is stored in Datasets bkn-project prepares, not in
+	// the project's tables: no table change can apply to it.
 	for _, ot := range draft.Items.ObjectTypes {
-		add(ot.Table.ResourceID)
+		if ot.Document == nil {
+			add(ot.Table.ResourceID)
+		}
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		if rt.LinkTable != nil {
+		if rt.LinkTable != nil && rt.Document == nil {
 			add(rt.LinkTable.ResourceID)
 		}
 	}
@@ -285,7 +289,8 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 	language := draftLanguage(draft)
 	for _, ot := range draft.Items.ObjectTypes {
 		// What the network already has is compared as published: the draft does not change it.
-		if ot.Existing {
+		// A knowledge-base item reads no table.
+		if ot.Existing || ot.Document != nil {
 			continue
 		}
 		id := ot.Table.ResourceID
@@ -308,7 +313,7 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 	}
 	for _, rt := range draft.Items.RelationTypes {
 		// One not adopted waits for a person already; drafting the changes left one so.
-		if rt.LinkTable == nil || !rt.Adopted || rt.Existing {
+		if rt.LinkTable == nil || !rt.Adopted || rt.Existing || rt.Document != nil {
 			continue
 		}
 		if read.missing[rt.LinkTable.ResourceID] {
@@ -361,7 +366,8 @@ func withPublished(changes *interfaces.SourceChanges, draft *interfaces.Draft, p
 	inDraft := map[string]bool{}
 	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
 		for _, ot := range draft.Items.ObjectTypes {
-			inDraft[ot.ID] = !ot.Existing
+			// A knowledge-base item reads no table, published or not.
+			inDraft[ot.ID] = !ot.Existing || ot.Document != nil
 		}
 	}
 	for i := range changes.ObjectTypes {
@@ -437,8 +443,14 @@ func (s *draftService) GetSourceChanges(ctx context.Context, token string, proje
 	published := publishedObjectTypes(files)
 
 	ids := draftSourceIDs(draft)
+	documents := map[string]bool{}
+	if draft != nil {
+		for _, ot := range draft.Items.ObjectTypes {
+			documents[ot.ID] = ot.Document != nil
+		}
+	}
 	for _, ot := range published {
-		if !slices.Contains(ids, ot.DataSource.ID) {
+		if !documents[ot.ID] && !slices.Contains(ids, ot.DataSource.ID) {
 			ids = append(ids, ot.DataSource.ID)
 		}
 	}
