@@ -27,6 +27,9 @@ func (r *restHandler) GetRequirementSupplementByEx(c *gin.Context) {
 func (r *restHandler) SetRequirementSupplementByEx(c *gin.Context) {
 	r.withExVisitor(c, r.SetRequirementSupplement)
 }
+func (r *restHandler) GetRequirementKnowledgeByEx(c *gin.Context) {
+	r.withExVisitor(c, r.GetRequirementKnowledge)
+}
 func (r *restHandler) ListRequirementConversationsByEx(c *gin.Context) {
 	r.withExVisitor(c, r.ListRequirementConversations)
 }
@@ -86,6 +89,13 @@ func (r *restHandler) GetRequirementSupplement(c *gin.Context, visitor hydra.Vis
 		supplement, err := r.rqs.GetSupplement(ctx, visitor.TokenID, c.Param("project_id"))
 		r.nameSupplement(ctx, supplement)
 		return supplement, err
+	})
+}
+
+// GetRequirementKnowledge serves GET /projects/{project_id}/requirements/knowledge.
+func (r *restHandler) GetRequirementKnowledge(c *gin.Context, visitor hydra.Visitor) {
+	serveRequirement(c, http.StatusOK, false, func(ctx context.Context, _ trace.Span, _ struct{}) (*interfaces.RequirementKnowledge, error) {
+		return r.rqs.GetKnowledge(ctx, visitor.TokenID, c.Param("project_id"))
 	})
 }
 

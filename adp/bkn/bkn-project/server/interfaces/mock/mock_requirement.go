@@ -374,6 +374,21 @@ func (mr *MockRequirementAccessMockRecorder) StartDrafting(ctx, req, staleBefore
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDrafting", reflect.TypeOf((*MockRequirementAccess)(nil).StartDrafting), ctx, req, staleBefore, readUpdateTime)
 }
 
+// StartEmpty mocks base method.
+func (m *MockRequirementAccess) StartEmpty(ctx context.Context, req *interfaces.Requirement) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartEmpty", ctx, req)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartEmpty indicates an expected call of StartEmpty.
+func (mr *MockRequirementAccessMockRecorder) StartEmpty(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartEmpty", reflect.TypeOf((*MockRequirementAccess)(nil).StartEmpty), ctx, req)
+}
+
 // StartGenerating mocks base method.
 func (m *MockRequirementAccess) StartGenerating(ctx context.Context, g *interfaces.QuestionGuidance, staleBefore int64) (bool, error) {
 	m.ctrl.T.Helper()
@@ -447,21 +462,6 @@ func (m *MockRequirementAccess) UpdateGuidance(ctx context.Context, g *interface
 func (mr *MockRequirementAccessMockRecorder) UpdateGuidance(ctx, g, readUpdateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateGuidance", reflect.TypeOf((*MockRequirementAccess)(nil).UpdateGuidance), ctx, g, readUpdateTime)
-}
-
-// StartEmpty mocks base method.
-func (m *MockRequirementAccess) StartEmpty(ctx context.Context, req *interfaces.Requirement) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartEmpty", ctx, req)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// StartEmpty indicates an expected call of StartEmpty.
-func (mr *MockRequirementAccessMockRecorder) StartEmpty(ctx, req any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartEmpty", reflect.TypeOf((*MockRequirementAccess)(nil).StartEmpty), ctx, req)
 }
 
 // UpdateRequirement mocks base method.
@@ -784,6 +784,21 @@ func (m *MockRequirementService) GetGuidance(ctx context.Context, token, project
 func (mr *MockRequirementServiceMockRecorder) GetGuidance(ctx, token, projectID, questionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGuidance", reflect.TypeOf((*MockRequirementService)(nil).GetGuidance), ctx, token, projectID, questionID)
+}
+
+// GetKnowledge mocks base method.
+func (m *MockRequirementService) GetKnowledge(ctx context.Context, token, projectID string) (*interfaces.RequirementKnowledge, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKnowledge", ctx, token, projectID)
+	ret0, _ := ret[0].(*interfaces.RequirementKnowledge)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKnowledge indicates an expected call of GetKnowledge.
+func (mr *MockRequirementServiceMockRecorder) GetKnowledge(ctx, token, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKnowledge", reflect.TypeOf((*MockRequirementService)(nil).GetKnowledge), ctx, token, projectID)
 }
 
 // GetRequirement mocks base method.
