@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -658,6 +659,24 @@ func Test_SourceChangesLeaveKnowledgeBaseItemsAlone(t *testing.T) {
 		got := draftSourceChanges(draft, read, testSetting.PrivacyKeywords)
 		So(got.State, ShouldEqual, interfaces.SOURCE_CHANGES_IN_STEP)
 		So(got.MissingTables, ShouldBeEmpty)
+		So(got.ObjectTypes, ShouldBeEmpty)
+
+		// Syncing what was found leaves the item's fields and key as they are.
+		decisions := applySourceChanges(&draft.Items, got, read, newDrafter(testSetting, nil))
+		So(decisions, ShouldBeEmpty)
 		So(len(invoice.Properties), ShouldEqual, 2)
+		So(invoice.PrimaryKeys, ShouldResemble, []string{"_id"})
+
+		// Published under the same id, it is not compared as a table either, changed or missing.
+		published := []*bkn.BknObjectType{{
+			BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{ID: "invoice_doc", Name: "Invoice"},
+			DataSource:               &bkn.ResourceInfo{Type: "resource", ID: "d_invoice", Name: "Invoice"},
+			DataProperties:           []*bkn.DataProperty{{Name: "invoice_no", MappedField: "invoice_no", Type: "string"}},
+		}}
+		withPublished(got, draft, published, read, testSetting.PrivacyKeywords, "en-US")
+		So(got.ObjectTypes, ShouldBeEmpty)
+		So(got.MissingTables, ShouldBeEmpty)
+		withPublished(got, draft, published, readOf([]string{"d_invoice"}), testSetting.PrivacyKeywords, "en-US")
+		So(got.MissingTables, ShouldBeEmpty)
 	})
 }
