@@ -260,6 +260,35 @@ func Test_PendingOf(t *testing.T) {
 			})
 		})
 
+		Convey("Each relation is told once, in ID order, its waiting ends before its links\n", func() {
+			// b_link waits for an end and cannot link either; a_link only cannot link.
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"a_link": true, "b_link": true}}})()
+			d := confirmableDraft()
+			waiting := *d.Items.ObjectTypes[0]
+			waiting.ID, waiting.Name, waiting.Adopted = "waiting", "Waiting", false
+			d.Items.ObjectTypes = append(d.Items.ObjectTypes, &waiting)
+			a, b := *d.Items.RelationTypes[0], *d.Items.RelationTypes[0]
+			a.ID, b.ID, b.Target = "a_link", "b_link", "waiting"
+			d.Items.RelationTypes = []*interfaces.DraftRelationType{&b, &a}
+
+			p := pendingOf(project, d, nil)
+
+			got := [][]string{}
+			for _, item := range p.Items {
+				if item.Kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+					got = append(got, []string{item.ItemID, item.Reason})
+				}
+			}
+			So(got, ShouldResemble, [][]string{
+				{"a_link", interfaces.BLOCKER_LINK_TYPES_MISMATCH},
+				{"b_link", interfaces.BLOCKER_UNADOPTED_ENDS},
+			})
+			So(pendingItems(&d.Items), ShouldResemble, map[string][]string{
+				interfaces.BLOCKER_UNADOPTED_ENDS:      {"b_link"},
+				interfaces.BLOCKER_LINK_TYPES_MISMATCH: {"a_link"},
+			})
+		})
+
 		Convey("A relation left out or the network's own is not held back for its links\n", func() {
 			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"orders_to_customers": true}}})()
 			d := confirmableDraft()

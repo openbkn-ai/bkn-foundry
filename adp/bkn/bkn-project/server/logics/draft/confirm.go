@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
@@ -40,6 +41,10 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 	}
 	if checker, ok := documentHooks().(projecthooks.LinkChecker); ok {
 		for _, rt := range items.RelationTypes {
+			// A relation whose ends wait is told once, as such: leaving it out settles both.
+			if slices.Contains(pending["unadopted_ends"], rt.ID) {
+				continue
+			}
 			if rt.Adopted && !rt.Existing && checker.LinkTypesMismatch(items, rt) {
 				pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH] = append(pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH], rt.ID)
 			}
