@@ -360,6 +360,38 @@ func Test_ProjectStatus(t *testing.T) {
 			})
 		})
 
+		Convey("Knowledge-base objects prepared for another file selection are confirmed again\n", func() {
+			for _, state := range []string{interfaces.DATASET_PREPARATION_STALE, interfaces.DATASET_PREPARATION_FAILED,
+				interfaces.DATASET_PREPARATION_PENDING} {
+				d := confirmed()
+				d.DatasetPreparation = &interfaces.DatasetPreparation{State: state}
+
+				s := status(project(), d, checkOf("c1", interfaces.CHECK_STATUS_PASSED), owner, fresh)
+
+				// The definitions stay confirmed; only the knowledge base waits.
+				So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+				So(s.Confirmation.Current, ShouldBeTrue)
+				So(s.Stale, ShouldResemble, []string{interfaces.STALE_KNOWLEDGE_BASE_OUTDATED})
+				confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+				So(confirm, ShouldNotBeNil)
+				So(confirm.Allowed, ShouldBeTrue)
+				So(confirm.Body["update_time"], ShouldEqual, int64(100))
+				So(action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldNotBeNil)
+
+				s = status(project(), d, checkOf("c1", interfaces.CHECK_STATUS_PASSED), editor, fresh)
+				So(action(s, interfaces.ACTION_CONFIRM_DRAFT).Allowed, ShouldBeFalse)
+			}
+
+			for _, state := range []string{interfaces.DATASET_PREPARATION_READY, interfaces.DATASET_PREPARATION_PREPARING} {
+				d := confirmed()
+				d.DatasetPreparation = &interfaces.DatasetPreparation{State: state}
+
+				s := status(project(), d, checkOf("c1", interfaces.CHECK_STATUS_PASSED), owner, fresh)
+				So(s.Stale, ShouldBeEmpty)
+				So(action(s, interfaces.ACTION_CONFIRM_DRAFT), ShouldBeNil)
+			}
+		})
+
 		Convey("A release by the project of its current confirmation makes it published\n", func() {
 			passed := checkOf("c1", interfaces.CHECK_STATUS_PASSED)
 			release := &interfaces.Release{ProjectID: "p1", Version: "1.1.0", NetworkID: "supply", KNVersion: 3,

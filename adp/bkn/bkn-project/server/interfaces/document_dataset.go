@@ -46,6 +46,16 @@ type DraftDatasetSpec struct {
 	Ready          bool          `json:"ready"`
 }
 
+// The states a DatasetPreparation reads: stale is a preparation for another model or file
+// selection than the current one.
+const (
+	DATASET_PREPARATION_PENDING   = "pending"
+	DATASET_PREPARATION_PREPARING = "preparing"
+	DATASET_PREPARATION_READY     = "ready"
+	DATASET_PREPARATION_FAILED    = "failed"
+	DATASET_PREPARATION_STALE     = "stale"
+)
+
 // DatasetPreparation is a read-time projection of the journal for the current
 // model and source selection. It does not expose physical resource identities.
 type DatasetPreparation struct {

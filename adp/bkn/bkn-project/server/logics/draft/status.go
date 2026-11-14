@@ -67,6 +67,10 @@ func (s *draftService) getStatus(ctx context.Context, token string, projectID st
 	now := time.Now()
 	draftStaleBefore := now.Add(-(s.setting.Timeout + time.Minute)).UnixMilli()
 	checkStaleBefore := now.Add(-s.checkStaleAfter()).UnixMilli()
+	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
+		// Whether the knowledge base's objects are prepared for the confirmed model as it stands.
+		documentHooks().DatasetProgress(ctx, draftHost{s}, draft)
+	}
 	status := projectStatus(entry.Project, draft, check, nil, caller, draftStaleBefore, checkStaleBefore, now.UnixMilli())
 	if status.Stage == interfaces.PROJECT_STAGE_READY_TO_CONFIRM {
 		if preflight := s.preflightConfirm(ctx, entry.Project, draft); preflight != nil {
@@ -673,6 +677,13 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		return s
 	}
 
+	// Confirmed, with the knowledge base's objects prepared for another model or file selection, or
+	// stopped part way: only confirming again prepares them, so it is offered again.
+	kbOutdated := knowledgeBaseOutdated(draft.DatasetPreparation)
+	if kbOutdated {
+		s.Stale = append(s.Stale, interfaces.STALE_KNOWLEDGE_BASE_OUTDATED)
+	}
+
 	// Confirmed: where its check stands.
 	run := ownerOnly(interfaces.ProjectStatusNextAction{
 		Action: interfaces.ACTION_RUN_CHECK, Method: http.MethodPost, Path: base + "/ontology/check:run",
@@ -718,8 +729,25 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		}
 		act(run)
 	}
+	if kbOutdated {
+		act(confirm)
+	}
 	act(generate)
 	return s
+}
+
+// knowledgeBaseOutdated tells whether a confirmed draft's knowledge-base objects wait for confirming
+// again: prepared for another model or file selection, not started, or stopped part way. Preparing
+// is under way only while a confirmation runs; a draft without knowledge-base objects has none.
+func knowledgeBaseOutdated(preparation *interfaces.DatasetPreparation) bool {
+	if preparation == nil {
+		return false
+	}
+	switch preparation.State {
+	case interfaces.DATASET_PREPARATION_STALE, interfaces.DATASET_PREPARATION_FAILED, interfaces.DATASET_PREPARATION_PENDING:
+		return true
+	}
+	return false
 }
 
 // itemDecisions counts the decisions on a draft's items, those drafting again would discard; a
