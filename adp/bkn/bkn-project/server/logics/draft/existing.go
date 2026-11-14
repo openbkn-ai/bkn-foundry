@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 const relationTypesDir = "relation_types/"
@@ -84,18 +85,10 @@ func (s *draftService) networkTables(ctx context.Context, token string, knID str
 	if s.pc == nil || s.pc.BBA == nil {
 		return nil
 	}
-	objectTypes, err := s.pc.BBA.ListObjectTypeSources(ctx, token, knID)
+	tables, err := logics.NetworkTables(ctx, s.pc.BBA, token, knID)
 	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the object types of network %s read: %v", knID, err))
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network's object types read: %v", err))
 		return nil
-	}
-	tables := map[string]string{}
-	for _, ot := range objectTypes {
-		source := ot.DataSource
-		if source == nil || source.ID == "" || source.Type != "" && source.Type != interfaces.KN_DATA_SOURCE_RESOURCE {
-			continue
-		}
-		tables[ot.ID] = source.ID
 	}
 	return tables
 }
