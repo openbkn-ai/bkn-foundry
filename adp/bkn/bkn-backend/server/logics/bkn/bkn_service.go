@@ -328,7 +328,7 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 		return nil, nil
 	}
 	// Names are half the identity and the only half another environment can resolve. When the
-	// execution factory could not be reached they are all empty, and the section would still look
+	// metadata service is unconfigured or unreachable they can be empty, and the section would look
 	// well-formed while resolving to nothing on import. Failing the export says so instead.
 	if !list.MetadataAvailable {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,

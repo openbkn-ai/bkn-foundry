@@ -332,6 +332,26 @@ func Test_bknService_ExportKnowledgeBaseCapabilities(t *testing.T) {
 	})
 }
 
+// Unavailable knowledge-base metadata must not silently drop mounted dependencies from exports.
+func Test_bknService_ExportUnavailableKnowledgeBase(t *testing.T) {
+	Convey("知识库元数据不可用时导出失败，避免静默丢失挂载", t, func() {
+		svc, mockCtrl, kns, cbs := newTestBKNServiceWithCapabilities(t)
+		defer mockCtrl.Finish()
+		kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+			Return(&interfaces.KN{KNID: "kn1", KNName: "合同网络"}, nil)
+		cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+			Return(&interfaces.CapabilityBindingsList{MetadataAvailable: false,
+				Entries: []*interfaces.CapabilityBinding{
+					{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, CapabilityID: "7"},
+				}}, nil)
+
+		data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+		So(err, ShouldNotBeNil)
+		So(data, ShouldBeNil)
+		So(err.Error(), ShouldContainSubstring, "ExportMetadataUnavailable")
+	})
+}
+
 // Test_bknService_ExportMCPCapabilities pins the MCP half of the dependency section. An export
 // that dropped it would move a network to another environment with its MCP tools silently
 // unbound, and nothing in the file to say they were ever there.

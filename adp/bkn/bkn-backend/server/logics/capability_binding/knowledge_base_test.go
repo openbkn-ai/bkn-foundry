@@ -113,14 +113,14 @@ func TestBackfillKnowledgeBases(t *testing.T) {
 			So(gone.Status, ShouldEqual, interfaces.CAPABILITY_STATUS_MISSING)
 		})
 
-		Convey("没有部署 kb-api 时标 missing，不算元数据不可用", func() {
+		Convey("未配置 kb-api 时保留绑定并标记元数据不可用", func() {
 			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(nil, interfaces.ErrKnowledgeBaseUnavailable)
 
 			result := service.backfillMetadata(context.Background(), interfaces.CapabilityBindingsQueryParams{},
 				[]*interfaces.CapabilityBinding{live}, false)
 
-			So(result.available, ShouldBeTrue)
-			So(live.Status, ShouldEqual, interfaces.CAPABILITY_STATUS_MISSING)
+			So(result.available, ShouldBeFalse)
+			So(live.Status, ShouldEqual, "")
 		})
 
 		Convey("kb-api 不可达时保留原行并标记不完整", func() {
@@ -135,7 +135,7 @@ func TestBackfillKnowledgeBases(t *testing.T) {
 		})
 	})
 
-	Convey("没有注入 kb-api 访问时同样标 missing", t, func() {
+	Convey("没有注入 kb-api 访问时保留绑定并标记元数据不可用", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		service, _, _ := newTestServiceWithFactory(t, ctrl)
@@ -144,8 +144,8 @@ func TestBackfillKnowledgeBases(t *testing.T) {
 		result := service.backfillMetadata(context.Background(), interfaces.CapabilityBindingsQueryParams{},
 			[]*interfaces.CapabilityBinding{binding}, false)
 
-		So(result.available, ShouldBeTrue)
-		So(binding.Status, ShouldEqual, interfaces.CAPABILITY_STATUS_MISSING)
+		So(result.available, ShouldBeFalse)
+		So(binding.Status, ShouldEqual, "")
 	})
 }
 

@@ -193,7 +193,7 @@ type CapabilityBindingsList struct {
 	TotalCount int                  `json:"total_count"`
 	// Boxes summarises the tool boxes behind the whole-box mounts on this page.
 	Boxes []*CapabilityBoxSummary `json:"boxes"`
-	// MetadataAvailable is false when the execution factory could not be reached. The bindings
+	// MetadataAvailable is false when a metadata service is unconfigured or could not be reached. The bindings
 	// are still returned in full — the names are missing, not the memberships — and the flag
 	// says so explicitly so an empty name is not read as a deleted capability.
 	MetadataAvailable bool `json:"metadata_available"`
