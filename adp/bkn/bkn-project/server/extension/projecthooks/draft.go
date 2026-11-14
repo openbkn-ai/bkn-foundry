@@ -167,8 +167,9 @@ type Drafts interface {
 // edition built before it keeps building; without it they read none.
 type KnowledgeReader interface {
 	// Knowledge picks the edition's own of the draft's concepts, as the concepts page lists them
-	// with a person's judgments: those it judged left out are none, those judged kinetic are rules.
-	Knowledge(concepts []interfaces.DraftConcept) interfaces.RequirementKnowledge
+	// with a person's judgments: the concepts it holds, and the rules it states, such as those
+	// judged kinetic. Those judged left out are neither.
+	Knowledge(concepts []interfaces.DraftConcept) (held []interfaces.DraftConcept, rules []interfaces.DraftConcept)
 }
 
 // DocumentConcept is what a document item is as a concept.

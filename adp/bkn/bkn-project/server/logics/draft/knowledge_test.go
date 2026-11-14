@@ -17,20 +17,18 @@ import (
 // dataset, a kinetic one is a rule, one left out is none. The real rules are the edition's.
 type knowledgeHooks struct{ conceptHooks }
 
-func (knowledgeHooks) Knowledge(concepts []interfaces.DraftConcept) interfaces.RequirementKnowledge {
-	knowledge := interfaces.RequirementKnowledge{}
+func (knowledgeHooks) Knowledge(concepts []interfaces.DraftConcept) (held []interfaces.DraftConcept, rules []interfaces.DraftConcept) {
 	for _, c := range concepts {
 		if c.Binding == nil || c.Binding.Kind != interfaces.CONCEPT_BINDING_DATASET || c.Verdict == interfaces.CONCEPT_VERDICT_NONE {
 			continue
 		}
-		item := &interfaces.RequirementKnowledgeItem{Name: c.Name, Kind: c.Verdict}
 		if c.Verdict == interfaces.CONCEPT_VERDICT_KINETIC {
-			knowledge.Rules = append(knowledge.Rules, item)
+			rules = append(rules, c)
 		} else {
-			knowledge.Concepts = append(knowledge.Concepts, item)
+			held = append(held, c)
 		}
 	}
-	return knowledge
+	return held, rules
 }
 
 func Test_Knowledge(t *testing.T) {
@@ -56,9 +54,11 @@ func Test_Knowledge(t *testing.T) {
 				By: reviewer, Time: 7})
 			got := Knowledge(ctx, draft)
 			So(got.Concepts, ShouldResemble, []*interfaces.RequirementKnowledgeItem{
-				{Name: "Discount rate", Kind: interfaces.CONCEPT_VERDICT_PROPERTY}})
+				{Name: "Discount rate", Description: "Share taken off the list price", Kind: interfaces.CONCEPT_VERDICT_PROPERTY}})
 			So(got.Rules, ShouldResemble, []*interfaces.RequirementKnowledgeItem{
-				{Name: "Invoicing terms", Kind: interfaces.CONCEPT_VERDICT_KINETIC}})
+				{Name: "Invoicing terms", Description: "Invoice each delivered batch within five days", Kind: interfaces.CONCEPT_VERDICT_KINETIC}})
+			// The files they cite: promo, pricing and contract.
+			So(got.Files, ShouldEqual, 3)
 		})
 
 		Convey("A draft not ready holds none\n", func() {
