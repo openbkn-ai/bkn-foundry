@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_a",
         "name": "accounts",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "accounts"
       },
       "primary_keys": [
         "account_id"
@@ -51,7 +52,8 @@
       "table": {
         "resource_id": "r_e",
         "name": "events",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "events"
       },
       "primary_keys": null,
       "display_key": "",
@@ -102,7 +104,8 @@
       "table": {
         "resource_id": "r_l",
         "name": "ledger",
-        "catalog_id": "c1"
+        "catalog_id": "c1",
+        "source_name": "ledger"
       },
       "primary_keys": null,
       "display_key": "",

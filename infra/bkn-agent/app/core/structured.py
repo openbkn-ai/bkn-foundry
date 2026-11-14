@@ -28,6 +28,7 @@ from typing import Any
 from jsonschema import validate as _jsonschema_validate
 from jsonschema.exceptions import SchemaError, ValidationError
 from langchain_core.messages import AIMessage, SystemMessage
+from openai import LengthFinishReasonError
 
 from app.core.llm import normalize_response_format
 
@@ -60,6 +61,24 @@ def _truncated(resp: Any) -> bool:
     """Whether the provider stopped the reply at the output cap."""
     metadata = getattr(resp, "response_metadata", None) or {}
     return metadata.get("finish_reason") == "length"
+
+
+async def _invoke(model, msgs) -> Any:
+    """One model call. With a response_format, langchain-openai parses the
+    reply through the OpenAI SDK, which raises instead of returning a reply cut
+    off at the output cap: that is turned back into a truncated reply, so the
+    retry asks for a shorter one. The reasoning tokens are logged, to tell
+    reasoning from answer when the cap is reached."""
+    try:
+        return await model.ainvoke(msgs)
+    except LengthFinishReasonError as e:
+        usage = getattr(e.completion, "usage", None)
+        details = getattr(usage, "completion_tokens_details", None)
+        logger.warning(
+            "[Structured] reply cut off at the output cap: completion_tokens=%s reasoning_tokens=%s",
+            getattr(usage, "completion_tokens", None), getattr(details, "reasoning_tokens", None),
+        )
+        return AIMessage(content="", response_metadata={"finish_reason": "length"})
 
 
 def _request_refused(error: Exception) -> bool:
@@ -192,14 +211,14 @@ async def structured_extract_with_path(
         resp = None
         if json_mode:
             try:
-                resp = await model.bind(response_format={"type": "json_object"}).ainvoke(msgs)
+                resp = await _invoke(model.bind(response_format={"type": "json_object"}), msgs)
             except Exception as e:  # The provider has no json_object either
                 if not _request_refused(e):
                     raise
                 logger.warning("[Structured] json_object unavailable; plain prompt: %s", e)
                 json_mode = False
         if resp is None:
-            resp = await model.ainvoke(msgs)
+            resp = await _invoke(model, msgs)
         text = resp.content if isinstance(resp.content, str) else str(resp.content)
         truncated = _truncated(resp)
         try:

@@ -292,6 +292,7 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 		if read.missing[id] {
 			changes.MissingTables = append(changes.MissingTables, interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Table: ot.Table.Name,
+				SourceTable: ot.Table.SourceName,
 			})
 			continue
 		}
@@ -313,6 +314,7 @@ func draftSourceChanges(draft *interfaces.Draft, read *sourceTables, privacyKeyw
 		if read.missing[rt.LinkTable.ResourceID] {
 			changes.MissingTables = append(changes.MissingTables, interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Table: rt.LinkTable.Name,
+				SourceTable: rt.LinkTable.SourceName,
 			})
 			continue
 		}

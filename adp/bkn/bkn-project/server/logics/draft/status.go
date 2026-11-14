@@ -30,6 +30,13 @@ const waitSeconds = 5
 // confirming checks it anyway.
 func (s *draftService) GetStatus(ctx context.Context, token string, projectID string,
 	caller interfaces.AccountInfo) (*interfaces.ProjectStatus, error) {
+	return s.getStatus(ctx, token, projectID, caller, true)
+}
+
+// getStatus computes the status; with rebind, an owner reading that tables the draft binds are
+// gone has them bound again by catalog name and table name first, then the status read again.
+func (s *draftService) getStatus(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo, rebind bool) (*interfaces.ProjectStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetStatus")
 	defer span.End()
 
@@ -100,6 +107,20 @@ func (s *draftService) GetStatus(ctx context.Context, token string, projectID st
 	}
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
 		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
+		// Tables deleted and created again under their names are bound again, by the owner, who
+		// alone writes the draft; what vega or the draft refuses leaves them gone, as before.
+		if rebind && status.DataSources.Tables.State == interfaces.DATA_SOURCE_MISSING &&
+			status.Stage != interfaces.PROJECT_STAGE_ARCHIVED && caller.ID == entry.Owner.ID {
+			n, err := s.rebindTables(ctx, caller, entry.CatalogIDs, draft)
+			if err != nil {
+				otellog.LogWarn(ctx, fmt.Sprintf("Bind the tables of project %s again by name: %v", projectID, err))
+			}
+			if n > 0 {
+				span.SetStatus(codes.Ok, "")
+				return s.getStatus(ctx, token, projectID, caller, false)
+			}
+		}
+		status.DataSources.Reconnected = reconnectedTables(draft)
 		withDataSources(status, entry.Project, caller)
 		s.withSourceChanges(ctx, status, entry.Project, draft, caller)
 	}
@@ -136,22 +157,29 @@ func (s *draftService) withCatalogsHint(ctx context.Context, entry *interfaces.P
 		otellog.LogWarn(ctx, fmt.Sprintf("Read what the network of project %s has: %v", project.ID, err))
 		return
 	}
-	modeled := existingTableIDs(&existing)
-	total, unnamed := 0, 0
+	listed := []*interfaces.VegaTable{}
 	for _, catalogID := range project.CatalogIDs {
 		tables, err := s.va.ListTables(ctx, caller, catalogID)
 		if err != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("List tables of project %s: %v", project.ID, err))
 			return
 		}
-		for _, t := range tables {
-			if modeled[t.ID] {
-				continue
-			}
-			total++
-			if strings.TrimSpace(t.Description) == "" {
-				unnamed++
-			}
+		listed = append(listed, tables...)
+	}
+	// The network's tables are known by name too, once a catalog was created again.
+	if err := s.rebindExisting(ctx, caller, &existing, listed); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Read the tables the network of project %s reads: %v", project.ID, err))
+		return
+	}
+	modeled := existingTableIDs(&existing)
+	total, unnamed := 0, 0
+	for _, t := range listed {
+		if modeled[t.ID] {
+			continue
+		}
+		total++
+		if strings.TrimSpace(t.Description) == "" {
+			unnamed++
 		}
 	}
 	if float64(unnamed) <= unnamedTablesHintRatio*float64(total) {
@@ -187,6 +215,7 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 		if ot.Adopted && !ot.Existing && ot.Table.ResourceID != "" {
 			bound = append(bound, boundTable{resourceID: ot.Table.ResourceID, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ID: ot.ID, Name: ot.Name, Table: ot.Table.Name,
+				SourceTable: ot.Table.SourceName,
 			}})
 		}
 	}
@@ -194,6 +223,7 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 		if rt.Adopted && !rt.Existing && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
 			bound = append(bound, boundTable{resourceID: rt.LinkTable.ResourceID, item: interfaces.ProjectStatusAffected{
 				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ID: rt.ID, Name: rt.Name, Table: rt.LinkTable.Name,
+				SourceTable: rt.LinkTable.SourceName,
 			}})
 		}
 	}

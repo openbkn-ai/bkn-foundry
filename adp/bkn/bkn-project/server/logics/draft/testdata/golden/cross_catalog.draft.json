@@ -8,7 +8,8 @@
       "table": {
         "resource_id": "r_dimc",
         "name": "dim_customer",
-        "catalog_id": "dim"
+        "catalog_id": "dim",
+        "source_name": "dim_customer"
       },
       "primary_keys": [
         "customer_id"
@@ -51,7 +52,8 @@
       "table": {
         "resource_id": "r_odso",
         "name": "ods_order",
-        "catalog_id": "ods"
+        "catalog_id": "ods",
+        "source_name": "ods_order"
       },
       "primary_keys": [
         "order_id"

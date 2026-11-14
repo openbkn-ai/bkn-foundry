@@ -29,6 +29,11 @@ const (
 // lists them.
 const DRAFT_DECISION_SYNC = "sync"
 
+// DRAFT_DECISION_REBIND records a table of the item, gone, bound again to the table of the same
+// catalog name and table name: Before is the table that was, After the one now. Every other
+// decision on the item stands.
+const DRAFT_DECISION_REBIND = "rebind"
+
 // DRAFT_PROPOSED_FIELD_REMOVED is why a relation drafting the source changes left out: a field it
 // joins by is gone. It waits for a person, as other relations drafting did not adopt.
 const DRAFT_PROPOSED_FIELD_REMOVED = "field_removed"

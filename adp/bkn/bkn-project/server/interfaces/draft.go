@@ -327,6 +327,11 @@ type DraftTable struct {
 	ResourceID string `json:"resource_id"`
 	Name       string `json:"name"`
 	CatalogID  string `json:"catalog_id"`
+	// CatalogName is the catalog's name and SourceName the physical table's, as drafting read them:
+	// a catalog and its tables created again under the same names are found by them. Absent in
+	// drafts made before they were recorded, or when vega did not tell.
+	CatalogName string `json:"catalog_name,omitempty"`
+	SourceName  string `json:"source_name,omitempty"`
 	// Reason says why the table could not be read, for unreadable tables.
 	Reason string `json:"reason,omitempty"`
 }
