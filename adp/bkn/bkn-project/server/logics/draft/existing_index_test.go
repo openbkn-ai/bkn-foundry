@@ -14,6 +14,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 func Test_GetExistingIndex(t *testing.T) {
@@ -78,6 +79,45 @@ func Test_GetExistingIndex(t *testing.T) {
 			So(got.ObjectTypes[0].State, ShouldEqual, interfaces.INDEX_STATE_UNREADABLE)
 			// The table is named as the definition names it, as when its catalog is gone.
 			So(got.ObjectTypes[0].Table, ShouldResemble, interfaces.DraftTable{ResourceID: "t_regions", Name: "regions"})
+		})
+
+		Convey("a table is the one the network reads now, as after its catalog was created again\n", func() {
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "regions", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "t_regions_new"}},
+			}, nil)
+			svc.pc = &logics.ProjectCatalogs{BBA: bba}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{
+				"object_types/regions.bkn": []byte(publishedRegions),
+			}, nil)
+			va.EXPECT().GetTables(gomock.Any(), gomock.Any(), []string{"t_regions_new"}).Return([]*interfaces.VegaTable{{
+				ID: "t_regions_new", CatalogID: "c2", Name: "regions",
+				Index: interfaces.VegaTableIndex{LocalStatus: interfaces.VEGA_LOCAL_STATUS_AVAILABLE, IndexName: "idx"},
+			}}, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), gomock.Any(), "c2").Return(nil, true, nil)
+			va.EXPECT().ListLastBuilds(gomock.Any(), gomock.Any(), "c2").Return(nil, true, nil)
+
+			got, err := svc.GetExistingIndex(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.ObjectTypes, ShouldHaveLength, 1)
+			So(got.ObjectTypes[0].Table.ResourceID, ShouldEqual, "t_regions_new")
+			So(got.ObjectTypes[0].State, ShouldEqual, interfaces.INDEX_STATE_READY)
+		})
+
+		Convey("a network that does not tell what it reads leaves the branch's tables\n", func() {
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "kn1").Return(nil, errors.New("down"))
+			svc.pc = &logics.ProjectCatalogs{BBA: bba}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "kn1", "refs/heads/project/p1").Return(map[string][]byte{
+				"object_types/regions.bkn": []byte(publishedRegions),
+			}, nil)
+			va.EXPECT().GetTables(gomock.Any(), gomock.Any(), []string{"t_regions"}).Return(nil, nil)
+
+			got, err := svc.GetExistingIndex(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(got.ObjectTypes[0].Table.ResourceID, ShouldEqual, "t_regions")
 		})
 
 		Convey("the term object type is no index of the network's\n", func() {
