@@ -110,12 +110,14 @@ func (s *draftService) getStatus(ctx context.Context, token string, projectID st
 		s.withCatalogsHint(ctx, entry, draft, caller, status)
 	}
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
-		status.DataSources = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
+		var existingGone bool
+		status.DataSources, existingGone = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
 		// Tables deleted and created again under their names are bound again, by the owner, who
-		// alone writes the draft; what vega or the draft refuses leaves them gone, as before.
-		if rebind && status.DataSources.Tables.State == interfaces.DATA_SOURCE_MISSING &&
+		// alone writes the draft; what vega or the draft refuses leaves them gone, as before. The
+		// network's existing items the draft holds follow too, though they block nothing.
+		if rebind && (status.DataSources.Tables.State == interfaces.DATA_SOURCE_MISSING || existingGone) &&
 			status.Stage != interfaces.PROJECT_STAGE_ARCHIVED && caller.ID == entry.Owner.ID {
-			n, err := s.rebindTables(ctx, caller, entry.CatalogIDs, draft)
+			n, err := s.rebindTables(ctx, token, caller, entry, draft)
 			if err != nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Bind the tables of project %s again by name: %v", projectID, err))
 			}
@@ -238,9 +240,11 @@ func boundTables(draft *interfaces.Draft) []boundTable {
 
 // dataSources reads, as the caller, whether the project's catalogs and the tables its draft binds
 // are still in vega; networkMissing is what reading the project told of its network. vega not
-// answering leaves the dependency unreachable.
+// answering leaves the dependency unreachable. It tells too whether a table the draft's copy of
+// a network's existing item reads is gone: that blocks nothing, the network's item being the
+// network's, but the copy is bound again.
 func (s *draftService) dataSources(ctx context.Context, project *interfaces.Project, draft *interfaces.Draft,
-	networkMissing bool, caller interfaces.AccountInfo) *interfaces.ProjectStatusDataSources {
+	networkMissing bool, caller interfaces.AccountInfo) (*interfaces.ProjectStatusDataSources, bool) {
 	ds := &interfaces.ProjectStatusDataSources{
 		Network: interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_OK, Total: 1},
 	}
@@ -272,8 +276,12 @@ func (s *draftService) dataSources(ctx context.Context, project *interfaces.Proj
 		}
 	}
 	ds.Tables = interfaces.ProjectStatusDependency{State: interfaces.DATA_SOURCE_NOT_BOUND, Total: len(tables)}
-	if len(bound) == 0 {
-		return ds
+	var existing []draftTableRef
+	if draft != nil && draft.Status == interfaces.DRAFT_STATUS_READY {
+		existing = existingTableRefs(&draft.Items)
+	}
+	if len(bound) == 0 && len(existing) == 0 {
+		return ds, false
 	}
 	ids, seen := []string{}, map[string]bool{}
 	for _, b := range bound {
@@ -282,15 +290,30 @@ func (s *draftService) dataSources(ctx context.Context, project *interfaces.Proj
 			ids = append(ids, b.resourceID)
 		}
 	}
+	for _, ref := range existing {
+		if !seen[ref.table.ResourceID] {
+			seen[ref.table.ResourceID] = true
+			ids = append(ids, ref.table.ResourceID)
+		}
+	}
 	missing, err := s.va.MissingTables(ctx, caller, ids)
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Read tables of project %s: %v", project.ID, err))
-		ds.Tables.State = interfaces.DATA_SOURCE_UNREACHABLE
-		return ds
+		if len(bound) > 0 {
+			ds.Tables.State = interfaces.DATA_SOURCE_UNREACHABLE
+		}
+		return ds, false
 	}
 	gone := map[string]bool{}
 	for _, id := range missing {
 		gone[id] = true
+	}
+	existingGone := false
+	for _, ref := range existing {
+		existingGone = existingGone || gone[ref.table.ResourceID]
+	}
+	if len(bound) == 0 {
+		return ds, existingGone
 	}
 	ds.Tables.State = interfaces.DATA_SOURCE_OK
 	for _, b := range bound {
@@ -306,7 +329,7 @@ func (s *draftService) dataSources(ctx context.Context, project *interfaces.Proj
 	if len(ds.Tables.Affected) > 0 {
 		ds.Tables.State = interfaces.DATA_SOURCE_MISSING
 	}
-	return ds
+	return ds, existingGone
 }
 
 // withDataSources has what is gone block the project, ahead of what else does, and refuses the

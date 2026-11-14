@@ -1351,7 +1351,7 @@ func Test_dataSourcesCountTables(t *testing.T) {
 		project := &interfaces.Project{ID: "p1"}
 		va.EXPECT().MissingTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
 
-		ds := svc.dataSources(context.Background(), project, d, false, caller)
+		ds, _ := svc.dataSources(context.Background(), project, d, false, caller)
 
 		// The shared table only: the datasets of the document object and relation are left out.
 		So(ds.Tables.Total, ShouldEqual, 1)
