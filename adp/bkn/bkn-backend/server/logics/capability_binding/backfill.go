@@ -6,7 +6,6 @@ package capability_binding
 
 import (
 	"context"
-	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -16,7 +15,7 @@ import (
 // backfillResult carries what a page of bindings needs beyond the stored rows.
 type backfillResult struct {
 	boxes []*interfaces.CapabilityBoxSummary
-	// available is false when any execution-factory call failed. The bindings are still returned;
+	// available is false when any metadata service call failed. The bindings are still returned;
 	// the flag stops an empty name from being read as a deleted capability.
 	available bool
 }
@@ -80,11 +79,9 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	return result
 }
 
-// backfillKnowledgeBases names each mounted knowledge base, one kb-api call per knowledge base on
-// the page, and marks the ones kb-api no longer knows. A deployment without kb-api can resolve no
-// knowledge base at all, so its mounts are missing, not a passing outage: answering "metadata
-// unavailable" there would fail every export of the network for as long as kb-api stays absent.
-// kb-api unreachable degrades to the stored rows like the execution factory does.
+// backfillKnowledgeBases names mounted knowledge bases and marks only confirmed absent targets
+// missing. An unconfigured client cannot distinguish an absent service from lost deployment
+// configuration, so it degrades exactly like an unreachable kb-api and retains every binding.
 func (cbs *capabilityBindingService) backfillKnowledgeBases(ctx context.Context,
 	kbBindings map[string][]*interfaces.CapabilityBinding) bool {
 	available := true
@@ -93,9 +90,6 @@ func (cbs *capabilityBindingService) backfillKnowledgeBases(ctx context.Context,
 		err := interfaces.ErrKnowledgeBaseUnavailable
 		if cbs.kba != nil {
 			kb, err = cbs.kba.GetKnowledgeBase(ctx, kbID)
-		}
-		if errors.Is(err, interfaces.ErrKnowledgeBaseUnavailable) {
-			kb, err = nil, nil
 		}
 		if err != nil {
 			logger.Warnf("capability metadata backfill: knowledge base %s unreachable: %v", kbID, err)
