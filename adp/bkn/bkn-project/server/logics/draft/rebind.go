@@ -27,25 +27,27 @@ import (
 type draftTableRef struct {
 	kind, itemID string
 	table        *interfaces.DraftTable
+	// existing tells an item the network already has.
+	existing bool
 }
 
 // draftTableRefs are the tables the draft's own items bind: object types, link tables and the code
-// tables of value types. What the network already has is bound as the network binds it.
+// tables of value types. What the network already has is in existingTableRefs.
 func draftTableRefs(items *interfaces.DraftItems) []draftTableRef {
 	refs := []draftTableRef{}
 	for _, ot := range items.ObjectTypes {
 		if !ot.Existing && ot.Table.ResourceID != "" {
-			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID, &ot.Table})
+			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID, &ot.Table, false})
 		}
 	}
 	for _, rt := range items.RelationTypes {
 		if !rt.Existing && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
-			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, rt.LinkTable})
+			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, rt.LinkTable, false})
 		}
 	}
 	for _, vt := range items.ValueTypes {
 		if vt.CodeTable.ResourceID != "" {
-			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_VALUE_TYPES, vt.ID, &vt.CodeTable})
+			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_VALUE_TYPES, vt.ID, &vt.CodeTable, false})
 		}
 	}
 	return refs
@@ -115,17 +117,17 @@ func boundTo(table *interfaces.VegaTable, names map[string]string) interfaces.Dr
 }
 
 // existingTableRefs are the tables the network's existing items read, as the project branch
-// defines them: object types and link tables.
+// defined them when the draft read it: object types and link tables.
 func existingTableRefs(items *interfaces.DraftItems) []draftTableRef {
 	refs := []draftTableRef{}
 	for _, ot := range items.ObjectTypes {
 		if ot.Existing && ot.Table.ResourceID != "" {
-			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID, &ot.Table})
+			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_OBJECT_TYPES, ot.ID, &ot.Table, true})
 		}
 	}
 	for _, rt := range items.RelationTypes {
 		if rt.Existing && rt.LinkTable != nil && rt.LinkTable.ResourceID != "" {
-			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, rt.LinkTable})
+			refs = append(refs, draftTableRef{interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, rt.LinkTable, true})
 		}
 	}
 	return refs
@@ -224,14 +226,18 @@ func applyRebind(items *interfaces.DraftItems, refs []draftTableRef, matches map
 }
 
 // rebindTables binds the draft's tables that are gone again by catalog name and table name in the
-// catalogs, as the caller, and writes the draft; it returns how many tables it bound again. A
-// draft written meanwhile is left as it is, and the next read tries again.
-func (s *draftService) rebindTables(ctx context.Context, caller interfaces.AccountInfo, catalogIDs []string,
-	draft *interfaces.Draft) (int, error) {
-	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY || len(catalogIDs) == 0 {
+// catalogs, as the caller, and writes the draft; it returns how many tables it bound again. The
+// network's existing items the draft holds are bound again too: their copies are what checking,
+// the release review and the knowledge base read. An existing object type follows first the table
+// the network reads now, when vega gives it. A draft written meanwhile is left as it is, and the
+// next read tries again.
+func (s *draftService) rebindTables(ctx context.Context, token string, caller interfaces.AccountInfo,
+	entry *interfaces.ProjectEntry, draft *interfaces.Draft) (int, error) {
+	if draft == nil || draft.Status != interfaces.DRAFT_STATUS_READY || entry == nil || entry.Project == nil {
 		return 0, nil
 	}
-	refs := draftTableRefs(&draft.Items)
+	catalogIDs := entry.CatalogIDs
+	refs := append(draftTableRefs(&draft.Items), existingTableRefs(&draft.Items)...)
 	ids := []string{}
 	for _, ref := range refs {
 		if !slices.Contains(ids, ref.table.ResourceID) {
@@ -257,14 +263,26 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 		gone = append(gone, ref.table)
 	}
-	// What was looked for in vain lately is not looked for again until the catalogs or the tables
-	// gone change, or a while passed: an owner's status is read often.
+	// What was looked for in vain lately, in the network and by name, is not looked for again until
+	// the catalogs or the tables gone change, or a while passed: an owner's status is read often, and
+	// a network still reading a table gone stays so until someone binds it again.
 	miss := rebindMissKey(draft.ProjectID, missing, catalogIDs)
 	if at, ok := s.rebindMisses.Load(miss); ok {
 		if time.Since(at.(time.Time)) < rebindRetryAfter {
 			return 0, nil
 		}
 		s.rebindMisses.Delete(miss)
+	}
+	matches, err := s.networkMatches(ctx, token, caller, entry.KNID, refs, missing)
+	if err != nil {
+		return 0, err
+	}
+	gone = slices.DeleteFunc(gone, func(t *interfaces.DraftTable) bool { _, ok := matches[t.ResourceID]; return ok })
+	if len(gone) == 0 || len(catalogIDs) == 0 {
+		if len(matches) == 0 {
+			s.rebindMisses.Store(miss, time.Now())
+		}
+		return s.applyMatches(ctx, caller, draft, refs, matches, nil)
 	}
 	names, err := s.va.CatalogNames(ctx, caller, catalogIDs)
 	if err != nil {
@@ -299,10 +317,10 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 	}
 	if len(tableIDs) == 0 {
-		if allRead {
+		if allRead && len(matches) == 0 {
 			s.rebindMisses.Store(miss, time.Now())
 		}
-		return 0, nil
+		return s.applyMatches(ctx, caller, draft, refs, matches, names)
 	}
 	slices.Sort(tableIDs)
 	read, err := s.va.GetTables(ctx, caller, tableIDs)
@@ -322,11 +340,21 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 		listed[catalogID] = full
 	}
-	matches := rebindMatches(gone, catalogIDs, names, listed, bound)
+	byName := rebindMatches(gone, catalogIDs, names, listed, bound)
+	if len(byName) == 0 && allRead && len(matches) == 0 {
+		s.rebindMisses.Store(miss, time.Now())
+	}
+	for id, table := range byName {
+		matches[id] = table
+	}
+	return s.applyMatches(ctx, caller, draft, refs, matches, names)
+}
+
+// applyMatches binds the tables matched again and writes the draft; it returns how many tables it
+// bound again.
+func (s *draftService) applyMatches(ctx context.Context, caller interfaces.AccountInfo, draft *interfaces.Draft,
+	refs []draftTableRef, matches map[string]*interfaces.VegaTable, names map[string]string) (int, error) {
 	if len(matches) == 0 {
-		if allRead {
-			s.rebindMisses.Store(miss, time.Now())
-		}
 		return 0, nil
 	}
 	decisions := applyRebind(&draft.Items, refs, matches, names)
@@ -334,6 +362,64 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		return 0, err
 	}
 	return len(matches), nil
+}
+
+// networkMatches are, by the gone table's resource id, the tables the network's object types read
+// now in place of those gone, as bkn-backend tells and vega gives them to the caller: the network
+// already says which table its own item reads. A gone table the network's object types now read
+// in different tables is left to the name match, as is any the network does not tell.
+func (s *draftService) networkMatches(ctx context.Context, token string, caller interfaces.AccountInfo,
+	knID string, refs []draftTableRef, missing []string) (map[string]*interfaces.VegaTable, error) {
+	matches := map[string]*interfaces.VegaTable{}
+	goneExisting := []draftTableRef{}
+	for _, ref := range refs {
+		if ref.kind == interfaces.DRAFT_KIND_OBJECT_TYPES && ref.existing &&
+			slices.Contains(missing, ref.table.ResourceID) {
+			goneExisting = append(goneExisting, ref)
+		}
+	}
+	if len(goneExisting) == 0 {
+		return matches, nil
+	}
+	tables := s.networkTables(ctx, token, knID)
+	if len(tables) == 0 {
+		return matches, nil
+	}
+	now, conflict := map[string]string{}, map[string]bool{}
+	for _, ref := range goneExisting {
+		id := tables[ref.itemID]
+		if id == "" || id == ref.table.ResourceID || slices.Contains(missing, id) {
+			continue
+		}
+		if was, ok := now[ref.table.ResourceID]; ok && was != id {
+			conflict[ref.table.ResourceID] = true
+		}
+		now[ref.table.ResourceID] = id
+	}
+	ids := []string{}
+	for gone, id := range now {
+		if !conflict[gone] && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return matches, nil
+	}
+	slices.Sort(ids)
+	read, err := s.va.GetTables(ctx, caller, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the tables the network reads: %w", err)
+	}
+	byID := map[string]*interfaces.VegaTable{}
+	for _, table := range read {
+		byID[table.ID] = table
+	}
+	for gone, id := range now {
+		if table, ok := byID[id]; ok && !conflict[gone] {
+			matches[gone] = table
+		}
+	}
+	return matches, nil
 }
 
 // rebindRetryAfter is how long tables looked for in vain are not looked for again.
