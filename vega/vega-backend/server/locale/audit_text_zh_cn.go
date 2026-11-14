@@ -32,6 +32,7 @@ var auditTextZhCN = i18n.I18nMessages{Locale: i18n.SimplifiedChinese, Messages: 
 	"VegaBackend.Audit.Target.resource":                    "数据资源",
 	"VegaBackend.Audit.Target.discovery_schedule":          "发现计划",
 	"VegaBackend.Audit.Target.build_task":                  "构建任务",
+	"VegaBackend.Audit.Target.build_schedule":              "构建计划",
 	"VegaBackend.Audit.Target.connector_type":              "连接器",
 	"VegaBackend.Audit.Target.discovery_task":              "发现任务",
 	"VegaBackend.Audit.Target.semantic_understanding_task": "语义理解任务",

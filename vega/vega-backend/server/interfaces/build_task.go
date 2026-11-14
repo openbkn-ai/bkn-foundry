@@ -18,6 +18,9 @@ const (
 	BuildTaskModeStreaming string = "streaming" // Flow cytometry
 	BuildTaskModeBatch     string = "batch"     // Batch production
 
+	BuildTaskTriggerManual    = "manual"
+	BuildTaskTriggerScheduled = "scheduled"
+
 	BuildTaskSortCreateTime       string = "create_time"
 	BuildTaskSortStartTime        string = "start_time"
 	BuildTaskSortFinishTime       string = "finish_time"
@@ -52,6 +55,8 @@ var ConnectorClassMapping = map[string]string{
 // BuildTask represents a build task entity.
 type BuildTask struct {
 	ID               string                `json:"id"`
+	ScheduleID       string                `json:"schedule_id"`
+	TriggerType      string                `json:"trigger_type"`
 	ResourceID       string                `json:"resource_id"`
 	Status           string                `json:"status"`
 	Mode             string                `json:"mode"`                   // Task mode: streaming/batch
@@ -79,6 +84,8 @@ type BuildTask struct {
 // available from GetByID.
 type BuildTaskSummary struct {
 	ID               string      `json:"id"`
+	ScheduleID       string      `json:"schedule_id"`
+	TriggerType      string      `json:"trigger_type"`
 	ResourceID       string      `json:"resource_id"`
 	ResourceName     string      `json:"resource_name,omitempty"`
 	CatalogID        string      `json:"catalog_id"`
@@ -108,6 +115,9 @@ type BuildTaskProgress struct {
 
 // CreateBuildTaskRequest represents the request to create a build task.
 type CreateBuildTaskRequest struct {
+	// 调度来源仅允许服务端赋值，HTTP 请求不能伪造计划来源。
+	ScheduleID  string `json:"-"`
+	TriggerType string `json:"-"`
 	ResourceID  string `json:"resource_id" binding:"required"`                                    // Associate Resource ID
 	Mode        string `json:"mode" binding:"required,oneof=streaming batch"`                     // Task mode: streaming/batch
 	ExecuteType string `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full"` // Execution type, batch only; default full
@@ -121,6 +131,8 @@ type StartBuildTaskRequest struct {
 // BuildTasksQueryParams holds filter + pagination parameters for listing build tasks.
 type BuildTasksQueryParams struct {
 	PaginationQueryParams
+	ScheduleID  string
+	TriggerType string
 	Mode        string
 	ExecuteType string   // Batch execution type filtering. Empty means no filtering.
 	Statuses    []string // Multi-valued state filtering (IN) Empty means no filtering

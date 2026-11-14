@@ -104,6 +104,7 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, tx *
 	schedule := &interfaces.CatalogHealthCheckSchedule{
 		CatalogID:  catalog.ID,
 		Mode:       req.Mode,
+		LastStatus: interfaces.ScheduleStatusNever,
 		Creator:    account,
 		CreateTime: now,
 		Updater:    account,
@@ -218,7 +219,7 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 
 	schedule.Mode = req.Mode
 	schedule.Updater = account
-	schedule.UpdateTime = now
+	schedule.UpdateTime = max(now, schedule.UpdateTime+1)
 	switch req.Mode {
 	case interfaces.CatalogHealthCheckScheduleModeInherit:
 		schedule.CronExpr = ""

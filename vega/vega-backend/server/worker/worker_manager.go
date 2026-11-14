@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_schedule"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	logicsDiscoverSchedule "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/discover_schedule"
@@ -35,6 +36,7 @@ type WorkerManager struct {
 	dtw  *DiscoverTaskWorker
 	sutw *SemanticUnderstandingTaskWorker
 	dsw  *DiscoverScheduleWorker
+	bsw  *BuildScheduleWorker
 	chcw *CatalogHealthCheckWorker
 	icw  *IndexCleanupWorker
 }
@@ -44,6 +46,8 @@ func NewWorkerManager(appSetting *common.AppSetting) *WorkerManager {
 	workerManagerOnce.Do(func() {
 		rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 		bts := build_task.NewBuildTaskService(appSetting, rs)
+		bss := build_schedule.NewBuildScheduleService(appSetting, bts, rs)
+		bsw := NewBuildScheduleWorker(appSetting, bss)
 		btw := NewBuildTaskWorker(appSetting, bts)
 		dtw := NewDiscoverTaskWorker(appSetting)
 		sutw := NewSemanticUnderstandingTaskWorker(appSetting)
@@ -57,6 +61,7 @@ func NewWorkerManager(appSetting *common.AppSetting) *WorkerManager {
 			dtw:  dtw,
 			sutw: sutw,
 			dsw:  dsw,
+			bsw:  bsw,
 			chcw: chcw,
 			icw:  icw,
 		}
@@ -80,6 +85,7 @@ func (wm *WorkerManager) Start(ctx context.Context) error {
 	wm.dtw.Start()
 	wm.btw.Start()
 	wm.dsw.Start()
+	wm.bsw.Start()
 	wm.chcw.Start()
 	wm.icw.Start()
 	return nil
@@ -89,6 +95,7 @@ func (wm *WorkerManager) Start(ctx context.Context) error {
 // running, which finish naturally.
 func (wm *WorkerManager) Stop() {
 	wm.dsw.Stop()
+	wm.bsw.Stop()
 	wm.chcw.Stop()
 	wm.icw.Stop()
 	wm.sutw.Stop()

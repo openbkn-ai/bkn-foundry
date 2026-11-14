@@ -32,6 +32,7 @@ var auditTextEnUS = i18n.I18nMessages{Locale: i18n.AmericanEnglish, Messages: ma
 	"VegaBackend.Audit.Target.resource":                    "resource",
 	"VegaBackend.Audit.Target.discovery_schedule":          "discovery schedule",
 	"VegaBackend.Audit.Target.build_task":                  "build task",
+	"VegaBackend.Audit.Target.build_schedule":              "build schedule",
 	"VegaBackend.Audit.Target.connector_type":              "connector type",
 	"VegaBackend.Audit.Target.discovery_task":              "discovery task",
 	"VegaBackend.Audit.Target.semantic_understanding_task": "semantic understanding task",

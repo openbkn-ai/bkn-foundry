@@ -125,6 +125,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 			Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.DiscoverSchedule{})).
 			DoAndReturn(func(_ context.Context, schedule *interfaces.DiscoverSchedule) error {
 				assert.NotEmpty(t, schedule.ID)
+				assert.Equal(t, interfaces.ScheduleStatusNever, schedule.LastStatus)
 				assert.Equal(t, "nightly", schedule.Name)
 				assert.Equal(t, "catalog-1", schedule.CatalogID)
 				assert.Equal(t, "0 0 * * *", schedule.CronExpr)
@@ -235,6 +236,20 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
+	t.Run("monotonic configuration version survives a nonadvancing clock", func(t *testing.T) {
+		service, access, _, _ := newTestDiscoverScheduleService(t)
+		version := time.Now().Add(24 * time.Hour).UnixMilli()
+		current := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog-1", CronExpr: "0 * * * *", UpdateTime: version, LastStatus: interfaces.ScheduleStatusFailed, LastMessage: "previous"}
+		access.EXPECT().Update(gomock.Any(), current, version).DoAndReturn(func(_ context.Context, updated *interfaces.DiscoverSchedule, expected int64) (int64, error) {
+			assert.Equal(t, version, expected)
+			assert.Equal(t, version+1, updated.UpdateTime)
+			assert.Equal(t, interfaces.ScheduleStatusFailed, updated.LastStatus)
+			assert.Equal(t, "previous", updated.LastMessage)
+			return 1, nil
+		})
+		require.NoError(t, service.Update(context.Background(), current, &interfaces.DiscoverScheduleRequest{Name: "updated", CronExpr: "0 * * * *", ExpectedUpdateTime: version}))
+	})
+
 }
 
 func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
@@ -344,7 +359,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.ErrorCode)
 	})
 
-	t.Run("delegates enable disable delete and run metadata", func(t *testing.T) {
+	t.Run("delegates enable disable and delete", func(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
 		schedule := &interfaces.DiscoverSchedule{
 			ID:         "schedule-1",
@@ -354,14 +369,10 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		}
 		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", true, gomock.Not(gomock.Nil()), int64(100), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", false, nil, int64(100), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-		dsa.EXPECT().UpdateRunMetadata(gomock.Any(), "schedule-1", int64(100), int64(110), int64(123), int64(456)).Return(int64(1), nil)
 		dsa.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
 
 		require.NoError(t, service.UpdateEnabled(context.Background(), schedule, true))
 		require.NoError(t, service.UpdateEnabled(context.Background(), schedule, false))
-		rowsAffected, err := service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456)
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, service.Delete(context.Background(), schedule))
 	})
 
@@ -396,6 +407,20 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		require.NoError(t, service.InternalUpdateEnabled(context.Background(), schedule, false))
 	})
+	t.Run("monotonic enable disable version survives a nonadvancing clock", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			t.Run(map[bool]string{false: "disable", true: "enable"}[enabled], func(t *testing.T) {
+				service, access, _, _ := newTestDiscoverScheduleService(t)
+				version := time.Now().Add(24 * time.Hour).UnixMilli()
+				current := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog-1", CronExpr: "0 * * * *", UpdateTime: version, LastStatus: interfaces.ScheduleStatusFailed, LastMessage: "previous"}
+				access.EXPECT().UpdateEnabled(gomock.Any(), "schedule", enabled, gomock.Any(), version, version+1, interfaces.AccountInfo{}).Return(int64(1), nil)
+				require.NoError(t, service.UpdateEnabled(context.Background(), current, enabled))
+				assert.Equal(t, interfaces.ScheduleStatusFailed, current.LastStatus)
+				assert.Equal(t, "previous", current.LastMessage)
+			})
+		}
+	})
+
 }
 
 func TestDiscoverScheduleServicePopulatesCatalogName(t *testing.T) {
@@ -479,7 +504,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 	t.Run("rejects nil discover task service", func(t *testing.T) {
 		service := &discoverScheduleService{}
 
-		err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
+		_, err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "DiscoverTaskService not set")
@@ -497,7 +522,10 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 			}).
 			Return(nil, int64(1), nil)
 
-		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
+		result, err := service.ExecuteSchedule(context.Background(), schedule)
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ScheduleStatusSkipped, result.Status)
+		assert.NotEmpty(t, result.Message)
 	})
 
 	t.Run("creates scheduled task", func(t *testing.T) {
@@ -521,7 +549,10 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 				Strategy:    "full_sync",
 			}).
 			Return("task-1", nil)
-		require.NoError(t, service.ExecuteSchedule(context.Background(), schedule))
+		result, err := service.ExecuteSchedule(context.Background(), schedule)
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ScheduleStatusSuccess, result.Status)
+		assert.Empty(t, result.Message)
 	})
 
 	t.Run("returns list error", func(t *testing.T) {
@@ -529,7 +560,7 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		cs.EXPECT().InternalGetByID(gomock.Any(), "", false).Return(&interfaces.Catalog{ConnectorType: "postgresql", Enabled: true}, nil)
 		dts.EXPECT().List(gomock.Any(), gomock.Any()).Return(nil, int64(0), errors.New("list failed"))
 
-		err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
+		_, err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{ID: "schedule-1"})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "list failed")
@@ -539,10 +570,30 @@ func TestDiscoverScheduleServiceExecuteSchedule(t *testing.T) {
 		service, cs, _ := newTestDiscoverScheduleExecutionService(t)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-		require.NoError(t, service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{
+		result, err := service.ExecuteSchedule(context.Background(), &interfaces.DiscoverSchedule{
 			ID: "schedule-1", CatalogID: "catalog-1",
-		}))
+		})
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.ScheduleStatusSkipped, result.Status)
+		assert.NotEmpty(t, result.Message)
 	})
+	t.Run("reports revoked creator permission without leaking downstream details", func(t *testing.T) {
+		service, cs, dts := newTestDiscoverScheduleExecutionService(t)
+		account := interfaces.AccountInfo{ID: "creator", Type: "user"}
+		schedule := &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog", Creator: account}
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", false).Return(&interfaces.Catalog{ID: "catalog", ConnectorType: "postgresql", Enabled: true}, nil)
+		denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails("private connector details")
+		dts.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, _ interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTask, int64, error) {
+			assert.Equal(t, account, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
+			return nil, 0, denied
+		})
+		result, err := service.ExecuteSchedule(context.Background(), schedule)
+		require.ErrorIs(t, err, denied)
+		assert.Equal(t, interfaces.ScheduleStatusFailed, result.Status)
+		assert.Contains(t, result.Message, "权限")
+		assert.NotContains(t, result.Message, "private")
+	})
+
 }
 
 func newTestDiscoverScheduleExecutionService(t *testing.T) (*discoverScheduleService, *vmock.MockCatalogService, *vmock.MockDiscoverTaskService) {
@@ -574,7 +625,7 @@ func TestDiscoverScheduleServiceDiscoveryCapability(t *testing.T) {
 				if action == "execute" {
 					service.dts = vmock.NewMockDiscoverTaskService(ctrl)
 					cs.EXPECT().InternalGetByID(gomock.Any(), "api", false).Return(catalog, nil)
-					err = service.ExecuteSchedule(context.Background(), schedule)
+					_, err = service.ExecuteSchedule(context.Background(), schedule)
 				} else {
 					cs.EXPECT().CheckCatalogPermission(gomock.Any(), "api", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, catalog, nil)
 					switch action {
@@ -652,7 +703,7 @@ func TestDiscoverScheduleServiceDiscoveryCapability(t *testing.T) {
 						case "enable":
 							err = svc.UpdateEnabled(context.Background(), schedule, true)
 						case "execute":
-							err = svc.ExecuteSchedule(context.Background(), schedule)
+							_, err = svc.ExecuteSchedule(context.Background(), schedule)
 						}
 						switch scenario {
 						case "discoverable API":

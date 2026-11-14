@@ -116,6 +116,7 @@ func init() {
 	httperrors.Register(ResourceErrCodeList)
 	httperrors.Register(ConnectorTypeErrCodeList)
 	httperrors.Register(BuildTaskErrCodeList)
+	httperrors.Register(BuildScheduleErrCodeList)
 	httperrors.Register(DiscoverTaskErrCodeList)
 	httperrors.Register(QueryErrCodeList)
 	httperrors.Register(LogicalViewErrCodeList)

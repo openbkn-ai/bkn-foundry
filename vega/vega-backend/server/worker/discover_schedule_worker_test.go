@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -20,176 +21,169 @@ import (
 )
 
 func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
-	t.Run("executes all due schedules", func(t *testing.T) {
+	t.Run("continues after a schedule panics", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		first := dueDiscoverSchedule("schedule-1")
-		second := dueDiscoverSchedule("schedule-2")
-		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.DiscoverSchedule{first, second}, nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil)
-		dss.EXPECT().ExecuteSchedule(gomock.Any(), first).Return(nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil)
-		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
-
-		newTestDiscoverScheduleWorker(dsa, dss).runDue(context.Background())
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		service := vmock.NewMockDiscoverScheduleService(ctrl)
+		first, second := dueDiscoverSchedule("first"), dueDiscoverSchedule("second")
+		access.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.DiscoverSchedule{first, second}, nil)
+		gomock.InOrder(
+			access.EXPECT().ClaimRun(gomock.Any(), first.ID, first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil),
+			service.EXPECT().ExecuteSchedule(gomock.Any(), first).DoAndReturn(func(context.Context, *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
+				panic("interrupted")
+			}),
+			access.EXPECT().ClaimRun(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil),
+			service.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}, nil),
+			access.EXPECT().CompleteRun(gomock.Any(), second.ID, gomock.Any(), interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}).Return(int64(1), nil),
+		)
+		w := &DiscoverScheduleWorker{dsa: access, dss: service}
+		require.NotPanics(t, func() { w.runDue(context.Background()) })
 	})
-
-	t.Run("returns when due query fails", func(t *testing.T) {
+	t.Run("does not execute when listing fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
-		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
-
-		newTestDiscoverScheduleWorker(dsa, vmock.NewMockDiscoverScheduleService(ctrl)).runDue(context.Background())
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		access.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return(nil, errors.New("unavailable"))
+		(&DiscoverScheduleWorker{dsa: access}).runDue(context.Background())
 	})
-
-	t.Run("continues after one schedule panics", func(t *testing.T) {
+	t.Run("recovers an access panic", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		first := dueDiscoverSchedule("schedule-1")
-		second := dueDiscoverSchedule("schedule-2")
-		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.DiscoverSchedule{first, second}, nil)
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), first.ID, first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any()).Do(func(context.Context, string, int64, int64, int64, int64) {
-			panic("update panic")
-		})
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil)
-		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
-
-		newTestDiscoverScheduleWorker(dsa, dss).runDue(context.Background())
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		access.EXPECT().ListDue(gomock.Any(), gomock.Any()).Do(func(context.Context, int64) { panic("interrupted") })
+		require.NotPanics(t, func() { (&DiscoverScheduleWorker{dsa: access}).runDue(context.Background()) })
 	})
 }
 
-func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
-	t.Run("initializes legacy schedule without executing it", func(t *testing.T) {
+func TestDiscoverScheduleWorkerRunScheduleAt(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 15, 0, 0, time.UTC)
+	next := time.Date(2026, 11, 14, 11, 0, 0, 0, time.UTC).UnixMilli()
+	newSchedule := func() *interfaces.DiscoverSchedule {
+		return &interfaces.DiscoverSchedule{ID: "schedule", CatalogID: "catalog", Enabled: true, CronExpr: "0 * * * *", NextRun: now.Add(-3 * time.Hour).UnixMilli(), UpdateTime: 25, LastRun: 20, LastStatus: interfaces.ScheduleStatusFailed, LastMessage: "previous failure", Creator: interfaces.AccountInfo{ID: "creator", Type: "user"}}
+	}
+	t.Run("initializes zero next run without creating a task or overwriting result", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		service := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := newSchedule()
 		schedule.NextRun = 0
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, int64(0), schedule.LastRun, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _, _, _ int64, nextRun int64) (int64, error) {
-				require.Greater(t, nextRun, time.Now().UnixMilli())
-				return 1, nil
-			},
-		)
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+		access.EXPECT().InitializeNextRun(gomock.Any(), schedule.ID, schedule.UpdateTime, int64(0), next).Return(int64(1), nil)
+		(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
+		assert.Equal(t, int64(20), schedule.LastRun)
+		assert.Equal(t, interfaces.ScheduleStatusFailed, schedule.LastStatus)
+		assert.Equal(t, "previous failure", schedule.LastMessage)
 	})
-
-	t.Run("advances legacy schedule to future start time without executing it", func(t *testing.T) {
+	t.Run("honors a future start boundary", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Hour).UnixMilli()
-		schedule.StartTime = time.Now().Add(2 * time.Hour).UnixMilli()
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, schedule.LastRun, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ string, _, _, _ int64, nextRun int64) (int64, error) {
-				require.GreaterOrEqual(t, nextRun, schedule.StartTime)
-				return 1, nil
-			},
-		)
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		schedule := newSchedule()
+		schedule.StartTime = next
+		access.EXPECT().InitializeNextRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, next).Return(int64(1), nil)
+		(&DiscoverScheduleWorker{dsa: access}).runScheduleAt(context.Background(), schedule, now)
 	})
-
-	t.Run("advances schedule before creating task", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
-		gomock.InOrder(
-			dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, _, _ int64, lastRun, nextRun int64) (int64, error) {
-					require.WithinDuration(t, time.Now(), time.UnixMilli(lastRun), time.Second)
-					require.Greater(t, nextRun, lastRun)
+	for _, status := range []string{interfaces.ScheduleStatusSuccess, interfaces.ScheduleStatusSkipped, interfaces.ScheduleStatusFailed} {
+		t.Run("persists "+status+" after claim and coalesces missed occurrences", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+			service := vmock.NewMockDiscoverScheduleService(ctrl)
+			schedule := newSchedule()
+			result := interfaces.ScheduleRunResult{Status: status}
+			var runErr error
+			if status != interfaces.ScheduleStatusSuccess {
+				result.Message = "public explanation"
+			}
+			if status == interfaces.ScheduleStatusFailed {
+				runErr = errors.New("private error")
+			}
+			var runID string
+			gomock.InOrder(
+				access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).DoAndReturn(func(ctx context.Context, _ string, _, _, _, _ int64, token string) (int64, error) {
+					_, err := uuid.Parse(token)
+					require.NoError(t, err)
+					runID = token
+					assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
 					return 1, nil
-				},
-			),
-			dss.EXPECT().ExecuteSchedule(gomock.Any(), schedule).Return(nil),
-		)
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
-	})
-
-	t.Run("does not create task when advancing fails", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).Return(int64(0), errors.New("db down"))
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
-	})
-
-	t.Run("does not create task when schedule was already claimed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
-		dss.EXPECT().UpdateRunMetadata(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).Return(int64(0), nil)
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
-	})
-
-	t.Run("disables expired schedule", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
-		schedule.EndTime = time.Now().Add(-time.Second).UnixMilli()
-		schedule.Creator = interfaces.AccountInfo{ID: "schedule-creator", Type: "user"}
-		dss.EXPECT().InternalUpdateEnabled(gomock.Any(), schedule, false).DoAndReturn(func(ctx context.Context, _ *interfaces.DiscoverSchedule, _ bool) error {
-			assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
-			return nil
+				}),
+				service.EXPECT().ExecuteSchedule(gomock.Any(), schedule).DoAndReturn(func(ctx context.Context, _ *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
+					assert.NotEmpty(t, runID)
+					assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
+					return result, runErr
+				}),
+				access.EXPECT().CompleteRun(gomock.Any(), schedule.ID, gomock.Any(), result).DoAndReturn(func(_ context.Context, _, token string, _ interfaces.ScheduleRunResult) (int64, error) {
+					assert.Equal(t, runID, token)
+					return 1, nil
+				}),
+			)
+			(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
 		})
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
-	})
-
-	t.Run("disables legacy schedule with sub-hour cron expression", func(t *testing.T) {
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"already claimed", nil}, {"claim failed", errors.New("db unavailable")}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+			service := vmock.NewMockDiscoverScheduleService(ctrl)
+			schedule := newSchedule()
+			access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).Return(int64(0), tc.err)
+			(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
+		})
+	}
+	for _, expr := range []string{"invalid", "*/30 * * * *", "0 0 31 2 *"} {
+		t.Run("disables invalid persisted expression "+expr, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+			schedule := newSchedule()
+			schedule.CronExpr = expr
+			access.EXPECT().DisableInvalid(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _, _ int64, message string) (int64, error) {
+				assert.NotEmpty(t, message)
+				assert.NotContains(t, message, expr)
+				return 1, nil
+			})
+			(&DiscoverScheduleWorker{dsa: access}).runScheduleAt(context.Background(), schedule, now)
+		})
+	}
+	t.Run("retains triggering when task call panics", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dss := vmock.NewMockDiscoverScheduleService(ctrl)
-		schedule := dueDiscoverSchedule("schedule-1")
-		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
-		schedule.CronExpr = "*/30 * * * *"
-		dss.EXPECT().InternalUpdateEnabled(gomock.Any(), schedule, false).Return(nil)
-
-		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		service := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := newSchedule()
+		access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).Return(int64(1), nil)
+		service.EXPECT().ExecuteSchedule(gomock.Any(), schedule).DoAndReturn(func(context.Context, *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
+			panic("interrupted")
+		})
+		require.NotPanics(t, func() {
+			(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
+		})
 	})
-
-	t.Run("skips disabled and not due schedules", func(t *testing.T) {
+	t.Run("does not retry when completion persistence fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		dsw := newTestDiscoverScheduleWorker(
-			nil,
-			vmock.NewMockDiscoverScheduleService(ctrl),
-		)
-
-		disabled := dueDiscoverSchedule("disabled")
+		access := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		service := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := newSchedule()
+		access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).Return(int64(1), nil)
+		service.EXPECT().ExecuteSchedule(gomock.Any(), schedule).Return(interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}, nil)
+		access.EXPECT().CompleteRun(gomock.Any(), schedule.ID, gomock.Any(), interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}).Return(int64(0), errors.New("unavailable"))
+		(&DiscoverScheduleWorker{dsa: access, dss: service}).runScheduleAt(context.Background(), schedule, now)
+	})
+	t.Run("disables expired schedule without executing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		service := vmock.NewMockDiscoverScheduleService(ctrl)
+		schedule := newSchedule()
+		schedule.EndTime = now.Add(-time.Millisecond).UnixMilli()
+		service.EXPECT().InternalUpdateEnabled(gomock.Any(), schedule, false).Return(nil)
+		(&DiscoverScheduleWorker{dss: service}).runScheduleAt(context.Background(), schedule, now)
+	})
+	t.Run("ignores disabled or future schedules", func(t *testing.T) {
+		disabled := newSchedule()
 		disabled.Enabled = false
-		notDue := dueDiscoverSchedule("not-due")
-		notDue.NextRun = time.Now().Add(time.Hour).UnixMilli()
-
-		dsw.runSchedule(context.Background(), disabled)
-		dsw.runSchedule(context.Background(), notDue)
+		future := newSchedule()
+		future.NextRun = next
+		w := &DiscoverScheduleWorker{}
+		w.runScheduleAt(context.Background(), disabled, now)
+		w.runScheduleAt(context.Background(), future, now)
 	})
-
 }
 
 func dueDiscoverSchedule(id string) *interfaces.DiscoverSchedule {
-	return &interfaces.DiscoverSchedule{
-		ID:       id,
-		Enabled:  true,
-		CronExpr: "0 * * * *",
-		NextRun:  time.Now().Add(-time.Minute).UnixMilli(),
-	}
-}
-
-func newTestDiscoverScheduleWorker(
-	dsa interfaces.DiscoverScheduleAccess,
-	dss interfaces.DiscoverScheduleService,
-) *DiscoverScheduleWorker {
-	return &DiscoverScheduleWorker{
-		dsa: dsa,
-		dss: dss,
-	}
+	return &interfaces.DiscoverSchedule{ID: id, Enabled: true, CronExpr: "0 * * * *", NextRun: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()}
 }

@@ -94,6 +94,7 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 
 		sa.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&interfaces.CatalogHealthCheckSchedule{})).DoAndReturn(func(_ context.Context, _ *sql.Tx, schedule *interfaces.CatalogHealthCheckSchedule) error {
 			assert.Equal(t, "catalog-1", schedule.CatalogID)
+			assert.Equal(t, interfaces.ScheduleStatusNever, schedule.LastStatus)
 			assert.Equal(t, interfaces.CatalogHealthCheckScheduleModeInherit, schedule.Mode)
 			assert.Empty(t, schedule.CronExpr)
 			assert.Greater(t, schedule.NextRun, beforeCreate)
@@ -428,6 +429,39 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_UpdateConflict, httpErr.ErrorCode)
 		assert.Nil(t, got)
 	})
+	t.Run("monotonic configuration version survives a nonadvancing clock", func(t *testing.T) {
+		for _, mode := range []string{interfaces.CatalogHealthCheckScheduleModeInherit, interfaces.CatalogHealthCheckScheduleModeEnabled, interfaces.CatalogHealthCheckScheduleModeDisabled} {
+			t.Run(mode, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				ca := vmock.NewMockCatalogAccess(ctrl)
+				access := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+				permissions := vmock.NewMockPermissionService(ctrl)
+				service := newCatalogHealthCheckScheduleServiceForTest(t)
+				service.ca = ca
+				service.sa = access
+				service.ps = permissions
+				version := time.Now().Add(24 * time.Hour).UnixMilli()
+				current := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog", Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *", UpdateTime: version, LastStatus: interfaces.ScheduleStatusFailed, LastMessage: "previous"}
+				ca.EXPECT().GetByID(gomock.Any(), "catalog").Return(&interfaces.Catalog{ID: "catalog", Type: interfaces.CatalogTypePhysical}, nil)
+				permissions.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+				access.EXPECT().GetByCatalogID(gomock.Any(), "catalog").Return(current, nil)
+				access.EXPECT().Update(gomock.Any(), current, version).DoAndReturn(func(_ context.Context, updated *interfaces.CatalogHealthCheckSchedule, expected int64) (int64, error) {
+					assert.Equal(t, version, expected)
+					assert.Equal(t, version+1, updated.UpdateTime)
+					assert.Equal(t, interfaces.ScheduleStatusFailed, updated.LastStatus)
+					assert.Equal(t, "previous", updated.LastMessage)
+					return 1, nil
+				})
+				request := &interfaces.CatalogHealthCheckScheduleRequest{Mode: mode, ExpectedUpdateTime: version}
+				if mode == interfaces.CatalogHealthCheckScheduleModeEnabled {
+					request.CronExpr = "0 * * * *"
+				}
+				_, err := service.Update(context.Background(), "catalog", request)
+				require.NoError(t, err)
+			})
+		}
+	})
+
 }
 
 func TestCatalogHealthCheckScheduleServiceAPICatalog(t *testing.T) {

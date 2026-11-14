@@ -170,6 +170,12 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 			WithErrorDetails(fmt.Sprintf("invalid execute_type: %s", executeType))
 	}
 	params.ExecuteType = executeType
+	params.ScheduleID = c.Query("schedule_id")
+	params.TriggerType = c.Query("trigger_type")
+	if params.TriggerType != "" && params.TriggerType != interfaces.BuildTaskTriggerManual && params.TriggerType != interfaces.BuildTaskTriggerScheduled {
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("trigger_type must be manual or scheduled")
+	}
 
 	params.ResourceID = c.Query("resource_id")
 	params.CatalogID = c.Query("catalog_id")

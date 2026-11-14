@@ -48,6 +48,20 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 	defer restoreGinMode()
 
 	const url = "/api/vega-backend/in/v1/build-tasks"
+	t.Run("ignores client supplied schedule provenance", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.CreateBuildTaskRequest) (string, error) {
+			assert.Empty(t, req.ScheduleID)
+			assert.Empty(t, req.TriggerType)
+			return "task-1", nil
+		})
+		body := `{"resource_id":"res-1","mode":"batch","schedule_id":"forged-plan","trigger_type":"scheduled"}`
+		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusCreated, w.Code)
+	})
 	for _, tc := range []struct {
 		name   string
 		err    error
@@ -144,6 +158,16 @@ func newBuildTaskListContext(query string) *gin.Context {
 
 func TestParseBuildTaskListParams(t *testing.T) {
 	ctx := context.Background()
+	t.Run("filters scheduled task provenance", func(t *testing.T) {
+		got, err := parseBuildTaskListParams(ctx, newBuildTaskListContext("schedule_id=plan-1&trigger_type=scheduled"))
+		require.NoError(t, err)
+		assert.Equal(t, "plan-1", got.ScheduleID)
+		assert.Equal(t, interfaces.BuildTaskTriggerScheduled, got.TriggerType)
+	})
+	t.Run("rejects unsupported trigger type", func(t *testing.T) {
+		_, err := parseBuildTaskListParams(ctx, newBuildTaskListContext("trigger_type=unknown"))
+		require.Error(t, err)
+	})
 
 	tests := []struct {
 		name    string

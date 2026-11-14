@@ -8,6 +8,7 @@ package discover_schedule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -56,11 +57,6 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 		}
 	})
 	return dsService
-}
-
-func (dss *discoverScheduleService) UpdateRunMetadata(ctx context.Context,
-	id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
-	return dss.dsa.UpdateRunMetadata(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }
 
 /**
@@ -114,6 +110,7 @@ func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.
 		Strategy:  req.Strategy,
 		NextRun:   nextRun.UnixMilli(),
 
+		LastStatus: interfaces.ScheduleStatusNever,
 		Creator:    accountInfo,
 		CreateTime: now,
 		Updater:    accountInfo,
@@ -265,7 +262,7 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 	schedule.EndTime = req.EndTime
 	schedule.Strategy = req.Strategy
 	schedule.Updater = accountInfo
-	schedule.UpdateTime = now
+	schedule.UpdateTime = max(now, schedule.UpdateTime+1)
 	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, nowTime, schedule.StartTime)
 	if err != nil {
 		return err
@@ -357,7 +354,8 @@ func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
 
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	rowsAffected, err := dss.dsa.UpdateEnabled(
-		ctx, schedule.ID, enabled, nextRun, schedule.UpdateTime, nowTime.UnixMilli(), accountInfo)
+		ctx, schedule.ID, enabled, nextRun, schedule.UpdateTime,
+		max(nowTime.UnixMilli(), schedule.UpdateTime+1), accountInfo)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to update discover schedule enabled state", err)
 		return err
@@ -415,7 +413,7 @@ func calculateScheduleNextRun(cronExpr string, now time.Time, startTime int64) (
 
 // ExecuteSchedule is a method for executing plan discovery tasks
 // It takes a context and a planned discovery task as parameters and returns an error
-func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
+func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) (interfaces.ScheduleRunResult, error) {
 	// Create a span to monitor and trace request execution.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.ExecuteSchedule")
 	defer span.End() // End the span when the function returns.
@@ -423,22 +421,22 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	// Check whether the DiscoverTaskService has been set up
 	if dss.dts == nil {
 		otellog.LogError(ctx, "DiscoverTaskService not set", nil)
-		return fmt.Errorf("DiscoverTaskService not set")
+		return discoverScheduleFailure(fmt.Errorf("DiscoverTaskService not set"), "探查任务服务不可用")
 	}
 
 	// The scheduler supplies the persisted schedule. Only the catalog's current state is rechecked.
 	catalogInfo, err := dss.cs.InternalGetByID(ctx, schedule.CatalogID, false)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to get catalog before executing discover schedule", err)
-		return err
+		return discoverScheduleFailure(err, "无法读取或校验探查目录")
 	}
 	if catalogInfo == nil || !catalogInfo.Enabled {
 		logger.Infof("Skip discover schedule for missing or disabled catalog: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
-		return nil
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "探查目录不存在或已停用"}, nil
 	}
 
 	if err := dss.validateDiscoverCatalog(ctx, catalogInfo); err != nil {
-		return err
+		return discoverScheduleFailure(err, "无法读取或校验探查目录")
 	}
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
@@ -451,11 +449,11 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to check running tasks", err)
-		return err
+		return discoverScheduleFailure(err, "无法检查正在执行的探查任务")
 	}
 	if tasks > 0 {
 		logger.Warnf("There is already a running discover task for catalog %s, skipping execution", schedule.CatalogID)
-		return nil
+		return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSkipped, Message: "目录已有正在执行的定时探查任务"}, nil
 	}
 
 	// Create a pending discover task; the local database-backed worker will pick it up.
@@ -467,9 +465,22 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create discover task", err)
-		return err
+		return discoverScheduleFailure(err, "无法创建探查任务，请检查目录配置与权限")
 	}
 
 	logger.Infof("Executed discover schedule: id=%s, catalog_id=%s", schedule.ID, schedule.CatalogID)
-	return nil
+	return interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusSuccess}, nil
+}
+
+// discoverScheduleFailure 只保存公开错误分类，不暴露底层错误详情。
+func discoverScheduleFailure(err error, fallback string) (interfaces.ScheduleRunResult, error) {
+	message := fallback
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden {
+		message = "计划创建者无目录任务管理权限，无法创建探查任务"
+	}
+	return interfaces.ScheduleRunResult{
+		Status:  interfaces.ScheduleStatusFailed,
+		Message: message,
+	}, err
 }

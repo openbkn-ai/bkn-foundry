@@ -296,12 +296,12 @@ paths:
       summary: 删除 catalog
       description: |
         一次只允许删除一个 catalog；路径参数包含逗号时返回 400。删除会同步移除该 catalog 下的资源、
-        探查计划与健康检查计划，以及全部关联的构建、探查和语义理解任务记录（包括 pending 和终态历史记录）。
+        构建计划、探查计划与健康检查计划，以及全部关联的构建、探查和语义理解任务记录（包括 pending 和终态历史记录）。
         构建索引不在此流程中清理。存在 `running` 任务时拒绝删除，
         构建任务处于 `stopping` 时也会拒绝删除。
 
         传入 `dry_run=true` 时仅执行权限、存在性和影响分析，不写入任何数据；返回该 catalog
-        的资源、构建任务、探查计划、健康检查计划、探查任务和语义理解任务计数；
+        的资源、构建任务、构建计划、探查计划、健康检查计划、探查任务和语义理解任务计数；
         `protected_resources` 返回不能随 Catalog 级联删除的 dataset/logical_view 数量，`blockers`
         返回稳定的机器可读阻断原因。`can_delete` 严格反映当前 DELETE 的阻断规则，调用方仍须
         以不带 `dry_run` 的请求结果为准，因为预检与实际删除之间可能有并发变更。
@@ -615,7 +615,7 @@ components:
       type: object
       description: |
         Physical Catalog 检查全部级联对象；Logical Catalog 仅检查 Resource 和 Semantic Understanding Task，
-        其 Build/Discover Task 与两类 Schedule 影响固定为 0。
+        其 Build/Discover Task 与三类 Schedule 影响固定为 0。
       required:
         - catalog_id
         - can_delete
@@ -625,6 +625,7 @@ components:
         - build_tasks
         - catalog_health_check_schedules
         - discover_schedules
+        - build_schedules
         - discover_tasks
         - semantic_understanding_tasks
       properties:
@@ -655,6 +656,10 @@ components:
           type: integer
           format: int64
           description: 将随 Catalog 级联删除的健康检查计划数量。
+        build_schedules:
+          type: integer
+          format: int64
+          description: 将随 Catalog 在同一事务中级联删除的构建计划数量。
         discover_schedules:
           type: integer
           format: int64

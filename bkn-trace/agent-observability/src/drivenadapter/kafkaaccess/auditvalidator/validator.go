@@ -28,8 +28,8 @@ const (
 	SchemaVersion                 = "1.0"
 	SchemaHeader                  = "bkn-audit-schema-version"
 	CanonicalSchemaSHA256         = "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f"
-	CanonicalRegistrySHA256       = "16ebcbc0d80784a530cc3e754a0f13a5055bc2fe847ffc328bb8677ee1eadb4f"
-	RuntimeRegistrySHA256         = "2a8bc571c636d173622195e71d18f2959a1de42a77d479ff226933fc49e1284d"
+	CanonicalRegistrySHA256       = "07a78b1701e65252505a5e11735a87552d58d1fc3553bc80d9e104d2b6fe5fac"
+	RuntimeRegistrySHA256         = "5fbd65fea71b9b66757caf1327f1f811866d2aabee97237a17d529d392b0243e"
 	CanonicalValueFixtureSHA256   = "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3"
 	KafkaFixtureSHA256            = "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f"
 	ExecutionFactoryFixtureSHA256 = "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0"
@@ -101,18 +101,18 @@ func RegisteredSources() (string, []RegisteredSource, error) {
 }
 
 type eventRule struct {
-	Name                string         `json:"event_name"`
-	Category            string         `json:"log_category"`
-	AllowedSourceIDs    []string       `json:"allowed_source_ids"`
-	ResourceTypes       []string       `json:"resource_types"`
-	RequiredActorFields []string       `json:"required_actor_fields"`
-	RequiredTargetFields []string      `json:"required_target_fields"`
-	RequiredAttributes  []string       `json:"required_attributes"`
-	AllowedAttributes   []string       `json:"allowed_attributes"`
-	SensitiveAttributes []string       `json:"sensitive_attributes"`
-	OutcomeMapping      outcomeMapping `json:"outcome_mapping"`
-	SchemaVersion       string         `json:"schema_version"`
-	AllowUnknown        bool           `json:"allow_unknown"`
+	Name                 string         `json:"event_name"`
+	Category             string         `json:"log_category"`
+	AllowedSourceIDs     []string       `json:"allowed_source_ids"`
+	ResourceTypes        []string       `json:"resource_types"`
+	RequiredActorFields  []string       `json:"required_actor_fields"`
+	RequiredTargetFields []string       `json:"required_target_fields"`
+	RequiredAttributes   []string       `json:"required_attributes"`
+	AllowedAttributes    []string       `json:"allowed_attributes"`
+	SensitiveAttributes  []string       `json:"sensitive_attributes"`
+	OutcomeMapping       outcomeMapping `json:"outcome_mapping"`
+	SchemaVersion        string         `json:"schema_version"`
+	AllowUnknown         bool           `json:"allow_unknown"`
 }
 
 type outcomeMapping struct {

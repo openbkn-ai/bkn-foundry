@@ -17,6 +17,14 @@ info:
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"——状态切换走动作端点
     `enable` / `disable`，与 ConnectorType 风格对齐；不暴露 `enabled` 字段为可写。
 
+    调度先通过数据库条件更新推进 `last_run` / `next_run`，再创建任务；失败不重试本次触发。
+    停机错过多个周期，恢复后最多尝试一次且受有效期限制；抢占后崩溃可能丢失本次任务创建。
+    `last_status` / `last_message` 返回最近一次触发结果；配置修改、启停保留该结果。
+    任务创建成功记 `success`，后续任务执行结果由 DiscoverTask 表达。
+    `next_run=0` 仅初始化未来时间，不执行业务；保存的 cron 非法时禁用并保存失败说明。
+    旧记录有 `last_run` 但没有历史结果时标为 `unknown`；重启后 `triggering` 表示结果未确认，不自动补偿。
+    cron 支持表达式内时区；省略时使用进程本地时区，不提供独立 timezone 字段。
+
     **错误码新增** `VegaBackend.DiscoverSchedule.*` 系列，与其它资源解耦。
   version: 0.1.0
 servers:
@@ -34,7 +42,7 @@ paths:
         - body 中 `enabled=true` 时，worker 会在 `next_run` 到期后触发；`false` 时不会触发。
         - `cron_expr` 必填，标准 5 字段格式，相邻两次触发至少间隔 1 小时；非法或过于频繁时返回
           400 `VegaBackend.DiscoverSchedule.InvalidCronExpr`。
-        - `strategies` 可空（表示全部）；非空时元素必须是 `insert` / `delete` / `update` 的子集。
+        - `strategy` 可空（默认 `full_sync`）；支持 `full_sync` / `create_only` / `cleanup_only` / `count_only`。
         - `start_time` / `end_time` 均 ≥ 0；`end_time>0` 时要求 `start_time ≤ end_time`；非法返回
           400 `VegaBackend.DiscoverSchedule.InvalidTimeRange`。
       requestBody:
@@ -161,7 +169,7 @@ paths:
     put:
       summary: 严格更新调度
       description: |
-        **严格全量替换**，**只允许变更"配置"字段**（`name` / `cron_expr` / `strategies` /
+        **严格全量替换**，**只允许变更"配置"字段**（`name` / `cron_expr` / `strategy` /
         `start_time` / `end_time`）。下列字段约束如下：
 
         | 字段 | 约束 | 失败 errcode |
@@ -170,7 +178,7 @@ paths:
         | `enabled` | 必须与当前一致；状态切换走 `POST .../enable` `disable` | `DiscoverSchedule.EnabledFieldNotAllowed`（409） |
 
         `id` 字段在 body 中携带时被忽略，path 为权威来源。其它系统维护字段
-        （`last_run` / `next_run` / 时间戳 / 操作者）携带时静默忽略；其中
+        （`last_run` / `next_run` / `last_status` / `last_message` / 时间戳 / 操作者）携带时静默忽略；其中
         `expected_update_time` 是更新前置条件，不属于被忽略的系统维护字段。
 
         必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
@@ -279,7 +287,7 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.DiscoverSchedule.InvalidCronExpr`：cron 表达式非法
-        - `VegaBackend.DiscoverSchedule.InvalidStrategies`：strategies 元素非法
+        - `VegaBackend.DiscoverSchedule.InvalidStrategies`：发现策略非法
         - `VegaBackend.DiscoverSchedule.InvalidTimeRange`：`start_time` / `end_time` 非法
       content:
         application/json:
@@ -330,6 +338,19 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
+    ScheduleLastStatus:
+      type: string
+      readOnly: true
+      enum: [never, unknown, triggering, success, skipped, failed]
+      description: |
+        最近一次调度调用的阶段或结果。never 表示未触发；unknown 表示历史触发结果未记录；
+        triggering 表示已抢占但结果尚未确认，可能因崩溃或回写失败保留；success 表示调度调用完成
+        （探查/构建已创建 Task），不表示 Task 执行成功或 Catalog 连接健康；skipped 表示业务条件导致
+        跳过；failed 表示权限、配置或调度调用错误。只保存最近结果，不保存逐次触发历史。
+    ScheduleLastMessage:
+      type: string
+      readOnly: true
+      description: 最近一次触发的简短脱敏说明；跳过或失败时给出原因，正常完成或下一次抢占时清除旧错误。
     AccountInfo:
       description: 操作者信息
       type: object
@@ -353,6 +374,8 @@ components:
         - cron_expr
         - enabled
         - strategy
+        - last_status
+        - last_message
         - creator
         - create_time
         - updater
@@ -372,6 +395,7 @@ components:
           description: 关联 catalog 名称
           type: string
         cron_expr:
+          maxLength: 100
           description: 标准 5 字段 cron 表达式
           type: string
         start_time:
@@ -401,13 +425,18 @@ components:
             - cleanup_only
             - count_only
         last_run:
-          description: 上次执行时间，毫秒时间戳；系统维护
+          description: 最近触发尝试时间，毫秒时间戳；不表示任务创建或执行成功，初始化 next_run 不更新此值
+          readOnly: true
           type: integer
           format: int64
         next_run:
           description: 下次预计执行时间，毫秒时间戳；系统维护
           type: integer
           format: int64
+        last_status:
+          $ref: "#/components/schemas/ScheduleLastStatus"
+        last_message:
+          $ref: "#/components/schemas/ScheduleLastMessage"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
@@ -446,6 +475,7 @@ components:
           description: 关联 catalog；创建必填，PUT 时必须与当前一致
           type: string
         cron_expr:
+          maxLength: 100
           description: 标准 5 字段 cron 表达式（必填），相邻两次触发至少间隔 1 小时
           type: string
         start_time:

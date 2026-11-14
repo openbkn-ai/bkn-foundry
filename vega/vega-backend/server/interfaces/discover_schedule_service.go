@@ -24,10 +24,8 @@ type DiscoverScheduleService interface {
 	Delete(ctx context.Context, schedule *DiscoverSchedule) error
 	// UpdateEnabled updates the enabled state of a discover schedule.
 	UpdateEnabled(ctx context.Context, schedule *DiscoverSchedule, enabled bool) error
-	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-	UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error)
 	// ExecuteSchedule executes a discover schedule.
-	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) error
+	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) (ScheduleRunResult, error)
 
 	// InternalUpdateEnabled updates a schedule state for the internal scheduler without user authorization.
 	InternalUpdateEnabled(ctx context.Context, schedule *DiscoverSchedule, enabled bool) error

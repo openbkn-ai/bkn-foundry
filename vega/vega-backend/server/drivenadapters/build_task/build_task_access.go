@@ -40,6 +40,8 @@ func buildTaskColumns() []string {
 		"f_id",
 		"f_resource_id",
 		"f_catalog_id",
+		"f_schedule_id",
+		"f_trigger_type",
 		"f_mode",
 		"f_execute_type",
 		"f_index_name",
@@ -66,6 +68,8 @@ func buildTaskSummaryColumns() []string {
 		"f_id",
 		"f_resource_id",
 		"f_catalog_id",
+		"f_schedule_id",
+		"f_trigger_type",
 		"f_mode",
 		"f_execute_type",
 		"f_index_name",
@@ -96,6 +100,8 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.ID,
 		&buildTask.ResourceID,
 		&buildTask.CatalogID,
+		&buildTask.ScheduleID,
+		&buildTask.TriggerType,
 		&buildTask.Mode,
 		&buildTask.ExecuteType,
 		&buildTask.IndexName,
@@ -133,6 +139,8 @@ func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummar
 		&task.ID,
 		&task.ResourceID,
 		&task.CatalogID,
+		&task.ScheduleID,
+		&task.TriggerType,
 		&task.Mode,
 		&task.ExecuteType,
 		&task.IndexName,
@@ -188,6 +196,8 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.ID,
 			buildTask.ResourceID,
 			buildTask.CatalogID,
+			buildTask.ScheduleID,
+			buildTask.TriggerType,
 			buildTask.Mode,
 			buildTask.ExecuteType,
 			buildTask.IndexName,
@@ -573,6 +583,12 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 
 func applyBuildTaskFilters(builder sq.SelectBuilder,
 	params interfaces.BuildTasksQueryParams) sq.SelectBuilder {
+	if params.ScheduleID != "" {
+		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
+	}
+	if params.TriggerType != "" {
+		builder = builder.Where(sq.Eq{"f_trigger_type": params.TriggerType})
+	}
 	if len(params.Statuses) > 0 {
 		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
 	}

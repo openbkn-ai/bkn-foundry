@@ -40,9 +40,23 @@ func TestNewSafeClientAllowsLongRunningCleanupRequests(t *testing.T) {
 // authorization calls must return their connections to the pool instead of
 // opening a new one per request.
 func TestSafeClientReusesConnectionsUnderConcurrency(t *testing.T) {
+	const workers, rounds = 32, 5
+	ctx, cancel := context.WithTimeout(t.Context(), safeHTTPTimeout)
+	defer cancel()
+	arrived := make(chan struct{}, workers)
+	release := make(chan struct{})
 	var opened atomic.Int64
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(5 * time.Millisecond)
+		select {
+		case arrived <- struct{}{}:
+		case <-r.Context().Done():
+			return
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
@@ -53,16 +67,31 @@ func TestSafeClientReusesConnectionsUnderConcurrency(t *testing.T) {
 	server.Start()
 	t.Cleanup(server.Close)
 	client := newSafeClient(server.URL)
+	t.Cleanup(client.http.CloseIdleConnections)
 
-	const workers, rounds = 32, 5
 	for round := 0; round < rounds; round++ {
 		var wg sync.WaitGroup
 		for i := 0; i < workers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				assert.NoError(t, client.do(context.Background(), http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{}, nil))
+				assert.NoError(t, client.do(ctx, http.MethodPost, "/api/safe/v1/authz/checks", map[string]any{}, nil))
 			}()
+		}
+		// 每轮先占满连接，再释放响应，避免初始拨号与连接复用交错。
+		for range workers {
+			select {
+			case <-arrived:
+			case <-ctx.Done():
+				t.Fatal("concurrent requests did not all reach the server: ", ctx.Err())
+			}
+		}
+		for range workers {
+			select {
+			case release <- struct{}{}:
+			case <-ctx.Done():
+				t.Fatal("concurrent responses did not finish: ", ctx.Err())
+			}
 		}
 		wg.Wait()
 	}

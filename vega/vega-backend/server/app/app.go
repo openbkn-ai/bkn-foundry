@@ -31,6 +31,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/auth"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/bkn_agent"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/build_schedule"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/build_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/drivenadapters/catalog_health_check_schedule"
@@ -162,6 +163,7 @@ func Boot(_ Options) (*App, error) {
 	logics.SetProxyAuthorizationAccess(permission.NewProxyAuthorizationAccess())
 
 	logics.SetBuildTaskAccess(build_task.NewBuildTaskAccess(appSetting))
+	logics.SetBuildScheduleAccess(build_schedule.NewBuildScheduleAccess(appSetting))
 	logics.SetCatalogAccess(catalog.NewCatalogAccess(appSetting))
 	logics.SetCatalogHealthCheckScheduleAccess(catalog_health_check_schedule.NewCatalogHealthCheckScheduleAccess(appSetting))
 	logics.SetConnectorTypeAccess(connector_type.NewConnectorTypeAccess(appSetting))

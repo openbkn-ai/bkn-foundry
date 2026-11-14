@@ -373,6 +373,8 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 	}
 	buildTask := &interfaces.BuildTask{
 		ID:          generatedID.String(),
+		ScheduleID:  req.ScheduleID,
+		TriggerType: interfaces.BuildTaskTriggerManual,
 		ResourceID:  resource.ID,
 		CatalogID:   resource.CatalogID,
 		Status:      interfaces.BuildTaskStatusPending,
@@ -380,6 +382,11 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		ExecuteType: req.ExecuteType,
 		Creator:     accountInfo,
 		CreateTime:  now,
+	}
+	if req.ScheduleID != "" && req.TriggerType == interfaces.BuildTaskTriggerScheduled {
+		buildTask.TriggerType = interfaces.BuildTaskTriggerScheduled
+	} else {
+		buildTask.ScheduleID = ""
 	}
 	if req.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		buildTask.IndexName = resource.LocalIndexName

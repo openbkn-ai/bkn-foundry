@@ -75,7 +75,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
-		"registry-runtime-v1.json":      "2a8bc571c636d173622195e71d18f2959a1de42a77d479ff226933fc49e1284d",
+		"registry-runtime-v1.json":      "5fbd65fea71b9b66757caf1327f1f811866d2aabee97237a17d529d392b0243e",
 		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
 		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -379,6 +379,15 @@ func TestVegaManagementAuditRecordIsAdmittedAfterCutover(t *testing.T) {
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("registered Vega management Audit must pass Writer validation: %v", err)
+	}
+	value["target"] = map[string]any{"type": "build_schedule", "id": "nightly-index-refresh", "name": "Nightly index refresh"}
+	record.Value, err = json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Key = []byte("vega\x1fbuild_schedule\x1fnightly-index-refresh")
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("registered Vega build schedule Audit must pass Writer validation: %v", err)
 	}
 	value["target"] = map[string]any{"type": "catalog", "id": "bak_abcdefghijkl", "name": "bak_abcdefghijkl"}
 	value["facts"] = map[string]any{"action": "create", "decision": "allowed", "changed_fields": []string{"bak_abcdefghijkl"}}

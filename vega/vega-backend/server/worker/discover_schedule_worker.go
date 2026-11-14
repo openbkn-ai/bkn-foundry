@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -97,68 +98,84 @@ func (dsw *DiscoverScheduleWorker) runDue(ctx context.Context) {
 }
 
 func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) {
+	dsw.runScheduleAt(ctx, schedule, time.Now())
+}
+
+func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *interfaces.DiscoverSchedule, now time.Time) {
 	catalogID := schedule.CatalogID
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.Errorf("Run discover schedule panicked: catalog_id=%s, schedule_id=%s, error=%v", catalogID, schedule.ID, recovered)
+			// 触发中断保留 triggering，不伪造已知结果或重试本次。
+			logger.Errorf("Run discover schedule panicked: catalog_id=%s, schedule_id=%s, error=%v",
+				catalogID, schedule.ID, recovered)
 		}
 	}()
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 
-	now := time.Now()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 	if !schedule.Enabled || schedule.NextRun > now.UnixMilli() {
 		return
 	}
 
 	if schedule.EndTime > 0 && now.UnixMilli() > schedule.EndTime {
 		if err := dsw.dss.InternalUpdateEnabled(ctx, schedule, false); err != nil {
-			logger.Errorf("Disable expired discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+			logger.Errorf("Disable expired discover schedule failed: schedule_id=%s, error=%v", schedule.ID, err)
 		}
 		return
 	}
 
 	cronSchedule, err := common.ParseHourlyCronExpr(schedule.CronExpr)
 	if err != nil {
-		logger.Errorf("Parse discover schedule cron expression failed; disabling schedule: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
-		if disableErr := dsw.dss.InternalUpdateEnabled(ctx, schedule, false); disableErr != nil {
-			logger.Errorf("Disable discover schedule with invalid cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, disableErr)
+		if _, disableErr := dsw.dsa.DisableInvalid(ctx, schedule.ID, schedule.UpdateTime,
+			schedule.NextRun, "调度表达式无效或执行间隔不足一小时，请修正后启用"); disableErr != nil {
+			logger.Errorf("Disable invalid discover schedule failed: schedule_id=%s, error=%v", schedule.ID, disableErr)
 		}
 		return
 	}
 
-	// The memory cron before the upgrade does not maintain next_run. The first scan only initializes the time for the next run.
-	// Avoid concentrating the execution of all existing plans in the first tick after the upgrade.
+	from := now
+	if schedule.StartTime > now.UnixMilli() {
+		from = time.UnixMilli(schedule.StartTime).In(now.Location()).Add(-time.Nanosecond)
+	}
+	nextRun := cronSchedule.Next(from)
+	if nextRun.IsZero() {
+		if _, disableErr := dsw.dsa.DisableInvalid(ctx, schedule.ID, schedule.UpdateTime,
+			schedule.NextRun, "调度表达式没有有效的未来触发时间，请修正后启用"); disableErr != nil {
+			logger.Errorf("Disable unsatisfiable discover schedule failed: schedule_id=%s, error=%v", schedule.ID, disableErr)
+		}
+		return
+	}
 	if schedule.NextRun == 0 || schedule.StartTime > now.UnixMilli() {
-		from := now
-		if schedule.StartTime > now.UnixMilli() {
-			from = time.UnixMilli(schedule.StartTime).In(now.Location()).Add(-time.Nanosecond)
-		}
-		nextRun := cronSchedule.Next(from)
-		if _, err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
-			schedule.UpdateTime, schedule.NextRun, schedule.LastRun, nextRun.UnixMilli()); err != nil {
-			logger.Errorf("Initialize discover schedule next run failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+		if _, err := dsw.dsa.InitializeNextRun(ctx, schedule.ID,
+			schedule.UpdateTime, schedule.NextRun, nextRun.UnixMilli()); err != nil {
+			logger.Errorf("Initialize discover schedule next run failed: schedule_id=%s, error=%v", schedule.ID, err)
 		}
 		return
 	}
-
-	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
-	// Missed historical cycles will not be made up for one by one after recovery.
-	nextRun := cronSchedule.Next(now)
-	rowsAffected, err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
-		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(),
-	)
+	runID, err := uuid.NewV7()
 	if err != nil {
-		logger.Errorf("Advance discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+		logger.Errorf("Generate discover schedule run ID failed: %v", err)
+		return
+	}
+
+	rowsAffected, err := dsw.dsa.ClaimRun(ctx, schedule.ID, schedule.UpdateTime,
+		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID.String())
+	if err != nil {
+		logger.Errorf("Claim discover schedule failed: schedule_id=%s, error=%v", schedule.ID, err)
 		return
 	}
 	if rowsAffected == 0 {
 		return
 	}
 
-	if err := dsw.dss.ExecuteSchedule(ctx, schedule); err != nil {
-		logger.Errorf("Execute discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
-		return
+	result, err := dsw.dss.ExecuteSchedule(ctx, schedule)
+	if err != nil {
+		logger.Errorf("Execute discover schedule failed: schedule_id=%s, error=%v", schedule.ID, err)
+		if result.Status == "" {
+			result = interfaces.ScheduleRunResult{Status: interfaces.ScheduleStatusFailed,
+				Message: "无法创建探查任务，请检查目录配置与权限"}
+		}
 	}
-
-	logger.Infof("Executed discover schedule: id=%s", schedule.ID)
+	if _, err := dsw.dsa.CompleteRun(ctx, schedule.ID, runID.String(), result); err != nil {
+		logger.Errorf("Save discover schedule result failed: schedule_id=%s, error=%v", schedule.ID, err)
+	}
 }

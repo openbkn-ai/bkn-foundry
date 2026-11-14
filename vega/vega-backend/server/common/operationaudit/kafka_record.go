@@ -22,11 +22,15 @@ import (
 )
 
 var vegaAuditTargetTypes = map[string]string{
-	"catalog": "catalog", "resource": "resource",
+	"catalog":                       "catalog",
+	"resource":                      "resource",
 	"catalog_health_check_schedule": "catalog",
-	"discover_schedule":             "discovery_schedule", "index_task": "build_task",
-	"connector_type": "connector_type", "discover_task": "discovery_task",
-	"semantic_understanding_task": "semantic_understanding_task",
+	"discover_schedule":             "discovery_schedule",
+	"index_task":                    "build_task",
+	"build_schedule":                "build_schedule",
+	"connector_type":                "connector_type",
+	"discover_task":                 "discovery_task",
+	"semantic_understanding_task":   "semantic_understanding_task",
 }
 
 var vegaAuditActions = map[string]struct{}{

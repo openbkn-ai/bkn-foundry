@@ -40,6 +40,8 @@ func TestBuildTaskAccessGetByID(t *testing.T) {
 		assert.Equal(t, task.CatalogID, got.CatalogID)
 		assert.Equal(t, task.Status, got.Status)
 		assert.Equal(t, task.Mode, got.Mode)
+		assert.Equal(t, task.ScheduleID, got.ScheduleID)
+		assert.Equal(t, task.TriggerType, got.TriggerType)
 		assert.Equal(t, task.Creator, got.Creator)
 		assert.Equal(t, task.IndexConfig, got.IndexConfig)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -116,7 +118,7 @@ func TestBuildTaskAccessGetByIDs(t *testing.T) {
 		defer func() { _ = db.Close() }()
 		task := sampleBuildTask()
 		values := buildTaskRowValues(task)
-		values[6] = "{"
+		values[8] = "{"
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_id IN (?)")).
 			WithArgs(task.ID).WillReturnRows(sqlmock.NewRows(buildTaskColumns()).AddRow(values...))
 
@@ -586,6 +588,26 @@ func TestBuildTaskAccessGetStatusByID(t *testing.T) {
 }
 
 func TestBuildTaskAccessList(t *testing.T) {
+	t.Run("applies schedule provenance and catalog authorization to count and page", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		task := sampleBuildTask()
+		params := interfaces.BuildTasksQueryParams{ScheduleID: task.ScheduleID, TriggerType: task.TriggerType, CatalogIDs: []string{task.CatalogID}}
+		where := " FROM t_build_task WHERE f_schedule_id = ? AND f_trigger_type = ? AND f_catalog_id IN (?)"
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*)"+where)).
+			WithArgs(task.ScheduleID, task.TriggerType, task.CatalogID).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+where+" ORDER BY f_create_time DESC, f_id DESC")).
+			WithArgs(task.ScheduleID, task.TriggerType, task.CatalogID).
+			WillReturnRows(sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...))
+		got, total, err := access.List(context.Background(), params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), total)
+		require.Len(t, got, 1)
+		assert.Equal(t, task.ScheduleID, got[0].ScheduleID)
+		assert.Equal(t, task.TriggerType, got[0].TriggerType)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	t.Run("returns tasks with filters", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
@@ -803,6 +825,8 @@ func newBuildTaskAccessMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *buildTaskA
 func sampleBuildTask() *interfaces.BuildTask {
 	return &interfaces.BuildTask{
 		ID:               "task-1",
+		ScheduleID:       "plan-1",
+		TriggerType:      interfaces.BuildTaskTriggerScheduled,
 		ResourceID:       "resource-1",
 		CatalogID:        "catalog-1",
 		Status:           interfaces.BuildTaskStatusPending,
@@ -848,6 +872,8 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.ID,
 		task.ResourceID,
 		task.CatalogID,
+		task.ScheduleID,
+		task.TriggerType,
 		task.Mode,
 		task.ExecuteType,
 		task.IndexName,
@@ -869,7 +895,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 
 func buildTaskInsertArgs(task *interfaces.BuildTask) []driver.Value {
 	args := buildTaskRowValues(task)
-	args[6] = sqlmock.AnyArg()
+	args[8] = sqlmock.AnyArg()
 	return args
 }
 
@@ -901,7 +927,7 @@ func joinBuildTaskSummaryColumns() string {
 
 func buildTaskSummaryRowValues(task *interfaces.BuildTask) []driver.Value {
 	values := buildTaskRowValues(task)
-	result := append([]driver.Value{}, values[:6]...)
-	result = append(result, values[7:12]...)
-	return append(result, values[13:]...)
+	result := append([]driver.Value{}, values[:8]...)
+	result = append(result, values[9:14]...)
+	return append(result, values[15:]...)
 }

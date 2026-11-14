@@ -11,6 +11,18 @@ info:
     `health_check_schedule`; subsequent reads and updates use the dedicated
     endpoints defined here.
 
+    `last_status` and `last_message` expose only the most recent scheduling outcome.
+    A completed connection-check call is `success` even if the Catalog is unhealthy;
+    connection health remains in the Catalog's health fields. Manual connection tests
+    do not change schedule outcomes. Failed calls and skipped occurrences have a short,
+    sanitized message. Configuration updates preserve the most recent outcome.
+    An occurrence is claimed by advancing its persisted timestamps before the check;
+    failures are not retried and a crash after claim may lose this occurrence. Missed
+    periods coalesce to at most one attempt after restart. `next_run=0` only initializes
+    a future trigger without a check or change to `last_run`. Invalid persisted custom
+    Cron disables the schedule and records `failed`, preserving the original Cron.
+    Cron may contain a timezone; otherwise the process-local timezone is used.
+
     Every external endpoint has a matching internal version under
     `/api/vega-backend/in/v1` with identical request and response structures.
     Only authentication differs. This document describes external APIs only.
@@ -178,6 +190,7 @@ components:
           type: string
           enum: [inherit, enabled, disabled]
         cron_expr:
+          maxLength: 100
           description: Health-check Cron expression required only when `mode=enabled`; adjacent runs must be at least one hour apart. PUT with `mode=disabled` ignores this field and preserves the existing custom Cron
           type: string
           minLength: 1
@@ -189,6 +202,8 @@ components:
         - mode
         - last_run
         - next_run
+        - last_status
+        - last_message
       properties:
         catalog_id:
           type: string
@@ -196,15 +211,21 @@ components:
           type: string
           enum: [inherit, enabled, disabled]
         cron_expr:
+          maxLength: 100
           type: string
         last_run:
-          description: Most recent scheduled execution time as Unix milliseconds. Health-check results belong to the Catalog, not this object
+          description: Most recent scheduled attempt as Unix milliseconds; it does not imply a successful check. Initializing next_run does not change it
+          readOnly: true
           type: integer
           format: int64
         next_run:
           description: Next scheduled execution time as Unix milliseconds. It is 0 when disabled and a future time calculated from the platform Cron when created or switched to `inherit`
           type: integer
           format: int64
+        last_status:
+          $ref: "discover-schedule.yaml#/components/schemas/ScheduleLastStatus"
+        last_message:
+          $ref: "discover-schedule.yaml#/components/schemas/ScheduleLastMessage"
         creator:
           $ref: "#/components/schemas/AccountInfo"
         create_time:
