@@ -263,22 +263,26 @@ func (s *draftService) rebindTables(ctx context.Context, token string, caller in
 		}
 		gone = append(gone, ref.table)
 	}
+	// What was looked for in vain lately, in the network and by name, is not looked for again until
+	// the catalogs or the tables gone change, or a while passed: an owner's status is read often, and
+	// a network still reading a table gone stays so until someone binds it again.
+	miss := rebindMissKey(draft.ProjectID, missing, catalogIDs)
+	if at, ok := s.rebindMisses.Load(miss); ok {
+		if time.Since(at.(time.Time)) < rebindRetryAfter {
+			return 0, nil
+		}
+		s.rebindMisses.Delete(miss)
+	}
 	matches, err := s.networkMatches(ctx, token, caller, entry.KNID, refs, missing)
 	if err != nil {
 		return 0, err
 	}
 	gone = slices.DeleteFunc(gone, func(t *interfaces.DraftTable) bool { _, ok := matches[t.ResourceID]; return ok })
 	if len(gone) == 0 || len(catalogIDs) == 0 {
-		return s.applyMatches(ctx, caller, draft, refs, matches, nil)
-	}
-	// What was looked for in vain lately is not looked for again until the catalogs or the tables
-	// gone change, or a while passed: an owner's status is read often.
-	miss := rebindMissKey(draft.ProjectID, missing, catalogIDs)
-	if at, ok := s.rebindMisses.Load(miss); ok {
-		if time.Since(at.(time.Time)) < rebindRetryAfter {
-			return s.applyMatches(ctx, caller, draft, refs, matches, nil)
+		if len(matches) == 0 {
+			s.rebindMisses.Store(miss, time.Now())
 		}
-		s.rebindMisses.Delete(miss)
+		return s.applyMatches(ctx, caller, draft, refs, matches, nil)
 	}
 	names, err := s.va.CatalogNames(ctx, caller, catalogIDs)
 	if err != nil {

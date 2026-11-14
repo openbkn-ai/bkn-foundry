@@ -155,6 +155,35 @@ func Test_RebindExistingOnStatus(t *testing.T) {
 			So(s.Confirmation.Current, ShouldBeTrue)
 		})
 
+		Convey("Looked for in vain, in the network and by name, the next reads do not ask again for a while\n", func() {
+			w.tables = w.tables[:len(w.tables)-1]
+			bba := pmock.NewMockBknBackendAccess(ctrl)
+			// The network still reads the table that is gone.
+			asked := 0
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, "supply").DoAndReturn(
+				func(context.Context, string, string) ([]*interfaces.KNObjectTypeSource, error) {
+					asked++
+					return []*interfaces.KNObjectTypeSource{
+						{ID: "regions", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "old_regions"}},
+					}, nil
+				}).AnyTimes()
+			svc.pc = &logics.ProjectCatalogs{BBA: bba, VA: svc.va, DA: da}
+			store(confirmedWithExisting())
+
+			read := func() int {
+				before := asked
+				_, err := svc.GetStatus(ctx, token, "p1", caller)
+				So(err, ShouldBeNil)
+				return asked - before
+			}
+			first := read()
+			// The status reads the network for other parts too; the search for the gone table is
+			// what the later reads leave out.
+			So(read(), ShouldEqual, first-1)
+			So(read(), ShouldEqual, first-1)
+			So(writes, ShouldEqual, 0)
+		})
+
 		Convey("Someone not the owner reads it, and nothing is written\n", func() {
 			store(confirmedWithExisting())
 
