@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -237,6 +238,66 @@ func Test_PendingOf(t *testing.T) {
 			So(p.Items[len(p.Items)-1].Reason, ShouldEqual, interfaces.PENDING_REASON_NEEDS_UPDATE_FIELD)
 		})
 
+		Convey("An adopted relation whose linking fields cannot match is listed, to leave out or retype\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"orders_to_customers": true}}})()
+			d := confirmableDraft()
+
+			p := pendingOf(project, d, nil)
+
+			So(len(p.Items), ShouldEqual, 1)
+			item := p.Items[0]
+			So([]string{item.Kind, item.ItemID, item.Name, item.Reason}, ShouldResemble,
+				[]string{"relation_types", "orders_to_customers", "Ordered by", interfaces.BLOCKER_LINK_TYPES_MISMATCH})
+			So(item.Blocking, ShouldBeTrue)
+			So(item.Options, ShouldResemble, []interfaces.PendingOption{{
+				Action: interfaces.ACTION_UNADOPT, Method: "PATCH",
+				Path: "/projects/p1/ontology/draft/items/relation_types/orders_to_customers",
+				Body: map[string]any{"update_time": "$draft_update_time", "adopted": false}, Allowed: true,
+			}})
+			// Confirming refuses it as pending too.
+			So(pendingItems(&d.Items), ShouldResemble, map[string][]string{
+				interfaces.BLOCKER_LINK_TYPES_MISMATCH: {"orders_to_customers"},
+			})
+		})
+
+		Convey("Each relation is told once, in ID order, its waiting ends before its links\n", func() {
+			// b_link waits for an end and cannot link either; a_link only cannot link.
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"a_link": true, "b_link": true}}})()
+			d := confirmableDraft()
+			waiting := *d.Items.ObjectTypes[0]
+			waiting.ID, waiting.Name, waiting.Adopted = "waiting", "Waiting", false
+			d.Items.ObjectTypes = append(d.Items.ObjectTypes, &waiting)
+			a, b := *d.Items.RelationTypes[0], *d.Items.RelationTypes[0]
+			a.ID, b.ID, b.Target = "a_link", "b_link", "waiting"
+			d.Items.RelationTypes = []*interfaces.DraftRelationType{&b, &a}
+
+			p := pendingOf(project, d, nil)
+
+			got := [][]string{}
+			for _, item := range p.Items {
+				if item.Kind == interfaces.DRAFT_KIND_RELATION_TYPES {
+					got = append(got, []string{item.ItemID, item.Reason})
+				}
+			}
+			So(got, ShouldResemble, [][]string{
+				{"a_link", interfaces.BLOCKER_LINK_TYPES_MISMATCH},
+				{"b_link", interfaces.BLOCKER_UNADOPTED_ENDS},
+			})
+			So(pendingItems(&d.Items), ShouldResemble, map[string][]string{
+				interfaces.BLOCKER_UNADOPTED_ENDS:      {"b_link"},
+				interfaces.BLOCKER_LINK_TYPES_MISMATCH: {"a_link"},
+			})
+		})
+
+		Convey("A relation left out or the network's own is not held back for its links\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"orders_to_customers": true}}})()
+			d := confirmableDraft()
+			d.Items.RelationTypes[0].Adopted = false
+			So(pendingItems(&d.Items), ShouldBeEmpty)
+			d.Items.RelationTypes[0].Adopted, d.Items.RelationTypes[0].Existing = true, true
+			So(pendingItems(&d.Items), ShouldBeEmpty)
+		})
+
 		Convey("A draft with nothing pending lists nothing, as an empty list\n", func() {
 			out, err := json.Marshal(pendingOf(project, confirmableDraft(), nil))
 
@@ -327,4 +388,14 @@ func Test_GetPending(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 		})
 	})
+}
+
+// mismatchedLinks is an edition that tells the relations by ID whose linking fields cannot match.
+type mismatchedLinks struct {
+	noDocumentHooks
+	ids map[string]bool
+}
+
+func (m mismatchedLinks) LinkTypesMismatch(_ *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool {
+	return m.ids[rt.ID]
 }

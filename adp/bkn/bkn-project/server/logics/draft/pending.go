@@ -149,7 +149,18 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 
 	relationTypes := slices.Clone(draft.Items.RelationTypes)
 	slices.SortFunc(relationTypes, func(a, b *interfaces.DraftRelationType) int { return strings.Compare(a.ID, b.ID) })
+	// Each relation is told once, in ID order: the ends it waits for, or else linking fields that can
+	// never match, settled by changing a field's type in the item itself or by leaving it out.
+	linkMismatch := pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH]
 	for _, rt := range relationTypes {
+		if slices.Contains(linkMismatch, rt.ID) {
+			p.Items = append(p.Items, interfaces.PendingItem{
+				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: rt.ID, Name: rt.Name, Blocking: true,
+				Reason: interfaces.BLOCKER_LINK_TYPES_MISMATCH, Evidence: rt.Evidence,
+				Options: []interfaces.PendingOption{setAdopted(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, false, interfaces.ACTION_UNADOPT)},
+			})
+			continue
+		}
 		if !slices.Contains(unadoptedEnds, rt.ID) {
 			continue
 		}

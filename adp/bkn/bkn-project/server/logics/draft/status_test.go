@@ -18,6 +18,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
@@ -162,6 +163,29 @@ func Test_ProjectStatus(t *testing.T) {
 			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
 			So(confirm.Allowed, ShouldBeFalse)
 			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_NEEDS_IDENTITY)
+		})
+
+		Convey("An adopted relation whose linking fields cannot match keeps the draft in deciding\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"orders_to_customers": true}}})()
+			d := ready()
+
+			s := status(project(), d, nil, owner, fresh)
+
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_DECIDING)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_LINK_TYPES_MISMATCH, Count: 1, WaitingFor: interfaces.WAITING_FOR_EDITOR},
+			})
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeFalse)
+			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_LINK_TYPES_MISMATCH)
+		})
+
+		Convey("An edition that does not check links holds back no relation\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{})()
+
+			s := status(project(), ready(), nil, owner, fresh)
+
+			So(s.Stage, ShouldNotEqual, interfaces.PROJECT_STAGE_DECIDING)
 		})
 
 		Convey("A draft adopting nothing is still being decided\n", func() {
