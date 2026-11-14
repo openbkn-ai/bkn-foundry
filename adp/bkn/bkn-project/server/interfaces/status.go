@@ -74,6 +74,10 @@ const (
 	STALE_CHECK_OUTDATED        = "check_outdated"
 	// STALE_SOURCE_CHANGED: a table the draft binds has columns added, removed or retyped since.
 	STALE_SOURCE_CHANGED = "source_changed"
+	// STALE_KNOWLEDGE_BASE_OUTDATED: the confirmation is current, but the knowledge base's objects
+	// were prepared for another model or file selection, or stopped part way; confirming again
+	// prepares them for what is current.
+	STALE_KNOWLEDGE_BASE_OUTDATED = "knowledge_base_outdated"
 )
 
 // What can be done next.
