@@ -3599,6 +3599,7 @@ REQUIREMENTS_V12_RULES = (
     "A need the documents ask for that one of them already covers, wholly or for the most part, you give with covered_by",
     "from the rules of knowledge",
     "knowledge, what was drafted from the project's knowledge-base files",
+    "in_network marks one the network already has",
 )
 REQUIREMENTS_V12_RULES_ZH = (
     "\u52a8\u529b\u9700\u6c42\u53ea\u662f\u7f51\u7edc\u5c42\u7684\u80fd\u529b",
@@ -3606,6 +3607,7 @@ REQUIREMENTS_V12_RULES_ZH = (
     "\u5148\u548c\u8fd9\u4e9b\u6761\u76ee\u9010\u4e00\u5339\u914d",
     "knowledge \u4e2d\u7684\u89c4\u5219",
     "knowledge\uff0c\u5373\u4ece\u9879\u76ee\u77e5\u8bc6\u5e93\u6587\u4ef6\u62bd\u53d6\u7684\u5185\u5bb9",
+    "\u6807 in_network \u7684\u662f\u7f51\u7edc\u5df2\u6709\u7684",
 )
 # The lines v12 changes: the opening, pass kinetic and its bullet, pass draft and pass ask.
 REQUIREMENTS_V12_LINES = ("You are the BKN", "pass kinetic", "- logic_needs: each", "pass draft", "pass ask")

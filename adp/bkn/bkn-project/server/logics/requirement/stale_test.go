@@ -136,3 +136,36 @@ func Test_GetRequirementMarksOntologyChanges(t *testing.T) {
 		So(view.OntologyUncovered, ShouldHaveLength, 1)
 	})
 }
+
+func Test_UncoveredLeavesOutSystemObjects(t *testing.T) {
+	Convey("The system objects a knowledge-base extraction keeps are no item scenarios must cover\n", t, func() {
+		draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
+			{ID: "invoice", Name: "Purchase invoice", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "entity"}},
+			{ID: "source_file", Name: "Source file", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "evidence_file"}},
+			{ID: "block", Name: "Original block", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "evidence_block"}},
+			{ID: "supplier", Name: "Supplier", Adopted: true, Existing: true},
+		}}}
+		uncovered := markOntologyChanges(emptySpec(), draft)
+		So(ids(uncovered, func(i interfaces.ReleaseItem) string { return i.ID }), ShouldResemble, []string{"invoice", "supplier"})
+	})
+}
+
+func Test_MessageOntologyTellsTheNetworkApart(t *testing.T) {
+	Convey("The Agent reads which items the network already has and which the project adds\n", t, func() {
+		draft := &interfaces.Draft{Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{
+				{ID: "supplier", Name: "Supplier", Adopted: true, Existing: true},
+				{ID: "invoice", Name: "Purchase invoice", Adopted: true},
+			},
+			RelationTypes: []*interfaces.DraftRelationType{
+				{ID: "billed_by", Name: "Billed by", Adopted: true, Source: "invoice", Target: "supplier"},
+				{ID: "supplies", Name: "Supplies", Adopted: true, Existing: true, Source: "supplier", Target: "supplier"},
+			},
+		}}
+		objectTypes, relationTypes, _ := messageOntologyOf(draft, false)
+		So(objectTypes[0].InNetwork, ShouldBeTrue)
+		So(objectTypes[1].InNetwork, ShouldBeFalse)
+		So(relationTypes[0].InNetwork, ShouldBeFalse)
+		So(relationTypes[1].InNetwork, ShouldBeTrue)
+	})
+}
