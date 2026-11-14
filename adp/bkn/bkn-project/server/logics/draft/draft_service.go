@@ -75,6 +75,8 @@ type draftService struct {
 	checkRuns sync.Map
 	// pc reads the catalogs a project on an existing network takes from it.
 	pc *logics.ProjectCatalogs
+	// rebindMisses holds when tables gone were last looked for by name in vain, by rebindMissKey.
+	rebindMisses sync.Map
 }
 
 func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {

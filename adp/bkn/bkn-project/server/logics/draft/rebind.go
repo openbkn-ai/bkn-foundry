@@ -8,6 +8,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
@@ -76,9 +80,10 @@ func rebindScope(gone *interfaces.DraftTable, catalogIDs []string, names map[str
 
 // rebindMatches finds, for each gone table, the one table of the same catalog name and table name
 // in catalogs, by the gone table's resource id; a table matched by none, or by more than one, is
-// left out. listed are the catalogs' tables by catalog.
+// left out, and so is one whose match another item binds already, as it would read one table twice.
+// listed are the catalogs' tables by catalog.
 func rebindMatches(gone []*interfaces.DraftTable, catalogIDs []string, names map[string]string,
-	listed map[string][]*interfaces.VegaTable) map[string]*interfaces.VegaTable {
+	listed map[string][]*interfaces.VegaTable, bound map[string]bool) map[string]*interfaces.VegaTable {
 	matches := map[string]*interfaces.VegaTable{}
 	for _, t := range gone {
 		if _, done := matches[t.ResourceID]; done {
@@ -92,7 +97,7 @@ func rebindMatches(gone []*interfaces.DraftTable, catalogIDs []string, names map
 				}
 			}
 		}
-		if len(found) == 1 {
+		if len(found) == 1 && !bound[found[0].ID] {
 			matches[t.ResourceID] = found[0]
 		}
 	}
@@ -167,7 +172,7 @@ func (s *draftService) rebindExisting(ctx context.Context, caller interfaces.Acc
 			gone = append(gone, ref.table)
 		}
 	}
-	matches := rebindMatches(gone, catalogIDs, names, listed)
+	matches := rebindMatches(gone, catalogIDs, names, listed, nil)
 	for _, ref := range refs {
 		if table, ok := matches[ref.table.ResourceID]; ok {
 			*ref.table = boundTo(table, names)
@@ -244,16 +249,28 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		return 0, nil
 	}
 	gone := []*interfaces.DraftTable{}
+	bound := map[string]bool{}
 	for _, ref := range refs {
-		if slices.Contains(missing, ref.table.ResourceID) {
-			gone = append(gone, ref.table)
+		if !slices.Contains(missing, ref.table.ResourceID) {
+			bound[ref.table.ResourceID] = true
+			continue
 		}
+		gone = append(gone, ref.table)
+	}
+	// What was looked for in vain lately is not looked for again until the catalogs or the tables
+	// gone change, or a while passed: an owner's status is read often.
+	miss := rebindMissKey(draft.ProjectID, missing, catalogIDs)
+	if at, ok := s.rebindMisses.Load(miss); ok && time.Since(at.(time.Time)) < rebindRetryAfter {
+		return 0, nil
 	}
 	names, err := s.va.CatalogNames(ctx, caller, catalogIDs)
 	if err != nil {
 		return 0, fmt.Errorf("read the names of the catalogs: %w", err)
 	}
-	// Only the catalogs some gone table is looked for in are read, each once.
+	// Only catalogs that are there are looked in: one deleted too names its tables nowhere.
+	catalogIDs = slices.DeleteFunc(slices.Clone(catalogIDs), func(id string) bool { _, ok := names[id]; return !ok })
+	// Only the catalogs some gone table is looked for in are read, each once; one that cannot be
+	// read is passed over, so the others are still looked in.
 	listed := map[string][]*interfaces.VegaTable{}
 	for _, t := range gone {
 		for _, catalogID := range rebindScope(t, catalogIDs, names) {
@@ -262,7 +279,8 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 			}
 			tables, err := s.va.ListTables(ctx, caller, catalogID)
 			if err != nil {
-				return 0, fmt.Errorf("list tables of catalog %s: %w", catalogID, err)
+				otellog.LogWarn(ctx, fmt.Sprintf("List tables of catalog %s: %v", catalogID, err))
+				tables = nil
 			}
 			listed[catalogID] = tables
 		}
@@ -275,6 +293,7 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 	}
 	if len(tableIDs) == 0 {
+		s.rebindMisses.Store(miss, time.Now())
 		return 0, nil
 	}
 	slices.Sort(tableIDs)
@@ -295,8 +314,9 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		}
 		listed[catalogID] = full
 	}
-	matches := rebindMatches(gone, catalogIDs, names, listed)
+	matches := rebindMatches(gone, catalogIDs, names, listed, bound)
 	if len(matches) == 0 {
+		s.rebindMisses.Store(miss, time.Now())
 		return 0, nil
 	}
 	decisions := applyRebind(&draft.Items, refs, matches, names)
@@ -304,6 +324,17 @@ func (s *draftService) rebindTables(ctx context.Context, caller interfaces.Accou
 		return 0, err
 	}
 	return len(matches), nil
+}
+
+// rebindRetryAfter is how long tables looked for in vain are not looked for again.
+const rebindRetryAfter = 5 * time.Minute
+
+// rebindMissKey names a search by name: the project, the tables gone and the catalogs looked in.
+func rebindMissKey(projectID string, missing []string, catalogIDs []string) string {
+	gone, catalogs := slices.Clone(missing), slices.Clone(catalogIDs)
+	slices.Sort(gone)
+	slices.Sort(catalogs)
+	return projectID + "|" + strings.Join(gone, ",") + "|" + strings.Join(catalogs, ",")
 }
 
 // reconnectedTables counts the tables bound again by name since the draft was last confirmed.

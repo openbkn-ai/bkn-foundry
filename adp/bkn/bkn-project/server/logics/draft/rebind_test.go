@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -23,6 +24,8 @@ import (
 type vegaWorld struct {
 	catalogs map[string]string
 	tables   []*interfaces.VegaTable
+	// lists counts the catalogs listed.
+	lists int
 }
 
 func (w *vegaWorld) table(id string) *interfaces.VegaTable {
@@ -57,6 +60,10 @@ func (w *vegaWorld) mock(ctrl *gomock.Controller) *pmock.MockVegaAccess {
 		}).AnyTimes()
 	va.EXPECT().ListTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ interfaces.VegaAccount, catalogID string) ([]*interfaces.VegaTable, error) {
+			w.lists++
+			if _, ok := w.catalogs[catalogID]; !ok {
+				return nil, errors.New("vega-backend returned HTTP 404")
+			}
 			listed := []*interfaces.VegaTable{}
 			for _, t := range w.tables {
 				if t.CatalogID == catalogID {
@@ -128,28 +135,28 @@ func Test_RebindMatches(t *testing.T) {
 		Convey("The catalog name picks the catalog; the physical name the table\n", func() {
 			gone := &interfaces.DraftTable{ResourceID: "res_customers", Name: "客户", CatalogID: "cat",
 				CatalogName: "sample", SourceName: "customers"}
-			m := rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed)
+			m := rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil)
 			So(m["res_customers"].ID, ShouldEqual, "new_customers")
 		})
 
 		Convey("No table of the name in the catalog of the name: none\n", func() {
 			gone := &interfaces.DraftTable{ResourceID: "res_x", Name: "x", CatalogID: "cat", CatalogName: "sample", SourceName: "suppliers"}
-			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed), ShouldBeEmpty)
+			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil), ShouldBeEmpty)
 			gone = &interfaces.DraftTable{ResourceID: "res_x", Name: "x", CatalogID: "cat", CatalogName: "gone", SourceName: "customers"}
-			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed), ShouldBeEmpty)
+			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil), ShouldBeEmpty)
 		})
 
 		Convey("A draft that did not record the catalog name matches only a table of one catalog\n", func() {
 			gone := &interfaces.DraftTable{ResourceID: "res_customers", Name: "customers", CatalogID: "cat"}
-			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed), ShouldBeEmpty)
+			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil), ShouldBeEmpty)
 			gone = &interfaces.DraftTable{ResourceID: "res_products", Name: "products", CatalogID: "cat"}
-			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed)["res_products"].ID,
+			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil)["res_products"].ID,
 				ShouldEqual, "new_products")
 		})
 
 		Convey("A table created again in its own catalog, which is still there, is looked for there only\n", func() {
 			gone := &interfaces.DraftTable{ResourceID: "res_customers", Name: "Customers", CatalogID: "c_en"}
-			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed)["res_customers"].ID,
+			So(rebindMatches([]*interfaces.DraftTable{gone}, catalogs, w.catalogs, listed, nil)["res_customers"].ID,
 				ShouldEqual, "en_customers")
 		})
 	})
@@ -270,6 +277,48 @@ func Test_RebindOnStatus(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(writes, ShouldEqual, 1)
 			})
+		})
+
+		Convey("A deleted catalog the project still lists does not stop the others being looked in\n", func() {
+			project.CatalogIDs = []string{"cat", "c_new", "c_en"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 1)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+		})
+
+		Convey("A table another item binds already is not bound a second time\n", func() {
+			d := recordedDraft()
+			findObjectType(&d.Items, "audit_log").Table.ResourceID = "new_customers"
+			store(d)
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 1)
+			So(findObjectType(&stored.Items, "customers").Table.ResourceID, ShouldEqual, "res_customers")
+			So(findObjectType(&stored.Items, "orders").Table.ResourceID, ShouldEqual, "new_orders")
+			So(s.DataSources.Tables.Missing, ShouldEqual, 1)
+		})
+
+		Convey("A table looked for in vain is not looked for again on every read\n", func() {
+			w.tables = w.tables[5:]
+			store(recordedDraft())
+
+			_, err := svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			first := w.lists
+			_, err = svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 0)
+			// The second read lists only what the catalogs hint lists, once per catalog.
+			So(w.lists-first, ShouldEqual, len(project.CatalogIDs))
+			So(first, ShouldBeGreaterThan, len(project.CatalogIDs))
 		})
 
 		Convey("Someone not the owner reads the tables gone, and nothing is written\n", func() {
