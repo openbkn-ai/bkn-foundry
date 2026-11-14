@@ -91,6 +91,40 @@ func sameDocuments(a, b []interfaces.RequirementInputDocument) bool {
 	})
 }
 
+// blockCount is how many blocks docs hold.
+func blockCount(docs []*interfaces.RequirementDocument) int {
+	n := 0
+	for _, d := range docs {
+		n += len(d.Blocks)
+	}
+	return n
+}
+
+// halfOf is the first (half 1) or second (half 2) half of the blocks of docs, in order, by count;
+// half 0 is docs whole.
+func halfOf(docs []*interfaces.RequirementDocument, half int) []*interfaces.RequirementDocument {
+	if half == 0 {
+		return docs
+	}
+	first := (blockCount(docs) + 1) / 2
+	out := []*interfaces.RequirementDocument{}
+	seen := 0
+	for _, d := range docs {
+		part := *d
+		part.Blocks = nil
+		for _, b := range d.Blocks {
+			if (seen < first) == (half == 1) {
+				part.Blocks = append(part.Blocks, b)
+			}
+			seen++
+		}
+		if len(part.Blocks) > 0 {
+			out = append(out, &part)
+		}
+	}
+	return out
+}
+
 // partKeys are the keys of parts, in order.
 func partKeys(parts []documentPart) []string {
 	keys := make([]string, 0, len(parts))

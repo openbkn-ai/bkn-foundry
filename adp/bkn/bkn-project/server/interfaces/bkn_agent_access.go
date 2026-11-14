@@ -38,6 +38,9 @@ type BknAgentRunRequest struct {
 	Message        string         `json:"message"`
 	PromptOverride string         `json:"prompt_override,omitempty"`
 	ResponseFormat map[string]any `json:"response_format,omitempty"`
+	// ThinkingMode, enabled or disabled, is sent as x-bkn-agent-thinking-mode; empty leaves the
+	// model's default.
+	ThinkingMode string `json:"-"`
 }
 
 // BknAgentChatRequest is one turn of a chat Agent on a new thread. ResponseFormat is a JSON Schema
