@@ -67,23 +67,28 @@ func Test_LinkCovered(t *testing.T) {
 		So(covered, ShouldBeEmpty)
 	})
 
-	Convey("A need the Agent says an item covers is linked to it, not added as new\n", t, func() {
+	Convey("A need the Agent says an item covers is linked to it\n", t, func() {
 		items := []*interfaces.LogicNetworkItem{
 			{Type: interfaces.LOGIC_LINK_FUNCTION, ID: "f1", BoxID: "box1", Name: "Shortage", Description: "Gross requirement by BOM"},
 			{Type: interfaces.LOGIC_LINK_OBJECT_METRIC, ID: "m1", Name: "Available to promise"},
 		}
 		rest, covered := uncovered([]agentLogicNeed{
-			// New ones covered by an item, itself or as a step of it, are not added.
+			// New ones the documents ask for that an item covers stay, to be linked to it.
 			{ID: "x", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "BOM gross requirement", CoveredBy: "kept-network-1"},
 			{ID: "y", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Promisable quantity", CoveredBy: " kept-network-2 "},
+			// One said covered by an item of another kind, or an API one, cannot be linked: not added.
+			{ID: "w", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Gross requirement", CoveredBy: "kept-network-1"},
+			{ID: "v", Kind: interfaces.LOGIC_NEED_API, Name: "Shortage API", CoveredBy: "kept-network-1"},
 			// An id that names no item leaves the need new.
 			{ID: "z", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Lead time", CoveredBy: "kept-network-9"},
 			// Kept needs stay, to be linked to the item that covers them.
 			{ID: "kept-n1", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Substitute first", CoveredBy: "kept-network-1"},
 			{ID: "kept-n2", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Promise", CoveredBy: "kept-network-2"},
 		}, items)
-		So(ids(rest, func(p agentLogicNeed) string { return p.ID }), ShouldResemble, []string{"z", "kept-n1", "kept-n2"})
-		So(covered, ShouldResemble, map[string]*interfaces.LogicNetworkItem{"n1": items[0], "n2": items[1]})
+		So(ids(rest, func(p agentLogicNeed) string { return p.ID }), ShouldResemble, []string{"x", "y", "z", "kept-n1", "kept-n2"})
+		So(covered, ShouldResemble, map[string]*interfaces.LogicNetworkItem{"n1": items[0], "n2": items[1],
+			coveredKey(interfaces.LOGIC_NEED_FUNCTION, "BOM gross requirement"): items[0],
+			coveredKey(interfaces.LOGIC_NEED_METRIC, "Promisable quantity"):     items[1]})
 
 		spec := emptySpec()
 		spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
@@ -93,6 +98,9 @@ func Test_LinkCovered(t *testing.T) {
 			{ID: "n3", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "Edited", Edited: true},
 			// An API need is left to a person, even when the Agent says a function covers it.
 			{ID: "n4", Kind: interfaces.LOGIC_NEED_API, Name: "Rates"},
+			// A new one is linked by its kind and name, as it had no id when the Agent gave it.
+			{ID: "n5", Kind: interfaces.LOGIC_NEED_FUNCTION, Name: "BOM  gross_requirement"},
+			{ID: "n6", Kind: interfaces.LOGIC_NEED_METRIC, Name: "Promisable quantity"},
 		}
 		covered["n3"], covered["n4"] = items[0], items[0]
 		linkCovered(spec, items, covered, caller, 5)
@@ -101,5 +109,9 @@ func Test_LinkCovered(t *testing.T) {
 		So(spec.LogicNeeds[1].Link, ShouldBeNil)
 		So(spec.LogicNeeds[2].Link, ShouldBeNil)
 		So(spec.LogicNeeds[3].Link, ShouldBeNil)
+		So(spec.LogicNeeds[4].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_FUNCTION,
+			ID: "f1", BoxID: "box1", By: caller, At: 5})
+		So(spec.LogicNeeds[5].Link, ShouldResemble, &interfaces.RequirementLogicLink{Type: interfaces.LOGIC_LINK_OBJECT_METRIC,
+			ID: "m1", By: caller, At: 5})
 	})
 }

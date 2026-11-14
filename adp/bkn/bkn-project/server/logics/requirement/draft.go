@@ -336,6 +336,8 @@ type draftMessage struct {
 	Kept          *messageKept          `json:"kept,omitempty"`
 	// Supplement is the owner's supplement note, absent when none was written.
 	Supplement string `json:"supplement,omitempty"`
+	// Knowledge is what the knowledge base holds: its concepts and rules, absent when none.
+	Knowledge *messageKnowledge `json:"knowledge,omitempty"`
 }
 
 // messageConcept is a concept of the specification, by its own id.
@@ -407,12 +409,15 @@ type messageTable struct {
 }
 
 type messageObjectType struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Aliases     []string          `json:"aliases,omitempty"`
-	PrimaryKeys []string          `json:"primary_keys,omitempty"`
-	Properties  []messageProperty `json:"properties"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Aliases     []string `json:"aliases,omitempty"`
+	PrimaryKeys []string `json:"primary_keys,omitempty"`
+	// InNetwork says the network already has it; the others the project adds, in no network
+	// until it is published.
+	InNetwork  bool              `json:"in_network,omitempty"`
+	Properties []messageProperty `json:"properties"`
 	// PropertiesOmitted counts its properties past maxMessageProperties.
 	PropertiesOmitted int `json:"properties_omitted,omitempty"`
 }
@@ -423,6 +428,8 @@ type messageRelationType struct {
 	Description string `json:"description,omitempty"`
 	Source      string `json:"source"`
 	Target      string `json:"target"`
+	// InNetwork says the network already has it, as for an object type.
+	InNetwork bool `json:"in_network,omitempty"`
 }
 
 // questionNotes are what a person should see about a question, computed when it is read.
@@ -473,6 +480,12 @@ func messageTablesOf(tables []*interfaces.VegaTable) ([]messageTable, int) {
 // messageOntologyOf names the adopted items only: candidates no one adopted are not the ontology
 // the specification rests on. An object type comes with its properties, its keys and times first,
 // unless withProperties is false; it also counts the properties it left out.
+// isEvidenceObject tells a system object a knowledge-base extraction keeps to locate original text,
+// such as a source file or block: no business item scenarios cover or questions ask about.
+func isEvidenceObject(ot *interfaces.DraftObjectType) bool {
+	return ot.Document != nil && strings.HasPrefix(ot.Document.Role, "evidence_")
+}
+
 func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageObjectType, []messageRelationType, int) {
 	objectTypes, relationTypes, propertiesOmitted := []messageObjectType{}, []messageRelationType{}, 0
 	if draft == nil {
@@ -482,7 +495,7 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 	// to be asked about; the Agent is not shown them.
 	evidence := map[string]bool{}
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot.Adopted && ot.Document != nil && strings.HasPrefix(ot.Document.Role, "evidence_") {
+		if ot.Adopted && isEvidenceObject(ot) {
 			evidence[ot.ID] = true
 		}
 	}
@@ -495,7 +508,7 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 			keys = slices.DeleteFunc(slices.Clone(keys), func(key string) bool { return key == "_id" })
 		}
 		mot := messageObjectType{ID: ot.ID, Name: ot.Name, Description: ot.Description, Aliases: ot.Aliases,
-			PrimaryKeys: keys, Properties: []messageProperty{}}
+			PrimaryKeys: keys, InNetwork: ot.Existing, Properties: []messageProperty{}}
 		if withProperties {
 			// Keys name a record and times a moment, as inputs do: they go first.
 			rank := func(p *interfaces.DraftProperty) int {
@@ -528,7 +541,7 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 			continue
 		}
 		relationTypes = append(relationTypes, messageRelationType{ID: rt.ID, Name: rt.Name,
-			Description: rt.Description, Source: rt.Source, Target: rt.Target})
+			Description: rt.Description, Source: rt.Source, Target: rt.Target, InNetwork: rt.Existing})
 	}
 	return objectTypes, relationTypes, propertiesOmitted
 }
@@ -538,10 +551,10 @@ func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageO
 // needs. It also returns how many tables, and how many properties of object types, it left out.
 func buildDraftMessage(language string, docs []*interfaces.RequirementDocument, tables []*interfaces.VegaTable,
 	draft *interfaces.Draft, base *interfaces.RequirementSpec, kept *interfaces.RequirementSpec,
-	networkItems []*interfaces.LogicNetworkItem, supplement string) (string, int, int, error) {
+	networkItems []*interfaces.LogicNetworkItem, supplement string, knowledge interfaces.RequirementKnowledge) (string, int, int, error) {
 	msg := draftMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(base.Concepts),
 		Rules: messageRulesOf(base.Rules), LogicNeeds: messageLogicNeedsOf(base.LogicNeeds), Kept: messageKeptOf(kept),
-		Supplement: supplement}
+		Supplement: supplement, Knowledge: messageKnowledgeOf(knowledge)}
 	var tablesOmitted, propertiesOmitted int
 	msg.Tables, tablesOmitted = messageTablesOf(tables)
 	msg.ObjectTypes, msg.RelationTypes, propertiesOmitted = messageOntologyOf(draft, true)
@@ -1137,7 +1150,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		return
 	}
 	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base,
-		networkItems, supplement)
+		networkItems, supplement, knowledgeOf(ctx, draft))
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return

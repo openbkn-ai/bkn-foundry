@@ -84,6 +84,8 @@ type kineticMessage struct {
 	Kept          messageKeptNeeds      `json:"kept"`
 	// Supplement is the owner's supplement note, absent when none was written.
 	Supplement string `json:"supplement,omitempty"`
+	// Knowledge is what the knowledge base holds: its concepts and rules, absent when none.
+	Knowledge *messageKnowledge `json:"knowledge,omitempty"`
 	// NetworkItemsOmitted counts the network's items past maxMessageNetworkItems, not in kept.
 	NetworkItemsOmitted int `json:"network_items_omitted,omitempty"`
 }
@@ -95,9 +97,11 @@ type messageKeptNeeds struct {
 // The network's items go as kept needs too, after the specification's, so the Agent gives only
 // what they leave uncovered.
 func buildKineticMessage(language string, docs []*interfaces.RequirementDocument, draft *interfaces.Draft,
-	spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem, supplement string) (string, error) {
+	spec *interfaces.RequirementSpec, items []*interfaces.LogicNetworkItem, supplement string,
+	knowledge interfaces.RequirementKnowledge) (string, error) {
 	msg := kineticMessage{Documents: messageDocumentsOf(docs), Concepts: messageConceptsOf(spec.Concepts),
-		Rules: messageRulesOf(spec.Rules), Kept: messageKeptNeeds{LogicNeeds: []messageLogicNeed{}}, Supplement: supplement}
+		Rules: messageRulesOf(spec.Rules), Kept: messageKeptNeeds{LogicNeeds: []messageLogicNeed{}}, Supplement: supplement,
+		Knowledge: messageKnowledgeOf(knowledge)}
 	msg.ObjectTypes, msg.RelationTypes, _ = messageOntologyOf(draft, true)
 	for _, n := range messageLogicNeedsOf(spec.LogicNeeds) {
 		n.ID = keptPrefix + n.ID
@@ -316,6 +320,8 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	// drafting reads them; the supplement note as it is now.
 	cited := s.withBackground(ctx, token, entry, docs)
 	supplement := s.supplementOf(ctx, projectID)
+	// The concepts and rules of the knowledge base, as the person judged them now.
+	knowledge := knowledgeOf(ctx, draft)
 	byID := documentsByID(cited)
 	concepts := map[string]string{}
 	for _, c := range spec.Concepts {
@@ -325,7 +331,7 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		kind: interfaces.REQUIREMENT_RUN_KINETIC, projectID: projectID, run: run, caller: caller,
 		format: kineticResponseFormat(), newOut: func() any { return &kineticOutput{} },
 		prepareMessage: func(context.Context, int, int) (string, error) {
-			return buildKineticMessage(project.NamingLanguage, cited, draft, spec, items, supplement)
+			return buildKineticMessage(project.NamingLanguage, cited, draft, spec, items, supplement, knowledge)
 		},
 	}
 	p.check = func(_ context.Context, _ int, out any) {

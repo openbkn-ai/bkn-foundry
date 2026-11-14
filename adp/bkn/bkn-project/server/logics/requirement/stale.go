@@ -46,8 +46,9 @@ func markOntologyChanges(spec *interfaces.RequirementSpec, draft *interfaces.Dra
 	}
 	for _, ot := range draft.Items.ObjectTypes {
 		ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
-		// Scenarios cover the whole model: what the network already has as well as what is new.
-		if ot.Adopted && !needed[ref] {
+		// Scenarios cover the whole model: what the network already has as well as what is new, but
+		// not the system objects that locate original text.
+		if ot.Adopted && !needed[ref] && !isEvidenceObject(ot) {
 			uncovered = append(uncovered, interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_OBJECT_TYPE, ID: ot.ID, Name: ot.Name})
 		}
 	}

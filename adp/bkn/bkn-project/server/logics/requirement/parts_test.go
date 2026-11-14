@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -165,8 +166,11 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		// Cut off at the model's output cap: not asked the same again, but half by half, without
 		// reasoning; the halves are cut off too (as the OpenAI SDK says it).
 		var asked []*interfaces.BknAgentRunRequest
+		var mu sync.Mutex
 		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+				mu.Lock()
+				defer mu.Unlock()
 				asked = append(asked, req)
 				detail := "StructuredOutputError: structured output failed: not supported natively and the prompt " +
 					"fallback was still invalid (output truncated at the output limit)"
@@ -188,9 +192,14 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 			So(req.ThinkingMode, ShouldEqual, "disabled")
 		}
 		// The halves read one block each.
-		So(asked[1].Message, ShouldContainSubstring, "Requests by email")
-		So(asked[1].Message, ShouldNotContainSubstring, "within 2 working days")
-		So(asked[2].Message, ShouldContainSubstring, "within 2 working days")
+		halves := []string{asked[1].Message, asked[2].Message}
+		if !strings.Contains(halves[0], "Requests by email") {
+			halves[0], halves[1] = halves[1], halves[0]
+		}
+		So(halves[0], ShouldContainSubstring, "Requests by email")
+		So(halves[0], ShouldNotContainSubstring, "within 2 working days")
+		So(halves[1], ShouldContainSubstring, "within 2 working days")
+		So(halves[1], ShouldNotContainSubstring, "Requests by email")
 	})
 
 	Convey("A part cut off at the output cap is read half by half, and what the halves give is written\n", t, func() {
@@ -214,12 +223,11 @@ func Test_ExtractConceptsInParts(t *testing.T) {
 		ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
 		da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
 		va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{}, nil)
-		calls := 0
 		ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
-				calls++
+				whole := strings.Contains(req.Message, "Requests by email") && strings.Contains(req.Message, "within 2 working days")
 				switch {
-				case calls == 1:
+				case whole:
 					return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_FAILED,
 						FailureDetail: "LengthFinishReasonError: length limit was reached"}, nil
 				case strings.Contains(req.Message, "Requests by email"):

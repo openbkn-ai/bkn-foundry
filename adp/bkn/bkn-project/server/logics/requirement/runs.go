@@ -176,11 +176,29 @@ func (s *requirementService) ask(ctx context.Context, p *partRun) []partAnswer {
 		if a.failure != failureOutputTooLong || p.halves == nil || !p.halves(i) {
 			return
 		}
-		// Cut off at the model's output cap: each half asks for about half the answer.
+		// Cut off at the model's output cap: each half asks for about half the answer, both side
+		// by side, for the run to end in about the time of two asks.
 		logger.Warnf("Requirement %s run of project %s reads part %d in halves: %v", p.kind, p.projectID, i+1, a.err)
+		halves := [2]partAnswer{}
+		var wg sync.WaitGroup
+		for h := range halves {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				askHalf(&halves[h], i, h+1)
+			}()
+		}
+		wg.Wait()
 		a.failure, a.err, a.retried = "", nil, true
-		askHalf(a, i, 1)
-		askHalf(a, i, 2)
+		for _, half := range halves {
+			a.outs = append(a.outs, half.outs...)
+			if half.taskID != "" {
+				a.taskID = half.taskID
+			}
+			if half.failure != "" {
+				a.failure, a.err = half.failure, half.err
+			}
+		}
 	}
 	if len(answers) == 1 {
 		askPart(0)
