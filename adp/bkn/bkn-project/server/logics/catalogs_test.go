@@ -33,6 +33,34 @@ func Test_ProjectCatalogs(t *testing.T) {
 			return &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", KNID: "kn1", CatalogIDs: stored}}
 		}
 
+		Convey("Resolving hands back the network's object types it read, and TableReaders names them by table\n", func() {
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
+				{ID: "purchase_order", Name: "Purchase order", DataSource: resource("r-po")},
+				{ID: "po_view", DataSource: resource("r-po")},
+				{ID: interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS, Name: "Terms", DataSource: resource("r-term")},
+				{ID: "note", Name: "Note"},
+				{ID: "rate", Name: "Rate", DataSource: &interfaces.KNDataSource{Type: "api", ID: "a1"}},
+			}, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(nil, false, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r-po"}).Return([]*interfaces.VegaTable{
+				{ID: "r-po", CatalogID: "c-new"}}, nil)
+			e := entry()
+
+			read := pc.ResolveReading(ctx, "t", caller, e)
+
+			So(e.CatalogIDs, ShouldResemble, []string{"c-new"})
+			// One without a name is named by its id.
+			So(TableReaders(read), ShouldResemble, map[string][]string{"r-po": {"Purchase order", "po_view"}})
+		})
+
+		Convey("Nothing read names no table\n", func() {
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return(nil, errors.New("down"))
+			So(pc.ResolveReading(ctx, "t", caller, entry()), ShouldBeNil)
+			var none *ProjectCatalogs
+			So(none.ResolveReading(ctx, "t", caller, entry()), ShouldBeNil)
+			So(TableReaders(nil), ShouldBeEmpty)
+		})
+
 		Convey("After the network's catalog is installed again, the project reads the new one and drops the old silently\n", func() {
 			bba.EXPECT().ListObjectTypeSources(gomock.Any(), "t", "kn1").Return([]*interfaces.KNObjectTypeSource{
 				{ID: "purchase_order", DataSource: resource("r-po")},

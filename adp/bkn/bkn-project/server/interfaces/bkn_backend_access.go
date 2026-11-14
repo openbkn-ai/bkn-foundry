@@ -101,6 +101,7 @@ type BknBackendAccess interface {
 // KNObjectTypeSource is an object type of a network and the data it reads.
 type KNObjectTypeSource struct {
 	ID         string        `json:"id"`
+	Name       string        `json:"name"`
 	DataSource *KNDataSource `json:"data_source"`
 }
 

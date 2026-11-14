@@ -45,12 +45,38 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 		span.SetStatus(codes.Error, "Read tables failed")
 		return nil, internalError(ctx, "Read tables failed", err)
 	}
+	structuredOnly(index, &draft.Items)
 	if c := draft.Items.Confirmation; c != nil && c.Commit != "" {
 		s.attachBuilds(ctx, index, projectID, c.Commit)
 	}
 	s.attachBuiltTimes(ctx, index, caller)
 	span.SetStatus(codes.Ok, "")
 	return index, nil
+}
+
+// structuredOnly leaves in the index only the object types of the catalogs' tables, as the people
+// reading it know structured objects: those drafted from knowledge-base files read the dataset an
+// extraction writes, and system object types are the network's own; neither is a table to index
+// here. The counts follow.
+func structuredOnly(index *interfaces.ProjectIndex, items *interfaces.DraftItems) {
+	unstructured := map[string]bool{}
+	for _, ot := range items.ObjectTypes {
+		if ot.Document != nil || interfaces.IsSystemObjectType(ot.ID) {
+			unstructured[ot.ID] = true
+		}
+	}
+	kept := index.ObjectTypes[:0]
+	for _, item := range index.ObjectTypes {
+		if unstructured[item.ID] {
+			index.Counts[item.State]--
+			if index.Counts[item.State] <= 0 {
+				delete(index.Counts, item.State)
+			}
+			continue
+		}
+		kept = append(kept, item)
+	}
+	index.ObjectTypes = kept
 }
 
 // attachBuilds gives each object type the build that the confirmation of commit started for its

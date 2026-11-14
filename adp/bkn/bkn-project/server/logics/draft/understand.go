@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -16,6 +17,7 @@ import (
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 )
 
 // Semantic understanding of the tables in a project's data catalogs: vega-backend's tasks fill in
@@ -147,7 +149,9 @@ func (s *draftService) GetUnderstanding(ctx context.Context, token string, proje
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
 	}
-	s.pc.Resolve(ctx, token, caller, entry)
+	// The tables the network's object types read are named by the network already: read with the
+	// catalogs, once; a read that fails marks none.
+	readers := logics.TableReaders(s.pc.ResolveReading(ctx, token, caller, entry))
 	understanding := &interfaces.ProjectUnderstanding{Catalogs: []interfaces.UnderstandingCatalog{}}
 	for _, catalogID := range entry.CatalogIDs {
 		tasks, visible, err := s.va.ListSemanticTasks(ctx, caller, catalogID)
@@ -165,7 +169,8 @@ func (s *draftService) GetUnderstanding(ctx context.Context, token string, proje
 			newest := newestTasks(tasks)
 			for _, table := range tables {
 				item := interfaces.UnderstandingTable{ResourceID: table.ID, Name: table.Name,
-					Status: interfaces.UNDERSTAND_NOT_STARTED}
+					Status: interfaces.UNDERSTAND_NOT_STARTED, Described: strings.TrimSpace(table.Description) != "",
+					NetworkObjectTypes: readers[table.ID]}
 				if task := newest[table.ID]; task != nil {
 					item.Status, item.Applied, item.FinishTime = task.Status, task.Applied, task.FinishTime
 				}

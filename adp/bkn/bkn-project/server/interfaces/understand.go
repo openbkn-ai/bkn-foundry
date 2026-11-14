@@ -56,4 +56,10 @@ type UnderstandingTable struct {
 	// Applied tells whether the newest task wrote its result to the table.
 	Applied    bool  `json:"applied,omitempty"`
 	FinishTime int64 `json:"finish_time,omitempty"`
+	// Described tells whether the catalog describes the table: it has a business name without
+	// semantic understanding, as the status counts unnamed tables.
+	Described bool `json:"described,omitempty"`
+	// NetworkObjectTypes names the object types of the project's network that read the table now:
+	// the network names it already.
+	NetworkObjectTypes []string `json:"network_object_types,omitempty"`
 }

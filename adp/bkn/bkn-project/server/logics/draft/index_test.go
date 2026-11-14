@@ -314,3 +314,27 @@ func Test_GetIndexBuiltTime(t *testing.T) {
 		So(index.ObjectTypes[1].BuiltTime, ShouldEqual, 0)
 	})
 }
+
+func Test_structuredOnly(t *testing.T) {
+	Convey("The index lists only the object types of the catalogs' tables\n", t, func() {
+		items := &interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{
+			{ID: "orders"},
+			{ID: "contracts", Document: &interfaces.DraftDocumentModel{}},
+			{ID: interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS},
+		}}
+		index := &interfaces.ProjectIndex{
+			ObjectTypes: []interfaces.ProjectIndexItem{
+				{ID: "orders", State: interfaces.INDEX_STATE_READY},
+				{ID: "contracts", State: interfaces.INDEX_STATE_NOT_CONFIGURED},
+				{ID: interfaces.SYSTEM_OBJECT_TYPE_DOMAIN_TERMS, State: interfaces.INDEX_STATE_READY},
+			},
+			Counts: map[string]int{interfaces.INDEX_STATE_READY: 2, interfaces.INDEX_STATE_NOT_CONFIGURED: 1},
+		}
+
+		structuredOnly(index, items)
+
+		So(index.ObjectTypes, ShouldHaveLength, 1)
+		So(index.ObjectTypes[0].ID, ShouldEqual, "orders")
+		So(index.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_READY: 1})
+	})
+}
