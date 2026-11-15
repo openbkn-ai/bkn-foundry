@@ -108,6 +108,24 @@ func Test_RestHandler_ExecuteAction_BKNContext(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, "interaction_id requires conversation_id")
 		})
 
+		Convey("a header-only interaction without a conversation is accepted with no ids recorded", func() {
+			accept()
+			w := post(`{"_instance_identities":[{"id":"1"}]}`, map[string]string{
+				common.HeaderBKNInteractionID: "int_h",
+			})
+			So(w.Code, ShouldEqual, http.StatusAccepted)
+			So(seen.ConversationID, ShouldBeEmpty)
+			So(seen.InteractionID, ShouldBeEmpty)
+		})
+
+		Convey("a body interaction with only a header interaction is still rejected", func() {
+			w := post(`{"_instance_identities":[{"id":"1"}],"bkn_context":{"interaction_id":"int_1"}}`, map[string]string{
+				common.HeaderBKNInteractionID: "int_1",
+			})
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, "interaction_id requires conversation_id")
+		})
+
 		Convey("a conversation alone is allowed", func() {
 			accept()
 			w := post(`{"_instance_identities":[{"id":"1"}],"bkn_context":{"conversation_id":"conv_1"}}`, nil)

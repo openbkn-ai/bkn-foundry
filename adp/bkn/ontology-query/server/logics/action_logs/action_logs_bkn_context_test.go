@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	. "github.com/smartystreets/goconvey/convey"
@@ -66,16 +67,29 @@ func Test_CreateExecution_StoresBKNContextAndMapsItAsKeyword(t *testing.T) {
 		So(props["interaction_id"], ShouldResemble, map[string]any{"type": "keyword"})
 	})
 
-	Convey("a failed mapping update does not fail the execution and is retried next time", t, func() {
+	Convey("a failed mapping update does not fail the execution and is not retried within the backoff window", t, func() {
 		ctrl := gomock.NewController(t)
 		osa := omock.NewMockOpenSearchAccess(ctrl)
-		svc := &actionLogsService{osAccess: osa}
-		osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
-		osa.EXPECT().PutMapping(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("boom")).Times(2)
-		osa.EXPECT().InsertData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+		clock := time.Now()
+		svc := &actionLogsService{osAccess: osa, now: func() time.Time { return clock }}
+		osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(true, nil).Times(5)
+		// One attempt in the first window, one after it expired; a second index has its own window.
+		osa.EXPECT().PutMapping(gomock.Any(), interfaces.GetActionExecutionIndex("kn_1"), gomock.Any()).
+			Return(errors.New("boom")).Times(2)
+		osa.EXPECT().PutMapping(gomock.Any(), interfaces.GetActionExecutionIndex("kn_2"), gomock.Any()).
+			Return(nil).Times(1)
+		osa.EXPECT().InsertData(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(5)
 
-		So(svc.CreateExecution(context.Background(), &interfaces.ActionExecution{ID: "e1", KNID: "kn_1"}), ShouldBeNil)
-		So(svc.CreateExecution(context.Background(), &interfaces.ActionExecution{ID: "e2", KNID: "kn_1"}), ShouldBeNil)
+		create := func(id, kn string) {
+			So(svc.CreateExecution(context.Background(), &interfaces.ActionExecution{ID: id, KNID: kn}), ShouldBeNil)
+		}
+		create("e1", "kn_1")
+		clock = clock.Add(mappingRetryBackoff - time.Second)
+		create("e2", "kn_1") // inside the window: no PutMapping
+		create("e3", "kn_2") // other index: its own attempt
+		clock = clock.Add(2 * time.Second)
+		create("e4", "kn_1") // window over: retried (and fails again)
+		create("e5", "kn_1") // new window: no PutMapping
 	})
 }
 

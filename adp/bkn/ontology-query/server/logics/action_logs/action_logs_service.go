@@ -40,6 +40,24 @@ type actionLogsService struct {
 	// mappingsCurrent caches the execution indexes whose mapping already carries
 	// executionsMappingAdditions, so the mapping is put once per index and process.
 	mappingsCurrent sync.Map
+
+	// mappingBackoff holds, per execution index, the time before which a failed mapping
+	// update is not retried (for example when the account may not put mappings), so every
+	// execution does not retry and warn. Values are time.Time.
+	mappingBackoff sync.Map
+
+	// now is the clock of the backoff; nil means time.Now.
+	now func() time.Time
+}
+
+// mappingRetryBackoff is how long a failed mapping update of an index is not retried.
+const mappingRetryBackoff = 10 * time.Minute
+
+func (s *actionLogsService) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }
 
 // NewActionLogsService creates a singleton instance of ActionLogsService
@@ -545,12 +563,20 @@ func (s *actionLogsService) ensureIndexExists(ctx context.Context, indexName str
 	if _, done := s.mappingsCurrent.Load(indexName); done {
 		return nil
 	}
-	if err := s.osAccess.PutMapping(ctx, indexName, executionsMappingAdditions); err != nil {
-		// The execution itself must not fail on this: the ids would then be indexed under the
-		// dynamic mapping and an exact filter on them may miss, which is logged here.
-		logger.Warnf("Failed to add the correlation id mapping to index %s: %v", indexName, err)
+	now := s.clock()
+	if until, ok := s.mappingBackoff.Load(indexName); ok && now.Before(until.(time.Time)) {
 		return nil
 	}
+	if err := s.osAccess.PutMapping(ctx, indexName, executionsMappingAdditions); err != nil {
+		// The execution itself must not fail on this: the ids would then be indexed under the
+		// dynamic mapping and an exact filter on them may miss, which is logged here, once
+		// per backoff window.
+		s.mappingBackoff.Store(indexName, now.Add(mappingRetryBackoff))
+		logger.Warnf("Failed to add the correlation id mapping to index %s, not retrying for %s: %v",
+			indexName, mappingRetryBackoff, err)
+		return nil
+	}
+	s.mappingBackoff.Delete(indexName)
 	s.mappingsCurrent.Store(indexName, struct{}{})
 	return nil
 }

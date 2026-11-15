@@ -19,8 +19,9 @@ import (
 // Each id comes from the body's bkn_context, else from the bkn-conversation-id /
 // bkn-interaction-id headers already parsed into the request's TraceContext, so the Context
 // Loader path needs no change. A body value that is not a well-formed business trace id, a
-// body value that differs from the header's, and an interaction without its conversation are
-// errors. Both ids are labels the caller owns: nothing here creates, infers or checks them
+// body value that differs from the header's, and a body interaction without its conversation
+// are errors. An interaction id that comes only from the header, without a conversation id,
+// is dropped rather than rejected. Both ids are labels the caller owns: nothing here creates, infers or checks them
 // against the trace core, and nothing may use them for authorization.
 //
 // A scheduled execution has no caller run, so both stay empty and are not validated.
@@ -48,7 +49,13 @@ func resolveActionBKNContext(ctx context.Context, req *interfaces.ActionExecutio
 		return err
 	}
 	if interactionID != "" && conversationID == "" {
-		return fmt.Errorf("interaction_id requires conversation_id: an Interaction belongs to a Conversation")
+		if strings.TrimSpace(body.InteractionID) != "" {
+			return fmt.Errorf("interaction_id requires conversation_id: an Interaction belongs to a Conversation")
+		}
+		// The interaction id came from the header alone. Callers sending only
+		// bkn-interaction-id were accepted before the ids were recorded, so record none, the
+		// same way an invalid header value reads as absent.
+		interactionID = ""
 	}
 	req.ConversationID, req.InteractionID = conversationID, interactionID
 	return nil
