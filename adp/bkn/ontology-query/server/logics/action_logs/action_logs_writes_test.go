@@ -7,6 +7,7 @@ package action_logs
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -45,6 +46,35 @@ func newWriteTestService(t *testing.T) (*actionLogsService, *omock.MockOpenSearc
 	ctrl := gomock.NewController(t)
 	osa := omock.NewMockOpenSearchAccess(ctrl)
 	return &actionLogsService{osAccess: osa}, osa
+}
+
+func Test_CreateExecution_DisablesPreparationMappingBeforeWriting(t *testing.T) {
+	svc, osa := newWriteTestService(t)
+	index := interfaces.GetActionExecutionIndex("kn_1")
+	mapping := map[string]any{"properties": map[string]any{
+		"preparation": map[string]any{"type": "object", "enabled": false},
+	}}
+	gomock.InOrder(
+		osa.EXPECT().IndexExists(gomock.Any(), index).Return(true, nil),
+		osa.EXPECT().PutMapping(gomock.Any(), index, mapping).Return(nil),
+		osa.EXPECT().InsertData(gomock.Any(), index, "exec_1", gomock.Any()).Return(nil),
+		osa.EXPECT().IndexExists(gomock.Any(), index).Return(true, nil),
+		osa.EXPECT().InsertData(gomock.Any(), index, "exec_2", gomock.Any()).Return(nil),
+	)
+	for _, id := range []string{"exec_1", "exec_2"} {
+		err := svc.CreateExecution(context.Background(), &interfaces.ActionExecution{
+			ID: id, KNID: "kn_1", Preparation: &interfaces.ActionExecutionInspection{
+				KNID: "kn_1", Targets: []map[string]any{{"id": id}},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	properties := executionsIndexBody["mappings"].(map[string]any)["properties"].(map[string]any)
+	if !reflect.DeepEqual(properties["preparation"], mapping["properties"].(map[string]any)["preparation"]) {
+		t.Fatalf("new index mapping must disable preparation: %#v", properties["preparation"])
+	}
 }
 
 func Test_CancelExecution_LeavesResultsUntouched(t *testing.T) {

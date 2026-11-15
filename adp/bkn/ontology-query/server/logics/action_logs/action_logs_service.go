@@ -31,8 +31,9 @@ var (
 )
 
 type actionLogsService struct {
-	appSetting *common.AppSetting
-	osAccess   interfaces.OpenSearchAccess
+	appSetting              *common.AppSetting
+	osAccess                interfaces.OpenSearchAccess
+	preparationMappingReady sync.Map
 
 	// resultsIndexReady caches that the shared results index exists.
 	resultsIndexReady atomic.Bool
@@ -66,6 +67,18 @@ func (s *actionLogsService) CreateExecution(ctx context.Context, exec *interface
 	if err := s.ensureIndexExists(ctx, indexName); err != nil {
 		logger.Errorf("Failed to ensure index exists: %v", err)
 		return fmt.Errorf("failed to ensure index exists: %w", err)
+	}
+	if exec.Preparation != nil {
+		if _, ready := s.preparationMappingReady.Load(indexName); !ready {
+			if err := s.osAccess.PutMapping(ctx, indexName, map[string]any{
+				"properties": map[string]any{
+					"preparation": map[string]any{"type": "object", "enabled": false},
+				},
+			}); err != nil {
+				return fmt.Errorf("failed to prepare execution mapping: %w", err)
+			}
+			s.preparationMappingReady.Store(indexName, true)
+		}
 	}
 
 	// Insert the execution record
@@ -501,6 +514,7 @@ var executionsIndexBody = map[string]any{
 			"dynamic_params":         map[string]any{"type": "object", "enabled": false},
 			"action_source":          map[string]any{"type": "object", "enabled": false},
 			"action_type_snapshot":   map[string]any{"type": "object", "enabled": false},
+			"preparation":            map[string]any{"type": "object", "enabled": false},
 		},
 	},
 }
