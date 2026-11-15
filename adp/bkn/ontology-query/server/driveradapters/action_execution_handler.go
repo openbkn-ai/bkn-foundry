@@ -132,6 +132,15 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	req.KNID = knID
 	req.Branch = branch
 	req.ActionTypeID = atID
+	if err := resolveActionBKNContext(ctx, &req); err != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(err.Error())
+
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	// Target requirements depend on operation_config; missing object or relation
 	// targets are rejected by the scheduler before external invocation.
 
