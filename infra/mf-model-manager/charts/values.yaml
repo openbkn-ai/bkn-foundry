@@ -95,8 +95,8 @@ depServices:
   mq:
     auth:
       mechanism: 'PLAIN'
-      username: 'anyrobot'
-      password: 'password'
+      username: 'kafkauser'
+      password: ''
     mqHost: 'kafka-headless.resource'
     mqLookupdHost: ""
     mqLookupdPort: 0
