@@ -110,7 +110,7 @@ func TestCheckRelationTypeOverwriteKeepsDeclarations(t *testing.T) {
 	stored.ReverseName = "雇员"
 	stored.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "改用任职记录"}
 	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"works_in"}).
-		Return([]*interfaces.RelationType{stored}, nil).Times(3)
+		Return([]*interfaces.RelationType{stored}, nil).Times(4)
 
 	err := rts.checkOverwriteKeepsDeclarations(ctx, []*interfaces.RelationType{workplace()}, false)
 	httpErr := declHTTPError(t, err)
@@ -119,6 +119,11 @@ func TestCheckRelationTypeOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Equal(t, []interfaces.ClearedDeclaration{{RelationTypeID: "works_in", Fields: []string{
 		interfaces.DECLARATION_REVERSE_NAME, interfaces.DECLARATION_LIFECYCLE, interfaces.DECLARATION_PROPERTIES,
 	}}}, httpErr.ErrorDetails.(map[string]any)["cleared"])
+
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, rts.checkOverwriteKeepsDeclarations(collectCtx, []*interfaces.RelationType{workplace()}, false))
+	assert.Equal(t, httpErr.ErrorDetails.(map[string]any)["cleared"], collector.Cleared())
 
 	incoming := withProperties(workplace(), titleProperty())
 	incoming.ReverseName = "员工"

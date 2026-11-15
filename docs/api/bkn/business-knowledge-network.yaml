@@ -87,10 +87,19 @@ paths:
           in: query
           description: |
             With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
-            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
-            export, would clear them. Without this parameter the request is refused with 409
-            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
-            whose details list the declarations; pass true to clear them.
+            (aliases, lifecycle and property declarations), relation type or action type (aliases, lifecycle, and
+            for a relation type its other declarations), such as a 2.x package or an old JSON export, would clear
+            them. Without this parameter the request is refused with 409. Its `error_details.cleared` lists the
+            declarations of all three kinds of definition at once, each entry naming `object_type_id`,
+            `relation_type_id` or `action_type_id`; the error code is that of the first kind listed
+            (BknBackend.ObjectType.DeclarationsWouldBeCleared, then
+            BknBackend.RelationType.DeclarationsWouldBeCleared, then
+            BknBackend.ActionType.DeclarationsWouldBeCleared). Pass true to clear them.
+
+            If the network the overwrite would produce also breaks a rule that spans definitions (for example a
+            kept relation type whose `fallback_for` names a relation type the file overwrites without a cardinality),
+            `error_details.blocking` lists those problems as text: confirming does not make the import succeed
+            until they are resolved, so resolve them before confirming.
           schema:
             type: boolean
             default: false
@@ -281,10 +290,19 @@ paths:
           in: query
           description: |
             With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
-            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
-            export, would clear them. Without this parameter the request is refused with 409
-            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
-            whose details list the declarations; pass true to clear them.
+            (aliases, lifecycle and property declarations), relation type or action type (aliases, lifecycle, and
+            for a relation type its other declarations), such as a 2.x package or an old JSON export, would clear
+            them. Without this parameter the request is refused with 409. Its `error_details.cleared` lists the
+            declarations of all three kinds of definition at once, each entry naming `object_type_id`,
+            `relation_type_id` or `action_type_id`; the error code is that of the first kind listed
+            (BknBackend.ObjectType.DeclarationsWouldBeCleared, then
+            BknBackend.RelationType.DeclarationsWouldBeCleared, then
+            BknBackend.ActionType.DeclarationsWouldBeCleared). Pass true to clear them.
+
+            If the network the overwrite would produce also breaks a rule that spans definitions (for example a
+            kept relation type whose `fallback_for` names a relation type the file overwrites without a cardinality),
+            `error_details.blocking` lists those problems as text: confirming does not make the import succeed
+            until they are resolved, so resolve them before confirming.
           schema:
             type: boolean
             default: false
@@ -561,10 +579,19 @@ paths:
           in: query
           description: |
             With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
-            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
-            export, would clear them. Without this parameter the request is refused with 409
-            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
-            whose details list the declarations; pass true to clear them.
+            (aliases, lifecycle and property declarations), relation type or action type (aliases, lifecycle, and
+            for a relation type its other declarations), such as a 2.x package or an old JSON export, would clear
+            them. Without this parameter the request is refused with 409. Its `error_details.cleared` lists the
+            declarations of all three kinds of definition at once, each entry naming `object_type_id`,
+            `relation_type_id` or `action_type_id`; the error code is that of the first kind listed
+            (BknBackend.ObjectType.DeclarationsWouldBeCleared, then
+            BknBackend.RelationType.DeclarationsWouldBeCleared, then
+            BknBackend.ActionType.DeclarationsWouldBeCleared). Pass true to clear them.
+
+            If the network the overwrite would produce also breaks a rule that spans definitions (for example a
+            kept relation type whose `fallback_for` names a relation type the file overwrites without a cardinality),
+            `error_details.blocking` lists those problems as text: confirming does not make the import succeed
+            until they are resolved, so resolve them before confirming.
           schema:
             type: boolean
             default: false

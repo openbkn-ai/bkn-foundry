@@ -40,6 +40,11 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 		attr.Int("value_type_count", len(plan.ValueTypes)),
 		attr.Int("object_metric_version_count", len(plan.ObjectMetrics)),
 	)
+	// An overwrite that would clear stored declarations is refused before anything is written: the
+	// writes below reach beyond the transaction, and the refusal lists every kind of definition.
+	if err := kns.refuseClearingDeclarations(ctx, plan, mode); err != nil {
+		return err
+	}
 	// Value types first: the object types of the same import name them.
 	if len(plan.ValueTypes) > 0 {
 		written, err := kns.vts.CreateValueTypes(ctx, tx, plan.ValueTypes, mode)
@@ -521,4 +526,41 @@ func writtenValueTypes(valueTypes []*interfaces.ValueType, ids []string) []*inte
 		}
 	}
 	return result
+}
+
+// refuseClearingDeclarations answers an overwrite whose file does not carry declarations the stored
+// definitions have, unless the request confirmed clearing them. The refusal lists the declarations
+// of object types, relation types and action types together, and the problems the overwritten
+// network would still have: confirming does not make the import succeed while they remain.
+func (kns *knowledgeNetworkService) refuseClearingDeclarations(ctx context.Context,
+	plan *NormalizedImportPlan, mode string) error {
+	if mode != interfaces.ImportMode_Overwrite || interfaces.ClearDeclarationsConfirmed(ctx) {
+		return nil
+	}
+	ctx, cleared := interfaces.WithClearedDeclarationCollector(ctx)
+	ctx, written := logics.WithDeferredNetworkRelations(ctx)
+	if len(plan.ObjectTypes) > 0 {
+		if err := kns.ots.CheckOverwriteDeclarations(ctx, plan.KNID, plan.Branch, plan.ObjectTypes, mode); err != nil {
+			return err
+		}
+	}
+	if len(plan.RelationTypes) > 0 {
+		if err := kns.rts.CheckOverwriteDeclarations(ctx, plan.KNID, plan.Branch, plan.RelationTypes, mode); err != nil {
+			return err
+		}
+	}
+	if len(plan.ActionTypes) > 0 {
+		if err := kns.ats.CheckOverwriteDeclarations(ctx, plan.KNID, plan.Branch, plan.ActionTypes, mode); err != nil {
+			return err
+		}
+	}
+	if len(cleared.Cleared()) == 0 {
+		return nil
+	}
+	problems, err := kns.nr.Check(ctx, plan.KNID, plan.Branch, *written)
+	if err != nil {
+		return kns.nr.Refusal(ctx, problems, err,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError)
+	}
+	return clearDeclarationsRefusal(ctx, cleared.Cleared(), problems)
 }

@@ -495,6 +495,9 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			WithErrorDetails(err.Error())
 	}
 
+	// An overwrite that would clear stored declarations is refused once, after every kind of
+	// definition is checked, with all of them listed.
+	ctx, cleared := interfaces.WithClearedDeclarationCollector(ctx)
 	if len(plan.ConceptGroups) > 0 {
 		if err := kns.cgs.ValidateConceptGroups(ctx, knID, branch, plan.ConceptGroups, strictMode, batch, mode); err != nil {
 			return err
@@ -517,12 +520,39 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			return err
 		}
 	}
-	if err := kns.nr.CheckRefusal(ctx, knID, branch, *written,
-		berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError); err != nil {
-		return err
+	problems, err := kns.nr.Check(ctx, knID, branch, *written)
+	if err != nil || len(cleared.Cleared()) == 0 {
+		if err := kns.nr.Refusal(ctx, problems, err,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError); err != nil {
+			return err
+		}
+		span.SetStatus(codes.Ok, "")
+		return nil
 	}
-	span.SetStatus(codes.Ok, "")
-	return nil
+	return clearDeclarationsRefusal(ctx, cleared.Cleared(), problems)
+}
+
+// clearDeclarationsRefusal answers an overwrite that would clear stored declarations with the
+// declarations of every kind of definition. The problems the overwritten network would still have
+// are listed beside them: confirming does not make the import succeed while they remain, and they
+// are better known before the caller confirms than after.
+func clearDeclarationsRefusal(ctx context.Context, cleared []interfaces.ClearedDeclaration, problems []string) error {
+	code := berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared
+	switch {
+	case cleared[0].ObjectTypeID != "":
+	case cleared[0].RelationTypeID != "":
+		code = berrors.BknBackend_RelationType_DeclarationsWouldBeCleared
+	default:
+		code = berrors.BknBackend_ActionType_DeclarationsWouldBeCleared
+	}
+	details := map[string]any{
+		"cleared":      cleared,
+		"confirm_with": interfaces.QueryParam_ConfirmClearDeclarations + "=true",
+	}
+	if len(problems) > 0 {
+		details["blocking"] = problems
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, code).WithErrorDetails(details)
 }
 
 type knNavigationVisibility struct {

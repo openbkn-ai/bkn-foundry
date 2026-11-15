@@ -273,6 +273,30 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	return rtIDs, nil
 }
 
+// CheckOverwriteDeclarations lists what an overwrite import of relationTypes would clear, and
+// records the definitions it would write for the network check, before the import writes anything.
+// See the object type service.
+func (rts *relationTypeService) CheckOverwriteDeclarations(ctx context.Context, knID string, branch string,
+	relationTypes []*interfaces.RelationType, mode string) error {
+	if len(relationTypes) == 0 {
+		return nil
+	}
+	for _, relationType := range relationTypes {
+		relationType.KNID = knID
+		relationType.Branch = branch
+	}
+	creates, updates, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
+	if err != nil {
+		return err
+	}
+	if err = rts.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	_, err = rts.nr.CheckSave(ctx, knID, branch,
+		logics.SavedDefinitions{RelationTypes: append(append([]*interfaces.RelationType{}, creates...), updates...)})
+	return err
+}
+
 // ValidateRelationTypes authorizes the validation request and checks dependency
 // existence without writing to the database.
 func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID string, branch string,

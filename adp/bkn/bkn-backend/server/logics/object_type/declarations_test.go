@@ -130,6 +130,13 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Len(t, details["cleared"], 2)
 	assert.Equal(t, "confirm_clear_declarations=true", details["confirm_with"])
 
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, service.checkOverwriteKeepsDeclarations(collectCtx, nil, []*interfaces.ObjectType{file}, false))
+	assert.Equal(t, details["cleared"], collector.Cleared())
+
 	// Confirmed, it reads nothing and lets the overwrite through.
 	require.NoError(t, service.checkOverwriteKeepsDeclarations(interfaces.WithClearDeclarationsConfirmed(ctx), nil, []*interfaces.ObjectType{file}, false))
 

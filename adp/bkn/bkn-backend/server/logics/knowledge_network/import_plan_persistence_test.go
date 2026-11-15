@@ -63,6 +63,8 @@ func TestPersistNormalizedImportPlanRestoresOnlyValidMemberships(t *testing.T) {
 	})
 	cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
 		gomock.Any()).Return([]*interfaces.ConceptGroup{group}, nil)
+	ots.EXPECT().CheckOverwriteDeclarations(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, gomock.Any(),
+		interfaces.ImportMode_Overwrite).Return(nil)
 	ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite,
 		false, true).DoAndReturn(func(_ context.Context, _ *sql.Tx, objects []*interfaces.ObjectType,
 		_ string, _ bool, _ bool) ([]string, error) {

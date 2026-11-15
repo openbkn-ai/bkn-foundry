@@ -119,7 +119,7 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 	ats := &actionTypeService{ata: ata, ps: ps}
 
 	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).
-		Return([]*interfaces.ActionType{approve("核准")}, nil).Times(3)
+		Return([]*interfaces.ActionType{approve("核准")}, nil).Times(4)
 
 	err := ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve()}, false)
 	httpErr := httpError(t, err)
@@ -127,6 +127,11 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Equal(t, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared, httpErr.ErrorCode)
 	assert.Equal(t, []interfaces.ClearedDeclaration{{ActionTypeID: "approve", Fields: []string{interfaces.DECLARATION_ALIASES}}},
 		httpErr.ErrorDetails.(map[string]any)["cleared"])
+
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, ats.checkOverwriteKeepsDeclarations(collectCtx, []*interfaces.ActionType{approve()}, false))
+	assert.Equal(t, httpErr.ErrorDetails.(map[string]any)["cleared"], collector.Cleared())
 
 	require.NoError(t, ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve("批准")}, false),
 		"changed aliases are not cleared")

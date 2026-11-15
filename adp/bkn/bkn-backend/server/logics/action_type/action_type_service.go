@@ -414,6 +414,30 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	return atIDs, nil
 }
 
+// CheckOverwriteDeclarations lists what an overwrite import of actionTypes would clear, and records
+// the definitions it would write for the network check, before the import writes anything. See
+// the object type service.
+func (ats *actionTypeService) CheckOverwriteDeclarations(ctx context.Context, knID string, branch string,
+	actionTypes []*interfaces.ActionType, mode string) error {
+	if len(actionTypes) == 0 {
+		return nil
+	}
+	for _, actionType := range actionTypes {
+		actionType.KNID = knID
+		actionType.Branch = branch
+	}
+	creates, updates, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
+	if err != nil {
+		return err
+	}
+	if err = ats.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	_, err = ats.nr.CheckSave(ctx, knID, branch,
+		logics.SavedDefinitions{ActionTypes: append(append([]*interfaces.ActionType{}, creates...), updates...)})
+	return err
+}
+
 // ValidateActionTypes authorizes the validation request and checks dependency
 // existence without writing to the database.
 func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID string, branch string,

@@ -161,6 +161,11 @@ func (nr *NetworkRelations) CheckRefusal(ctx context.Context, knID, branch strin
 	return nr.saveRefusal(ctx, problems, err, invalidCode, internalCode)
 }
 
+// Refusal answers the outcome of a Check as SaveRefusal does.
+func (nr *NetworkRelations) Refusal(ctx context.Context, problems []string, err error, invalidCode, internalCode string) error {
+	return nr.saveRefusal(ctx, problems, err, invalidCode, internalCode)
+}
+
 func (nr *NetworkRelations) saveRefusal(ctx context.Context, problems []string, err error, invalidCode, internalCode string) error {
 	if err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, internalCode).WithErrorDetails(err.Error())

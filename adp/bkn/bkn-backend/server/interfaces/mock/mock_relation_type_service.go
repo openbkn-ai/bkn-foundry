@@ -219,3 +219,17 @@ func (mr *MockRelationTypeServiceMockRecorder) ValidateRelationTypes(ctx, knID, 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateRelationTypes", reflect.TypeOf((*MockRelationTypeService)(nil).ValidateRelationTypes), ctx, knID, branch, relationTypes, strictMode, batch, mode)
 }
+
+// CheckOverwriteDeclarations mocks base method.
+func (m *MockRelationTypeService) CheckOverwriteDeclarations(ctx context.Context, knID, branch string, relationTypes []*interfaces.RelationType, mode string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckOverwriteDeclarations", ctx, knID, branch, relationTypes, mode)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckOverwriteDeclarations indicates an expected call of CheckOverwriteDeclarations.
+func (mr *MockRelationTypeServiceMockRecorder) CheckOverwriteDeclarations(ctx, knID, branch, relationTypes, mode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckOverwriteDeclarations", reflect.TypeOf((*MockRelationTypeService)(nil).CheckOverwriteDeclarations), ctx, knID, branch, relationTypes, mode)
+}
