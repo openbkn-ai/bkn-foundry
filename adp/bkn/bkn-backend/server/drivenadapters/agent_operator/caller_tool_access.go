@@ -43,6 +43,27 @@ func (aoa *agentOperatorAccess) callerToolURL(boxID, toolID, kind string) string
 		neturl.PathEscape(boxID), kind, neturl.PathEscape(toolID))
 }
 
+// callerUnknownCode is the execution factory's refusal of an account it does
+// not know, such as one deleted since.
+const callerUnknownCode = "AgentOperatorIntegration.NotFound.CommonUserNotFound"
+
+// callerRefusalStatus is the status a refusal stands for. The execution factory
+// answers 404 both for a tool that does not exist and for an account it does
+// not know; the second is an account that may not use the tool, so it reads as
+// 403.
+func callerRefusalStatus(status int, body []byte) int {
+	if status != http.StatusNotFound {
+		return status
+	}
+	var refusal struct {
+		ErrorCode string `json:"error_code"`
+	}
+	if json.Unmarshal(body, &refusal) == nil && refusal.ErrorCode == callerUnknownCode {
+		return http.StatusForbidden
+	}
+	return status
+}
+
 // GetCallerTool reads a tool (GET .../caller/tool-box/{box_id}/tool/{tool_id}).
 func (aoa *agentOperatorAccess) GetCallerTool(ctx context.Context, boxID, toolID string) (*interfaces.CallerTool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetCallerTool")
@@ -58,6 +79,7 @@ func (aoa *agentOperatorAccess) GetCallerTool(ctx context.Context, boxID, toolID
 	}
 	if status != http.StatusOK {
 		oteltrace.AddHttpAttrs4Error(span, status, "DependencyError", "Get caller tool failed")
+		status = callerRefusalStatus(status, body)
 		return nil, interfaces.NewDependencyError("execution-factory", "get_caller_tool",
 			executionDependencyKindForStatus(status), status)
 	}
@@ -127,6 +149,7 @@ func (aoa *agentOperatorAccess) ExecuteCallerTool(ctx context.Context, boxID, to
 	}
 	if status != http.StatusOK {
 		oteltrace.AddHttpAttrs4Error(span, status, "DependencyError", "Execute caller tool failed")
+		status = callerRefusalStatus(status, body)
 		return nil, interfaces.NewDependencyError("execution-factory", "execute_caller_tool",
 			executionDependencyKindForStatus(status), status)
 	}

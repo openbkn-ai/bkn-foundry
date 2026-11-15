@@ -64,6 +64,42 @@ func TestGetCallerToolKeepsTheRefusalStatus(t *testing.T) {
 	}
 }
 
+// An account the execution factory does not know, such as a check subject
+// deleted since, is answered 404 like a missing tool. It is an account that may
+// not use the tool, so it must read as 403, not as a tool that does not exist.
+func TestCallerRoutesReadAnUnknownAccountAsForbidden(t *testing.T) {
+	unknownAccount := []byte(`{"error_code":"AgentOperatorIntegration.NotFound.CommonUserNotFound","description":"用户不存在请联系管理员"}`)
+	missingTool := []byte(`{"error_code":"AgentOperatorIntegration.NotFound.ToolBoxNotFound"}`)
+	for _, c := range []struct {
+		name string
+		body []byte
+		want int
+	}{
+		{"unknown account", unknownAccount, http.StatusForbidden},
+		{"missing tool", missingTool, http.StatusNotFound},
+		{"unreadable body", []byte(`not json`), http.StatusNotFound},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			httpClient := rmock.NewMockHTTPClient(ctrl)
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusNotFound, c.body, nil)
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusNotFound, c.body, nil)
+			access := &agentOperatorAccess{agentOperatorURL: "http://execution", httpClient: httpClient}
+
+			_, getErr := access.GetCallerTool(callerContext(), "box-1", "tool-1")
+			_, runErr := access.ExecuteCallerTool(callerContext(), "box-1", "tool-1", nil, time.Second)
+
+			for _, err := range []error{getErr, runErr} {
+				var dependencyErr *interfaces.DependencyError
+				require.ErrorAs(t, err, &dependencyErr)
+				assert.Equal(t, c.want, dependencyErr.HTTPStatus)
+			}
+		})
+	}
+}
+
 func TestExecuteCallerToolSendsTheArgumentsAsTheBody(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	httpClient := rmock.NewMockHTTPClient(ctrl)
