@@ -33,7 +33,7 @@ operation_config:
 ```yaml
 impact_contracts:
   - object_type_id: employee
-    expected_operation: add
+    expected_operation: modify
     description: 调用工具后，更新员工入职状态
 ```
 

@@ -33,7 +33,7 @@ operation_config:
 ```yaml
 impact_contracts:
   - object_type_id: employee_resource
-    expected_operation: add
+    expected_operation: modify
     description: ""
 ```
 
