@@ -70,7 +70,7 @@ func Test_ExtractionMethodRevision(t *testing.T) {
 			So(asked.Properties[0].ExtractionMethod, ShouldEqual, interfaces.DRAFT_EXTRACTION_VERBATIM)
 			So(asked.Properties[1].ExtractionMethod, ShouldEqual, "")
 			schema, _ := json.Marshal(askResponseFormat([]string{interfaces.DRAFT_ASK_REVISION_DATA_PROPERTY}))
-			So(string(schema), ShouldContainSubstring, `"extraction_method":{"enum":["verbatim","inferred"],"type":"string"}`)
+			So(string(schema), ShouldContainSubstring, `"extraction_method":{"description":"verbatim copies the value as the text states it; inferred judges or normalizes it as the instruction says","enum":["verbatim","inferred"],"type":"string"}`)
 		})
 	})
 }
