@@ -36,6 +36,10 @@ type actionLogsService struct {
 
 	// resultsIndexReady caches that the shared results index exists.
 	resultsIndexReady atomic.Bool
+
+	// mappingsCurrent caches the execution indexes whose mapping already carries
+	// executionsMappingAdditions, so the mapping is put once per index and process.
+	mappingsCurrent sync.Map
 }
 
 // NewActionLogsService creates a singleton instance of ActionLogsService
@@ -342,6 +346,18 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		})
 	}
 
+	if query.ConversationID != "" {
+		mustConditions = append(mustConditions, map[string]any{
+			"term": map[string]any{"conversation_id": query.ConversationID},
+		})
+	}
+
+	if query.InteractionID != "" {
+		mustConditions = append(mustConditions, map[string]any{
+			"term": map[string]any{"interaction_id": query.InteractionID},
+		})
+	}
+
 	if keyword := strings.TrimSpace(query.Keyword); keyword != "" {
 		// The Studio search box searches the execution id: a case-insensitive literal
 		// substring, so wildcard metacharacters typed by the user are escaped.
@@ -497,17 +513,46 @@ var executionsIndexBody = map[string]any{
 			// New indexes only. Existing indexes rely on dynamic mapping (text + .keyword);
 			// term queries still match because the fingerprint is a single [0-9a-f] token.
 			"instance_identity_hash": map[string]any{"type": "keyword"},
-			"results":                map[string]any{"type": "nested"},
-			"dynamic_params":         map[string]any{"type": "object", "enabled": false},
-			"action_source":          map[string]any{"type": "object", "enabled": false},
-			"action_type_snapshot":   map[string]any{"type": "object", "enabled": false},
+			// Caller-declared correlation labels; see executionsMappingAdditions for old indexes.
+			"conversation_id":      map[string]any{"type": "keyword"},
+			"interaction_id":       map[string]any{"type": "keyword"},
+			"results":              map[string]any{"type": "nested"},
+			"dynamic_params":       map[string]any{"type": "object", "enabled": false},
+			"action_source":        map[string]any{"type": "object", "enabled": false},
+			"action_type_snapshot": map[string]any{"type": "object", "enabled": false},
 		},
 	},
 }
 
-// ensureIndexExists creates a knowledge network's execution index if it doesn't exist.
+// executionsMappingAdditions lists the fields added to executionsIndexBody after indexes
+// already existed. An existing index has no mapping for them until the first write, and
+// dynamic mapping would make them text, which an exact-match term filter cannot match for ids
+// containing "-", "." or ":". Adding a field to a mapping is additive: documents written before
+// stay as they are and simply have no such field.
+var executionsMappingAdditions = map[string]any{
+	"properties": map[string]any{
+		"conversation_id": map[string]any{"type": "keyword"},
+		"interaction_id":  map[string]any{"type": "keyword"},
+	},
+}
+
+// ensureIndexExists creates a knowledge network's execution index if it doesn't exist, and
+// makes sure an index created by an earlier version maps the correlation ids as keyword.
 func (s *actionLogsService) ensureIndexExists(ctx context.Context, indexName string) error {
-	return s.createIndexIfMissing(ctx, indexName, executionsIndexBody)
+	if err := s.createIndexIfMissing(ctx, indexName, executionsIndexBody); err != nil {
+		return err
+	}
+	if _, done := s.mappingsCurrent.Load(indexName); done {
+		return nil
+	}
+	if err := s.osAccess.PutMapping(ctx, indexName, executionsMappingAdditions); err != nil {
+		// The execution itself must not fail on this: the ids would then be indexed under the
+		// dynamic mapping and an exact filter on them may miss, which is logged here.
+		logger.Warnf("Failed to add the correlation id mapping to index %s: %v", indexName, err)
+		return nil
+	}
+	s.mappingsCurrent.Store(indexName, struct{}{})
+	return nil
 }
 
 // createIndexIfMissing creates the index if it doesn't exist.

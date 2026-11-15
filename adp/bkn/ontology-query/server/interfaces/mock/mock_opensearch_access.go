@@ -184,6 +184,20 @@ func (mr *MockOpenSearchAccessMockRecorder) InsertData(ctx, indexName, docID, da
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertData", reflect.TypeOf((*MockOpenSearchAccess)(nil).InsertData), ctx, indexName, docID, data)
 }
 
+// PutMapping mocks base method.
+func (m *MockOpenSearchAccess) PutMapping(ctx context.Context, indexName string, body any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PutMapping", ctx, indexName, body)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PutMapping indicates an expected call of PutMapping.
+func (mr *MockOpenSearchAccessMockRecorder) PutMapping(ctx, indexName, body any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutMapping", reflect.TypeOf((*MockOpenSearchAccess)(nil).PutMapping), ctx, indexName, body)
+}
+
 // SearchData mocks base method.
 func (m *MockOpenSearchAccess) SearchData(ctx context.Context, indexName string, query any) ([]interfaces.Hit, error) {
 	m.ctrl.T.Helper()

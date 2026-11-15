@@ -315,6 +315,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
 		InstanceIdentityHash:    instanceHash,
+		// Correlation labels only; a scheduled execution has none (the handler clears them).
+		ConversationID: req.ConversationID,
+		InteractionID:  req.InteractionID,
 	}
 
 	// Save initial execution record (metadata only)

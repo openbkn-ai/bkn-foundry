@@ -2533,6 +2533,16 @@ paths:
               - scheduled
             type: string
           in: query
+        - name: conversation_id
+          description: 按所属 Conversation 精确匹配（可选），可与其他过滤条件组合；此前的执行记录没有该字段，不会命中
+          schema:
+            type: string
+          in: query
+        - name: interaction_id
+          description: 按所属 Interaction（一次 Agent 运行）精确匹配（可选），可与其他过滤条件组合；用于找出一次运行触发的全部行动
+          schema:
+            type: string
+          in: query
         - name: keyword
           description: |
             按执行 ID 过滤（可选）：不区分大小写的字面子串匹配，`*`、`?`、`\` 按普通字符处理。
@@ -4766,6 +4776,21 @@ components:
           description: 与行动类 input 参数名对应的取值（支持点分路径）。有 input 参数时必填且不能为 null。
           type: object
           additionalProperties: true
+        bkn_context:
+          description: |
+            可选。调用方声明本次执行所属的 Conversation / Interaction（BKN Trace），与 Context Loader 的 `bkn_context` 同形。
+            两个 id 仅是调用方自有的关联标签：服务不创建、不推断、不到 trace core 校验，也不得用于鉴权、防重复或审批。
+            省略时取请求头 `bkn-conversation-id` / `bkn-interaction-id`（Context Loader / MCP 路径无需改动）；
+            body 与请求头同时带值且不一致返回 400；值须为 1-128 位以字母或数字开头、仅含字母数字及 `.` `_` `:` `-` 的字符串，否则返回 400；
+            只传 `interaction_id` 不传 `conversation_id` 返回 400。定时触发（trigger_type=scheduled）的执行两者恒为空。
+          type: object
+          properties:
+            conversation_id:
+              type: string
+              maxLength: 128
+            interaction_id:
+              type: string
+              maxLength: 128
 
     ActionExecutionResponse:
       description: 行动执行响应（异步）
@@ -4899,6 +4924,12 @@ components:
           format: int64
         instance_identity_hash:
           description: 防重复指纹（目标实例集合 + dynamic_params 的稳定摘要）
+          type: string
+        conversation_id:
+          description: 调用方声明的所属 Conversation（仅关联标签，不用于鉴权）；未声明或定时触发时不返回
+          type: string
+        interaction_id:
+          description: 调用方声明的所属 Interaction（一次 Agent 运行，仅关联标签）；未声明或定时触发时不返回
           type: string
         action_type_snapshot:
           description: 执行时的行动类配置快照（与 bkn-backend 返回一致）
