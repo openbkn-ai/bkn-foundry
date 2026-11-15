@@ -131,7 +131,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"agentRetrieval.Detail.SkillIDRequired":                          "skill_id is required.",
 		"agentRetrieval.Detail.SkillRelativePathRequired":                "rel_path is required. Obtain it from the file list returned by get_skill_content.",
 		"agentRetrieval.Detail.SkillEntryPointRequired":                  "entry_point is required. Pass a .py entry file of the skill package (for example scripts/main.py) and its argv as arguments; the entry can come from runtime.entry_points in get_skill_content.",
-		"agentRetrieval.Detail.SkillEntryPointConflict":                  "Send entry_point and arguments, or the deprecated entry_shell, not both.",
+		"agentRetrieval.Detail.SkillEntryPointConflict":                  "The deprecated entry_shell cannot be combined with entry_point or arguments; send entry_point and arguments only.",
 		"agentRetrieval.Detail.SkillNotExecutable":                       "This Skill is not executable: {{.Reason}}. It can be read but not run; do not try to execute it or work around this with curl.",
 		"agentRetrieval.Detail.LogicPropertyInputMissing":                "Generated dynamic parameters are missing required input values.",
 		"agentRetrieval.Detail.ToolboxCatalogRequestFailed":              "Unable to list published toolboxes.",

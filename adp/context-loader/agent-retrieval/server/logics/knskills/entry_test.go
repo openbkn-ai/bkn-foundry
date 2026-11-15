@@ -102,6 +102,15 @@ func TestExecuteSkillRequestForms(t *testing.T) {
 			t.Fatalf("err = %v, request sent = %v", err, fake.gotExecReq != nil)
 		}
 	})
+
+	t.Run("entry_shell with arguments is refused instead of dropping the arguments", func(t *testing.T) {
+		for _, shell := range []string{"python main.py", "bash run.sh"} {
+			fake, err := run(&ExecuteSkillReq{EntryShell: shell, Arguments: []string{"--input", "a.txt"}})
+			if !errors.Is(err, ErrEntryPointConflict) || fake.gotExecReq != nil {
+				t.Fatalf("%q: err = %v, request sent = %v", shell, err, fake.gotExecReq != nil)
+			}
+		}
+	})
 }
 
 func TestGetSkillContentReportsRuntime(t *testing.T) {

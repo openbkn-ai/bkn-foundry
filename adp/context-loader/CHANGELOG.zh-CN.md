@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-- `execute_skill` 改为传 `entry_point`（技能包内的 `.py` 文件，如 `scripts/main.py`）和 `arguments`（脚本的命令行参数，一个元素一个参数），由 execution-factory 用 Python 执行。`entry_shell` 已弃用：`python <脚本> [参数]` 的写法仍被接受并自动转换，其他写法（如 `bash run.sh`）原样转发，由 execution-factory 拒绝并说明原因；`entry_point` 与 `entry_shell` 不能同传。`get_skill_content` 透传 execution-factory 返回的 `runtime`（`runtime`、`executable`、`entry_points`、`reason`）；Skill 不可执行（如包内只有 Shell/Bash 脚本）时，`message` 写明原因，agent 只阅读它，不再尝试执行。需要 execution-factory 已升级到 Python-only 的 Skill 契约（#3209）。(#3213)
+- `execute_skill` 改为传 `entry_point`（技能包内的 `.py` 文件，如 `scripts/main.py`）和 `arguments`（脚本的命令行参数，一个元素一个参数），由 execution-factory 用 Python 执行。`entry_shell` 已弃用：`python <脚本> [参数]` 的写法仍被接受并自动转换，其他写法（如 `bash run.sh`）原样转发，由 execution-factory 拒绝并说明原因；`entry_shell` 自带参数，不能与 `entry_point` 或 `arguments` 同传。`get_skill_content` 透传 execution-factory 返回的 `runtime`（`runtime`、`executable`、`entry_points`、`reason`）；Skill 不可执行（如包内只有 Shell/Bash 脚本）时，`message` 写明原因，agent 只阅读它，不再尝试执行。需要 execution-factory 已升级到 Python-only 的 Skill 契约（#3209）。(#3213)
   - 发布注意：沙箱镜像需要重新构建，并与 Context Loader 配套升级（工具元数据变化会改变 SDK 工具包指纹）。
 
 - 统一 MCP 工具分类的中英文名称；HTTP 扩展透传可选的工具标题、分组名称及排序，完整与精简 MCP 接口均可正确展示。工具调用名称、参数及执行行为保持不变。

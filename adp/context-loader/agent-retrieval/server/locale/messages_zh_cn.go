@@ -130,7 +130,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.Detail.SkillIDRequired":                          "缺少 skill_id 参数。",
 		"agentRetrieval.Detail.SkillRelativePathRequired":                "缺少 rel_path 参数。请从 get_skill_content 返回的文件列表中获取该参数。",
 		"agentRetrieval.Detail.SkillEntryPointRequired":                  "缺少 entry_point 参数。请传入技能包内的 .py 入口文件（如 scripts/main.py），参数用 arguments 传入；入口可取自 get_skill_content 返回的 runtime.entry_points。",
-		"agentRetrieval.Detail.SkillEntryPointConflict":                  "entry_point 与已弃用的 entry_shell 不能同时传入，请只传 entry_point 和 arguments。",
+		"agentRetrieval.Detail.SkillEntryPointConflict":                  "已弃用的 entry_shell 不能与 entry_point 或 arguments 一起传入，请只传 entry_point 和 arguments。",
 		"agentRetrieval.Detail.SkillNotExecutable":                       "该 Skill 不可执行：{{.Reason}}。只能阅读，不要尝试执行它，也不要用 curl 等方式绕过。",
 		"agentRetrieval.Detail.LogicPropertyInputMissing":                "生成的动态参数缺少必需输入项。",
 		"agentRetrieval.Detail.ToolboxCatalogRequestFailed":              "获取已发布工具箱列表失败。",

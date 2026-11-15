@@ -60,8 +60,9 @@ var ErrRelPathRequired = errors.New("rel_path is required")
 // ErrEntryPointRequired identifies a missing entry_point argument.
 var ErrEntryPointRequired = errors.New("entry_point is required")
 
-// ErrEntryPointConflict identifies a call that sends both entry_point and the deprecated entry_shell.
-var ErrEntryPointConflict = errors.New("send entry_point or entry_shell, not both")
+// ErrEntryPointConflict identifies a call that sends the deprecated entry_shell together with
+// entry_point or arguments.
+var ErrEntryPointConflict = errors.New("send entry_point and arguments, or entry_shell alone")
 
 type localizedInputError struct {
 	message string
@@ -99,7 +100,8 @@ func EntryPointRequiredError(ctx context.Context) error {
 	return localizedInputError{message: localizedText, cause: ErrEntryPointRequired}
 }
 
-// EntryPointConflictError returns a localized error for a call that sends both entry forms.
+// EntryPointConflictError returns a localized error for a call that mixes entry_shell with
+// entry_point or arguments.
 func EntryPointConflictError(ctx context.Context) error {
 	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillEntryPointConflict", map[string]any{})
 	if renderErr != nil {
@@ -586,7 +588,9 @@ func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq
 	if entryPoint == "" && entryShell == "" {
 		return nil, EntryPointRequiredError(ctx)
 	}
-	if entryPoint != "" && entryShell != "" {
+	// entry_shell carries its own arguments: mixing it with entry_point or arguments would
+	// silently drop one of them, so refuse the call instead.
+	if entryShell != "" && (entryPoint != "" || len(req.Arguments) > 0) {
 		return nil, EntryPointConflictError(ctx)
 	}
 	execReq := &interfaces.ExecuteSkillRequest{SkillID: skillID, Timeout: req.Timeout}

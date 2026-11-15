@@ -23,7 +23,7 @@
       },
       "entry_shell": {
         "type": "string",
-        "description": "已弃用，请改用 entry_point 和 arguments。只接受 python <脚本> [参数] 的形式，不支持 Shell/Bash 入口。不要与 entry_point 同时传。"
+        "description": "已弃用，请改用 entry_point 和 arguments。只接受 python <脚本> [参数] 的形式，不支持 Shell/Bash 入口。参数写在它自己里面，不要再与 entry_point 或 arguments 同时传。"
       },
       "timeout": {
         "type": "integer",

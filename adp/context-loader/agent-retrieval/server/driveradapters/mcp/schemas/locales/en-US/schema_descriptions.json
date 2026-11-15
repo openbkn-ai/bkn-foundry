@@ -309,7 +309,7 @@
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
     "input_schema.properties.entry_point.description": "Path of the Python script to run, relative to the skill package root, for example scripts/main.py. It has to be a .py file of the package, taken from the entry declared in SKILL.md or from runtime.entry_points of get_skill_content; do not invent paths. Required unless the deprecated entry_shell is sent.",
     "input_schema.properties.arguments.description": "Optional. Command-line arguments of the script, one array element per argument, with no shell quoting. Do not use the characters ; & | or line breaks in an argument.",
-    "input_schema.properties.entry_shell.description": "Deprecated: use entry_point and arguments. Accepts only the form python <script> [args]; Shell and Bash entries are not supported. Do not send it together with entry_point.",
+    "input_schema.properties.entry_shell.description": "Deprecated: use entry_point and arguments. Accepts only the form python <script> [args]; Shell and Bash entries are not supported. It carries its own arguments; do not send it together with entry_point or arguments.",
     "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
     "output_schema.properties.exit_code.description": "Process exit code; 0 means success",
     "output_schema.properties.stdout.description": "Standard output, truncated when long",
