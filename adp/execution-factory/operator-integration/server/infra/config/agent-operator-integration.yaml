@@ -66,6 +66,8 @@ sandbox-control-plane:
     timeout: 3600 # Unit: second.
   max_sessions: 3
   active_sessions: 1
+  # 0 or unset means the default 2. To turn spreading off, set it to a value not less than
+  # max_concurrent_tasks.
   spread_threshold: 2
   sync_poll_deadline: 300
   max_concurrent_tasks: 100

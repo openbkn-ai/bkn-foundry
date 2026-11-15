@@ -179,7 +179,9 @@ depServices:
     maxSessions: 3
     activeSessions: 1
     maxConcurrentTasks: 100
-    spreadThreshold: 2 # Tasks one session takes before the next call goes to another session.
+    # Tasks one session takes before the next call goes to another session. 0 or unset means the
+    # default 2. To turn spreading off, set it to a value not less than maxConcurrentTasks.
+    spreadThreshold: 2
     syncPollDeadline: 300 # Unit second. Control plane polling deadline for sync executions.
   oss-gateway-backend:
     privateHost: "oss-gateway-backend"
