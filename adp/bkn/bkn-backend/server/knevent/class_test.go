@@ -590,9 +590,16 @@ func TestRemoveKeepsAClassThatOtherDefinitionsUse(t *testing.T) {
 
 	_, changed, err := classes.remove(userContext(), stored(lateOrder, class))
 	var refused *httperrors.HTTPError
-	if !errors.As(err, &refused) || refused.HTTPCode != http.StatusConflict || refused.ErrorCode != berrors.BknBackend_KnEvent_EventTypeInUse ||
-		!strings.Contains(refused.BaseError.ErrorDetails.(string), "催办, 升级给") || changed {
+	// Its own code: the type may have no events, so "has events" would mislead.
+	if !errors.As(err, &refused) || refused.HTTPCode != http.StatusConflict || refused.ErrorCode != berrors.BknBackend_KnEvent_EventClassInUse || changed {
 		t.Fatalf("a class in use: %v, %v", changed, err)
+	}
+	details, _ := refused.ErrorDetails.(map[string]any)
+	if details["event_class"] != "order_late" || !reflect.DeepEqual(details["used_by"], []string{"催办", "升级给"}) {
+		t.Fatalf("details of a class in use = %#v", refused.ErrorDetails)
+	}
+	if text := refused.Error(); !strings.Contains(text, "被其他定义引用") {
+		t.Fatalf("a class in use is described as %s", text)
 	}
 	if len(definitions.writes) != 0 {
 		t.Fatalf("removed %v of a class in use", definitions.writes)

@@ -14,6 +14,7 @@ var knEventZhCN = i18n.I18nMessages{
 		"BknBackend.KnEvent.EventNotFound":     "未找到事件。请确认知识网络与事件 ID。",
 		"BknBackend.KnEvent.EventTypeExisted":  "事件类型编码已存在。请在同一知识网络内使用唯一的编码。",
 		"BknBackend.KnEvent.EventTypeInUse":    "该事件类型已有事件，不能删除。",
+		"BknBackend.KnEvent.EventClassInUse":   "该事件类型的事件类正被其他定义引用，不能删除。请先移除错误详情中列出的引用。",
 		"BknBackend.KnEvent.SourceMismatch":    "事件类型的来源不支持此操作：登记只用于用户登记的类型，规则检查只用于规则类型。",
 		"BknBackend.KnEvent.ActionNotAllowed":  "事件当前状态不允许此操作。请刷新后按可用操作重试。",
 		"BknBackend.KnEvent.TooLarge":          "请求内容过大。请缩小规则、详情或命中对象的数量后重试。",

@@ -14,6 +14,7 @@ var knEventEnUS = i18n.I18nMessages{
 		"BknBackend.KnEvent.EventNotFound":     "Event not found. Verify the knowledge network and the event ID.",
 		"BknBackend.KnEvent.EventTypeExisted":  "The event type code already exists. Use a code that is unique within the knowledge network.",
 		"BknBackend.KnEvent.EventTypeInUse":    "The event type has events and cannot be deleted.",
+		"BknBackend.KnEvent.EventClassInUse":   "The event type's event class is used by other definitions and cannot be deleted. Remove the uses listed in the error details first.",
 		"BknBackend.KnEvent.SourceMismatch":    "The event type's source does not support this operation: reports are for reported types and rule checks are for rule types.",
 		"BknBackend.KnEvent.ActionNotAllowed":  "The event's current status does not allow this action. Refresh and retry with an available action.",
 		"BknBackend.KnEvent.TooLarge":          "The request is too large. Reduce the rule, the detail or the number of hits and retry.",

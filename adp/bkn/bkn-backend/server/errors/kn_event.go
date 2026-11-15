@@ -10,6 +10,7 @@ const (
 	BknBackend_KnEvent_EventNotFound     = "BknBackend.KnEvent.EventNotFound"
 	BknBackend_KnEvent_EventTypeExisted  = "BknBackend.KnEvent.EventTypeExisted"
 	BknBackend_KnEvent_EventTypeInUse    = "BknBackend.KnEvent.EventTypeInUse"
+	BknBackend_KnEvent_EventClassInUse   = "BknBackend.KnEvent.EventClassInUse"
 	BknBackend_KnEvent_SourceMismatch    = "BknBackend.KnEvent.SourceMismatch"
 	BknBackend_KnEvent_ActionNotAllowed  = "BknBackend.KnEvent.ActionNotAllowed"
 	BknBackend_KnEvent_TooLarge          = "BknBackend.KnEvent.TooLarge"
@@ -22,6 +23,7 @@ var KnEventErrCodeList = []string{
 	BknBackend_KnEvent_EventNotFound,
 	BknBackend_KnEvent_EventTypeExisted,
 	BknBackend_KnEvent_EventTypeInUse,
+	BknBackend_KnEvent_EventClassInUse,
 	BknBackend_KnEvent_SourceMismatch,
 	BknBackend_KnEvent_ActionNotAllowed,
 	BknBackend_KnEvent_TooLarge,
