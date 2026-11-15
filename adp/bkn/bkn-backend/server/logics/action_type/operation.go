@@ -17,6 +17,9 @@ import (
 )
 
 func (ats *actionTypeService) checkOperation(ctx context.Context, tx *sql.Tx, at *interfaces.ActionType, batch *interfaces.BatchIDIndex, strict bool) error {
+	if err := interfaces.NormalizeActionStringConstants(at); err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
+	}
 	if err := interfaces.ValidateActionOperation(at); err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
 	}

@@ -843,7 +843,7 @@ func (s *actionSchedulerService) buildExecutionParams(actionType *interfaces.Act
 				return nil, fmt.Errorf("missing property %q for parameter %q", propName, param.Name)
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-			value = param.Value
+			value = logics.NormalizeActionConstant(param.Type, param.Value)
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
 			value = logics.ActionDynamicParamGetValue(dynamicParams, param.Name)
 			if value == nil {

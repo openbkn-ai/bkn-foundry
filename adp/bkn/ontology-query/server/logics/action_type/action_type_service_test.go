@@ -8,6 +8,7 @@ package action_type
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -19,6 +20,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
+
+func TestActionPreviewNormalizesStoredStringConstant(t *testing.T) {
+	action := &interfaces.ActionType{Parameters: []interfaces.Parameter{{
+		Name: "code", Type: "string", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: json.Number("123"),
+	}}}
+	preview, err := buildActionFromInstanceData(nil, action, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Parameters["code"] != "123" {
+		t.Fatalf("preview code = %v, want string 123", preview.Parameters["code"])
+	}
+}
 
 func Test_NewActionTypeService(t *testing.T) {
 	Convey("Test NewActionTypeService", t, func() {
