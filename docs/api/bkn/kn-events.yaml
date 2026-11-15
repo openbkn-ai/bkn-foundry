@@ -27,7 +27,7 @@ info:
     | Operations | Permission on the knowledge network |
     | --- | --- |
     | List and get event types | `view_detail` |
-    | Create, update and delete event types | `modify` |
+    | Create, update and delete event types, check a rule now | `modify` |
     | List and get events, report an event, verify / reject / close / reopen an event, list and record rule checks | `query_data` |
 
     A caller without the permission gets 403. The change feed carries no identity and checks no
@@ -69,6 +69,51 @@ info:
       are kept.
     - Names of the reporter, verifier and actors are resolved from the user directory when the change
       is written; if the directory is unavailable the name is left empty.
+
+    ## Rule checks by the platform
+
+    A rule type is checked either by applications, which evaluate the rule themselves and post the
+    result to `POST /rule-checks`, or by the platform, when the type has a `rule_tool` and a
+    `check_schedule`. Without a `rule_tool`, `rule` is kept as given and not interpreted.
+
+    - The rule tool is an execution-factory function of the same network: a Cypher function whose
+      result shape is `table`. Each row it returns is an object the rule finds now. Column `key` is
+      required: the object's key, a string or a number, written as a string; a row whose `key` is
+      null or empty is skipped, and a key found again keeps its first row. Column `name` is the
+      object's name, used in the event title (the key when absent). Every other column is written
+      to the event's `object_attributes` under the column name, its value as text in both `key` and
+      `label`.
+    - `rule_tool.parameters` are the arguments, by the tool's parameter names. Each value is a fixed
+      JSON value of the parameter's type, or `{"check_time": "date"}`, which each check replaces with
+      the day of the check in the schedule's time zone, such as `"2026-11-15"`: write a condition
+      relative to today as `date($today)`.
+    - `check_schedule` is a five-field cron expression and an IANA time zone (default
+      `Asia/Shanghai`). Two checks are at least 5 minutes apart. A check time that passed while no
+      check could run is not made up for: after each check the next time is taken from the schedule.
+    - Each check runs as `check_subject`, the person who last saved `rule_tool` or
+      `check_schedule`, with that person's permissions on the tool and on the data, not as a service
+      account or an administrator. A check of the rule that someone asks for runs as the subject too.
+    - On save, when `rule_tool` or `check_schedule` changed, the tool is read and tried once as the
+      caller, who becomes the subject: the tool must exist and be enabled, its tool box published, it
+      must be a Cypher function of this network returning a table, the parameters must match its
+      inputs, and the trial must return a `key` column. The response carries the trial's result in
+      `trial`; nothing is recorded. A save that changes only other fields does not try the tool and
+      keeps the subject.
+    - The platform computes `rule_version` from the tool, the time the tool was last changed and the
+      parameters; a `rule_version` in the request is ignored while the type has a `rule_tool`. When it
+      changes, open events the rule no longer finds recover with `recovered-after-update`.
+    - A result that was truncated (`limited`) covers only the keys it returned: the other open events
+      are left as they are, and the check's message says so.
+    - A check that cannot decide is recorded with `status: unknown` and a message, and changes no
+      event's state: the subject lost the permission, the tool is unavailable or no longer a Cypher
+      table function, the tool failed, or the result has no `key` column. It is tried again after 1,
+      2, 4, then 8 minutes, never later than the next check time; `check_failures` counts such checks
+      in a row and goes back to 0 with the first check that decides.
+    - Checks read the network without a branch: in a versioned network, the published version that
+      is running. A network that was never published has no object types to read, so its checks
+      cannot decide.
+    - Two checks of one type never overlap. Removing `rule_tool` stops the platform's checks; open
+      events stay as they are until the next check, from an application.
 
     Event type codes match `^[a-z0-9][a-z0-9_.-]{0,63}$`. Resource IDs of knowledge networks use
     lowercase letters, digits, underscores and hyphens, start with a letter or digit, and contain at
@@ -125,6 +170,16 @@ paths:
         409 `BknBackend.KnEvent.EventTypeExisted` is returned when the code is taken, when the class
         ID derived from the code is the class of another event type, or when the network already has
         an object type with that ID or with the same name as the event type.
+
+        A rule type given a `rule_tool` and a `check_schedule` is checked by the platform (see "Rule
+        checks by the platform"). The tool is tried as the caller before anything is created: 400
+        `BknBackend.KnEvent.RuleToolUnavailable` for a tool that does not exist, is disabled or whose
+        box is not published; 400 `BknBackend.KnEvent.RuleToolNotCypherTable` for one that is not a
+        Cypher function of this network returning a table; 400
+        `BknBackend.KnEvent.InvalidParameter` for parameters that do not match its inputs, a schedule
+        that cannot be read or checks more often than every 5 minutes, a result without a `key`
+        column, or a statement that failed (error details `{"status", "error"}`, the tool's own);
+        403 `Public.Forbidden` when the caller may not use the tool or read its data.
       operationId: createKnEventType
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -186,7 +241,10 @@ paths:
       summary: Replace an event type
       description: |-
         Replaces the changeable fields of an event type (`name`, `subject`, `severity`, `merge_hours`,
-        `rule`, `rule_version`); omitted fields take their zero values, they are not kept. Requires
+        `rule`, `rule_version`, `rule_tool`, `check_schedule`); omitted fields take their zero values,
+        they are not kept: leaving out `rule_tool` stops the platform's checks. When `rule_tool` or
+        `check_schedule` changes, the tool is tried as the caller as on creation, and the caller
+        becomes the check subject; otherwise the subject is kept. Requires
         `modify`. `code` and `source` cannot change: the body may omit them or repeat the current values,
         anything else is 400. Existing events keep the severity, type name and other values they were
         written with.
@@ -247,6 +305,44 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types/{code}/check:
+    post:
+      tags:
+        - KnEventRuleCheck
+      summary: Check a rule now
+      description: |-
+        Checks a rule type that has a `rule_tool` at once, as the scheduled checks do: as the type's
+        `check_subject`, not as the caller, so that the result is the one a scheduled check would
+        record. Requires `modify`. Takes no body. The next scheduled check time does not change.
+
+        400 `BknBackend.KnEvent.InvalidParameter` for a type without a `rule_tool`; 409
+        `BknBackend.KnEvent.SourceMismatch` for a `report` type; 409 `BknBackend.KnEvent.RuleChecking`
+        while a check of the type is running, or when the rule tool or schedule was saved again during
+        the check, whose result is then not recorded. A check that cannot decide is not an error: it
+        is recorded with `status: unknown` and returned.
+      operationId: checkKnEventType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/EventTypeCode"
+      responses:
+        "200":
+          description: The events the check created or changed (current state, without history) and the check recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventRuleCheckResult"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -487,7 +583,9 @@ paths:
       description: |-
         Records one run of a rule event type and applies it to the type's events. Requires `query_data`.
         404 `BknBackend.KnEvent.EventTypeNotFound` for an unknown type; 409
-        `BknBackend.KnEvent.SourceMismatch` if the type is a `report` type.
+        `BknBackend.KnEvent.SourceMismatch` if the type is a `report` type; 409
+        `BknBackend.KnEvent.CheckedByPlatform` if the type has a `rule_tool`, so that an application
+        and the platform do not both check one rule.
 
         - `status: unknown` means the rule could not decide. No event changes state; the open events of
           the type only get `last_checked_at` and `check_status: unknown` refreshed. The stored check
@@ -624,7 +722,10 @@ components:
         type: string
   responses:
     InvalidParameter:
-      description: BknBackend.KnEvent.InvalidParameter. A field or parameter is invalid; error_details names it.
+      description: |-
+        BknBackend.KnEvent.InvalidParameter: a field or parameter is invalid, and error_details names
+        it. Saving a rule tool can also give BknBackend.KnEvent.RuleToolUnavailable or
+        BknBackend.KnEvent.RuleToolNotCypherTable.
       content:
         application/json:
           schema:
@@ -636,7 +737,7 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Forbidden:
-      description: The caller lacks the knowledge-network permission the operation needs
+      description: The caller lacks the knowledge-network permission the operation needs, or, when a rule tool is saved, may not use the tool or read the data it reads
       content:
         application/json:
           schema:
@@ -653,8 +754,9 @@ components:
       description: |-
         One of BknBackend.KnEvent.EventTypeExisted, BknBackend.KnEvent.EventTypeInUse,
         BknBackend.KnEvent.EventClassInUse (error_details: `{"event_class", "used_by"}`),
-        BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`) or
-        BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`).
+        BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`),
+        BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`),
+        BknBackend.KnEvent.CheckedByPlatform or BknBackend.KnEvent.RuleChecking.
       content:
         application/json:
           schema:
@@ -714,7 +816,11 @@ components:
         rule_version:
           type: string
           maxLength: 64
-          description: Version label of the rule.
+          description: Version label of the rule. Ignored for a type with a `rule_tool`, whose version the platform computes.
+        rule_tool:
+          $ref: "#/components/schemas/KnEventRuleTool"
+        check_schedule:
+          $ref: "#/components/schemas/KnEventCheckSchedule"
     KnEventTypeUpdate:
       type: object
       required:
@@ -747,6 +853,10 @@ components:
         rule_version:
           type: string
           maxLength: 64
+        rule_tool:
+          $ref: "#/components/schemas/KnEventRuleTool"
+        check_schedule:
+          $ref: "#/components/schemas/KnEventCheckSchedule"
     KnEventType:
       type: object
       properties:
@@ -773,6 +883,21 @@ components:
           additionalProperties: true
         rule_version:
           type: string
+        rule_tool:
+          $ref: "#/components/schemas/KnEventRuleTool"
+        check_schedule:
+          $ref: "#/components/schemas/KnEventCheckSchedule"
+        check_subject:
+          $ref: "#/components/schemas/KnEventCheckSubject"
+        next_check_at:
+          type: integer
+          format: int64
+          description: When the platform checks the rule next. 0 for a type without a `rule_tool`. Read-only.
+        check_failures:
+          type: integer
+          description: The platform's checks in a row that could not decide. Read-only.
+        trial:
+          $ref: "#/components/schemas/KnEventRuleTrial"
         object_type_id:
           type: string
           description: ID of the event class, the object type the type's events are read as. Empty for a type whose class has not been created yet.
@@ -793,6 +918,73 @@ components:
         update_time:
           type: integer
           format: int64
+    KnEventRuleTool:
+      type: object
+      nullable: true
+      required:
+        - box_id
+        - tool_id
+      description: The rule tool the platform checks a rule type with. Null for a type checked by applications. Needs `check_schedule`.
+      properties:
+        box_id:
+          type: string
+          description: Tool box of the tool.
+        tool_id:
+          type: string
+          description: A Cypher function of this network whose result shape is `table`.
+        parameters:
+          type: object
+          description: |-
+            Arguments by the tool's parameter names. A fixed value of the parameter's type, or
+            `{"check_time": "date"}` for the day of the check in the schedule's time zone (a string
+            parameter).
+          additionalProperties: true
+      example:
+        box_id: orders_rules
+        tool_id: overdue_orders
+        parameters:
+          today:
+            check_time: date
+          days: 3
+    KnEventCheckSchedule:
+      type: object
+      nullable: true
+      required:
+        - cron
+      description: When the platform checks the rule. Needs `rule_tool`.
+      properties:
+        cron:
+          type: string
+          maxLength: 128
+          description: Five-field cron expression (minute, hour, day of month, month, day of week). Two checks are at least 5 minutes apart.
+          example: "0 9 * * *"
+        timezone:
+          type: string
+          maxLength: 64
+          default: Asia/Shanghai
+          description: IANA time zone of the cron expression and of the check date.
+    KnEventCheckSubject:
+      type: object
+      nullable: true
+      description: Read-only. The account the platform's checks run as, the person who last saved `rule_tool` or `check_schedule`. Null without a `rule_tool`.
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+          description: Resolved from the user directory when read; empty if it is unavailable.
+    KnEventRuleTrial:
+      type: object
+      description: Only in the response of a save that tried the rule tool. Nothing was recorded.
+      properties:
+        hits:
+          type: integer
+          description: Objects the trial found.
+        limited:
+          type: boolean
+          description: Whether the result was truncated.
     KnEventTypeList:
       type: object
       properties:

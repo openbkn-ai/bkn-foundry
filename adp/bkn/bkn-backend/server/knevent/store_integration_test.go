@@ -10,7 +10,7 @@ package knevent
 // scripts of the event tables, in the order they are applied:
 //
 //	M=<bkn-foundry>/migrations/bkn-backend/mariadb/0.2.2
-//	KN_EVENT_TEST_MIGRATION=$M/01-kn-events.sql:$M/03-kn-event-class.sql \
+//	KN_EVENT_TEST_MIGRATION=$M/01-kn-events.sql:$M/03-kn-event-class.sql:$M/05-kn-event-rule-checks.sql \
 //	KN_EVENT_TEST_DB=127.0.0.1:13306 I18N_MODE_UT=true \
 //	go test -tags integration ./knevent/
 //

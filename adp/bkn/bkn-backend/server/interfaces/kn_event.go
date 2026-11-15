@@ -96,19 +96,68 @@ type KnEventType struct {
 	// for a type whose class has not been created yet.
 	ObjectTypeID string `json:"object_type_id"`
 	DatasetID    string `json:"dataset_id"`
+
+	// A rule type with a rule tool is checked by the platform on its
+	// schedule, as its check subject: the person who last set the tool or the
+	// schedule. Its rule version is then computed by the platform. Without a
+	// rule tool, applications check the rule and post the result.
+	RuleTool      *KnEventRuleTool      `json:"rule_tool"`
+	CheckSchedule *KnEventCheckSchedule `json:"check_schedule"`
+	CheckSubject  *KnEventCheckSubject  `json:"check_subject"`
+	// NextCheckAt is when the platform checks the rule next, 0 without a rule tool.
+	NextCheckAt int64 `json:"next_check_at"`
+	// CheckFailures counts the platform's checks in a row that could not decide.
+	CheckFailures int `json:"check_failures"`
+	// Trial is the run of the rule tool when the tool or the schedule was
+	// saved; only the response of that save has it.
+	Trial *KnEventRuleTrial `json:"trial,omitempty"`
+}
+
+// KnEventRuleTool is the tool the platform calls to check a rule: a Cypher
+// function of the network with the table result shape. Each row it returns is
+// an object the rule finds: column key is the object's key, name its name, and
+// every other column an event attribute. A parameter is a fixed value or
+// {"check_time": "date"}, the check's date in the schedule's time zone.
+type KnEventRuleTool struct {
+	BoxID      string                     `json:"box_id"`
+	ToolID     string                     `json:"tool_id"`
+	Parameters map[string]json.RawMessage `json:"parameters"`
+}
+
+// KnEventCheckSchedule is when the platform checks a rule: a five-field cron
+// expression in an IANA time zone, Asia/Shanghai when none is given.
+type KnEventCheckSchedule struct {
+	Cron     string `json:"cron"`
+	Timezone string `json:"timezone"`
+}
+
+// KnEventCheckSubject is the account a platform check runs as.
+type KnEventCheckSubject struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// KnEventRuleTrial is what the rule tool found when it was tried on save.
+type KnEventRuleTrial struct {
+	Hits    int  `json:"hits"`
+	Limited bool `json:"limited"`
 }
 
 // KnEventTypeInput creates or replaces an event type. Code and source are
-// fixed once the type exists.
+// fixed once the type exists. Leaving out the rule tool of a type that has
+// one stops the platform's checks.
 type KnEventTypeInput struct {
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Source      string          `json:"source"`
-	Subject     string          `json:"subject"`
-	Severity    string          `json:"severity"`
-	MergeHours  float64         `json:"merge_hours"`
-	Rule        json.RawMessage `json:"rule"`
-	RuleVersion string          `json:"rule_version"`
+	Code          string                `json:"code"`
+	Name          string                `json:"name"`
+	Source        string                `json:"source"`
+	Subject       string                `json:"subject"`
+	Severity      string                `json:"severity"`
+	MergeHours    float64               `json:"merge_hours"`
+	Rule          json.RawMessage       `json:"rule"`
+	RuleVersion   string                `json:"rule_version"`
+	RuleTool      *KnEventRuleTool      `json:"rule_tool"`
+	CheckSchedule *KnEventCheckSchedule `json:"check_schedule"`
 }
 
 // KnEventAttribute is a value of the event object's property, supplied by the
@@ -276,6 +325,8 @@ type KnEventServiceV1 interface {
 	ChangeEvent(ctx context.Context, knID, eventID, action string, input KnEventReasonInput) (KnEventsResult, error)
 	RecordRuleCheck(ctx context.Context, knID string, input KnEventRuleCheckInput) (KnEventRuleCheckResult, error)
 	ListRuleChecks(ctx context.Context, knID string) ([]KnEventRuleCheck, error)
+	// CheckEventType checks a rule type with a rule tool now, as its check subject.
+	CheckEventType(ctx context.Context, knID, code string) (KnEventRuleCheckResult, error)
 
 	ListChanges(ctx context.Context, knID string, after int64, limit int) (KnEventChangeList, error)
 }

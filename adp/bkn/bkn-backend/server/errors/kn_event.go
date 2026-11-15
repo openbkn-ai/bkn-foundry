@@ -15,6 +15,11 @@ const (
 	BknBackend_KnEvent_ActionNotAllowed  = "BknBackend.KnEvent.ActionNotAllowed"
 	BknBackend_KnEvent_TooLarge          = "BknBackend.KnEvent.TooLarge"
 	BknBackend_KnEvent_InternalError     = "BknBackend.KnEvent.InternalError"
+
+	BknBackend_KnEvent_RuleToolUnavailable    = "BknBackend.KnEvent.RuleToolUnavailable"
+	BknBackend_KnEvent_RuleToolNotCypherTable = "BknBackend.KnEvent.RuleToolNotCypherTable"
+	BknBackend_KnEvent_RuleChecking           = "BknBackend.KnEvent.RuleChecking"
+	BknBackend_KnEvent_CheckedByPlatform      = "BknBackend.KnEvent.CheckedByPlatform"
 )
 
 var KnEventErrCodeList = []string{
@@ -28,4 +33,8 @@ var KnEventErrCodeList = []string{
 	BknBackend_KnEvent_ActionNotAllowed,
 	BknBackend_KnEvent_TooLarge,
 	BknBackend_KnEvent_InternalError,
+	BknBackend_KnEvent_RuleToolUnavailable,
+	BknBackend_KnEvent_RuleToolNotCypherTable,
+	BknBackend_KnEvent_RuleChecking,
+	BknBackend_KnEvent_CheckedByPlatform,
 }
