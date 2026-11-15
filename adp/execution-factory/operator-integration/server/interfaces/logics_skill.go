@@ -136,6 +136,8 @@ type GetSkillContentResp struct {
 	URL     string              `json:"url"`
 	Files   []*SkillFileSummary `json:"files"`
 	Status  BizStatus           `json:"status"`
+	// Runtime tells callers, an Agent among them, whether the Skill can be executed.
+	Runtime *SkillRuntime `json:"runtime,omitempty"`
 }
 
 // ReadSkillFileReq Read Skill file request.
@@ -253,11 +255,29 @@ type PublishSkillHistoryResp struct {
 }
 
 // ExecuteSkillReq executes Skill request.
+//
+// Skills execute as Python scripts only. EntryPoint names a .py file of the Skill package and
+// Arguments is its argv; neither is parsed by a shell. EntryShell is the deprecated spelling,
+// accepted only as "python <script> [args...]".
 type ExecuteSkillReq struct {
-	UserID     string `header:"user_id"`
-	SkillID    string `uri:"skill_id" validate:"required"`
-	EntryShell string `json:"entry_shell" validate:"required"`
-	Timeout    int    `json:"timeout,omitempty"`
+	UserID     string   `header:"user_id"`
+	SkillID    string   `uri:"skill_id" validate:"required"`
+	EntryPoint string   `json:"entry_point,omitempty"`
+	Arguments  []string `json:"arguments,omitempty"`
+	EntryShell string   `json:"entry_shell,omitempty"`
+	Timeout    int      `json:"timeout,omitempty"`
+}
+
+// SkillRuntime says what the platform can run for a Skill package.
+type SkillRuntime struct {
+	// Runtime is the one runtime Skills execute with: "python".
+	Runtime string `json:"runtime"`
+	// Executable is false for a package with no Python script.
+	Executable bool `json:"executable"`
+	// EntryPoints are the .py files of the package, usable as entry_point.
+	EntryPoints []string `json:"entry_points,omitempty"`
+	// Reason says why the package is not executable and how to migrate it.
+	Reason string `json:"reason,omitempty"`
 }
 
 // ExecuteSkillResp Execute Skill response.
@@ -434,6 +454,7 @@ type GetManagementContentResp struct {
 	URL         string              `json:"url"`
 	Content     string              `json:"content,omitempty"`
 	Files       []*SkillFileSummary `json:"files"`
+	Runtime     *SkillRuntime       `json:"runtime,omitempty"`
 }
 
 // ReadManagementFileReq management file read request.

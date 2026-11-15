@@ -751,7 +751,16 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 		return nil, err
 	}
 
-	skill, fileName, archive, err := r.buildSkillArchive(ctx, req.SkillID)
+	skillDB, files, err := r.selectSkillSnapshot(ctx, req.SkillID)
+	if err != nil {
+		return nil, err
+	}
+	// Refuse anything that is not a Python script of the package before a session is spent on it.
+	entry, args, err := resolveSkillEntry(ctx, req, manifestPaths(files))
+	if err != nil {
+		return nil, err
+	}
+	skill, fileName, archive, err := r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
 	if err != nil {
 		return nil, err
 	}
@@ -774,7 +783,7 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	}
 	execResp, err := r.sandboxClient.ExecuteShell(ctx, sessionID, &interfaces.ExecuteShellReq{
 		WorkDir: uploadResp.WorkDir,
-		Command: req.EntryShell,
+		Command: pythonCommand(entry, args),
 		Timeout: req.Timeout,
 	})
 	if err != nil {
@@ -797,18 +806,27 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 }
 
 func (r *skillRegistry) buildSkillArchive(ctx context.Context, skillID string) (*model.SkillRepositoryDB, string, []byte, error) {
-	skillDB, err := r.skillRepo.SelectSkillByID(ctx, nil, skillID)
-	if err != nil {
-		return nil, "", nil, err
-	}
-	if skillDB == nil {
-		return nil, "", nil, fmt.Errorf("skill not found: %s", skillID)
-	}
-	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, nil, skillID, skillDB.Version)
+	skillDB, files, err := r.selectSkillSnapshot(ctx, skillID)
 	if err != nil {
 		return nil, "", nil, err
 	}
 	return r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
+}
+
+// selectSkillSnapshot loads a Skill and the files of its current version.
+func (r *skillRegistry) selectSkillSnapshot(ctx context.Context, skillID string) (*model.SkillRepositoryDB, []*model.SkillFileIndexDB, error) {
+	skillDB, err := r.skillRepo.SelectSkillByID(ctx, nil, skillID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if skillDB == nil {
+		return nil, nil, fmt.Errorf("skill not found: %s", skillID)
+	}
+	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, nil, skillID, skillDB.Version)
+	if err != nil {
+		return nil, nil, err
+	}
+	return skillDB, files, nil
 }
 
 func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill *model.SkillRepositoryDB,

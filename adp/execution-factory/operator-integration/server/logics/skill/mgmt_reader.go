@@ -96,6 +96,7 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 	if resp.Files == nil {
 		resp.Files = []*interfaces.SkillFileSummary{}
 	}
+	resp.Runtime = skillRuntimeOf(resp.Files)
 
 	// Query the OSS records of SKILL.md for subsequent use.
 	skillFile, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, skill.SkillID, skill.Version, SkillMD)

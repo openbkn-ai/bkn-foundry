@@ -139,11 +139,13 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 		return nil, err
 	}
 	// TODO: Audit log to be accessed.
+	files := utils.JSONToObject[[]*interfaces.SkillFileSummary](skill.FileManifest)
 	return &interfaces.GetSkillContentResp{
 		SkillID: skill.SkillID,
 		URL:     downloadURL,
-		Files:   utils.JSONToObject[[]*interfaces.SkillFileSummary](skill.FileManifest),
+		Files:   files,
 		Status:  interfaces.BizStatus(skill.Status),
+		Runtime: skillRuntimeOf(files),
 	}, nil
 }
 

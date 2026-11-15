@@ -459,13 +459,14 @@ func TestSkillHandler(t *testing.T) {
 			mockRegistry.EXPECT().ExecuteSkill(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.ExecuteSkillReq) (*interfaces.ExecuteSkillResp, error) {
 					So(req.SkillID, ShouldEqual, "skill-5")
-					So(req.EntryShell, ShouldEqual, "bash run.sh")
+					So(req.EntryPoint, ShouldEqual, "scripts/run.py")
+					So(req.Arguments, ShouldResemble, []string{"--once"})
 					return &interfaces.ExecuteSkillResp{
 						SkillID:      "skill-5",
 						SessionID:    "sess-1",
 						WorkDir:      "/workspace/skills/sess-1/demo-skill",
 						UploadedPath: "/workspace/skills/skill-5/demo.zip",
-						Command:      "bash run.sh",
+						Command:      "python3 'scripts/run.py' '--once'",
 						ExitCode:     0,
 						Mocked:       true,
 					}, nil
@@ -473,7 +474,7 @@ func TestSkillHandler(t *testing.T) {
 			)
 
 			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/execute", "application/json",
-				`{"entry_shell":"bash run.sh"}`,
+				`{"entry_point":"scripts/run.py","arguments":["--once"]}`,
 				map[string]string{
 					"user_id": "user-1",
 				}, handler.ExecuteSkill, "skill-5")

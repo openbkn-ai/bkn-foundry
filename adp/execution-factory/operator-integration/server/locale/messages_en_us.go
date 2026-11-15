@@ -98,6 +98,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"AgentOperatorIntegration.BadRequest.SandboxControlPlaneFailed":                  "Sandbox control plane service failed, please check the error details Contact administrator",
 		"AgentOperatorIntegration.BadRequest.SandboxRuntimeExecuteCodeFailed":            "Sandbox runtime execute code failed, please check if the code is correct",
 		"AgentOperatorIntegration.BadRequest.SkillCategoryNotFound":                      "Agent Skill category not found Contact administrator",
+		"AgentOperatorIntegration.BadRequest.SkillEntryInvalid":                          "Agent Skill execution supports Python scripts only: {{.Arg1}}",
 		"AgentOperatorIntegration.BadRequest.SkillNameDuplicate":                         "Agent Skill “{{.Arg1}}” already exists, please use another name Contact administrator",
 		"AgentOperatorIntegration.BadRequest.SkillStatusInvalid":                         "Agent Skill status is invalid, please check if the status is correct Contact administrator",
 		"AgentOperatorIntegration.BadRequest.SkillUnSupportDelete":                       "Agent Skill not support delete, please contact administrator Contact administrator",
