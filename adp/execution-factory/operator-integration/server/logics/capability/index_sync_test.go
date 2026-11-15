@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -488,4 +489,107 @@ func TestDeleteReportsWhenItDidNotHappen(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+}
+
+func newNoModelInit(t *testing.T) (*capabilityIndexSync, *mocks.MockVegaBackendClient, *mocks.MockMFModelManager) {
+	ctrl := gomock.NewController(t)
+	vega := mocks.NewMockVegaBackendClient(ctrl)
+	modelManager := mocks.NewMockMFModelManager(ctrl)
+	vega.EXPECT().GetCatalogByID(gomock.Any(), gomock.Any()).
+		Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Enabled: true}, nil).AnyTimes()
+	modelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("no default embedding model")).AnyTimes()
+	modelManager.EXPECT().GetEmbeddingModel(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("embedding model not found")).AnyTimes()
+	s := &capabilityIndexSync{vegaClient: vega, modelManager: modelManager, logger: logger.DefaultLogger()}
+	return s, vega, modelManager
+}
+
+func TestInitCreatesIndexWithDefaultDimensionWhenNoEmbeddingModelIsRegistered(t *testing.T) {
+	s, vega, _ := newNoModelInit(t)
+	vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(nil, nil)
+	var created *interfaces.VegaResourceRequest
+	vega.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
+			created = req
+			return &interfaces.VegaResource{ID: req.ID}, nil
+		})
+
+	if err := s.Init(context.Background()); err != nil {
+		t.Fatalf("Init must not block on a missing embedding model: %v", err)
+	}
+	if created == nil {
+		t.Fatal("dataset was not created")
+	}
+	if created.IndexConfig != nil {
+		t.Fatalf("default_embedding_model must be left empty, got %+v", created.IndexConfig)
+	}
+	payload, _ := json.Marshal(created)
+	if strings.Contains(string(payload), "index_config") {
+		t.Fatalf("index_config must be omitted: %s", payload)
+	}
+	if want := buildCapabilityIndexSchema(defaultEmbeddingDim, defaultFulltextAnalyzer); !sameSchema(want, created.SchemaDefinition) {
+		t.Fatal("schema must use the default vector dimension")
+	}
+	if !s.isInitialized() {
+		t.Fatal("service must be ready to accept writes")
+	}
+}
+
+func TestInitKeepsPlaceholderDatasetUntilAModelIsRegistered(t *testing.T) {
+	s, vega, _ := newNoModelInit(t)
+	vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(&interfaces.VegaResource{
+		ID:               capabilityDataset,
+		LocalIndexName:   "vega-dataset-01",
+		LocalIndexStatus: interfaces.VegaLocalIndexAvailable,
+		SchemaDefinition: buildCapabilityIndexSchema(defaultEmbeddingDim, defaultFulltextAnalyzer),
+	}, nil)
+	// No DeleteResource/CreateResource expected: the placeholder is adopted as it is.
+	if err := s.Init(context.Background()); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+}
+
+func TestInitRebuildsPlaceholderDatasetOnceAModelIsRegistered(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vega := mocks.NewMockVegaBackendClient(ctrl)
+	modelManager := mocks.NewMockMFModelManager(ctrl)
+	vega.EXPECT().GetCatalogByID(gomock.Any(), gomock.Any()).
+		Return(&interfaces.VegaCatalog{ID: executionFactoryCatalogID, Enabled: true}, nil).AnyTimes()
+	modelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), gomock.Any()).Return(
+		&interfaces.EmbeddingModel{ModelID: "m-1", ModelName: "embedding", EmbeddingDim: 1024}, nil)
+	vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(&interfaces.VegaResource{
+		ID:               capabilityDataset,
+		LocalIndexName:   "vega-dataset-01",
+		LocalIndexStatus: interfaces.VegaLocalIndexAvailable,
+		SchemaDefinition: buildCapabilityIndexSchema(defaultEmbeddingDim, defaultFulltextAnalyzer),
+	}, nil)
+	gomock.InOrder(
+		vega.EXPECT().DeleteResource(gomock.Any(), capabilityDataset).Return(nil),
+		vega.EXPECT().CreateResource(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, req *interfaces.VegaResourceRequest) (*interfaces.VegaResource, error) {
+				if req.IndexConfig == nil || req.IndexConfig.DefaultEmbeddingModel != "m-1" {
+					t.Fatalf("rebuild must reference the registered model, got %+v", req.IndexConfig)
+				}
+				return &interfaces.VegaResource{ID: req.ID}, nil
+			}),
+	)
+	s := &capabilityIndexSync{vegaClient: vega, modelManager: modelManager, logger: logger.DefaultLogger()}
+	if err := s.Init(context.Background()); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+}
+
+func TestInitDoesNotRebuildARealDatasetWhenTheModelLookupFails(t *testing.T) {
+	s, vega, _ := newNoModelInit(t)
+	vega.EXPECT().GetResourceByID(gomock.Any(), capabilityDataset).Return(&interfaces.VegaResource{
+		ID:               capabilityDataset,
+		LocalIndexName:   "vega-dataset-01",
+		LocalIndexStatus: interfaces.VegaLocalIndexAvailable,
+		SchemaDefinition: buildCapabilityIndexSchema(1024, defaultFulltextAnalyzer),
+		IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "m-1"},
+	}, nil)
+	if err := s.Init(context.Background()); err == nil {
+		t.Fatal("a transient model lookup failure must not be papered over with a placeholder")
+	}
 }

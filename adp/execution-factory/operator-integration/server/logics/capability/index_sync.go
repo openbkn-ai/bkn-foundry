@@ -141,8 +141,20 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 
 	embeddingModel, err := s.resolveEmbeddingModel(ctx)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", capabilityDataset, err)
-		return err
+		// Same rule as the BKN concept index: no embedding model is not a reason to stay
+		// without an index. A fresh install, or a dataset that is itself still a placeholder,
+		// gets the default dimension and no default_embedding_model, and Init succeeds. Once a
+		// model is registered, rebuildReason sees the model reference differ and rebuilds.
+		//
+		// A dataset built for a real model is left alone: the failure may be a blip, and
+		// rebuilding it to a placeholder would drop a working index.
+		if resource != nil && !isPlaceholderDataset(resource) {
+			s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", capabilityDataset, err)
+			return err
+		}
+		s.logger.WithContext(ctx).Warnf("no usable embedding model, using the default dimension %d without a default embedding model, resource_id=%s, err=%v",
+			defaultEmbeddingDim, capabilityDataset, err)
+		embeddingModel = placeholderEmbeddingModel()
 	}
 
 	if resource != nil {
@@ -211,9 +223,38 @@ func (s *capabilityIndexSync) createDataset(ctx context.Context, catalogID strin
 		// Vega validates the resource-level index_config as a model ID. The embeddings API name
 		// stays in memory: it must not reach a vector feature's config, which vega copies into
 		// the knn_vector mapping verbatim and OpenSearch then rejects.
-		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelID},
+		IndexConfig: datasetIndexConfig(embeddingModel),
 	})
 	return err
+}
+
+// defaultEmbeddingDim is the vector dimension of a dataset built before any embedding model is
+// registered. It is the BKN concept index's default as well.
+const defaultEmbeddingDim = 768
+
+// placeholderEmbeddingModel stands in for a model that is not registered yet. It has no model ID,
+// so the dataset carries no default_embedding_model, and the embeddings API name is the one every
+// deployment registers its model under.
+func placeholderEmbeddingModel() *interfaces.EmbeddingModel {
+	return &interfaces.EmbeddingModel{
+		ModelName:    interfaces.SmallModelTypeEmbedding,
+		EmbeddingDim: defaultEmbeddingDim,
+	}
+}
+
+// datasetIndexConfig leaves index_config out for a placeholder: Vega validates the field as a
+// model ID, and an empty one is not.
+func datasetIndexConfig(embeddingModel *interfaces.EmbeddingModel) *interfaces.VegaResourceIndexConfig {
+	if strings.TrimSpace(embeddingModel.ModelID) == "" {
+		return nil
+	}
+	return &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelID}
+}
+
+// isPlaceholderDataset reports whether the dataset was built without an embedding model.
+func isPlaceholderDataset(resource *interfaces.VegaResource) bool {
+	return resource != nil &&
+		(resource.IndexConfig == nil || strings.TrimSpace(resource.IndexConfig.DefaultEmbeddingModel) == "")
 }
 
 // rebuildDataset drops and recreates the dataset. The caller is expected to repopulate it: this
