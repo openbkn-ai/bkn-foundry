@@ -509,7 +509,7 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 			} else if !node.Star {
 				add(semanticPropertyRef(plan, node.Table, node.Property))
 				for _, key := range node.Keys {
-					add(semanticPropertyRef(plan, node.Table, key.Property))
+					add(semanticPropertyRef(plan, key.Table, key.Property))
 				}
 			}
 		case PlanArithmetic:
