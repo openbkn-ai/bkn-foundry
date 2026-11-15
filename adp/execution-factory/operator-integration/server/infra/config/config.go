@@ -102,6 +102,12 @@ type SandboxControlPlaneConfig struct {
 	MaxSessions int `yaml:"max_sessions" default:"3"`
 	// Number of active sessions, default 1.
 	ActiveSessions int `yaml:"active_sessions" default:"1"`
+	// Tasks a session takes before the next call goes to another session (a new one is
+	// created while the pool has free slots), default 2. Lower it to spread harder.
+	SpreadThreshold int `yaml:"spread_threshold" default:"2"`
+	// Seconds the control plane polls a synchronous execution before giving up, default 300.
+	// Requests whose timeout approaches it ask for a longer sync_timeout.
+	SyncPollDeadline int `yaml:"sync_poll_deadline" default:"300"`
 	// The maximum number of tasks to be executed concurrently in a single session, default 1.
 	MaxConcurrentTasks int `yaml:"max_concurrent_tasks" default:"100"`
 }
@@ -181,8 +187,13 @@ func (conf *Project) GetMachineID() string {
 // ProxyModuleConfig proxy module configuration information.
 type ProxyModuleConfig struct {
 	// Agent configuration.
-	DefaultTimeout int64 `yaml:"default_timeout" default:"30"` // Unit: seconds.
-	MaxTimeout     int64 `yaml:"max_timeout" default:"300"`    // Unit: seconds.
+	// DefaultTimeout applies when the caller sends no timeout. Keep it, MaxTimeout and the
+	// Helm values (service.proxyModule) aligned.
+	DefaultTimeout int64 `yaml:"default_timeout" default:"300"` // Unit: seconds.
+	MaxTimeout     int64 `yaml:"max_timeout" default:"300"`     // Unit: seconds.
+	// PlatformFunctionGrace is added to the HTTP client timeout of a platform Function call, so
+	// the sandbox reports its own timeout (with a reason) before the proxy gives up.
+	PlatformFunctionGrace int64 `yaml:"platform_function_grace" default:"5"` // Unit: seconds.
 	// Agent pool configuration.
 	MaxClients     int   `yaml:"max_clients" default:"50"`      // Maximum number of client connections.
 	ClientLifetime int64 `yaml:"client_lifetime" default:"300"` // Unit: seconds.

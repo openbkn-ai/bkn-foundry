@@ -520,16 +520,16 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			return err
 		}
 	}
-	problems, err := kns.nr.Check(ctx, knID, branch, *written)
+	issues, err := kns.nr.CheckIssues(ctx, knID, branch, *written)
 	if err != nil || len(cleared.Cleared()) == 0 {
-		if err := kns.nr.Refusal(ctx, problems, err,
+		if err := kns.nr.Refusal(ctx, issues, err,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError); err != nil {
 			return err
 		}
 		span.SetStatus(codes.Ok, "")
 		return nil
 	}
-	return clearDeclarationsRefusal(ctx, cleared.Cleared(), problems)
+	return clearDeclarationsRefusal(ctx, cleared.Cleared(), logics.IssueMessages(issues))
 }
 
 // clearDeclarationsRefusal answers an overwrite that would clear stored declarations with the

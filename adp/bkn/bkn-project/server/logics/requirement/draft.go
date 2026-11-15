@@ -219,8 +219,11 @@ type agentConflictSide struct {
 	Position   string `json:"position"`
 }
 
+// agentChoice is a modelling choice as the Agent gives it. Affects is what in the business model
+// it changes; implementation for one that only says how software is built or run, which is none.
 type agentChoice struct {
 	Question            string          `json:"question"`
+	Affects             string          `json:"affects"`
 	Options             []agentOption   `json:"options"`
 	RecommendedOptionID string          `json:"recommended_option_id"`
 	Reason              string          `json:"reason"`

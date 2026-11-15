@@ -28,12 +28,68 @@ const (
 // as-is instead of a generic load failure.
 type SpecError struct {
 	msg string
+
+	rule     string
+	property string
+	params   map[string]any
 }
 
 func (e *SpecError) Error() string { return e.msg }
 
+// Rule is the stable code of the declaration rule the error reports, one of the Rule constants; it is
+// empty for an error that is not a declaration rule, such as a file that cannot be read.
+func (e *SpecError) Rule() string { return e.rule }
+
+// Property is the data property the rule concerns, empty for a rule of the definition itself.
+func (e *SpecError) Property() string { return e.property }
+
+// Params are the values the message is built from, such as the Semantic and the Type it needs: a
+// caller words the refusal in its own language from them.
+func (e *SpecError) Params() map[string]any { return e.params }
+
 func specErrorf(format string, args ...any) error {
 	return &SpecError{msg: fmt.Sprintf(format, args...)}
+}
+
+// ruleErrorf is specErrorf for a declaration rule: rule is its stable code, and params the values of
+// the message. A params map written with withProperty names the data property too.
+func ruleErrorf(rule string, params map[string]any, format string, args ...any) error {
+	e := &SpecError{msg: fmt.Sprintf(format, args...), rule: rule}
+	if len(params) > 0 {
+		e.params = make(map[string]any, len(params))
+		for key, value := range params {
+			if key == propertyParam {
+				e.property, _ = value.(string)
+				continue
+			}
+			e.params[key] = value
+		}
+		if len(e.params) == 0 {
+			e.params = nil
+		}
+	}
+	return e
+}
+
+// propertyParam is the params key withProperty uses to carry the data property of a rule.
+const propertyParam = "property"
+
+// withProperty builds the params of a rule that concerns a data property: its name, then key and value
+// pairs.
+func withProperty(property string, keyValues ...any) map[string]any {
+	params := map[string]any{propertyParam: property}
+	for i := 0; i+1 < len(keyValues); i += 2 {
+		params[keyValues[i].(string)] = keyValues[i+1]
+	}
+	return params
+}
+
+// inProperty names the data property of a rule error that does not name one yet.
+func inProperty(err error, property string) error {
+	if e, ok := err.(*SpecError); ok && e.rule != "" && e.property == "" {
+		e.property = property
+	}
+	return err
 }
 
 var bknSpecPattern = regexp.MustCompile(`^(\d+)(?:\.(\d+))?(?:\.\d+)?$`)

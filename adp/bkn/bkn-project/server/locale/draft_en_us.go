@@ -35,7 +35,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Draft.RelationName":                "{{.field}} of {{.object_type}}",
 		"BknProject.Draft.InvalidIncrementalKey":       "Invalid Update Field. Give one property of the object type whose value grows whenever a record changes, of type integer, unsigned integer, string, date, time, datetime or timestamp, or an empty value to clear it.",
 		"BknProject.Draft.NotRestorable":               "Field Not Restorable. The field was excluded because its type cannot be mapped to BKN.",
-		"BknProject.Draft.FieldNotFound":               "Source Field Not Found. The field is no longer in its table, or you cannot read the table; draft again.",
+		"BknProject.Draft.FieldNotFound":               "This field is no longer in its table, or you cannot read the table; draft again and retry.",
 		"BknProject.Draft.NothingAdopted":              "Nothing Adopted. Adopt at least one object type before confirming the draft.",
 		"BknProject.Draft.InvalidItem":                 "Draft Item Incomplete. An adopted item lacks what a definition needs, see error_details. Draft again.",
 		"BknProject.Draft.InvalidQuestion":             "Invalid Question. Write the question to ask, in at most 500 characters.",

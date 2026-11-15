@@ -79,10 +79,16 @@ func TestValidateRelationDeclarations(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, berrors.BknBackend_RelationType_InvalidParameter_Declarations, httpErr.ErrorCode)
 		assert.Contains(t, httpErr.ErrorDetails, detail)
+		issues, _ := httpErr.Metadata["issues"].([]logics.DeclarationIssueDetail)
+		require.Len(t, issues, 1)
+		assert.Equal(t, "works_in", issues[0]["relation_type_id"])
+		assert.NotEmpty(t, issues[0]["rule"])
 	}
 	rt = workplace()
 	rt.FallbackFor = "works_in_direct"
 	refused(rt, "fallback_for goes with importance: secondary")
+	assert.Equal(t, "fallback_for_not_secondary",
+		declHTTPError(t, validateDeclarations(ctx, rt)).Metadata["issues"].([]logics.DeclarationIssueDetail)[0]["rule"])
 
 	rt = workplace()
 	rt.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED}

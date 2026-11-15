@@ -28,10 +28,31 @@ func recallQuery(exclude bool) *interfaces.ConceptsQuery {
 	}
 }
 
+// isNotDeprecated reports whether cfg keeps a concept with no lifecycle_status (a normal one) as
+// well as one whose lifecycle_status is not deprecated.
 func isNotDeprecated(cfg *cond.CondCfg) bool {
-	return cfg != nil && cfg.Field == interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS &&
-		cfg.Operation == cond.OperationNotEq && cfg.ValueFrom == cond.ValueFrom_Const &&
-		cfg.Value == interfaces.LIFECYCLE_DEPRECATED
+	if cfg == nil || cfg.Operation != cond.OperationOr || len(cfg.SubConds) != 2 {
+		return false
+	}
+	missing, notEq := cfg.SubConds[0], cfg.SubConds[1]
+	return missing.Field == interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS && missing.Operation == cond.OperationNotExist &&
+		notEq.Field == interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS &&
+		notEq.Operation == cond.OperationNotEq && notEq.ValueFrom == cond.ValueFrom_Const &&
+		notEq.Value == interfaces.LIFECYCLE_DEPRECATED
+}
+
+// The filter must convert to a dataset filter that keeps a concept whose lifecycle_status is
+// missing; a bare "!=" drops it (issue #3121).
+func TestExcludeDeprecatedKeepsConceptsWithoutLifecycle(t *testing.T) {
+	got, err := cond.ConvertCondCfgToFilterCondition(context.Background(), notDeprecatedFilter(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subs, _ := got["sub_conditions"].([]map[string]any)
+	if got["operation"] != "or" || len(subs) != 2 || subs[0]["operation"] != "not_exist" ||
+		subs[1]["operation"] != "!=" || subs[1]["value"] != interfaces.LIFECYCLE_DEPRECATED {
+		t.Fatalf("filter = %v, want or(not_exist, != deprecated)", got)
+	}
 }
 
 // exclude_deprecated filters the whole query and each knn, so deprecated concepts take none of
@@ -43,11 +64,11 @@ func TestValidateConceptsQueryExcludeDeprecated(t *testing.T) {
 	}
 	root := query.ActualCondition.SubConds
 	if !isNotDeprecated(root[len(root)-1]) {
-		t.Fatalf("top-level filters = %+v, want lifecycle_status != deprecated last", root)
+		t.Fatalf("top-level filters = %+v, want the not-deprecated filter last", root)
 	}
 	knn := root[0].SubConds[0]
 	if knn.Operation != cond.OperationKNN || len(knn.SubConds) != 1 || !isNotDeprecated(knn.SubConds[0]) {
-		t.Fatalf("knn = %+v, want lifecycle_status != deprecated as its filter", knn)
+		t.Fatalf("knn = %+v, want the not-deprecated filter as its filter", knn)
 	}
 
 	query = recallQuery(false)

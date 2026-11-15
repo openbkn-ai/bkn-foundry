@@ -288,6 +288,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		}
 		matched, totalCount = page.Entries, page.TotalCount
 		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+		interfaces.ShortenObjectTypeComments(matched)
 		if clamped {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": req.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
 			if renderErr != nil {
@@ -322,9 +323,33 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 
 	// Property declarations are search_schema's to surface (#2260).
 	interfaces.OmitPropertyDeclarations(matched)
-	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
-	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
-		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice})
+	resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
+		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
+	if len(req.IDs) == 0 {
+		// Measured in the format this reply is written in.
+		format := rest.FormatJSON
+		if v, ok := common.GetResponseFormatFromCtx(ctx); ok {
+			if f, ok := v.(rest.ResponseFormat); ok {
+				format = f
+			}
+		}
+		lang := i18n.GetLanguageByCtx(ctx)
+		if _, fitErr := interfaces.FitObjectTypePage(resp, offset, interfaces.MaxObjectTypePageChars,
+			func(kept int) string {
+				return renderNotice(lang, "agentRetrieval.Detail.ObjectTypePageCharsCut",
+					map[string]any{"Arg1": interfaces.MaxObjectTypePageChars, "Arg2": kept})
+			},
+			func(r *interfaces.ObjectTypesResp) (int, error) {
+				_, body, marshalErr := rest.MarshalResponse(format, r)
+				return utf8.RuneCount(body), marshalErr
+			},
+		); fitErr != nil {
+			rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fitErr.Error()))
+			return
+		}
+	}
+	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(resp.ObjectTypes))
+	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
 // GetRelationTypes retrieves complete definitions of relation types (including mapping_rules) in batches by id.

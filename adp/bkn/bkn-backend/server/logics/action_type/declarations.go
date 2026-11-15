@@ -30,7 +30,7 @@ func (ats *actionTypeService) checkDeclarations(ctx context.Context, actionType 
 	actionType.Aliases = interfaces.NormalizeAliases(actionType.Aliases)
 	actionType.Lifecycle = interfaces.NormalizeLifecycle(actionType.Lifecycle)
 	if err := bknsdk.ValidateActionTypeDeclarations(logics.ToBKNActionType(actionType)); err != nil {
-		return invalidDeclarations(ctx, err.Error())
+		return invalidDeclarations(ctx, logics.SpecIssueDetail(interfaces.RESOURCE_TYPE_ACTION_TYPE, actionType.ATID, err))
 	}
 	return nil
 }
@@ -61,8 +61,8 @@ func (ats *actionTypeService) checkAliasNames(ctx context.Context, knID, branch 
 				WithErrorDetails(err.Error())
 		}
 	}
-	if conflict := logics.AliasConflict("action type", incoming, namedActionTypes(storedNamed), namedActionTypes(storedAliased)); conflict != "" {
-		return invalidDeclarations(ctx, conflict)
+	if conflict := logics.FindAliasConflict("action type", incoming, namedActionTypes(storedNamed), namedActionTypes(storedAliased)); conflict != nil {
+		return invalidDeclarations(ctx, logics.AliasConflictDetail(interfaces.RESOURCE_TYPE_ACTION_TYPE, conflict))
 	}
 	return nil
 }
@@ -75,9 +75,9 @@ func namedActionTypes(actionTypes []*interfaces.ActionType) []logics.NamedDefini
 	return named
 }
 
-func invalidDeclarations(ctx context.Context, detail string) error {
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter_Declarations).
-		WithErrorDetails(detail)
+func invalidDeclarations(ctx context.Context, issue logics.DeclarationIssueDetail) error {
+	return logics.DeclarationRefusal(ctx, berrors.BknBackend_ActionType_InvalidParameter_Declarations,
+		issue["message"].(string), issue)
 }
 
 // keepStoredDeclarations makes an interactive update keep the stored aliases and lifecycle its

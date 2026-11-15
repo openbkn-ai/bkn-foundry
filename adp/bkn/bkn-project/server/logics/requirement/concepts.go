@@ -57,13 +57,14 @@ func conceptsResponseFormat() map[string]any {
 				"document_id": schemaString(), "quote": schemaString(), "position": schemaString(),
 			}, "document_id", "quote", "position")),
 		}, "topic", "kind", "sides")),
-		"choices": schemaArray(schemaObject(map[string]any{
+		"choices": map[string]any{"type": "array", "description": choicesDescription, "items": schemaObject(map[string]any{
 			"question": schemaString(),
+			"affects":  map[string]any{"type": "string", "enum": choiceAffects, "description": choiceAffectsDescription},
 			"options": schemaArray(schemaObject(map[string]any{
 				"id": schemaString(), "label": schemaString(), "consequence": schemaString(),
 			}, "id", "label", "consequence")),
 			"recommended_option_id": schemaString(), "reason": schemaString(), "citations": citations,
-		}, "question", "options", "recommended_option_id", "reason", "citations")),
+		}, "question", "affects", "options", "recommended_option_id", "reason", "citations")},
 		"doc_types": schemaArray(schemaObject(map[string]any{
 			"document_id": schemaString(),
 			// Skill documents and API descriptions are a person's to set: the analyst is not told of them.
@@ -83,6 +84,23 @@ func withMatch(concept map[string]any) map[string]any {
 	concept["properties"] = properties
 	return concept
 }
+
+// A modelling choice is about what the business model means. How software is built or run is not
+// one, even when a requirement document states it: these descriptions say so to a prompt that does
+// not, and a choice the analyst marks as implementation is left out.
+const (
+	choicesDescription = "Only choices that change what the business model means: which objects, " +
+		"events, properties or relations there are, what they mean or how they connect, and which " +
+		"business rules hold. Never a technical implementation choice, even when a document states one: " +
+		"where or how data is stored, cached or persisted, which service, table, API or library code " +
+		"reads or writes, how a screen or page behaves, or how the system performs or is deployed."
+	choiceAffectsDescription = "What the choice changes in the business model; implementation when it " +
+		"is only about how software is built or run, and then the choice is dropped."
+	choiceAffectsImplementation = "implementation"
+)
+
+// choiceAffects are what a modelling choice may change, implementation last.
+var choiceAffects = []string{"object", "event", "property", "relation", "rule", choiceAffectsImplementation}
 
 // personSetType tells whether only a person sets a document to docType: the analyst is not told what
 // a Skill document or an API description is, so it does not suggest them.
@@ -259,6 +277,10 @@ func buildConcepts(out *conceptsOutput, docs map[string]*interfaces.RequirementD
 	}
 
 	for _, f := range out.Choices {
+		// Not a modelling choice: nothing for a person to decide about the model.
+		if f.Affects == choiceAffectsImplementation {
+			continue
+		}
 		if slices.ContainsFunc(keptSpec.Choices, func(c *interfaces.RequirementChoice) bool { return sameText(c.Question, f.Question) }) {
 			continue
 		}

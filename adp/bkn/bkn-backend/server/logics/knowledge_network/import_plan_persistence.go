@@ -557,10 +557,10 @@ func (kns *knowledgeNetworkService) refuseClearingDeclarations(ctx context.Conte
 	if len(cleared.Cleared()) == 0 {
 		return nil
 	}
-	problems, err := kns.nr.Check(ctx, plan.KNID, plan.Branch, *written)
+	issues, err := kns.nr.CheckIssues(ctx, plan.KNID, plan.Branch, *written)
 	if err != nil {
-		return kns.nr.Refusal(ctx, problems, err,
+		return kns.nr.Refusal(ctx, issues, err,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError)
 	}
-	return clearDeclarationsRefusal(ctx, cleared.Cleared(), problems)
+	return clearDeclarationsRefusal(ctx, cleared.Cleared(), logics.IssueMessages(issues))
 }
