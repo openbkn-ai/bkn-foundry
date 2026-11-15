@@ -210,6 +210,20 @@ func objectTypeRevision(ctx context.Context, base *interfaces.DraftObjectType,
 			}
 			instruction = revised
 		}
+		var method *string
+		if out.Property.ExtractionMethod != nil {
+			// Only a document property has an extraction; its method is one of those it can be saved by.
+			proposed := strings.TrimSpace(*out.Property.ExtractionMethod)
+			if p.Extraction == nil || base.Document == nil {
+				return nil, askDroppedNotEditable
+			}
+			if proposed == "" || !interfaces.ValidDraftExtractionMethod(proposed) {
+				return nil, askDroppedInvalid
+			}
+			if proposed != p.Extraction.MethodOf() {
+				method = &proposed
+			}
+		}
 		// What is left empty keeps the property's own, so saving the revision clears nothing.
 		displayName, comment := strings.TrimSpace(out.Property.DisplayName), strings.TrimSpace(out.Property.Comment)
 		if displayName == "" {
@@ -222,11 +236,11 @@ func objectTypeRevision(ctx context.Context, base *interfaces.DraftObjectType,
 			utf8.RuneCountInString(comment) > interfaces.DRAFT_DESCRIPTION_MAX_LENGTH {
 			return nil, askDroppedTooLong
 		}
-		if displayName == p.DisplayName && comment == p.Description && instruction == nil {
+		if displayName == p.DisplayName && comment == p.Description && instruction == nil && method == nil {
 			return nil, askDroppedUnchanged
 		}
 		return &interfaces.DraftAskRevision{Value: interfaces.DraftAskPropertyRevision{
-			Name: p.Name, DisplayName: displayName, Comment: comment, ExtractionInstruction: instruction}}, ""
+			Name: p.Name, DisplayName: displayName, Comment: comment, ExtractionInstruction: instruction, ExtractionMethod: method}}, ""
 	}
 	return nil, askDroppedNotEditable
 }

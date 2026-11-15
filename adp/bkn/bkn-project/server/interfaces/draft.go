@@ -566,9 +566,11 @@ type DraftAskRevision struct {
 	Reason string `json:"reason"`
 }
 
-// DraftAskPropertyRevision is a property's display name and comment, the property by its name.
+// DraftAskPropertyRevision is a property's display name and comment, the property by its name; a
+// document property may also have its extraction instruction and method revised.
 type DraftAskPropertyRevision struct {
 	ExtractionInstruction *string `json:"extraction_instruction,omitempty"`
+	ExtractionMethod      *string `json:"extraction_method,omitempty"`
 	Name                  string  `json:"name"`
 	DisplayName           string  `json:"display_name"`
 	Comment               string  `json:"comment"`
