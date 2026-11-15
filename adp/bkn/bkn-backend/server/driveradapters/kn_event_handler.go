@@ -59,6 +59,7 @@ func RegisterKnEventRoutes(
 		{http.MethodGet, "/event-types/:code", handler.getKnEventType},
 		{http.MethodPut, "/event-types/:code", handler.updateKnEventType},
 		{http.MethodDelete, "/event-types/:code", handler.deleteKnEventType},
+		{http.MethodPost, "/event-types/:code/check", handler.checkKnEventType},
 		{http.MethodGet, "/events", handler.listKnEvents},
 		{http.MethodPost, "/events", handler.reportKnEvent},
 		{http.MethodGet, "/events/:event_id", handler.getKnEvent},
@@ -205,6 +206,15 @@ func (r *restHandler) updateKnEventType(c *gin.Context, ctx context.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, eventType)
+}
+
+func (r *restHandler) checkKnEventType(c *gin.Context, ctx context.Context) {
+	result, err := r.kes.CheckEventType(ctx, c.Param("kn_id"), c.Param("code"))
+	if err != nil {
+		replyKnEventError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
 }
 
 func (r *restHandler) deleteKnEventType(c *gin.Context, ctx context.Context) {

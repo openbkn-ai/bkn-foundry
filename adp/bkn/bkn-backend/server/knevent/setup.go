@@ -30,8 +30,9 @@ type Host interface {
 }
 
 // Setup assembles the event module into host: the routes, the cleanup that
-// runs when a network is deleted, the purge of expired check refreshes, and
-// the worker that keeps the event classes' datasets.
+// runs when a network is deleted, the purge of expired check refreshes, the
+// worker that keeps the event classes' datasets, and the one that checks
+// rules on their schedules.
 func Setup(host Host) error {
 	setting := host.Setting()
 	store := newStore(libdb.NewDB(&setting.DBSetting))
@@ -43,6 +44,9 @@ func Setup(host Host) error {
 	}
 	service := newService(setting, store, classes)
 	if err := host.RegisterWorker(ProjectionWorker, newProjector(store, classes).run); err != nil {
+		return err
+	}
+	if err := host.RegisterWorker(RuleCheckWorker, newRuleChecker(service).run); err != nil {
 		return err
 	}
 	return host.RegisterRoutes(RouteExtension, func(engine *gin.Engine) {

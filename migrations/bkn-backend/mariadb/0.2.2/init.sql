@@ -499,7 +499,15 @@ CREATE TABLE IF NOT EXISTS t_kn_event_type (
   f_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件类（对象类）ID，空为尚未建立',
   f_dataset_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件数据集ID，空为尚未建立',
   f_dataset_synced TINYINT(1) NOT NULL DEFAULT 0 COMMENT '账本中已有的事件是否已写入数据集',
-  PRIMARY KEY (f_kn_id, f_code)
+  f_rule_tool TEXT DEFAULT NULL COMMENT '规则工具JSON（box_id、tool_id、parameters），空为由应用检查',
+  f_check_cron VARCHAR(128) NOT NULL DEFAULT '' COMMENT '检查时间（五段cron）',
+  f_check_timezone VARCHAR(64) NOT NULL DEFAULT '' COMMENT '检查时区（IANA）',
+  f_check_subject_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '执行身份ID',
+  f_check_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '执行身份类型',
+  f_next_check_at BIGINT(20) NOT NULL DEFAULT 0 COMMENT '下次检查时间，0为不由平台检查',
+  f_check_failures INT(11) NOT NULL DEFAULT 0 COMMENT '连续无法判断的检查次数',
+  PRIMARY KEY (f_kn_id, f_code),
+  KEY idx_kn_event_type_next_check (f_next_check_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件类型';
 
 

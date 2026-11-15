@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/agent_operator"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
@@ -46,8 +47,10 @@ type service struct {
 	permissions permissionChecker
 	networks    networkChecker
 	names       nameResolver
-	now         func() int64
-	newID       func() string
+	// tools calls rule tools as the account in the context.
+	tools interfaces.CallerToolAccess
+	now   func() int64
+	newID func() string
 }
 
 func newService(appSetting *common.AppSetting, store *store, classes *classes) *service {
@@ -57,6 +60,7 @@ func newService(appSetting *common.AppSetting, store *store, classes *classes) *
 		permissions: permission.NewPermissionService(appSetting),
 		networks:    knowledge_network.NewKNService(appSetting),
 		names:       user_mgmt.NewUserMgmtService(appSetting),
+		tools:       agent_operator.NewCallerToolAccess(appSetting),
 		now:         func() int64 { return time.Now().UnixMilli() },
 		newID:       newEventID,
 	}
@@ -78,9 +82,33 @@ func fail(ctx context.Context, operation string, err error) error {
 	var large tooLarge
 	var notAllowed errActionNotAllowed
 	var noReason errReasonRequired
+	var forbidden toolForbidden
+	var unavailable toolUnavailable
+	var notTable notCypherTable
+	var failed toolFailed
+	var bad badResult
+	var checking errChecking
 	switch {
 	case errors.As(err, &httpErr):
 		return err
+	case errors.As(err, &forbidden):
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails(forbidden.detail)
+	case errors.As(err, &unavailable):
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnEvent_RuleToolUnavailable).WithErrorDetails(unavailable.detail)
+	case errors.As(err, &notTable):
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnEvent_RuleToolNotCypherTable).WithErrorDetails(notTable.detail)
+	case errors.As(err, &failed):
+		// The tool's own answer, as it gave it.
+		details := map[string]any{"status": failed.status, "error": failed.detail}
+		if refused(failed.status) {
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails(details)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnEvent_InvalidParameter).WithErrorDetails(details)
+	case errors.As(err, &bad):
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnEvent_InvalidParameter).
+			WithErrorDetails("the rule tool's result: " + bad.detail)
+	case errors.As(err, &checking):
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnEvent_RuleChecking).WithErrorDetails(checking.detail)
 	case errors.As(err, &invalid):
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnEvent_InvalidParameter).WithErrorDetails(invalid.detail)
 	case errors.As(err, &large):
@@ -192,7 +220,35 @@ func (s *service) ListEventTypes(ctx context.Context, knID string) ([]interfaces
 	if err != nil {
 		return nil, fail(ctx, "type list", err)
 	}
+	s.nameSubjects(ctx, types)
 	return types, nil
+}
+
+// nameSubjects gives the types' check subjects their display names. A
+// directory outage leaves them empty.
+func (s *service) nameSubjects(ctx context.Context, types []interfaces.KnEventType) {
+	var accounts []*interfaces.AccountInfo
+	for _, eventType := range types {
+		if subject := eventType.CheckSubject; subject != nil {
+			accounts = append(accounts, &interfaces.AccountInfo{ID: subject.ID, Type: subject.Type})
+		}
+	}
+	if len(accounts) == 0 || s.names == nil {
+		return
+	}
+	if err := s.names.GetAccountNames(ctx, accounts); err != nil {
+		logger.Warnf("knowledge-network event: resolve the names of check subjects: %v", err)
+		return
+	}
+	next := 0
+	for _, eventType := range types {
+		if subject := eventType.CheckSubject; subject != nil {
+			if name := accounts[next].Name; name != "-" {
+				subject.Name = name
+			}
+			next++
+		}
+	}
 }
 
 func (s *service) GetEventType(ctx context.Context, knID, code string) (interfaces.KnEventType, error) {
@@ -206,6 +262,7 @@ func (s *service) GetEventType(ctx context.Context, knID, code string) (interfac
 	if !found {
 		return interfaces.KnEventType{}, notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
 	}
+	s.nameSubjects(ctx, []interfaces.KnEventType{eventType})
 	return eventType, nil
 }
 
@@ -219,13 +276,25 @@ func (s *service) CreateEventType(ctx context.Context, knID string, input interf
 	if err := validateEventTypeInput(&input); err != nil {
 		return interfaces.KnEventType{}, fail(ctx, "type create", err)
 	}
+	check, err := validateChecks(&input, time.UnixMilli(s.now()))
+	if err != nil {
+		return interfaces.KnEventType{}, fail(ctx, "type create", err)
+	}
 	actor, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	now := s.now()
 	eventType := interfaces.KnEventType{
 		KNID: knID, Code: input.Code, Name: input.Name, Source: input.Source, Subject: input.Subject,
 		Severity: input.Severity, MergeHours: input.MergeHours, Rule: input.Rule, RuleVersion: input.RuleVersion,
+		RuleTool: input.RuleTool, CheckSchedule: input.CheckSchedule,
 		Creator: actor.ID, CreatorType: actor.Type, CreateTime: now,
 		Updater: actor.ID, UpdaterType: actor.Type, UpdateTime: now,
+	}
+	// The rule tool is tried before anything is made: a rule that cannot run
+	// is not saved.
+	if check != nil {
+		if err := s.prepareChecks(ctx, &eventType, *check); err != nil {
+			return interfaces.KnEventType{}, fail(ctx, "type create", err)
+		}
 	}
 	taken := func() error {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnEvent_EventTypeExisted).
@@ -235,7 +304,7 @@ func (s *service) CreateEventType(ctx context.Context, knID string, input interf
 	// the network is not created. A code that is taken, or whose class is
 	// another type's, is refused before, so that the class of the type that
 	// has it is left as it is.
-	err := s.store.exclusive(ctx, classLock(knID), func() error {
+	err = s.store.exclusive(ctx, classLock(knID), func() error {
 		if _, found, err := s.store.getType(ctx, knID, input.Code); err != nil {
 			return err
 		} else if found {
@@ -287,33 +356,57 @@ func (s *service) createType(ctx context.Context, eventType interfaces.KnEventTy
 
 // updated is an event type with an update applied to what an update may
 // change. Code and source are fixed once the type exists; the body may
-// repeat them.
-func updated(current interfaces.KnEventType, input interfaces.KnEventTypeInput) (interfaces.KnEventType, error) {
+// repeat them. A new rule tool or schedule comes back as changed: it is
+// tried, and checked as the caller from then on. Otherwise the type is
+// checked as it was.
+func updated(current interfaces.KnEventType, input interfaces.KnEventTypeInput, now time.Time) (interfaces.KnEventType, *schedule, error) {
 	if input.Code != "" && input.Code != current.Code {
-		return current, invalidf("code cannot change")
+		return current, nil, invalidf("code cannot change")
 	}
 	if input.Source == "" {
 		input.Source = current.Source
 	}
 	if input.Source != current.Source {
-		return current, invalidf("source cannot change")
+		return current, nil, invalidf("source cannot change")
 	}
 	if err := validateEventTypeInput(&input); err != nil {
-		return current, err
+		return current, nil, err
 	}
+	check, err := validateChecks(&input, now)
+	if err != nil {
+		return current, nil, err
+	}
+	same := sameRuleTool(current.RuleTool, input.RuleTool) && sameSchedule(current.CheckSchedule, input.CheckSchedule)
 	current.Name, current.Subject, current.Severity = input.Name, input.Subject, input.Severity
-	current.MergeHours, current.Rule, current.RuleVersion = input.MergeHours, input.Rule, input.RuleVersion
-	return current, nil
+	current.MergeHours, current.Rule = input.MergeHours, input.Rule
+	switch {
+	case input.RuleTool == nil:
+		// Checked by the applications again, with the version they give.
+		current.RuleVersion = input.RuleVersion
+		current.RuleTool, current.CheckSchedule, current.CheckSubject = nil, nil, nil
+		current.NextCheckAt, current.CheckFailures = 0, 0
+	case !same:
+		current.RuleTool, current.CheckSchedule = input.RuleTool, input.CheckSchedule
+		return current, check, nil
+	}
+	return current, nil, nil
 }
 
 func (s *service) UpdateEventType(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput) (interfaces.KnEventType, error) {
 	if err := s.open(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return interfaces.KnEventType{}, err
 	}
+	// The rule tool is tried before the class lock is taken, as at creation: a
+	// try may take as long as the tool may run, far longer than other changes
+	// to the network's types wait for that lock.
+	tried, err := s.tryUpdate(ctx, knID, code, input)
+	if err != nil {
+		return interfaces.KnEventType{}, fail(ctx, "type update", err)
+	}
 	var eventType interfaces.KnEventType
-	err := s.store.exclusive(ctx, classLock(knID), func() error {
+	err = s.store.exclusive(ctx, classLock(knID), func() error {
 		var err error
-		eventType, err = s.updateType(ctx, knID, code, input)
+		eventType, err = s.updateType(ctx, knID, code, input, tried)
 		return err
 	})
 	if err != nil {
@@ -322,8 +415,42 @@ func (s *service) UpdateEventType(ctx context.Context, knID, code string, input 
 	return eventType, nil
 }
 
+// triedUpdate is an update with its rule checks prepared before it is made.
+type triedUpdate struct {
+	// from is the type the update was tried on. It is made only to a type that
+	// still has the same rule tool and schedule.
+	from interfaces.KnEventType
+	// checks is the type with its checks prepared, nil for an update that
+	// keeps the checks as they are.
+	checks *interfaces.KnEventType
+}
+
+// tryUpdate tries the rule tool of an update that changes the tool or the
+// schedule, as the caller, before anything changes.
+func (s *service) tryUpdate(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput) (triedUpdate, error) {
+	before, found, err := s.store.getType(ctx, knID, code)
+	if err != nil {
+		return triedUpdate{}, err
+	}
+	if !found {
+		return triedUpdate{}, notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
+	}
+	after, check, err := updated(before, input, time.UnixMilli(s.now()))
+	if err != nil {
+		return triedUpdate{}, err
+	}
+	tried := triedUpdate{from: before}
+	if check != nil {
+		if err := s.prepareChecks(ctx, &after, *check); err != nil {
+			return triedUpdate{}, err
+		}
+		tried.checks = &after
+	}
+	return tried, nil
+}
+
 // updateType updates an event type holding the network's class lock.
-func (s *service) updateType(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput) (interfaces.KnEventType, error) {
+func (s *service) updateType(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput, tried triedUpdate) (interfaces.KnEventType, error) {
 	actor, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	// The class has the type's name and a relation to its subject, so it is
 	// written again when either changes, and made for a type that has none:
@@ -336,7 +463,7 @@ func (s *service) updateType(ctx context.Context, knID, code string, input inter
 	if !found {
 		return interfaces.KnEventType{}, notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
 	}
-	after, err := updated(before, input)
+	after, _, err := updated(before, input, time.UnixMilli(s.now()))
 	if err != nil {
 		return interfaces.KnEventType{}, err
 	}
@@ -363,8 +490,20 @@ func (s *service) updateType(ctx context.Context, knID, code string, input inter
 		if !found {
 			return notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
 		}
-		if eventType, err = updated(current, input); err != nil {
+		var changed *schedule
+		if eventType, changed, err = updated(current, input, time.UnixMilli(s.now())); err != nil {
 			return err
+		}
+		// The try was decided on the tool and schedule the type had then. A type
+		// given another tool or schedule since was not tried this way.
+		if !sameRuleTool(tried.from.RuleTool, current.RuleTool) || !sameSchedule(tried.from.CheckSchedule, current.CheckSchedule) ||
+			(changed != nil) != (tried.checks != nil) {
+			return errChecking{detail: "the event type's rule tool or check schedule changed during the save; save again"}
+		}
+		if changed != nil {
+			prepared := tried.checks
+			eventType.RuleVersion, eventType.CheckSubject = prepared.RuleVersion, prepared.CheckSubject
+			eventType.NextCheckAt, eventType.CheckFailures, eventType.Trial = prepared.NextCheckAt, 0, prepared.Trial
 		}
 		if class != nil {
 			// Nothing has been written to a dataset the type does not have yet.
@@ -628,30 +767,41 @@ func (s *service) RecordRuleCheck(ctx context.Context, knID string, input interf
 		if err != nil {
 			return err
 		}
-		previous, err := w.ruleCheck(eventType.Code)
-		if err != nil {
-			return err
+		// Checked by the platform: an application's check would be a second
+		// opinion on the same rule.
+		if eventType.RuleTool != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_KnEvent_CheckedByPlatform).
+				WithErrorDetails(eventType.Code)
 		}
-		// A rule event's abnormal period stays open until its rule finds it
-		// over, whether or not someone handled it; a rejected one never was.
-		mine, err := w.events(sq.And{
-			sq.Eq{"e.f_event_type": eventType.Code, "e.f_source": interfaces.KnEventSourceRule, "e.f_ended_at": 0},
-			sq.NotEq{"e.f_status": interfaces.KnEventRejected},
-		})
-		if err != nil {
-			return err
-		}
-		changes, check := applyRuleCheck(eventType, previous, mine, input, o)
-		if err := w.record(changes); err != nil {
-			return err
-		}
-		if err := w.saveCheck(check); err != nil {
-			return err
-		}
-		result = interfaces.KnEventRuleCheckResult{Events: eventsOf(changes), Check: check}
-		return nil
+		result, err = recordCheck(w, eventType, input, o)
+		return err
 	})
 	return result, err
+}
+
+// recordCheck records a check of a rule event type holding the head lock.
+func recordCheck(w *writer, eventType interfaces.KnEventType, input interfaces.KnEventRuleCheckInput, o op) (interfaces.KnEventRuleCheckResult, error) {
+	previous, err := w.ruleCheck(eventType.Code)
+	if err != nil {
+		return interfaces.KnEventRuleCheckResult{}, err
+	}
+	// A rule event's abnormal period stays open until its rule finds it
+	// over, whether or not someone handled it; a rejected one never was.
+	mine, err := w.events(sq.And{
+		sq.Eq{"e.f_event_type": eventType.Code, "e.f_source": interfaces.KnEventSourceRule, "e.f_ended_at": 0},
+		sq.NotEq{"e.f_status": interfaces.KnEventRejected},
+	})
+	if err != nil {
+		return interfaces.KnEventRuleCheckResult{}, err
+	}
+	changes, check := applyRuleCheck(eventType, previous, mine, input, o)
+	if err := w.record(changes); err != nil {
+		return interfaces.KnEventRuleCheckResult{}, err
+	}
+	if err := w.saveCheck(check); err != nil {
+		return interfaces.KnEventRuleCheckResult{}, err
+	}
+	return interfaces.KnEventRuleCheckResult{Events: eventsOf(changes), Check: check}, nil
 }
 
 func (s *service) ListRuleChecks(ctx context.Context, knID string) ([]interfaces.KnEventRuleCheck, error) {
