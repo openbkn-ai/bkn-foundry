@@ -16,16 +16,16 @@ func resolve(t *testing.T, req *interfaces.ExecuteSkillReq) (string, []string, e
 }
 
 func TestResolveSkillEntryAcceptsPythonEntryPointWithArgv(t *testing.T) {
-	entry, args, err := resolve(t, &interfaces.ExecuteSkillReq{EntryPoint: "scripts/run.py", Arguments: []string{"send", "--text", "a b; rm -rf /"}})
+	entry, args, err := resolve(t, &interfaces.ExecuteSkillReq{EntryPoint: "scripts/run.py", Arguments: []string{"send", "--text", "a b (rm -rf /)"}})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if entry != "scripts/run.py" || len(args) != 3 || args[2] != "a b; rm -rf /" {
+	if entry != "scripts/run.py" || len(args) != 3 || args[2] != "a b (rm -rf /)" {
 		t.Fatalf("entry=%q args=%q", entry, args)
 	}
-	// Arguments are data: the shell metacharacters in them stay inside one quoted word.
+	// Arguments are data: the shell metacharacters (other than the command separators, which are refused) stay inside one quoted word.
 	got := pythonCommand(entry, args)
-	want := `python3 'scripts/run.py' 'send' '--text' 'a b; rm -rf /'`
+	want := `python3 'scripts/run.py' 'send' '--text' 'a b (rm -rf /)'`
 	if got != want {
 		t.Fatalf("command = %s, want %s", got, want)
 	}
@@ -96,5 +96,25 @@ func TestSkillRuntimeMarksShellOnlyPackagesNotExecutable(t *testing.T) {
 	docOnly := skillRuntimeOf([]*interfaces.SkillFileSummary{{RelPath: "SKILL.md"}})
 	if docOnly.Executable || docOnly.Reason == "" {
 		t.Fatalf("doc-only runtime = %+v", docOnly)
+	}
+}
+
+func TestResolveSkillEntryRefusesCommandSeparatorsInArgumentsAndEntry(t *testing.T) {
+	for _, arg := range []string{"a; bash cat b", "x & sh echo y", "a|b", "a\nb", "a\rb", "';'"} {
+		_, _, err := resolve(t, &interfaces.ExecuteSkillReq{EntryPoint: "scripts/run.py", Arguments: []string{"ok", arg}})
+		if err == nil || !strings.Contains(err.Error(), "must not contain") {
+			t.Errorf("argument %q must be refused, err = %v", arg, err)
+		}
+	}
+	for _, entry := range []string{"scripts/run.py; id", "scripts/run.py|x", "scripts/run.py&x", "scripts/run.py\nx"} {
+		if _, _, err := resolve(t, &interfaces.ExecuteSkillReq{EntryPoint: entry}); err == nil {
+			t.Errorf("entry_point %q must be refused", entry)
+		}
+	}
+	// Legacy spelling: a separator inside quotes survives splitCommand but must still be refused.
+	for _, cmd := range []string{`python main.py "a; bash cat b"`, `python main.py 'x & sh y'`, `python main.py "a|b"`} {
+		if _, _, err := resolve(t, &interfaces.ExecuteSkillReq{EntryShell: cmd}); err == nil {
+			t.Errorf("%q must be refused", cmd)
+		}
 	}
 }

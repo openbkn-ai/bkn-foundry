@@ -15,8 +15,9 @@ import (
 // A Skill runs in the sandbox as a Python script, and only that. The sandbox the platform ships
 // has a Python runtime for Skills; a Shell or Bash entry could be registered and published but
 // never ran, which is what #729 reported. The execution contract therefore names a Python
-// script of the package plus its argv, and the server never hands the caller's string to a shell
-// to parse.
+// script of the package plus its argv. The server never builds a command line from the caller's
+// free text; entry and arguments are quoted individually, and the characters the sandbox's command
+// normaliser would treat as separators are refused up front (see commandSeparators).
 
 const (
 	// skillRuntimePython is the one runtime Skills execute with.
@@ -26,6 +27,9 @@ const (
 	skillEntryExtension    = ".py"
 	// shellMetaCharacters would change the meaning of a command line if a shell parsed it.
 	shellMetaCharacters = ";&|<>`$(){}*?!#~\n\r\\"
+	// commandSeparators are the characters the sandbox's normalize_shell_code splits a command on
+	// without honouring quotes, so quoting cannot make them safe inside an argv element.
+	commandSeparators = ";&|\n\r"
 )
 
 func entryInvalid(ctx context.Context, reason string) error {
@@ -53,6 +57,11 @@ func resolveSkillEntry(ctx context.Context, req *interfaces.ExecuteSkillReq, man
 	for _, arg := range args {
 		if strings.ContainsRune(arg, 0) {
 			return "", nil, entryInvalid(ctx, "arguments must not contain NUL")
+		}
+	}
+	for _, value := range append([]string{entry}, args...) {
+		if strings.ContainsAny(value, commandSeparators) {
+			return "", nil, entryInvalid(ctx, "entry_point and arguments must not contain the characters ; & | or a line break (the sandbox splits its command line on them even inside quotes) / entry_point 和 arguments 不允许包含 ; & | 或换行符（沙箱会在这些字符处拆分命令行，引号也不起作用）")
 		}
 	}
 	entry, err = validateEntryPath(ctx, entry, manifest)
@@ -152,8 +161,9 @@ func validateEntryPath(ctx context.Context, entry string, manifest []string) (st
 	return "", entryInvalid(ctx, fmt.Sprintf("%q is not a file of this Skill", entry))
 }
 
-// quoteArg single-quotes one argument so the sandbox's command line reads it back as exactly that
-// argv element. The interpreter and every argument are quoted; none of them is ever parsed.
+// quoteArg single-quotes one argument so the shell reads it back as one argv element. Quoting alone
+// is not enough for the sandbox, which splits on ; & | and line breaks before the shell sees the
+// quotes; resolveSkillEntry therefore refuses those characters before this is reached.
 func quoteArg(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }

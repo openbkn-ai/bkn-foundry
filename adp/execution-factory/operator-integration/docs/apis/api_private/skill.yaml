@@ -1135,11 +1135,11 @@ components:
           type: array
           items:
             type: string
-          description: "脚本的 argv，逐个传入，不经过 shell 解析"
+          description: "脚本的 argv，逐个传入。任一元素不允许包含 ;、&、|、换行或回车（沙箱在这些字符处拆分命令行，引号内也一样），否则返回 SkillEntryInvalid"
         entry_shell:
           type: string
           deprecated: true
-          description: "已弃用，请改用 entry_point + arguments。仍接受 python main.py [参数...]，其余一律拒绝"
+          description: "已弃用，请改用 entry_point + arguments。仍接受 python main.py [参数...]，其余一律拒绝；脚本和参数同样不允许包含 ;、&、|、换行或回车"
         timeout:
           type: integer
           description: "执行超时时间，单位秒"

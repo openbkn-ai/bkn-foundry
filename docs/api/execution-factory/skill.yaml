@@ -844,7 +844,8 @@ paths:
         `python3` 执行 `entry_point` 指定的脚本，`arguments` 作为它的 argv。
 
         **Skill 只支持 Python 入口。** `entry_point` 必须是技能包内已有的 `.py` 文件
-        （相对路径，不接受绝对路径和 `..`）；参数逐个作为 argv 传入，不经过 shell 解析。
+        （相对路径，不接受绝对路径和 `..`）；参数逐个作为 argv 传入；沙箱会在 `;`、`&`、`|` 和换行符处拆分命令行（引号内也一样），
+        因此 `entry_point` 和 `arguments` 中包含这些字符会被拒绝，错误码 `SkillEntryInvalid`。
         Shell / Bash 入口（例如 `bash run.sh`）会被拒绝，错误码 `SkillEntryInvalid`；
         只含 `.sh` 脚本的技能包在内容接口的 `runtime` 里标记为 `executable: false`，
         需要改写成 Python（标准库即可）后才能执行。
@@ -875,12 +876,12 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: 脚本的 argv，逐个传入，不经过 shell。
+                  description: 脚本的 argv，逐个传入。任一元素不允许包含 `;`、`&`、`|`、换行或回车，否则返回 `SkillEntryInvalid`。
                   example: ["--mode", "full"]
                 entry_shell:
                   type: string
                   deprecated: true
-                  description: 已弃用，请改用 `entry_point` + `arguments`。仍接受 `python <脚本> [参数...]`，其余（含 `bash run.sh` 和任何 shell 语法）一律拒绝。
+                  description: 已弃用，请改用 `entry_point` + `arguments`。仍接受 `python <脚本> [参数...]`，其余（含 `bash run.sh` 和任何 shell 语法）一律拒绝；脚本和参数同样不允许包含 `;`、`&`、`|`、换行或回车。
                 timeout:
                   type: integer
                   description: 超时（秒）。
