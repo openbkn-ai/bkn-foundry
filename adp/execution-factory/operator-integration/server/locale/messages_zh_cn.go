@@ -97,6 +97,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"AgentOperatorIntegration.BadRequest.SandboxControlPlaneFailed":                  "依赖沙箱服务异常，请查看错误详情请联系管理员",
 		"AgentOperatorIntegration.BadRequest.SandboxRuntimeExecuteCodeFailed":            "沙箱函数运行报错，请检查代码是否正确",
 		"AgentOperatorIntegration.BadRequest.SkillCategoryNotFound":                      "Agent Skill 分分类不存在请联系管理员",
+		"AgentOperatorIntegration.BadRequest.SkillEntryInvalid":                          "Agent Skill 仅支持执行 Python 脚本：{{.Arg1}}",
 		"AgentOperatorIntegration.BadRequest.SkillNameDuplicate":                         "Agent Skill “{{.Arg1}}”已存在，请使用其他名称请联系管理员",
 		"AgentOperatorIntegration.BadRequest.SkillStatusInvalid":                         "Agent Skill 状态无效，请检查状态是否正确请联系管理员",
 		"AgentOperatorIntegration.BadRequest.SkillUnSupportDelete":                       "Agent Skill 不支持删除，请联系管理员请联系管理员",

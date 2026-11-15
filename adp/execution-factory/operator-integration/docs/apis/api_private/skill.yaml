@@ -1126,11 +1126,20 @@ components:
     ExecuteSkillReq:
       type: object
       required:
-        - entry_shell
+        - entry_point
       properties:
+        entry_point:
+          type: string
+          description: "Skill 包内的 Python 脚本（相对路径，不接受绝对路径和 ..），例如 scripts/main.py。Skill 只支持 Python 入口，Shell/Bash 入口会被拒绝（SkillEntryInvalid）"
+        arguments:
+          type: array
+          items:
+            type: string
+          description: "脚本的 argv，逐个传入，不经过 shell 解析"
         entry_shell:
           type: string
-          description: "Skill 启动命令，由调用方明确指定，例如 bash run.sh 或 python main.py"
+          deprecated: true
+          description: "已弃用，请改用 entry_point + arguments。仍接受 python main.py [参数...]，其余一律拒绝"
         timeout:
           type: integer
           description: "执行超时时间，单位秒"

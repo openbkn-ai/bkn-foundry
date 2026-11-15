@@ -840,8 +840,14 @@ paths:
       summary: 执行技能
       operationId: executeSkill
       description: |
-        在沙箱里跑技能包里的一条命令。技能包被上传到沙箱工作目录，然后执行
-        `entry_shell` 指定的命令。
+        在沙箱里跑技能包里的一个 Python 脚本。技能包被上传到沙箱工作目录，然后用
+        `python3` 执行 `entry_point` 指定的脚本，`arguments` 作为它的 argv。
+
+        **Skill 只支持 Python 入口。** `entry_point` 必须是技能包内已有的 `.py` 文件
+        （相对路径，不接受绝对路径和 `..`）；参数逐个作为 argv 传入，不经过 shell 解析。
+        Shell / Bash 入口（例如 `bash run.sh`）会被拒绝，错误码 `SkillEntryInvalid`；
+        只含 `.sh` 脚本的技能包在内容接口的 `runtime` 里标记为 `executable: false`，
+        需要改写成 Python（标准库即可）后才能执行。
 
         当前主体必须对具体 `skill:{skill_id}` 持有 `execute`。请求体不能替换
         OAuth/AppKey 或受信任内部上下文产生的执行主体。
@@ -859,12 +865,22 @@ paths:
             schema:
               type: object
               required:
-                - entry_shell
+                - entry_point
               properties:
+                entry_point:
+                  type: string
+                  description: 技能包内的 Python 脚本，相对路径。
+                  example: scripts/run.py
+                arguments:
+                  type: array
+                  items:
+                    type: string
+                  description: 脚本的 argv，逐个传入，不经过 shell。
+                  example: ["--mode", "full"]
                 entry_shell:
                   type: string
-                  description: 要执行的命令。
-                  example: python scripts/run.py --mode full
+                  deprecated: true
+                  description: 已弃用，请改用 `entry_point` + `arguments`。仍接受 `python <脚本> [参数...]`，其余（含 `bash run.sh` 和任何 shell 语法）一律拒绝。
                 timeout:
                   type: integer
                   description: 超时（秒）。

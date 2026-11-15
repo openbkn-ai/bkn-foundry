@@ -2333,9 +2333,15 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 				RelPath:    "refs/guide.md",
 				StorageKey: "obj-1",
 			},
+			{
+				SkillID:    "skill-exec-1",
+				RelPath:    "scripts/run.py",
+				StorageKey: "obj-py",
+			},
 		}, nil)
 		mockAssetStore.EXPECT().Download(gomock.Any(), &interfaces.OssObject{StorageKey: "obj-skill-md"}).Return([]byte(validSkillMarkdown()), nil)
 		mockAssetStore.EXPECT().Download(gomock.Any(), &interfaces.OssObject{StorageKey: "obj-1"}).Return([]byte("guide body"), nil)
+		mockAssetStore.EXPECT().Download(gomock.Any(), &interfaces.OssObject{StorageKey: "obj-py"}).Return([]byte("print('ok')"), nil)
 
 		mockSandbox.EXPECT().UploadSkillArchive(gomock.Any(), "sess_aoi_0", gomock.Any()).DoAndReturn(
 			func(_ context.Context, sessionID string, req *interfaces.UploadSkillArchiveReq) (*interfaces.UploadSkillArchiveResp, error) {
@@ -2371,7 +2377,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 				callOrder = append(callOrder, "exec")
 				So(sessionID, ShouldEqual, "sess_aoi_0")
 				So(req.WorkDir, ShouldEqual, "skills/skill-exec-1")
-				So(req.Command, ShouldEqual, "bash run.sh")
+				So(req.Command, ShouldEqual, `python3 'scripts/run.py' '--name' 'a b' 'it'\''s'`)
 				So(req.Timeout, ShouldEqual, 15)
 				return &interfaces.ExecuteShellResp{
 					SessionID:     sessionID,
@@ -2388,7 +2394,8 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		resp, err := registry.ExecuteSkill(context.Background(), &interfaces.ExecuteSkillReq{
 			UserID:     "user-1",
 			SkillID:    "skill-exec-1",
-			EntryShell: "bash run.sh",
+			EntryPoint: "scripts/run.py",
+			Arguments:  []string{"--name", "a b", "it's"},
 			Timeout:    15,
 		})
 
@@ -2397,7 +2404,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		So(resp.SessionID, ShouldEqual, "sess_aoi_0")
 		So(resp.WorkDir, ShouldEqual, "skills/skill-exec-1")
 		So(resp.UploadedPath, ShouldEqual, "skills/skill-exec-1")
-		So(resp.Command, ShouldEqual, "bash run.sh")
+		So(resp.Command, ShouldEqual, `python3 'scripts/run.py' '--name' 'a b' 'it'\''s'`)
 		So(resp.Stdout, ShouldEqual, "ok")
 		So(callOrder, ShouldResemble, []string{"acquire", "upload", "exec", "release"})
 	})
@@ -2422,10 +2429,45 @@ func TestExecuteSkillRequiresExecutePermission(t *testing.T) {
 		resp, err := registry.ExecuteSkill(context.Background(), &interfaces.ExecuteSkillReq{
 			UserID:     "user-1",
 			SkillID:    "skill-exec-1",
-			EntryShell: "bash run.sh",
+			EntryPoint: "scripts/run.py",
 		})
 
 		So(resp, ShouldBeNil)
 		So(err, ShouldEqual, permissionErr)
+	})
+}
+
+func TestExecuteSkillRejectsBashBeforeUsingASession(t *testing.T) {
+	Convey("a bash entry is refused before any session is acquired or archive uploaded", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
+		mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
+		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
+		acquired := false
+		registry := &skillRegistry{
+			skillRepo: mockSkillRepo,
+			fileRepo:  mockFileRepo,
+			sessionPool: &fakeSessionPool{acquireFunc: func(context.Context) (string, error) {
+				acquired = true
+				return "sess", nil
+			}},
+			AuthService: mockAuthService,
+			Logger:      logger.DefaultLogger(),
+		}
+		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
+		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "s1", interfaces.AuthResourceTypeSkill).Return(nil)
+		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "s1").Return(&model.SkillRepositoryDB{SkillID: "s1", Version: "v1"}, nil)
+		mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "s1", "v1").Return([]*model.SkillFileIndexDB{
+			{SkillID: "s1", RelPath: "run.sh", StorageKey: "k"},
+		}, nil)
+
+		resp, err := registry.ExecuteSkill(context.Background(), &interfaces.ExecuteSkillReq{
+			UserID: "user-1", SkillID: "s1", EntryShell: "bash run.sh",
+		})
+
+		So(resp, ShouldBeNil)
+		So(err, ShouldNotBeNil)
+		So(acquired, ShouldBeFalse)
 	})
 }
