@@ -240,9 +240,14 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 // timeTypes are the update field types that tell when a record changed, the candidates for one.
 var timeTypes = map[string]bool{"date": true, "time": true, "datetime": true, "timestamp": true}
 
-// updateFieldCandidates are the properties of an object type that may be its update field.
+// updateFieldCandidates are the properties of an object type that may be its update field. A
+// document object type has none: knowledge-base builds write its records, and no source table's
+// local index is refreshed by a field of it.
 func updateFieldCandidates(ot *interfaces.DraftObjectType) []string {
 	candidates := []string{}
+	if ot.Document != nil {
+		return candidates
+	}
 	for _, prop := range ot.Properties {
 		if timeTypes[prop.Type] {
 			candidates = append(candidates, prop.Name)

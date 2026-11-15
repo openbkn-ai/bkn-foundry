@@ -276,6 +276,17 @@ func Test_EditDraftItem(t *testing.T) {
 				So(written, ShouldBeNil)
 			})
 
+			Convey("a document object type takes no update field, without reading its dataset\n", func() {
+				draft.Items.ObjectTypes[1].Document = &interfaces.DraftDocumentModel{Role: "fact"}
+				e.IncrementalKey = strPtr("changed_at")
+
+				// Without the document edition reading the draft is refused first; the rule is applyEdit's.
+				_, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e)
+
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_InvalidIncrementalKey)
+				So(draft.Items.ObjectTypes[1].IncrementalKey, ShouldBeEmpty)
+			})
+
 			Convey("a field whose vega type the index cannot be refreshed by is refused\n", func() {
 				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_orders"}).Return([]*interfaces.VegaTable{table}, nil)
 				e.IncrementalKey = strPtr("seq")
