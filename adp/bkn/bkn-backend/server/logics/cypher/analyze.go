@@ -991,8 +991,9 @@ func analyzeAggregateAtom(atom parsing.IOC_AtomContext) (*Aggregate, bool, error
 	}
 	if variable, ok := bareVariable(arguments[0]); ok {
 		if function != "COUNT" {
-			return nil, false, unsupportedf(arguments[0], name+" over a whole node",
-				"%s takes a value; aggregate one of its properties, as in %s(%s.property)", name, name, variable)
+			return nil, false, unsupportedf(arguments[0], name+" over a whole node or relationship",
+				"%s takes a value; aggregate a property of a node, as in %s(%s.property), "+
+					"or count it with count(%s)", name, name, variable, variable)
 		}
 		aggregate.Variable = variable
 		return aggregate, true, nil

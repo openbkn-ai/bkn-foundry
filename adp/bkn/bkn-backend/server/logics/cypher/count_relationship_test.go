@@ -168,3 +168,73 @@ func TestCountDistinctRelationshipReadsBothEndsKeys(t *testing.T) {
 		t.Errorf("refs = %v, want %v", got, want)
 	}
 }
+
+// A relationship over a backing resource or a filtered_cross_join is counted
+// the same way: by rows inside a MATCH, by the optional end's key inside an
+// OPTIONAL MATCH, and by both ends' keys with DISTINCT. Neither has key pairs
+// of its own to count, so the ends are what tell one relationship from another.
+func TestCountRelationshipOverIndirectAndFilteredRelations(t *testing.T) {
+	indirect := func(query string) string { return mustGenerateIndirect(t, query) }
+	filtered := func(query string) string { return mustGenerateFiltered(t, filteredSchema(t), query) }
+	for _, tc := range []struct {
+		name     string
+		generate func(string) string
+		query    string
+		want     string
+	}{
+		{
+			name:     "indirect, inside a MATCH",
+			generate: indirect,
+			query:    "MATCH (a:employee)-[r:participates_in]->(b:project) RETURN count(r) AS n",
+			want:     "SELECT COUNT(*) AS `n` FROM {{res_employee}} t0 " + forwardLinks,
+		},
+		{
+			name:     "indirect, DISTINCT",
+			generate: indirect,
+			query:    "MATCH (a:employee)-[r:participates_in]->(b:project) RETURN count(DISTINCT r) AS n",
+			want:     "SELECT COUNT(DISTINCT t0.`f_uid`, t1.`f_uid`) AS `n` FROM {{res_employee}} t0 " + forwardLinks,
+		},
+		{
+			name:     "indirect, inside an OPTIONAL MATCH",
+			generate: indirect,
+			query:    "MATCH (a:employee) OPTIONAL MATCH (a)-[r:participates_in]->(b:project) RETURN count(r) AS n",
+			want: "SELECT COUNT(t1.`f_uid`) AS `n` FROM {{res_employee}} t0 " +
+				"LEFT JOIN ({{res_member}} t2 JOIN {{res_project}} t1 ON t2.`project_code` = t1.`f_code` AND t2.`project_org_code` = t1.`f_org`) " +
+				"ON t2.`employee_code` = t0.`f_code` AND t2.`employee_org_code` = t0.`f_org`",
+		},
+		{
+			name:     "filtered, inside a MATCH",
+			generate: filtered,
+			query:    "MATCH (c:probe_channel)-[r:probe_fcj]->(o:probe_order) RETURN count(r) AS n",
+			want:     "SELECT COUNT(*) AS `n` FROM {{res_channel}} t0 " + filteredLink,
+		},
+		{
+			name:     "filtered, DISTINCT",
+			generate: filtered,
+			query:    "MATCH (c:probe_channel)-[r:probe_fcj]->(o:probe_order) RETURN count(DISTINCT r) AS n",
+			want:     "SELECT COUNT(DISTINCT t0.`channel_id`, t1.`order_id`) AS `n` FROM {{res_channel}} t0 " + filteredLink,
+		},
+		{
+			name:     "filtered, inside an OPTIONAL MATCH",
+			generate: filtered,
+			query:    "MATCH (c:probe_channel) OPTIONAL MATCH (c)-[r:probe_fcj]->(o:probe_order) RETURN count(r) AS n",
+			want:     "SELECT COUNT(t1.`order_id`) AS `n` FROM {{res_channel}} t0 LEFT " + filteredLink,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.generate(tc.query); got != tc.want {
+				t.Fatalf("got  %s\nwant %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// sum, avg, min and max take a value, which neither a node nor a relationship
+// is; the refusal says so for both and points at count.
+func TestAggregateOverARelationshipIsRefused(t *testing.T) {
+	_, err := compile(t, "MATCH (o:Order)-[r:PLACED_BY]->(c:Customer) RETURN sum(r) AS n", GenerateOptions{})
+	if err == nil || !strings.Contains(err.Error(), "sum over a whole node or relationship") ||
+		!strings.Contains(err.Error(), "count(r)") {
+		t.Fatalf("err = %v, want the refusal naming relationships and count(r)", err)
+	}
+}
