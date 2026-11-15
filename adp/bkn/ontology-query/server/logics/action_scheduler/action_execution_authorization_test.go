@@ -181,7 +181,9 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 		}, nil, true, nil)
 	permissionErr := errors.New("permission denied")
 	permissions := &actionPermissionStub{err: permissionErr}
-	service := &actionSchedulerService{omAccess: models, permissions: permissions}
+	managed, _ := parseManagedActionScopes("kn-1/at-1")
+	gate := &actionGateStub{}
+	service := &actionSchedulerService{omAccess: models, permissions: permissions, managedActions: managed, governanceGate: gate}
 	ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-1", Type: "user"})
 
 	resp, err := service.ExecuteAction(ctx, &interfaces.ActionExecutionRequest{
@@ -189,6 +191,9 @@ func TestExecuteActionChecksPermissionsBeforeInstanceData(t *testing.T) {
 	})
 	if !errors.Is(err, permissionErr) || resp != nil {
 		t.Fatalf("ExecuteAction() = %#v, %v; want permission error before data access", resp, err)
+	}
+	if gate.calls != 0 {
+		t.Fatalf("governance gate called before permission check: %d", gate.calls)
 	}
 	want := []interfaces.PermissionRequirement{
 		{ResourceType: "action_type", ResourceID: "kn-1/at-1", Operation: "execute"},

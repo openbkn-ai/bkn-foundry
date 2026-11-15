@@ -50,14 +50,17 @@ const (
 
 // ActionExecutionRequest represents the request to execute an action
 type ActionExecutionRequest struct {
-	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
-	ObjectInput        map[string]any        `json:"object_input,omitempty"`
-	KNID               string                `json:"-"`
-	Branch             string                `json:"-"`
-	ActionTypeID       string                `json:"-"`
-	TriggerType        string                `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
-	InstanceIdentities []map[string]any      `json:"_instance_identities"`
-	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
+	RelationTarget       *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput          map[string]any        `json:"object_input,omitempty"`
+	KNID                 string                `json:"-"`
+	Branch               string                `json:"-"`
+	ActionTypeID         string                `json:"-"`
+	TriggerType          string                `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
+	InstanceIdentities   []map[string]any      `json:"_instance_identities"`
+	DynamicParams        map[string]any        `json:"dynamic_params,omitempty"`
+	GovernanceRequestID  string                `json:"governance_request_id,omitempty"`
+	GovernancePermitID   string                `json:"governance_permit_id,omitempty"`
+	GovernancePlanDigest string                `json:"governance_plan_digest,omitempty"`
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`
@@ -95,6 +98,9 @@ type ActionExecution struct {
 	ResultsOffset           int                     `json:"results_offset,omitempty"` // current offset of results
 	ResultsLimit            int                     `json:"results_limit,omitempty"`  // current limit of results
 	DynamicParams           map[string]any          `json:"dynamic_params,omitempty"`
+	GovernanceRequestID     string                  `json:"governance_request_id,omitempty"`
+	GovernancePermitID      string                  `json:"governance_permit_id,omitempty"`
+	GovernancePlanDigest    string                  `json:"governance_plan_digest,omitempty"`
 	ExecutorID              string                  `json:"executor_id"`                         // user ID who triggered (deprecated, use Executor instead)
 	Executor                AccountInfo             `json:"executor"`                            // user info who triggered the execution
 	StartTime               int64                   `json:"start_time"`                          // execution start time (Unix milliseconds)

@@ -269,7 +269,10 @@
     "output_schema.properties.created_at.description": "Submission time (Unix milliseconds).",
     "input_schema.properties._instance_identities.items.description": "Instance identity object, holding dynamic property key/value pairs",
     "input_schema.properties.relation_target.description": "One explicit directed source and target instance pair for establishing or removing a relation. Identity keys follow each endpoint object type primary keys; applicability conditions do not provide identities.",
-    "input_schema.properties.object_input.description": "New object attribute values for object creation. Existing instances are not scanned."
+    "input_schema.properties.object_input.description": "New object attribute values for object creation. Existing instances are not scanned.",
+    "input_schema.properties.governance_request_id.description": "Approved governance request ID for a managed action.",
+    "input_schema.properties.governance_permit_id.description": "Single-use permit ID bound to the governance request.",
+    "input_schema.properties.governance_plan_digest.description": "Lowercase SHA-256 digest of the approved action plan."
   },
   "get_action_execution": {
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
