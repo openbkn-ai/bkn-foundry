@@ -19,6 +19,25 @@ import (
 
 const toolExecutionTimeoutSeconds int64 = 300
 
+type callerFunctionTargetKey struct{}
+
+// withCallerFunctionTarget marks a caller-identity execution whose tool is a Function. The
+// proxy path learns this from its published snapshot; the draft and history versions have no
+// snapshot, so the scheduler looks the toolbox kind up and records it here.
+func withCallerFunctionTarget(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callerFunctionTargetKey{}, true)
+}
+
+// runsFunction reports whether the tool being executed is a Function, whose sandbox outcome
+// is carried in the response body.
+func runsFunction(ctx context.Context) bool {
+	if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok {
+		return proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction
+	}
+	marked, _ := ctx.Value(callerFunctionTargetKey{}).(bool)
+	return marked && interfaces.CallerIdentityExecutionFromContext(ctx)
+}
+
 // ExecuteTool executes a tool-based action through tool-box API
 // API: POST /tool-box/{box_id}/proxy/{tool_id}
 func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, actionType *interfaces.ActionType, params map[string]any) (any, error) {
@@ -53,8 +72,7 @@ func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, a
 		return nil, fmt.Errorf("tool execution failed: %w", err)
 	}
 
-	if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
-		proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction {
+	if runsFunction(ctx) {
 		if err := functionExitError(result); err != nil {
 			logger.Errorf("Function execution failed: %v", err)
 			// The sandbox outcome is kept beside the error: its stderr is what explains the failure.
