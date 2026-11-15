@@ -174,6 +174,8 @@ func ConvertCondCfgToFilterCondition(ctx context.Context, cfg *CondCfg, fieldsMa
 		return convertKnnCondToDatasetFilterCondition(ctx, cfg, fieldsMap, vectorizer)
 	case OperationMultiMatch:
 		return convertMultiMatchCondToDatasetFilterCondition(cfg, fieldsMap)
+	case OperationNotExist:
+		return convertNotExistCondToDatasetFilterCondition(cfg)
 	case OperationAnd:
 		return convertAndCondToDatasetFilterCondition(ctx, cfg, fieldsMap, vectorizer)
 	case OperationOr:
