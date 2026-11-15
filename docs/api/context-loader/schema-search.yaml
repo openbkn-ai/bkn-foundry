@@ -56,6 +56,10 @@ paths:
         **`include_columns`**：`data_properties[].name` 是逻辑名，
         物理列名在 `mapped_field` 里，二者可以不同（同一份资源可被多个对象类以不同
         逻辑名映射）。置 `include_columns=true` 可拿到物理列名。
+
+        **`unit`**：非精简模式下，`data_properties[].unit` 来自属性本身，或来自它引用的值类型
+        （引用了值类型的属性不能自己声明单位，单位只写在值类型里）；枚举与非枚举值类型都适用。
+        精简模式不输出；读取值类型失败时不输出，属性保留 `value_type`。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - name: x-kn-id

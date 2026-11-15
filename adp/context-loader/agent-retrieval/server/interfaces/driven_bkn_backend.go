@@ -1001,11 +1001,14 @@ type ValueTypeReader interface {
 }
 
 // ValueType is a BKN spec 3.0 value type (SPECIFICATION.md §16), as bkn-backend returns it. Only
-// the enum is read: search_schema expands it on the properties that name the value type.
+// the enum and the unit are read: search_schema expands the enum, and gives the unit, on the
+// properties that name the value type. range, length and pattern are not read, as they are not
+// output for a property that declares them directly.
 type ValueType struct {
 	ID       string           `json:"id"`
 	Name     string           `json:"name"`
 	BaseType string           `json:"base_type"`
+	Unit     string           `json:"unit,omitempty"`
 	Enum     []*ValueTypeEnum `json:"enum,omitempty"`
 }
 

@@ -275,3 +275,53 @@ func TestOmitDeclarationsDropsAliases(t *testing.T) {
 		t.Fatalf("aliases kept: %v %v %v %v", ot.Aliases, ot.DataProperties[0].Aliases, rt.Aliases, at.Aliases)
 	}
 }
+
+// A property that names a value type takes its unit from it, in full mode, whether or not the value
+// type is an enum; brief mode and a value type without a unit add nothing, and a failed read leaves
+// the property as it was.
+func TestExpandEnumsGivesTheValueTypeUnit(t *testing.T) {
+	money := &interfaces.ValueType{ID: "amount_cny", BaseType: "decimal", Unit: "元"}
+	weight := &interfaces.ValueType{ID: "weight", BaseType: "keyword", Unit: "kg", Enum: []*interfaces.ValueTypeEnum{
+		{Value: "L", Display: "轻"}, {Value: "H", Display: "重"}}}
+	plain := &interfaces.ValueType{ID: "plain", BaseType: "string"}
+
+	run := func(brief bool, listErr error) []*interfaces.KnSearchDataProperty {
+		backend := &valueTypeBackend{mockBknBackend: &mockBknBackend{},
+			valueTypes: []*interfaces.ValueType{money, weight, plain}, listErr: listErr}
+		props := []*interfaces.KnSearchDataProperty{
+			{Name: "fee", Type: "decimal", ValueType: "amount_cny"},
+			{Name: "load", Type: "string", ValueType: "weight"},
+			{Name: "tag", Type: "string", ValueType: "plain"},
+			{Name: "note", Type: "string"},
+		}
+		newEnumSearch(backend, 50).expandEnums(context.Background(), "kn",
+			[]*interfaces.KnSearchObjectType{{DataProperties: props}}, nil, brief, "")
+		return props
+	}
+	check := func(name string, props []*interfaces.KnSearchDataProperty, want []string) {
+		t.Helper()
+		for i, p := range props {
+			if got := enumJSON(t, p); got != want[i] {
+				t.Errorf("%s %s:\n got %s\nwant %s", name, p.Name, got, want[i])
+			}
+		}
+	}
+	check("full", run(false, nil), []string{
+		`{"name":"fee","type":"decimal","unit":"元"}`,
+		`{"name":"load","type":"string","unit":"kg","value_type":"weight","enum":[{"value":"L","display":"轻"},{"value":"H","display":"重"}]}`,
+		`{"name":"tag","type":"string"}`,
+		`{"name":"note","type":"string"}`,
+	})
+	check("brief", run(true, nil), []string{
+		`{"name":"fee","type":"decimal"}`,
+		`{"name":"load","type":"string","value_type":"weight","enum_count":2}`,
+		`{"name":"tag","type":"string"}`,
+		`{"name":"note","type":"string"}`,
+	})
+	check("read failed", run(false, errors.New("bkn-backend unavailable")), []string{
+		`{"name":"fee","type":"decimal","value_type":"amount_cny"}`,
+		`{"name":"load","type":"string","value_type":"weight"}`,
+		`{"name":"tag","type":"string","value_type":"plain"}`,
+		`{"name":"note","type":"string"}`,
+	})
+}
