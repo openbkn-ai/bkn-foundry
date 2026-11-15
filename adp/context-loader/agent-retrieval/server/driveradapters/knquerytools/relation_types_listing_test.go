@@ -106,3 +106,74 @@ func TestGetRelationTypesRESTCutsAPagePastTheSizeBound(t *testing.T) {
 			len(relations), m["next_offset"], m["notice"])
 	}
 }
+
+type objectListingRESTBackend struct {
+	interfaces.BknBackendAccess
+	total int
+}
+
+func (b *objectListingRESTBackend) ListObjectTypes(_ context.Context, _ string, offset, limit int) (*interfaces.ObjectTypePage, error) {
+	page := &interfaces.ObjectTypePage{TotalCount: int64(b.total)}
+	for i := offset; i < offset+limit && i < b.total; i++ {
+		page.Entries = append(page.Entries, &interfaces.ObjectType{ID: fmt.Sprintf("ot-%04d", i), Name: "订单",
+			Comment: strings.Repeat("订单是客户下的购买记录，按订单编号关联。", 30)})
+	}
+	page.Scanned = len(page.Entries)
+	return page, nil
+}
+
+// The REST face shortens listed comments, cuts a page past the size bound and a walk over
+// the cut pages returns every object type once.
+func TestGetObjectTypesRESTCutsAPageAndWalks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	saved := interfaces.MaxObjectTypePageChars
+	interfaces.MaxObjectTypePageChars = 4000
+	t.Cleanup(func() { interfaces.MaxObjectTypePageChars = saved })
+
+	handler := &knQueryToolsHandler{bknBackend: &objectListingRESTBackend{total: 60}}
+	router := gin.New()
+	router.POST("/kn/get_object_types", handler.GetObjectTypes)
+	seen := map[string]bool{}
+	offset, calls := 0, 0
+	for {
+		calls++
+		if calls > 60 {
+			t.Fatal("the walk does not end")
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/kn/get_object_types",
+			strings.NewReader(fmt.Sprintf(`{"kn_id":"kn-1","offset":%d,"limit":200}`, offset))))
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+		}
+		if n := utf8.RuneCount(response.Body.Bytes()); n > 4000 {
+			t.Fatalf("body is %d characters, past the bound", n)
+		}
+		m := map[string]any{}
+		if err := json.Unmarshal(response.Body.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		for _, o := range m["object_types"].([]any) {
+			entry := o.(map[string]any)
+			if c, _ := entry["comment"].(string); utf8.RuneCountInString(c) != interfaces.ObjectTypeIndexCommentRunes+1 {
+				t.Fatalf("a listed comment has %d runes", utf8.RuneCountInString(c))
+			}
+			id := entry["id"].(string)
+			if seen[id] {
+				t.Fatalf("%s came back twice", id)
+			}
+			seen[id] = true
+		}
+		next, more := m["next_offset"].(float64)
+		if !more {
+			break
+		}
+		if m["notice"] == nil {
+			t.Fatalf("a cut page must say why: %v", m)
+		}
+		offset = int(next)
+	}
+	if len(seen) != 60 || calls < 2 {
+		t.Fatalf("the walk saw %d of 60 object types in %d calls", len(seen), calls)
+	}
+}

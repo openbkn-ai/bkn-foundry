@@ -731,6 +731,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			}
 			matched, totalCount = page.Entries, page.TotalCount
 			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+			interfaces.ShortenObjectTypeComments(matched)
 			if clamped {
 				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": args.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
 				if renderErr != nil {
@@ -774,9 +775,22 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		// Property declarations are search_schema's to surface (#2260).
 		interfaces.OmitPropertyDeclarations(matched)
 		complete := len(args.IDs) == 0 || len(matched) == len(args.IDs)
-		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, schemaObjectTypeIDs(matched), matched, complete)
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
 			TotalCount: totalCount, NextOffset: nextOffset, Notice: notice}
+		if len(args.IDs) == 0 {
+			// Measured on what the caller reads -- the text and the structuredContent
+			// beside it -- and before the snapshot, so the evidence is the page they got.
+			if _, err := interfaces.FitObjectTypePage(resp, offset, interfaces.MaxObjectTypePageChars,
+				func(kept int) string {
+					return renderDetailNotice(ctx, "agentRetrieval.Detail.ObjectTypePageCharsCut",
+						map[string]any{"Arg1": interfaces.MaxObjectTypePageChars, "Arg2": kept})
+				},
+				func(r *interfaces.ObjectTypesResp) (int, error) { return toolResultRunes(r, format) },
+			); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, schemaObjectTypeIDs(resp.ObjectTypes), resp.ObjectTypes, complete)
 		result, err := BuildMCPToolResult(resp, format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

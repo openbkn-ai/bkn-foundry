@@ -215,9 +215,10 @@ paths:
 
         **不传 `ids` 就是列举对象类索引**：按名称升序返回一页，每条只有
         `id` / `name` / `comment` / `tags` / `data_source`，**没有 `data_properties`、
-        `logic_properties` 与 `related_metrics`**。`limit` 默认 50、上限 200，响应带
+        `logic_properties` 与 `related_metrics`**，`comment` 只保留前 120 个字符。`limit` 默认 50、上限 200，响应带
         `total_count`（当前账号可见总数）与 `next_offset`（走完最后一页即不再出现，
-        别自己用 `offset + len` 推）。
+        别自己用 `offset + len` 推）。单页内容超过约 30000 字符时提前截断，`next_offset`
+        指向截断处，`notice` 说明原因。
 
         这是给拿不到 ID 的调用方准备的——`get_kn_detail` 对超过上限的网络只回导航壳，
         那条路给不出 ID。挑好之后把 ID 传回本接口取完整定义。传了 `ids` 则
@@ -504,7 +505,7 @@ components:
             列举的单页条数，默认 50、上限 200。仅在不传 `ids` 时有效。索引条目只有
             几百字节，所以比按 ID 取定义时能装得多。超过上限不报错，按上限返回，
             并在响应的 `notice` 里说明——一页比你要的短却什么都不说，会被读成
-            「这张网就这么大」。
+            「这张网就这么大」。单页内容超过约 30000 字符时也会提前截断，同样在 `notice` 里说明。
 
     RelationTypesRequest:
       type: object
@@ -646,8 +647,8 @@ components:
             $ref: '#/components/schemas/ObjectType'
           description: |
             传了 `ids` 时是完整定义；**列举模式下是索引条目**，只有 `id` / `name` /
-            `comment` / `tags` / `data_source`，`data_properties` / `logic_properties` /
-            `related_metrics` 一概不下发。要它们把 `id` 传回本接口。
+            `comment`（只保留前 120 个字符，被截断时以「…」结尾）/ `tags` / `data_source`，`data_properties` / `logic_properties` /
+            `related_metrics` 一概不下发。要它们或完整说明把 `id` 传回本接口。
         missing:
           type: array
           items:
@@ -668,8 +669,8 @@ components:
         notice:
           type: string
           description: |
-            本次请求没有被原样兑现时的说明。目前只有一种情形：`limit` 超过上限，
-            按上限返回了。它出现时这一页比请求的短，**但不代表列举到头了**——
+            本次请求没有被原样兑现时的说明。有两种情形：`limit` 超过上限，按上限返回了；
+            或者这一页超过约 30000 字符，只返回了前面一部分。它出现时这一页比请求的短，**但不代表列举到头了**——
             是否还有下一页只看 `next_offset`。
 
     RelationTypesResponse:
