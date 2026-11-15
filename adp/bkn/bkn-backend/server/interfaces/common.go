@@ -9,6 +9,8 @@ package interfaces
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 
@@ -32,6 +34,9 @@ const (
 	// QueryParam_ConfirmClearDeclarations, that an overwrite may clear stored property
 	// declarations.
 	CONFIRM_CLEAR_DECLARATIONS_KEY contextKey = "x-confirm-clear-declarations"
+
+	// CLEARED_DECLARATIONS_COLLECTOR_KEY carries a ClearedDeclarationCollector.
+	CLEARED_DECLARATIONS_COLLECTOR_KEY contextKey = "x-cleared-declarations-collector"
 
 	// RESOURCE_NAME_MAX_LENGTH is the maximum number of Unicode characters in a BKN resource name.
 	RESOURCE_NAME_MAX_LENGTH = 128
@@ -1137,4 +1142,50 @@ func WithClearDeclarationsConfirmed(ctx context.Context) context.Context {
 func ClearDeclarationsConfirmed(ctx context.Context) bool {
 	confirmed, _ := ctx.Value(CONFIRM_CLEAR_DECLARATIONS_KEY).(bool)
 	return confirmed
+}
+
+// ClearedDeclarationCollector gathers the declarations an overwrite of several kinds of definition
+// would clear, so that the refusal lists them all at once instead of the first kind's alone.
+type ClearedDeclarationCollector struct {
+	mu      sync.Mutex
+	cleared []ClearedDeclaration
+}
+
+// WithClearedDeclarationCollector makes the overwrite checks under ctx record what they would clear
+// in the returned collector instead of refusing at the first definition kind that has any. Its
+// owner refuses once every kind is checked.
+func WithClearedDeclarationCollector(ctx context.Context) (context.Context, *ClearedDeclarationCollector) {
+	collector := &ClearedDeclarationCollector{}
+	return context.WithValue(ctx, CLEARED_DECLARATIONS_COLLECTOR_KEY, collector), collector
+}
+
+// CollectClearedDeclarations records cleared in the collector of ctx and reports whether there is
+// one; without it the caller refuses on its own.
+func CollectClearedDeclarations(ctx context.Context, cleared []ClearedDeclaration) bool {
+	collector, ok := ctx.Value(CLEARED_DECLARATIONS_COLLECTOR_KEY).(*ClearedDeclarationCollector)
+	if !ok {
+		return false
+	}
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+	collector.cleared = append(collector.cleared, cleared...)
+	return true
+}
+
+// Cleared lists what was collected: object types first, then relation types, then action types.
+func (c *ClearedDeclarationCollector) Cleared() []ClearedDeclaration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cleared := slices.Clone(c.cleared)
+	rank := func(d ClearedDeclaration) int {
+		switch {
+		case d.ObjectTypeID != "":
+			return 0
+		case d.RelationTypeID != "":
+			return 1
+		}
+		return 2
+	}
+	slices.SortStableFunc(cleared, func(a, b ClearedDeclaration) int { return rank(a) - rank(b) })
+	return cleared
 }

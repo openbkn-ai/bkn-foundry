@@ -115,7 +115,7 @@ func DeferNetworkRelations(ctx context.Context) (deferredCtx context.Context, sa
 // WithDeferredNetworkRelations it records the definitions and lists nothing.
 func (nr *NetworkRelations) CheckSave(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]string, error) {
 	issues, err := nr.checkSaveIssues(ctx, knID, branch, saved)
-	return issueMessages(issues), err
+	return IssueMessages(issues), err
 }
 
 func (nr *NetworkRelations) checkSaveIssues(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]bknsdk.DeclarationIssue, error) {
@@ -129,7 +129,8 @@ func (nr *NetworkRelations) checkSaveIssues(ctx context.Context, knID, branch st
 	return nr.CheckIssues(ctx, knID, branch, saved)
 }
 
-func issueMessages(issues []bknsdk.DeclarationIssue) []string {
+// IssueMessages lists each issue's message, for callers that report the issues as text.
+func IssueMessages(issues []bknsdk.DeclarationIssue) []string {
 	var messages []string
 	for _, issue := range issues {
 		messages = append(messages, issue.Err.Error())
@@ -144,7 +145,7 @@ func issueMessages(issues []bknsdk.DeclarationIssue) []string {
 // rows.
 func (nr *NetworkRelations) Check(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]string, error) {
 	issues, err := nr.CheckIssues(ctx, knID, branch, saved)
-	return issueMessages(issues), err
+	return IssueMessages(issues), err
 }
 
 // CheckIssues is Check with the issues as the specification library found them: each carries its
@@ -181,6 +182,11 @@ func (nr *NetworkRelations) CheckRefusal(ctx context.Context, knID, branch strin
 	return nr.saveRefusal(ctx, issues, err, invalidCode, internalCode)
 }
 
+// Refusal answers the outcome of CheckIssues as SaveRefusal does.
+func (nr *NetworkRelations) Refusal(ctx context.Context, issues []bknsdk.DeclarationIssue, err error, invalidCode, internalCode string) error {
+	return nr.saveRefusal(ctx, issues, err, invalidCode, internalCode)
+}
+
 func (nr *NetworkRelations) saveRefusal(ctx context.Context, issues []bknsdk.DeclarationIssue, err error, invalidCode, internalCode string) error {
 	if err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, internalCode).WithErrorDetails(err.Error())
@@ -190,7 +196,7 @@ func (nr *NetworkRelations) saveRefusal(ctx context.Context, issues []bknsdk.Dec
 		for _, issue := range issues {
 			details = append(details, NetworkIssueDetail(issue))
 		}
-		return DeclarationRefusal(ctx, invalidCode, strings.Join(issueMessages(issues), "; "), details...)
+		return DeclarationRefusal(ctx, invalidCode, strings.Join(IssueMessages(issues), "; "), details...)
 	}
 	return nil
 }

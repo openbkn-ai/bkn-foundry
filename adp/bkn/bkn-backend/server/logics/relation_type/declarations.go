@@ -97,6 +97,10 @@ func (rts *relationTypeService) checkOverwriteKeepsDeclarations(ctx context.Cont
 			return err
 		}
 	}
+	// An import checks every kind of definition before it refuses, and lists them all at once.
+	if interfaces.CollectClearedDeclarations(ctx, cleared) {
+		return nil
+	}
 	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_RelationType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{
 			"cleared":      cleared,

@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func declHTTPError(t *testing.T, err error) *httperrors.HTTPError {
@@ -117,7 +118,7 @@ func TestCheckRelationTypeOverwriteKeepsDeclarations(t *testing.T) {
 	stored.ReverseName = "雇员"
 	stored.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "改用任职记录"}
 	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"works_in"}).
-		Return([]*interfaces.RelationType{stored}, nil).Times(3)
+		Return([]*interfaces.RelationType{stored}, nil).Times(4)
 
 	err := rts.checkOverwriteKeepsDeclarations(ctx, []*interfaces.RelationType{workplace()}, false)
 	httpErr := declHTTPError(t, err)
@@ -126,6 +127,11 @@ func TestCheckRelationTypeOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Equal(t, []interfaces.ClearedDeclaration{{RelationTypeID: "works_in", Fields: []string{
 		interfaces.DECLARATION_REVERSE_NAME, interfaces.DECLARATION_LIFECYCLE, interfaces.DECLARATION_PROPERTIES,
 	}}}, httpErr.ErrorDetails.(map[string]any)["cleared"])
+
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, rts.checkOverwriteKeepsDeclarations(collectCtx, []*interfaces.RelationType{workplace()}, false))
+	assert.Equal(t, httpErr.ErrorDetails.(map[string]any)["cleared"], collector.Cleared())
 
 	incoming := withProperties(workplace(), titleProperty())
 	incoming.ReverseName = "员工"
@@ -208,4 +214,32 @@ func TestStrictRelationPropertyMapsABackingColumn(t *testing.T) {
 	assert.Contains(t, httpErr.ErrorDetails, "position")
 
 	require.NoError(t, rts.validateDependency(ctx, nil, relation("position"), false, nil), "not checked outside strict mode")
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	rts := &relationTypeService{rta: rta, nr: &logics.NetworkRelations{}}
+
+	stored := withProperties(workplace(), titleProperty())
+	stored.ReverseName = "雇员"
+	file := workplace()
+	rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "works_in").Return("任职于", true, nil)
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"works_in"}).
+		Return([]*interfaces.RelationType{stored}, nil)
+
+	require.NoError(t, rts.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.RelationType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, []interfaces.ClearedDeclaration{{RelationTypeID: "works_in", Fields: []string{
+		interfaces.DECLARATION_REVERSE_NAME, interfaces.DECLARATION_PROPERTIES,
+	}}}, collector.Cleared())
+	require.Len(t, deferred.RelationTypes, 1)
+	assert.Same(t, file, deferred.RelationTypes[0])
 }
