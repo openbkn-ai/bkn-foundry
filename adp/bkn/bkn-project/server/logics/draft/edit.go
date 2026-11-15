@@ -194,6 +194,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 		}
 		objectType = findObjectType(items, id)
 		if key := *edit.IncrementalKey; key != "" {
+			// A document object type has no update field: see updateFieldCandidates.
+			if objectType == nil || objectType.Document != nil {
+				return nil, invalid
+			}
 			if property := findProperty(objectType, key); property == nil || !incrementalTypes[property.Type] {
 				return nil, invalid
 			}
