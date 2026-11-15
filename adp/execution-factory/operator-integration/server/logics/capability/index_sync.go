@@ -53,7 +53,13 @@ type capabilityIndexSync struct {
 
 	mu          sync.RWMutex
 	initialized bool
-	datasetID   string
+	// placeholder is true while the dataset was built (or kept) without a usable embedding model.
+	// Its vector dimension is the default, not a model's, so no embedding can be written to it:
+	// writes are skipped until a model is registered and Init rebuilds the dataset.
+	placeholder bool
+	// placeholderWarned limits the skipped-write warning to one per placeholder spell.
+	placeholderWarned bool
+	datasetID         string
 	// embeddingModelName is the name the embeddings API accepts, not the model ID vega stores.
 	// It is a build-time snapshot: the model that vectorised the documents must be the model that
 	// vectorises the query, or the two live in different spaces.
@@ -121,9 +127,11 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 	// interval. Writes in that window are skipped, and a skipped delete is never retried by
 	// anything: the MCP pass only walks servers that still exist, so a server deleted during it
 	// would leave its tools in the index permanently.
+	placeholder := false
 	defer func() {
 		if err == nil {
 			s.setInitialized(true)
+			s.setPlaceholder(placeholder)
 		}
 	}()
 
@@ -155,6 +163,7 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 		s.logger.WithContext(ctx).Warnf("no usable embedding model, using the default dimension %d without a default embedding model, resource_id=%s, err=%v",
 			defaultEmbeddingDim, capabilityDataset, err)
 		embeddingModel = placeholderEmbeddingModel()
+		placeholder = true
 	}
 
 	if resource != nil {
@@ -500,6 +509,9 @@ func (s *capabilityIndexSync) UpsertCapability(ctx context.Context, doc *interfa
 			readableKey(doc.CapabilityRef))
 		return nil
 	}
+	if s.skipPlaceholderWrite(ctx) {
+		return nil
+	}
 	document, err := s.buildDocument(ctx, doc)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("build capability document failed, key=%s, err=%v",
@@ -737,6 +749,34 @@ func (s *capabilityIndexSync) setInitialized(initialized bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.initialized = initialized
+}
+
+func (s *capabilityIndexSync) setPlaceholder(placeholder bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.placeholder = placeholder
+	if !placeholder {
+		s.placeholderWarned = false
+	}
+}
+
+// skipPlaceholderWrite reports whether a write must be skipped because the dataset is still a
+// placeholder: it has the default vector dimension and no embedding model, so every embedding
+// request would be doomed and any vector written could mismatch the dataset. It warns once per
+// placeholder spell, not once per capability per reconciler pass.
+func (s *capabilityIndexSync) skipPlaceholderWrite(ctx context.Context) bool {
+	s.mu.Lock()
+	skip := s.placeholder
+	warn := skip && !s.placeholderWarned
+	if warn {
+		s.placeholderWarned = true
+	}
+	s.mu.Unlock()
+	if warn {
+		s.logger.WithContext(ctx).Warnf("capability index has no usable embedding model, skipping capability writes until one is registered, resource_id=%s",
+			capabilityDataset)
+	}
+	return skip
 }
 
 func (s *capabilityIndexSync) getDatasetID() string {
