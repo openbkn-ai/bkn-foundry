@@ -3,11 +3,19 @@ type: action_type
 id: new_job
 name: 新员工入职
 tags: []
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 新员工入职
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 
 ### Bound Object
 

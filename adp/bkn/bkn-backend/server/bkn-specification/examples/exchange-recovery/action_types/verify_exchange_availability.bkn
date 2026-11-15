@@ -3,8 +3,8 @@ type: action_type
 id: verify_exchange_availability
 name: 验证Exchange可用性
 tags: [Exchange验证, 可用性验证, 灾备]
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 验证Exchange可用性
@@ -37,6 +37,14 @@ action_intent: add
   "verification_summary": "Exchange服务正常运行，邮件可读性良好"
 }
 ```
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 
 ### Bound Object
 
@@ -79,10 +87,10 @@ value: 成功
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| recovery_job_id | integer | property |  | id |  | 恢复作业ID |
-| recovery_task_id | integer | property |  | recovery_task_id |  | 恢复任务ID |
-| exchange_server_id | integer | property |  | exchange_server_id |  | Exchange服务器ID |
-| recovery_destination | string | property |  | recovery_destination |  | 恢复目的地 |
+| recovery_job_id | integer |  |  | property | id | 恢复作业ID |
+| recovery_task_id | integer |  |  | property | recovery_task_id | 恢复任务ID |
+| exchange_server_id | integer |  |  | input |  | Exchange服务器ID |
+| recovery_destination | string |  |  | input |  | 恢复目的地 |
 
 ### Schedule
 

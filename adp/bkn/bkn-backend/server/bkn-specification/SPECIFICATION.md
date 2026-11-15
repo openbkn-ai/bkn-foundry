@@ -26,7 +26,7 @@ BKN（Business Knowledge Network）是基于 Markdown 的声明式建模语言�
 | 知识网络（knowledge_network） | 一组定义的顶层容器，对应目录根部的 `network.bkn` |
 | 对象类（object_type） | 业务对象的类型，如订单、物料 |
 | 关系类（relation_type） | 连接两个对象类的关系 |
-| 行动类（action_type） | 绑定到对象类、调用工具或 MCP 工具执行的操作 |
+| 行动类（action_type） | 调用一个工具或 MCP 工具完成的单个操作：操作对象实例、建立或解除关系，或不绑定对象独立调用工具（§8.9） |
 | 风险类（risk_type） | 对执行风险的结构化建模；BKN 文件只承载其名称与说明 |
 | 概念分组（concept_group） | 把相关对象类组织在一起 |
 | 对象指标（object metric V1） | 归属于对象类、带版本的指标定义，以 JSON 归档 |
@@ -60,7 +60,7 @@ bkn_spec: "3.0"
 |------|-----|-----|
 | `### Tool Configuration` 小节（§8.6） | 解析为 Action Source，同时并入描述 | 拒绝，错误信息给出 `### Action Source`（§1.3） |
 | 旧参数表 `Parameter \| Source \| Binding`（§8.7） | `Binding` 按 `ValueFrom` 读取，值的来源错位 | 拒绝，错误信息给出按当前列布局改写后的写法（§1.3） |
-| 参数的 `ValueFrom` 不是 `property` / `input` / `const`（§8.7，含逻辑属性参数） | 原样导入，执行时该参数被丢弃 | 拒绝导入，并指出是哪个参数 |
+| 参数的 `ValueFrom` 不是 `property` / `input` / `const`（§8.7，含逻辑属性参数） | 逻辑属性参数原样导入，执行时该参数被丢弃；行动类参数自 OpenBKN 0.2.2 起由导入校验拒绝（§8.9） | 拒绝导入，并指出是哪个参数 |
 | 属性声明：`Semantic`、`Required` 列与 `### Property Constraints`（§6.8） | 新列忽略，小节并入描述 | 解析为声明，写错时拒绝 |
 | 别名：frontmatter `aliases` 与 `Aliases` 列（§6.8、§7.6、§8.2） | 字段与列忽略 | 解析为别名，写错时拒绝 |
 | 生命周期 `lifecycle`，关系主次 `importance` / `fallback_for` 与可信度 `verification`（§4.3、§7.6） | 字段忽略 | 解析为声明，写错时拒绝 |
@@ -885,6 +885,13 @@ action_intent: modify
 
 重启处于异常状态的 Pod。
 
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 ### Bound Object
 
 | Bound Object |
@@ -919,8 +926,11 @@ value: Failed
 |------|------------|
 ````
 
-已知小节：`Bound Object`、`Affect Object`、`Impact Contracts`、`Trigger Condition`、
+已知小节：`Operation Config`、`Bound Object`、`Affect Object`、`Impact Contracts`、`Trigger Condition`、
 `Action Source`、`Parameter Binding`、`Schedule`。
+
+自 OpenBKN 0.2.2 起，每个行动类都必须写 `Operation Config`，声明它是对象操作、关系操作还是独立的工具调用（§8.9）。
+缺少这一节的行动类在导入时被拒绝，2.x 与 3.0 包都是如此。
 
 ### 8.2 frontmatter
 
@@ -933,6 +943,9 @@ value: Failed
 两者只写一个时，另一个取相同的值；都没写时，取 `Bound Object` 表 `Action Type` 列的值。
 导出时两个字段都写出。
 
+行动意图对所有行动类都必填。对象操作（§8.9）由它决定新建、修改还是删除实例；
+关系操作与工具调用的执行方式由 `Operation Config` 决定，意图只作为分类保存。
+
 ### 8.3 Bound Object
 
 | 列 | 说明 |
@@ -940,7 +953,8 @@ value: Failed
 | `Bound Object` | 绑定的对象类 ID；非空时必须在网络中已定义 |
 | `Action Type` | 可选，旧写法，作用同 `action_intent` |
 
-只读第一行。可以不绑定对象类，此时不能写 `Trigger Condition`，参数也不能取自对象属性。
+只读第一行。是否绑定由操作类别决定（§8.9）：对象操作与关系操作必须绑定，关系操作绑定的是关系的一端；
+工具调用不绑定，此时表中不写数据行，也不能写 `Trigger Condition`，参数不能取自对象属性。
 
 ### 8.4 影响声明
 
@@ -958,6 +972,8 @@ impact_contracts:
 也可以省略 `impact_contracts:` 键，直接写列表。
 
 **Affect Object** 是一张表，列为 `Affect Object` 和 `Affect Description`，只读第一行，对应行动类的 `affect` 字段（受影响的对象类与说明，Studio 行动类表单可编辑）。它与 `Impact Contracts` 是两个不同的字段，不是同义写法，3.0 下保留。导出时 2.x 总是输出这张表（多为空表）；**3.0** 只在有内容时输出。
+
+关系操作（§8.9）不能写 `Affect Object` 的数据行，影响须用 `Impact Contracts` 显式声明。
 
 ### 8.5 Trigger Condition
 
@@ -984,8 +1000,14 @@ sub_conds:
 | `field` | 属性名；叶子条件必需 |
 | `operation` | 操作符，必需，不区分大小写 |
 | `sub_conds` | `and` / `or` 的子条件，最多 100 个 |
-| `value_from` | 值的来源，可选 |
-| `value` | 比较值 |
+| `value_from` | 比较值的来源，可选：缺省或 `const` 为固定值，`property` 为同一对象的另一个属性，`input` 为同一次执行的动态输入 |
+| `value` | 比较值；`value_from` 为 `property` 或 `input` 时写属性名或参数名 |
+
+条件只判断一个已指定的实例能否执行，不用来挑选实例（§8.9）。`value_from: property` 只在条件所属的对象上取值；
+`value_from: input` 引用的必须是 `Parameter Binding` 中 `ValueFrom` 为 `input` 的参数。
+不需要比较值的操作符（如 `empty`、`not_null`）不能写引用。严格导入（`strict_mode=true`）与所有关系操作还会核对：
+`field` 必须是该对象的属性；`in`、`not_in`、`range`、`out_range`、`between`、`before` 要求引用为数组，其余操作符要求两侧类型兼容；
+`like`、`not_like` 的固定值必须是完整的模式，不能以单独的 `\` 结尾。
 
 条件直接写在 yaml 块中。2.x 下也可以包在 `condition:` 或 `trigger_condition:` 键下；3.0 只接受直接写，包装键按 §1.3 拒绝。
 
@@ -1000,6 +1022,9 @@ sub_conds:
 | 文本 | `like`、`not_like`、`prefix`、`not_prefix`、`regex` |
 | 空值与存在 | `empty`、`not_empty`、`null`、`not_null`、`exist`、`not_exist` |
 | 布尔 | `true`、`false` |
+
+`like`、`not_like` 的值是 SQL LIKE 模式，匹配整个属性值：`%` 匹配任意长度的文本，`_` 匹配一个字符，
+`\` 让下一个字符按原样匹配（如 `\%`）。要匹配包含某段文本的值，两端写 `%`，如 `%超时%`。是否区分大小写由数据源决定。
 
 ### 8.6 Action Source
 
@@ -1026,21 +1051,31 @@ sub_conds:
 | `Type` | 参数类型，如 `string`、`number`、`boolean`、`object`、`array` |
 | `Source` | 参数在工具请求中的位置，如 `Query`、`Body`、`Header`、`Path`；原样传给执行方，不校验 |
 | `Operation` | 指标参数的比较操作符；行动参数通常为空 |
-| `ValueFrom` | 值的来源：`property`（对象属性）、`input`（运行时输入）、`const`（常量）；也接受列名 `Value From`、`Binding` |
-| `Value` | `ValueFrom` 为 `property` 时写属性名，为 `const` 时写常量值，为 `input` 时留空 |
+| `ValueFrom` | 值的来源：`property`（对象属性）、`input`（运行时输入）、`const`（常量）；关系操作另有 `source_identity`、`target_identity`（关系两端实例的主键，§8.9）。也接受列名 `Value From`、`Binding` |
+| `Value` | `ValueFrom` 为 `property` 时写属性名，为 `const` 时写常量值，为 `input`、`source_identity`、`target_identity` 时留空 |
 | `Description` | 说明 |
 
 注意：值的来源写在 `ValueFrom`，不是 `Source`。
 
+**常量的写法。** 写了 `Operation Config` 的行动类（自 0.2.2 起即全部行动类），`const` 的 `Value` 按 JSON 解析，
+以保留 `false`、`0`、`null`、数组、对象与大整数：`integer`、`number`、`boolean`、`array`、`object` 参数必须写合法的 JSON，
+否则拒绝导入。字符串参数（`string`、`text`、`keyword`、`date`、`datetime` 及未写类型）应写成带双引号的 JSON 字符串，
+如 `"P1"`、`"123"`；不是合法 JSON 的文本（如 `P1`）按原文读作字符串，但 `123`、`true`、`null` 这类恰好是合法 JSON
+的文本会被解码成数字、布尔或空值，工具收到的不是字符串（附录 A-12）。导出器总是按 JSON 写出常量。
+
+**参数名。** 参数名必须非空且不重复；点分的名称（如 `order.id`）表示嵌套位置，两个参数的路径不能互为前缀，
+路径中不能出现空段及 `__proto__`、`constructor`、`prototype`。
+
 **旧列布局** `Parameter | Type | Source | Binding | Description` 把值的来源写在 `Source`、
 属性名或常量写在 `Binding`（`input` 时写 `-`）。
 
-- 2.x：`Binding` 按 `ValueFrom` 读取，值的来源错位，参数在执行时被丢弃（附录 A-2）。
+- 2.x：`Binding` 按 `ValueFrom` 读取，值的来源错位（附录 A-2）。行动类参数因此被导入校验拒绝；逻辑属性参数在执行时被丢弃。
 - 3.0：拒绝旧布局，不自动转换；错误信息给出按当前列布局的改写（`Source` 中的值的来源写到 `ValueFrom`，
   `Binding` 写到 `Value`，`Source` 置空）。旧列名 `Parameter`、`Value From`、`Binding` 也按 §1.3 拒绝。
 
-**3.0 的校验**：每个参数的 `ValueFrom` 必须是 `property`、`input` 或 `const`，否则拒绝导入。
-值的来源误写在 `Source` 列时，错误信息会直接指出。2.x 不做这项检查（附录 A-4）。
+**3.0 的校验**：每个参数的 `ValueFrom` 必须是上表列出的取值，否则拒绝导入。
+值的来源误写在 `Source` 列时，错误信息会直接指出。2.x 解析时不做这项检查（附录 A-4），
+但自 0.2.2 起，行动类参数在导入校验中同样要求合法的 `ValueFrom`（§8.9）。
 
 导出一律使用当前列布局。
 
@@ -1052,6 +1087,155 @@ sub_conds:
 | `Expression` | 间隔或 cron 表达式 |
 
 只读第一行，可以留空表。
+
+### 8.9 Operation Config
+
+`Operation Config` 声明行动类执行哪一种操作，以及执行时如何指定目标。每个行动类只调用一个工具，
+复杂的业务处理由工具实现。这一节自 OpenBKN 0.2.2 起必需：缺少它的行动类在导入时被拒绝，2.x 与 3.0 包都是如此。
+平台中已有的行动类由升级时的一次性转换脚本补齐；0.2.2 之前导出的 BKN 包要先按本节补写，才能导入。
+反过来，0.2.1 及更早的平台不认识这一节：3.0 包按未知小节拒绝导入，2.x 包把它并入描述；
+这些平台也不按 JSON 解析常量，带双引号的字符串常量会连引号一起保存。
+
+这一节是一个 YAML 块，字段写在 `operation_config` 键下：
+
+| 字段 | 说明 |
+|------|------|
+| `type` | 必需。`object`（对象操作）、`relation`（关系操作）或 `tool`（工具调用） |
+| `relation_type_id` | 关系操作必需，所操作的关系类 ID |
+| `relation_operation` | 关系操作必需，`create`（建立关系）或 `delete`（解除关系） |
+| `anchor_role` | 关系操作可选，`source` 或 `target`：`Bound Object` 是关系的起点还是终点 |
+| `other_object_condition` | 关系操作可选，对关系另一端实例的条件，结构同 `Trigger Condition`（§8.5） |
+
+**解析行为。** 小节中必须有 YAML 块，且块中必须有 `operation_config` 键，否则拒绝。字段按上表严格识别，
+写了未列出的字段（包括嵌套条件中的字段）即拒绝，2.x 与 3.0 都是如此。非关系操作写了关系字段同样拒绝。
+
+**三类操作：**
+
+| `type` | `Bound Object` | `Trigger Condition` | 执行时的目标 |
+|--------|----------------|---------------------|--------------|
+| `object` | 必须绑定 | 新建（`action_intent: add`）不能写；修改、删除可以写 | 新建时由调用方提供新实例的属性值，不读取已有实例；修改、删除时由调用方明确指定实例的主键 |
+| `relation` | 必须绑定，且是所选关系的一端 | 可以写，作用于 `Bound Object` 一端 | 由调用方明确指定一对起点与终点实例，每次执行一对 |
+| `tool` | 不绑定 | 不能写 | 不涉及对象，只传参数 |
+
+条件只校验调用方指定的实例能否执行，不会扫描出一批实例去执行；修改、删除与关系操作在调用方未指定目标时拒绝执行。
+新建实例时，调用方只能填写被 `property` 参数引用的属性，未被引用的属性不开放填写；被引用的属性都必须填写，缺少任一个时拒绝执行。
+
+**关系操作的规则：**
+
+- `relation_type_id` 必须是网络中已定义的关系类，且它的一端是 `Bound Object`。
+- 普通关系可以省略 `anchor_role`，按关系方向推断后保存；自关联关系（两端是同一对象类）必须写明 `anchor_role`。
+- 参数表中必须各有一个 `ValueFrom` 为 `source_identity` 和 `target_identity` 的参数，`Value` 留空。
+  执行时它们取关系起点与终点实例的主键值。两端对象类都只能有一个主键，参数类型须与主键类型兼容；复合主键的对象类不能用于关系操作。
+- `Trigger Condition` 约束 `Bound Object` 一端，`other_object_condition` 约束另一端；条件中的 `value_from: property` 只在各自一端取值。
+- 影响须写在 `Impact Contracts`，不能写 `Affect Object` 的数据行（§8.4）。
+
+**严格导入的额外校验。** 严格导入（`strict_mode=true`）时，对象操作还会核对：`Bound Object` 存在，
+`property` 参数引用的属性存在且类型与参数兼容（整数可以传给 `number` 参数），条件字段与引用的类型（§8.5）。
+关系操作无论是否严格导入，都做这些校验，并核对两端对象类与主键。
+
+关系操作示例：为采购订单指定供应商。
+
+````markdown
+---
+type: action_type
+id: assign_supplier
+name: 指定供应商
+tags: [采购]
+action_intent: add
+---
+
+## ActionType: 指定供应商
+
+为草稿状态的采购订单关联一个合作中的供应商。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: relation
+  relation_type_id: po_supplier
+  relation_operation: create
+  anchor_role: source
+  other_object_condition:
+    field: status
+    operation: ==
+    value: active
+```
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| purchase_order |
+
+### Impact Contracts
+
+```yaml
+impact_contracts:
+  - object_type_id: purchase_order
+    expected_operation: modify
+    description: 订单关联到供应商
+```
+
+### Trigger Condition
+
+```yaml
+object_type_id: purchase_order
+field: status
+operation: ==
+value: draft
+```
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | box_purchase | tool_assign_supplier | | |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| order_id | string | Body | | source_identity | | 采购订单编号 |
+| supplier_id | string | Body | | target_identity | | 供应商编号 |
+| reason | string | Body | | input | | 指定原因 |
+````
+
+工具调用示例：不绑定对象，只传参数。
+
+````markdown
+---
+type: action_type
+id: sync_supplier_master
+name: 同步供应商主数据
+tags: [采购]
+action_intent: modify
+---
+
+## ActionType: 同步供应商主数据
+
+从 ERP 拉取供应商主数据。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: tool
+```
+
+### Action Source
+
+| Type | BoxID | ToolID | McpID | ToolName |
+|------|-------|--------|-------|----------|
+| tool | box_purchase | tool_sync_supplier | | |
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| since | datetime | Body | | input | | 增量起始时间 |
+| full | boolean | Body | | const | false | 是否全量同步 |
+````
 
 ---
 
@@ -1282,7 +1466,8 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 - 各类定义按 ID 排序。
 - 对象类总是输出 `Data Source`、`Data Properties`、`Logic Properties`、`Keys` 四个小节，
   行动类总是输出 `Bound Object`、`Affect Object`、`Trigger Condition`、`Action Source`、
-  `Parameter Binding`、`Schedule`，没有内容的输出空表。
+  `Parameter Binding`、`Schedule`，没有内容的输出空表；有操作定义时在 `Bound Object` 之前输出 `Operation Config`，
+  `const` 参数的值按 JSON 写出（字符串带双引号，§8.7）。
 - 逻辑属性的 Source 表在来源为 `tool` 时输出 6 列，否则输出 3 列。
 - **（3.0）** 网络中存在任一 3.0 专有声明（§4.3、§6.8、§7.6、§8.2 的 `aliases`、§16）时，`network.bkn` 写
   `bkn_spec: "3.0"` 并输出新列、新小节与 `value_types/`，全部内容按 §1.3 的唯一写法输出（只写 `action_intent`，列顺序固定，`Affect Object` 只在有内容时输出）；否则导出与现在逐字节相同，不写 `bkn_spec`。
@@ -1423,15 +1608,16 @@ unit: 元
 | # | 问题 | 现状 | 影响 |
 |---|------|------|------|
 | A-1 | `### Tool Configuration` 不在行动类已知小节中 | 2.x 现状：能被解析为 Action Source，但整节同时并入描述。3.0 拒绝旧标题，错误信息给出 `### Action Source` | 按 SDK 模板写的行动，描述里多出一段工具表 |
-| A-2 | 旧列名 `Binding` 映射到 `ValueFrom` | 2.x 现状：旧布局把 `property` 等写在 `Source`、属性名写在 `Binding`，读取后值的来源错位。3.0 拒绝旧布局，错误信息给出改写 | 按 SDK 模板写的行动参数在执行时被静默丢弃；已入库的数据不会自动修复，3.0 升级预检（网络体检）会列出疑似错位的参数并预填建议值（§14.2） |
+| A-2 | 旧列名 `Binding` 映射到 `ValueFrom` | 2.x 现状：旧布局把 `property` 等写在 `Source`、属性名写在 `Binding`，读取后值的来源错位。3.0 拒绝旧布局，错误信息给出改写 | 逻辑属性参数在执行时被静默丢弃；行动类参数自 0.2.2 起在导入时被拒绝（§8.9）。已入库的数据不会自动修复，3.0 升级预检（网络体检）会列出疑似错位的参数并预填建议值（§14.2） |
 | A-3 | 导出时 frontmatter 由字符串拼接生成 | 值不加引号；2.x 保持现状，3.0 导出保留字符串类型（§14.2） | 名称含 `: ` 时导出文件无法再导入；`001`、`1.0` 等读回后变成 `1` |
-| A-4 | 当前列布局下把值的来源写进 `Source` | 2.x 现状：`Source` 写 `property`、属性名写在 `ValueFrom` 的表（bkn-sdk 的 `SPECIFICATION.llm.md` 对逻辑属性就是这样教的）按字面读取。3.0 拒绝导入 | 2.x 下该参数在执行时被静默丢弃；SDK 文档需修正 |
+| A-4 | 当前列布局下把值的来源写进 `Source` | 2.x 现状：`Source` 写 `property`、属性名写在 `ValueFrom` 的表（bkn-sdk 的 `SPECIFICATION.llm.md` 对逻辑属性就是这样教的）按字面读取。3.0 拒绝导入 | 2.x 下逻辑属性的该参数在执行时被静默丢弃，行动类的该参数自 0.2.2 起在导入时被拒绝；SDK 文档需修正 |
 | A-5 | 未知的 frontmatter 字段与 `###` 小节都被静默处理 | 2.x 现状：字段被丢弃，小节并入描述，都不提示。3.0 拒绝（§1.3） | 拼错的小节名、`enabled` / `risk_level` / `requires_approval` 等字段写了无效且没人知道 |
 | A-6 | 往返丢失字段 | 对象类与关系类的 `icon`、`color`，参数的 `required`、`default`、`if_system_generate` 都没有 BKN 写法 | 导出再导入后这些设置丢失 |
 | A-7 | 工具引用只有 ID | Action Source 与逻辑属性的 tool 来源只写环境内 ID，没有名称 | 跨环境导入后 capabilities 能按名称匹配，行动和逻辑属性仍指向不存在的 ID；现状的规避方式见 §13.1 |
 | A-9 | 子目录与 frontmatter `type` 可以不一致 | 2.x 现状：解析看子目录，CHECKSUM 看 `type`。3.0 拒绝不一致（§1.3） | 同一文件在两处被当作不同类型 |
 | A-10 | 能力依赖缺少版本与接口信息 | 只有 ID 和名称 | 按名称匹配到的工具与原工具参数不兼容时无法发现 |
 | A-11 | BKN 包不携带能力实现 | 函数代码、OpenAPI 定义、MCP 配置、Skill 包都要另外通过执行工厂搬迁（§13.1） | 跨环境迁移需要多步手工操作，顺序错误时静默失败；规划见 §13.2 |
+| A-12 | 字符串常量按 JSON 解码时不看声明类型 | 写了 `Operation Config` 的行动类中，`string` 等字符串参数的 `const` 写成 `123`、`true`、`null`、`{"a":1}` 这类合法 JSON 文本时，被解码成数字、布尔、空值或对象；不是合法 JSON 的文本才按原文保留。导入校验不核对常量类型 | 导入成功，执行时的类型校验也拦不全：数字与 `null` 通过校验，工具收到数字或空值而不是字符串；布尔、数组、对象在每次执行时因类型不符而失败。规避：字符串常量写成带双引号的 JSON 字符串，如 `"123"`；导出器写出的包不受影响 |
 
 ## 附录 B：相对 2.0.1 的变化
 
@@ -1449,6 +1635,7 @@ unit: 元
 | 行动类小节 | 含 `Pre-conditions`、`Scope of Impact`、`Execution Description` | 不再结构化解析，写了会并入描述 |
 | 行动类 frontmatter | 含 `enabled`、`risk_level`、`requires_approval` | 不再解析，写了会被忽略 |
 | Bound Object 的 Action Type | 含 `query` | 只有 `add`、`modify`、`delete` |
+| 行动的操作定义 | 无；按是否绑定对象推断，执行时可按条件扫描实例 | `### Operation Config` 必需（OpenBKN 0.2.2 起，2.x 包同样适用）：对象、关系或工具调用三类，执行目标须明确指定；参数来源增加 `source_identity`、`target_identity`；`const` 按 JSON 解析（§8.7、§8.9） |
 | 风险类小节 | `Control Scope`、`Control Policy` 等 | 不再结构化解析，全部并入描述 |
 | 指标 | `metrics/*.bkn` | `object_metrics/{id}@{version}.json`；旧目录报错 |
 | 数据属性 | 5 列 | 增加可选的 `Mask Rule` 列；类型增加 `keyword`、`unsigned integer`、`timestamp`、`vector`、`point`、`shape`、`ip` |

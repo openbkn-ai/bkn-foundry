@@ -7,11 +7,19 @@ action_type: modify
 enabled: false
 risk_level: medium
 requires_approval: true
+action_intent: modify
 ---
 
 ## ActionType: 重启Pod
 
 当 Pod 状态异常时，自动执行重启操作。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
 
 ### Bound Object
 
@@ -53,11 +61,11 @@ condition:
 
 ### Parameter Binding
 
-| Parameter | Source | Binding | Description |
-|-----------|--------|---------|-------------|
-| pod | property | pod_name | Pod name |
-| namespace | property | pod_namespace | Namespace |
-| grace_period | const | 30 | Grace period seconds |
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| pod | string |  |  | property | pod_name | Pod name |
+| namespace | string |  |  | property | pod_namespace | Namespace |
+| grace_period | integer |  |  | const | 30 | Grace period seconds |
 
 ### Schedule
 

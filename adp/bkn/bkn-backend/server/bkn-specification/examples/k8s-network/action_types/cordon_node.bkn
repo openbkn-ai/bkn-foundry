@@ -17,6 +17,14 @@ action_intent: modify
 3. 新 Pod 不调度到该节点
 4. 恢复后需手动 `kubectl uncordon`
 
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
+
 ### Bound Object
 
 | Bound Object |
@@ -58,7 +66,7 @@ value: NotReady
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| node_name | string | property |  |  | node_name | Node 名称 |
+| node_name | string |  |  | property | node_name | Node 名称 |
 
 ### Schedule
 
