@@ -272,14 +272,24 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 	return nil
 }
 
-// notDeprecatedFilter keeps the concepts without lifecycle_status deprecated; only a deprecated
-// concept carries the field, so those without a lifecycle are kept.
+// notDeprecatedFilter keeps the concepts that are not deprecated. Only a deprecated concept carries
+// lifecycle_status, so a concept without it is a normal one and must stay; a bare "!=" would drop
+// it, since the search engine does not compare a missing field.
 func notDeprecatedFilter() *cond.CondCfg {
 	return &cond.CondCfg{
-		Field:     interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS,
-		Operation: cond.OperationNotEq,
-		ValueFrom: cond.ValueFrom_Const,
-		Value:     interfaces.LIFECYCLE_DEPRECATED,
+		Operation: cond.OperationOr,
+		SubConds: []*cond.CondCfg{
+			{
+				Field:     interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS,
+				Operation: cond.OperationNotExist,
+			},
+			{
+				Field:     interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS,
+				Operation: cond.OperationNotEq,
+				ValueFrom: cond.ValueFrom_Const,
+				Value:     interfaces.LIFECYCLE_DEPRECATED,
+			},
+		},
 	}
 }
 
