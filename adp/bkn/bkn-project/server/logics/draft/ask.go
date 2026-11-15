@@ -146,6 +146,7 @@ func (o askObjectType) MarshalJSON() ([]byte, error) {
 
 type askProperty struct {
 	ExtractionInstruction string   `json:"extraction_instruction,omitempty"`
+	ExtractionMethod      string   `json:"extraction_method,omitempty"`
 	Examples              []string `json:"examples,omitempty"`
 	ReadOnly              bool     `json:"read_only,omitempty"`
 	Name                  string   `json:"name"`
@@ -200,6 +201,7 @@ func askResponseFormat(fields []string) map[string]any {
 			"name": map[string]any{"type": "string"}, "display_name": str(interfaces.DRAFT_NAME_MAX_LENGTH),
 			"comment":                str(askValueMaxLength),
 			"extraction_instruction": str(1000),
+			"extraction_method":      map[string]any{"type": "string", "enum": interfaces.DraftExtractionMethods},
 		}, "name"),
 		"cardinality":           map[string]any{"type": "string", "enum": []string{"one_to_one", "one_to_many", "many_to_one", "many_to_many"}},
 		"source_object_type_id": map[string]any{"type": "string"},
@@ -449,6 +451,9 @@ func askObjectTypeOf(objectType *interfaces.DraftObjectType) askObjectType {
 			Description: truncateRunes(p.Description, askDescriptionMax), ReadOnly: p.ReadOnly,
 		})
 		asked.Properties[len(asked.Properties)-1].ExtractionInstruction = truncateRunes(instructions[p.Name], 1000)
+		if p.Extraction != nil && !p.ReadOnly {
+			asked.Properties[len(asked.Properties)-1].ExtractionMethod = p.Extraction.MethodOf()
+		}
 	}
 	return asked
 }
