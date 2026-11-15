@@ -169,7 +169,7 @@
   "get_skill_content": {
     "title": "Skill Content",
     "group_title": "Skills",
-    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage and entry commands are documented there; fetch individual bundled files with read_skill_file instead of reading the whole package.\nNeeds view permission on the knowledge network itself: a mounted Skill is read through the network's managed proxy, so no separate grant on the Skill is needed. Permissions on object types or other child resources alone, or a standalone Skill grant, are refused.",
+    "description": "Read a skill's SKILL.md body and the file listing of its bundle (files[].rel_path). Usage is documented there; fetch individual bundled files with read_skill_file instead of reading the whole package. The returned runtime tells whether the platform can execute the Skill: when executable is true, runtime.entry_points lists the .py files usable as entry_point; when false (for example a package with Shell/Bash scripts only), reason says why, and the Skill can be read but must not be executed.\nNeeds view permission on the knowledge network itself: a mounted Skill is read through the network's managed proxy, so no separate grant on the Skill is needed. Permissions on object types or other child resources alone, or a standalone Skill grant, are refused.",
     "gateway": {
       "summary": "Read a skill's main document, SKILL.md, and the list of files in the skill package.",
       "use_when": "You want to understand what a skill does and how to use it.",
@@ -191,12 +191,12 @@
   "execute_skill": {
     "title": "Execute Skill",
     "group_title": "Skills",
-    "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first.",
+    "description": "Run one .py script of a skill package with Python inside the sandbox and return exit_code / stdout / stderr. entry_point is a path inside the package (for example scripts/main.py), taken from the entry declared in SKILL.md or from runtime.entry_points of get_skill_content; pass the script's command-line arguments one by one in arguments. Python only: a Skill whose runtime.executable is false cannot be executed. The deprecated entry_shell (of the form python <script> [args]) is still accepted; new calls should use entry_point plus arguments.",
     "gateway": {
       "summary": "Run the entry script of a skill mounted on the network in the sandbox.",
       "use_when": "The skill's instructions tell you to run its script.",
       "not_for": "To read a skill's instructions, use get_skill_content.",
-      "next_step": "Fill entry_shell as the skill's instructions say."
+      "next_step": "Take entry_point from the skill's instructions or runtime.entry_points, and put command-line arguments in arguments."
     }
   },
   "run_code": {

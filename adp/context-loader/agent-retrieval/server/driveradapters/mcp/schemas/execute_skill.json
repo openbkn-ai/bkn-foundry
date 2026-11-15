@@ -10,9 +10,20 @@
         "type": "string",
         "description": "技能 ID（取自 list_skills 或 search_capabilities 的 skill_id）。"
       },
+      "entry_point": {
+        "type": "string",
+        "description": "要运行的 Python 脚本，技能包内的相对路径，如 scripts/main.py。必须是包内的 .py 文件，取自 SKILL.md 声明的入口或 get_skill_content 返回的 runtime.entry_points，不要自行编造路径。未传已弃用的 entry_shell 时必填。"
+      },
+      "arguments": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "可选。脚本的命令行参数，一个数组元素一个参数，不要自带 shell 引号。参数里不要出现 ; & | 或换行符。"
+      },
       "entry_shell": {
         "type": "string",
-        "description": "在沙箱内执行的入口命令。必须取自 SKILL.md 中声明的入口，不要自行拼装无关命令。技能包已解压到工作目录，命令相对该目录执行。"
+        "description": "已弃用，请改用 entry_point 和 arguments。只接受 python <脚本> [参数] 的形式，不支持 Shell/Bash 入口。不要与 entry_point 同时传。"
       },
       "timeout": {
         "type": "integer",
@@ -23,8 +34,7 @@
     },
     "required": [
       "kn_id",
-      "skill_id",
-      "entry_shell"
+      "skill_id"
     ]
   },
   "output_schema": {

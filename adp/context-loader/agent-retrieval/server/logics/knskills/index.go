@@ -57,8 +57,11 @@ var ErrSkillIDRequired = errors.New("skill_id is required")
 // ErrRelPathRequired identifies a missing rel_path argument.
 var ErrRelPathRequired = errors.New("rel_path is required")
 
-// ErrEntryShellRequired identifies a missing entry_shell argument.
-var ErrEntryShellRequired = errors.New("entry_shell is required")
+// ErrEntryPointRequired identifies a missing entry_point argument.
+var ErrEntryPointRequired = errors.New("entry_point is required")
+
+// ErrEntryPointConflict identifies a call that sends both entry_point and the deprecated entry_shell.
+var ErrEntryPointConflict = errors.New("send entry_point or entry_shell, not both")
 
 type localizedInputError struct {
 	message string
@@ -87,13 +90,22 @@ func RelPathRequiredError(ctx context.Context) error {
 	return localizedInputError{message: localizedText, cause: ErrRelPathRequired}
 }
 
-// EntryShellRequiredError returns a localized missing entry_shell error.
-func EntryShellRequiredError(ctx context.Context) error {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillEntryShellRequired", map[string]any{})
+// EntryPointRequiredError returns a localized missing entry_point error.
+func EntryPointRequiredError(ctx context.Context) error {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillEntryPointRequired", map[string]any{})
 	if renderErr != nil {
 		logger.Errorf("localized message rendering failed: %v", renderErr)
 	}
-	return localizedInputError{message: localizedText, cause: ErrEntryShellRequired}
+	return localizedInputError{message: localizedText, cause: ErrEntryPointRequired}
+}
+
+// EntryPointConflictError returns a localized error for a call that sends both entry forms.
+func EntryPointConflictError(ctx context.Context) error {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillEntryPointConflict", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedInputError{message: localizedText, cause: ErrEntryPointConflict}
 }
 
 // ListSkillsReq is the input for list_skills.
@@ -137,7 +149,18 @@ type GetSkillContentResp struct {
 	Content   string           `json:"content"`
 	Truncated bool             `json:"truncated,omitempty"`
 	Files     []SkillFileEntry `json:"files"`
-	Message   string           `json:"message,omitempty"`
+	// Runtime says whether the platform can run the Skill, and with which .py entry points. When
+	// executable is false the Skill can be read but not executed; Message then carries the reason.
+	Runtime *SkillRuntime `json:"runtime,omitempty"`
+	Message string        `json:"message,omitempty"`
+}
+
+// SkillRuntime is the execution factory's verdict on running a Skill package.
+type SkillRuntime struct {
+	Runtime     string   `json:"runtime,omitempty"`
+	Executable  bool     `json:"executable"`
+	EntryPoints []string `json:"entry_points,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
 }
 
 // ReadSkillFileReq is the input for read_skill_file.
@@ -163,8 +186,12 @@ type ReadSkillFileResp struct {
 // ExecuteSkillReq is the input for execute_skill.
 type ExecuteSkillReq struct {
 	// KnID is required and checked before anything runs. This is the call that changes the world.
-	KnID       string `json:"kn_id"`
-	SkillID    string `json:"skill_id"`
+	KnID    string `json:"kn_id"`
+	SkillID string `json:"skill_id"`
+	// EntryPoint is a package-relative .py file; Arguments is its argv.
+	EntryPoint string   `json:"entry_point"`
+	Arguments  []string `json:"arguments"`
+	// EntryShell is deprecated: "python <script> [args]", translated to EntryPoint and Arguments.
 	EntryShell string `json:"entry_shell"`
 	Timeout    int    `json:"timeout"` // seconds, optional.
 }
@@ -451,14 +478,38 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID str
 			MimeType: f.MimeType,
 		})
 	}
-	if truncated {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillContentTruncated", map[string]any{})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
+	if resp.Runtime != nil {
+		out.Runtime = &SkillRuntime{
+			Runtime:     resp.Runtime.Runtime,
+			Executable:  resp.Runtime.Executable,
+			EntryPoints: resp.Runtime.EntryPoints,
+			Reason:      resp.Runtime.Reason,
 		}
-		out.Message = localizedText
 	}
+	var notes []string
+	if truncated {
+		notes = append(notes, renderDetail(ctx, "agentRetrieval.Detail.SkillContentTruncated", nil))
+	}
+	if resp.Runtime != nil && !resp.Runtime.Executable {
+		// Name the verdict and the reason, and nothing to do next: SKILL.md may still describe a
+		// script, but the platform cannot run this package.
+		notes = append(notes, renderDetail(ctx, "agentRetrieval.Detail.SkillNotExecutable",
+			map[string]any{"Reason": resp.Runtime.Reason}))
+	}
+	out.Message = strings.Join(notes, " ")
 	return out, nil
+}
+
+// renderDetail renders a localized detail message; a rendering failure is logged and yields "".
+func renderDetail(ctx context.Context, key string, data map[string]any) string {
+	if data == nil {
+		data = map[string]any{}
+	}
+	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), key, data)
+	if err != nil {
+		logger.Errorf("localized message rendering failed: %v", err)
+	}
+	return text
 }
 
 // ReadSkillFile reads one skill package file. Binary files return metadata only.
@@ -519,8 +570,9 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 	return out, nil
 }
 
-// ExecuteSkill runs a skill entry command in the sandbox.
-// entry_shell comes from SKILL.md; Execution Factory enforces account authorization.
+// ExecuteSkill runs a Python script of a skill package in the sandbox.
+// entry_point and arguments come from SKILL.md or the runtime of get_skill_content; Execution
+// Factory enforces account authorization and the package checks.
 func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq) (*ExecuteSkillResp, error) {
 	if req == nil {
 		return nil, SkillIDRequiredError(ctx)
@@ -529,19 +581,28 @@ func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq
 	if skillID == "" {
 		return nil, SkillIDRequiredError(ctx)
 	}
+	entryPoint := strings.TrimSpace(req.EntryPoint)
 	entryShell := strings.TrimSpace(req.EntryShell)
-	if entryShell == "" {
-		return nil, EntryShellRequiredError(ctx)
+	if entryPoint == "" && entryShell == "" {
+		return nil, EntryPointRequiredError(ctx)
+	}
+	if entryPoint != "" && entryShell != "" {
+		return nil, EntryPointConflictError(ctx)
+	}
+	execReq := &interfaces.ExecuteSkillRequest{SkillID: skillID, Timeout: req.Timeout}
+	if entryPoint != "" {
+		execReq.EntryPoint, execReq.Arguments = entryPoint, req.Arguments
+	} else if entry, args, ok := translateLegacyEntryShell(entryShell); ok {
+		execReq.EntryPoint, execReq.Arguments = entry, args
+	} else {
+		// Not "python <script> [args]": let the factory refuse it with its own reason.
+		execReq.EntryShell = entryShell
 	}
 	if _, err := s.requireMounted(ctx, req.KnID, skillID); err != nil {
 		return nil, err
 	}
 
-	resp, err := s.operator.ExecuteSkill(ctx, &interfaces.ExecuteSkillRequest{
-		SkillID:    skillID,
-		EntryShell: entryShell,
-		Timeout:    req.Timeout,
-	})
+	resp, err := s.operator.ExecuteSkill(ctx, execReq)
 	if err != nil {
 		return nil, err
 	}

@@ -307,7 +307,9 @@
   "execute_skill": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",
     "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or search_capabilities.",
-    "input_schema.properties.entry_shell.description": "The entry command to run inside the sandbox. It has to be one of the entries declared in SKILL.md; do not assemble an unrelated command. The skill package is already extracted into the working directory and the command runs relative to it.",
+    "input_schema.properties.entry_point.description": "Path of the Python script to run, relative to the skill package root, for example scripts/main.py. It has to be a .py file of the package, taken from the entry declared in SKILL.md or from runtime.entry_points of get_skill_content; do not invent paths. Required unless the deprecated entry_shell is sent.",
+    "input_schema.properties.arguments.description": "Optional. Command-line arguments of the script, one array element per argument, with no shell quoting. Do not use the characters ; & | or line breaks in an argument.",
+    "input_schema.properties.entry_shell.description": "Deprecated: use entry_point and arguments. Accepts only the form python <script> [args]; Shell and Bash entries are not supported. Do not send it together with entry_point.",
     "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
     "output_schema.properties.exit_code.description": "Process exit code; 0 means success",
     "output_schema.properties.stdout.description": "Standard output, truncated when long",
@@ -373,7 +375,12 @@
     "output_schema.properties.files.description": "The files inside the skill package. Fetch the content of one with read_skill_file when you need it; there is no need to read the whole package.",
     "output_schema.properties.files.items.properties.rel_path.description": "Path relative to the package root; pass this as rel_path to read_skill_file",
     "output_schema.properties.files.items.properties.size.description": "Size in bytes",
-    "output_schema.properties.message.description": "Further detail, such as a truncation notice"
+    "output_schema.properties.runtime.description": "Whether the platform can execute this Skill. Python is the only runtime.",
+    "output_schema.properties.runtime.properties.runtime.description": "The runtime Skills execute with: python",
+    "output_schema.properties.runtime.properties.executable.description": "false means the Skill can be read but not executed; do not call execute_skill for it",
+    "output_schema.properties.runtime.properties.entry_points.description": "The .py files of the package, usable as entry_point of execute_skill",
+    "output_schema.properties.runtime.properties.reason.description": "Why the Skill is not executable and how to migrate it; present only when executable is false",
+    "output_schema.properties.message.description": "Further detail, such as a truncation notice or why the Skill is not executable"
   },
   "list_skills": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",

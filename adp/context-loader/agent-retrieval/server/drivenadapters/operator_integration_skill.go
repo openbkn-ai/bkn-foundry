@@ -192,6 +192,7 @@ func (o *operatorIntegrationClient) skillContentFromResponse(ctx context.Context
 		URL     string                        `json:"url"`
 		Status  string                        `json:"status"`
 		Files   []interfaces.SkillFileSummary `json:"files"`
+		Runtime *interfaces.SkillRuntime      `json:"runtime"`
 	}
 	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
@@ -211,6 +212,7 @@ func (o *operatorIntegrationClient) skillContentFromResponse(ctx context.Context
 		Content: content,
 		Status:  raw.Status,
 		Files:   raw.Files,
+		Runtime: raw.Runtime,
 	}, nil
 }
 
@@ -290,7 +292,7 @@ func (o *operatorIntegrationClient) skillFileFromResponse(ctx context.Context, r
 	}, nil
 }
 
-// ExecuteSkill runs a skill entry command in the sandbox. Execution Factory
+// ExecuteSkill runs a Python script of a skill package in the sandbox. Execution Factory
 // requires the caller's execute permission; public_access only permits reads.
 func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
 	fullURL := o.baseURL + fmt.Sprintf(
@@ -301,7 +303,16 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	if err != nil {
 		return nil, err
 	}
-	body := map[string]any{"entry_shell": req.EntryShell}
+	// The factory refuses entry_point and entry_shell together, so send exactly one form.
+	body := map[string]any{}
+	if req.EntryPoint != "" {
+		body["entry_point"] = req.EntryPoint
+		if len(req.Arguments) > 0 {
+			body["arguments"] = req.Arguments
+		}
+	} else {
+		body["entry_shell"] = req.EntryShell
+	}
 	if req.Timeout > 0 {
 		body["timeout"] = req.Timeout
 	}

@@ -383,7 +383,7 @@
     "group": "skill",
     "group_title": "技能",
     "order": 530,
-    "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法与入口命令都写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。\n需要该知识网络本身的查看权限：挂载的 Skill 经知识网络的受管代理读取，不必另有 Skill 授权；只有对象类等子资源权限或单独的 Skill 授权会被拒绝。",
+    "description": "读技能主文档 SKILL.md 正文，并返回技能包内的文件清单（files[].rel_path）。技能的用法写在这里；需要哪个附属文件再用 read_skill_file 单取，不必整包读。返回的 runtime 说明平台能否执行该 Skill：executable 为 true 时 runtime.entry_points 列出可作 entry_point 的 .py 文件；为 false 时（如只有 Shell/Bash 脚本）reason 给出原因，该 Skill 只能阅读，不要尝试执行。\n需要该知识网络本身的查看权限：挂载的 Skill 经知识网络的受管代理读取，不必另有 Skill 授权；只有对象类等子资源权限或单独的 Skill 授权会被拒绝。",
     "gateway": {
       "summary": "读取技能的主文档 SKILL.md，以及技能包里的文件清单。",
       "use_when": "要了解某个技能的用途和使用方法。",
@@ -437,12 +437,12 @@
     "group": "skill",
     "group_title": "技能",
     "order": 550,
-    "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。",
+    "description": "在沙箱内用 Python 执行技能包中的一个 .py 脚本，返回 exit_code / stdout / stderr。entry_point 是包内相对路径（如 scripts/main.py），取自 SKILL.md 声明的入口或 get_skill_content 返回的 runtime.entry_points；脚本的命令行参数逐个放进 arguments。只支持 Python：runtime.executable 为 false 的 Skill 不可执行。已弃用的 entry_shell（形如 python <script> [args]）仍被接受，新调用请改用 entry_point 加 arguments。",
     "gateway": {
       "summary": "在沙箱中运行知识网络挂载技能的入口脚本。",
       "use_when": "技能说明要求运行它的脚本时。",
       "not_for": "只需要阅读技能说明时用 get_skill_content。",
-      "next_step": "entry_shell 按技能说明填写。",
+      "next_step": "entry_point 取自技能说明或 runtime.entry_points，命令行参数放进 arguments。",
       "keywords": [
         "执行技能",
         "运行技能",
@@ -453,7 +453,8 @@
       "example_arguments": {
         "kn_id": "kn_demo",
         "skill_id": "skill_demo",
-        "entry_shell": "python main.py"
+        "entry_point": "main.py",
+        "arguments": ["--input", "contract.txt"]
       }
     }
   },

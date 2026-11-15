@@ -123,7 +123,12 @@ paths:
       operationId: getSkillContent
       description: |
         返回 Skill 主文档 `SKILL.md` 的正文，以及技能包内的文件清单
-        （`files[].rel_path`）。Skill 的用法与入口命令都写在正文里。
+        （`files[].rel_path`）。Skill 的用法写在正文里。
+
+        同时返回 `runtime`，说明平台能否执行这个 Skill（目前只有 Python 一种运行时）：
+        `executable=true` 时，`runtime.entry_points` 列出包内可作 `entry_point` 的 `.py`
+        文件；`executable=false`（例如包里只有 Shell/Bash 脚本）时，`runtime.reason`
+        给出原因，`message` 也会说明，该 Skill 只能阅读，不应再调 `execute_skill`。
 
         需要某个附属文件的内容时再调 `read_skill_file` 单取，不必整包下载。
 
@@ -269,14 +274,21 @@ paths:
     post:
       tags:
         - Skill
-      summary: 在沙箱内执行 Skill 入口命令
+      summary: 在沙箱内执行 Skill 的 Python 脚本
       operationId: executeSkill
       description: |
-        把 Skill 包投进沙箱会话解压，执行 `entry_shell` 指定的入口命令，回收
-        `exit_code` / `stdout` / `stderr`。
+        把 Skill 包投进沙箱会话解压，用 Python 执行 `entry_point` 指定的脚本（命令行参数
+        放在 `arguments`），回收 `exit_code` / `stdout` / `stderr`。只支持 Python；
+        `get_skill_content` 返回 `runtime.executable=false` 的 Skill 不可执行。
 
-        **`entry_shell` 必须取自 SKILL.md 声明的入口**，先用 `get_skill_content`
-        读清楚再调；这条接口不校验命令与 Skill 的对应关系。
+        **`entry_point` 必须取自 SKILL.md 声明的入口，或 `get_skill_content` 返回的
+        `runtime.entry_points`**，先读清楚再调。路径由 execution-factory 校验：必须是包内的
+        `.py` 文件，否则返回 400。
+
+        **`entry_shell` 已弃用**：仍接受 `python <脚本> [参数]` 的形式，Context Loader 会
+        把它转换成 `entry_point` + `arguments` 再发给 execution-factory；无法转换的写法
+        （如 `bash run.sh`、含 shell 语法）原样转发，由 execution-factory 拒绝并说明原因。
+        `entry_point` 与 `entry_shell` 不能同时传。
 
         授权由 execution-factory 按账户强制：必须拥有该 Skill 的 `execute` 权限；
         `public_access` 只代表公开读取，不能替代执行权限。无权限返回 403。
@@ -310,8 +322,20 @@ paths:
                     interaction_id: int_01J8Z
                   kn_id: kn_legal
                   skill_id: skill_contract_review
-                  entry_shell: python main.py --input contract.txt
+                  entry_point: scripts/main.py
+                  arguments:
+                    - --input
+                    - contract.txt
                   timeout: 60
+              legacy_entry_shell:
+                summary: 已弃用的 entry_shell 写法
+                value:
+                  bkn_context:
+                    conversation_id: conv_01J8Z
+                    interaction_id: int_01J8Z
+                  kn_id: kn_legal
+                  skill_id: skill_contract_review
+                  entry_shell: python scripts/main.py --input contract.txt
       responses:
         '200':
           description: |
@@ -322,7 +346,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExecuteSkillResponse'
         '400':
-          description: 缺少 `skill_id` / `entry_shell`
+          description: 缺少 `skill_id` / `entry_point`，`entry_point` 与 `entry_shell` 同传，或入口不是包内的 `.py` 文件（含 Shell/Bash 入口）
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -505,9 +529,34 @@ components:
           description: 技能包内文件清单，`rel_path` 供 `read_skill_file` 使用。
           items:
             $ref: '#/components/schemas/SkillFileSummary'
+        runtime:
+          $ref: '#/components/schemas/SkillRuntime'
         message:
           type: string
-          description: 补充说明（如截断提示）。
+          description: 补充说明（如截断提示；Skill 不可执行时说明原因）。
+
+    SkillRuntime:
+      type: object
+      description: 平台能否执行该 Skill，由 execution-factory 给出。
+      required:
+        - executable
+      properties:
+        runtime:
+          type: string
+          description: Skill 的执行运行时，目前只有 `python`。
+          example: python
+        executable:
+          type: boolean
+          description: false 表示该 Skill 只能阅读，不能执行；不应对它调 `execute_skill`。
+        entry_points:
+          type: array
+          items:
+            type: string
+          description: 包内的 `.py` 文件，可作 `execute_skill` 的 `entry_point`。
+          example: ["scripts/main.py"]
+        reason:
+          type: string
+          description: 不可执行的原因及迁移办法；仅 `executable=false` 时出现。
 
     SkillFileSummary:
       type: object
@@ -577,7 +626,8 @@ components:
       required:
         - kn_id
         - skill_id
-        - entry_shell
+      description: |
+        `entry_point` 与已弃用的 `entry_shell` 二选一，不能都缺，也不能同传。
       properties:
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
@@ -589,12 +639,27 @@ components:
         skill_id:
           type: string
           example: skill_contract_review
-        entry_shell:
+        entry_point:
           type: string
           description: |
-            沙箱内执行的入口命令，取自 SKILL.md 声明的入口。技能包已解压到工作目录，
-            命令相对该目录执行。
-          example: python main.py --input contract.txt
+            要运行的 Python 脚本，技能包内的相对路径，取自 SKILL.md 声明的入口或
+            `get_skill_content` 返回的 `runtime.entry_points`。必须是包内的 `.py` 文件。
+          example: scripts/main.py
+        arguments:
+          type: array
+          items:
+            type: string
+          description: |
+            脚本的命令行参数，一个元素一个参数，不带 shell 引号。参数里不允许出现
+            `;` `&` `|` 或换行符（沙箱按这些字符拆分命令行，引号也不起作用）。
+          example: ["--input", "contract.txt"]
+        entry_shell:
+          type: string
+          deprecated: true
+          description: |
+            已弃用，请改用 `entry_point` + `arguments`。只接受 `python <脚本> [参数]`
+            的形式，不支持 Shell/Bash 入口；不能与 `entry_point` 同传。
+          example: python scripts/main.py --input contract.txt
         timeout:
           type: integer
           minimum: 1
