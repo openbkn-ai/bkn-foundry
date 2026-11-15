@@ -27,6 +27,24 @@ type NamedDefinition struct {
 // counts as saved. Only a conflict that involves an incoming definition is reported: one between
 // two stored definitions is not this save's doing. The answer is "" when there is none.
 func AliasConflict(kind string, incoming, storedNamed, storedAliased []NamedDefinition) string {
+	conflict := FindAliasConflict(kind, incoming, storedNamed, storedAliased)
+	if conflict == nil {
+		return ""
+	}
+	return conflict.Message
+}
+
+// AliasConflictFound is the first conflict FindAliasConflict finds: the alias of the definition
+// DefinitionID is the name of the definition ConflictsWith.
+type AliasConflictFound struct {
+	DefinitionID  string
+	Alias         string
+	ConflictsWith string
+	Message       string
+}
+
+// FindAliasConflict is AliasConflict with the conflict as a record; nil when there is none.
+func FindAliasConflict(kind string, incoming, storedNamed, storedAliased []NamedDefinition) *AliasConflictFound {
 	saved := make(map[string]bool, len(incoming))
 	for _, d := range incoming {
 		saved[d.ID] = true
@@ -58,12 +76,14 @@ func AliasConflict(kind string, incoming, storedNamed, storedAliased []NamedDefi
 				continue
 			}
 			if saved[d.ID] {
-				return fmt.Sprintf("%s %q alias %q is the name of %s %q", kind, d.ID, alias, kind, owner)
+				return &AliasConflictFound{DefinitionID: d.ID, Alias: alias, ConflictsWith: owner,
+					Message: fmt.Sprintf("%s %q alias %q is the name of %s %q", kind, d.ID, alias, kind, owner)}
 			}
 			if saved[owner] {
-				return fmt.Sprintf("%s %q is named %q, which is an alias of %s %q", kind, owner, alias, kind, d.ID)
+				return &AliasConflictFound{DefinitionID: d.ID, Alias: alias, ConflictsWith: owner,
+					Message: fmt.Sprintf("%s %q is named %q, which is an alias of %s %q", kind, owner, alias, kind, d.ID)}
 			}
 		}
 	}
-	return ""
+	return nil
 }

@@ -266,41 +266,41 @@ func validatePropertyDeclarations(props []*DataProperty) error {
 		}
 		allowed, ok := semanticTypes[p.Semantic]
 		if !ok {
-			return specErrorf("data property %q: Semantic %q is unknown; the values are %s", p.Name, p.Semantic, strings.Join(semanticOrder, ", "))
+			return ruleErrorf(RuleSemanticUnknown, withProperty(p.Name, "semantic", p.Semantic, "allowed", semanticOrder), "data property %q: Semantic %q is unknown; the values are %s", p.Name, p.Semantic, strings.Join(semanticOrder, ", "))
 		}
 		if !containsString(allowed, normType(p.Type)) {
-			return specErrorf("data property %q: Semantic %s needs Type %s, got %q", p.Name, p.Semantic, strings.Join(allowed, ", "), p.Type)
+			return ruleErrorf(RuleSemanticTypeMismatch, withProperty(p.Name, "semantic", p.Semantic, "allowed", allowed, "type", p.Type), "data property %q: Semantic %s needs Type %s, got %q", p.Name, p.Semantic, strings.Join(allowed, ", "), p.Type)
 		}
 		if other, dup := semantics[p.Semantic]; dup {
-			return specErrorf("data properties %q and %q both declare Semantic %s; each value is declared once", other.Name, p.Name, p.Semantic)
+			return ruleErrorf(RuleSemanticDuplicated, withProperty(p.Name, "semantic", p.Semantic, "other_property", other.Name), "data properties %q and %q both declare Semantic %s; each value is declared once", other.Name, p.Name, p.Semantic)
 		}
 		semantics[p.Semantic] = p
 	}
 	if _, ok := semantics[SemanticEndTime]; ok {
 		if _, ok := semantics[SemanticEventTime]; !ok {
-			return specErrorf("Semantic end_time needs an event_time property alongside")
+			return ruleErrorf(RuleEndTimeWithoutEventTime, nil, "Semantic end_time needs an event_time property alongside")
 		}
 	}
 	_, hasLat := semantics[SemanticLatitude]
 	_, hasLon := semantics[SemanticLongitude]
 	if hasLat != hasLon {
-		return specErrorf("Semantic latitude and longitude are declared in pairs")
+		return ruleErrorf(RuleLatitudeLongitudeUnpaired, nil, "Semantic latitude and longitude are declared in pairs")
 	}
 	if _, ok := semantics[SemanticLocation]; ok && hasLat {
-		return specErrorf("Semantic location and latitude / longitude describe the same position; declare one or the other")
+		return ruleErrorf(RuleLocationWithLatitudeLongitude, nil, "Semantic location and latitude / longitude describe the same position; declare one or the other")
 	}
 	for _, p := range props {
 		if p == nil || p.Constraints == nil {
 			continue
 		}
 		if err := validateConstraints(p); err != nil {
-			return err
+			return inProperty(err, p.Name)
 		}
 	}
 	if hasLat {
 		lat, lon := semantics[SemanticLatitude].Constraints, semantics[SemanticLongitude].Constraints
 		if lat != nil && lon != nil && lat.CRS != "" && lon.CRS != "" && lat.CRS != lon.CRS {
-			return specErrorf("latitude and longitude must use the same crs, got %s and %s", lat.CRS, lon.CRS)
+			return ruleErrorf(RuleCRSMismatch, map[string]any{"latitude_crs": lat.CRS, "longitude_crs": lon.CRS}, "latitude and longitude must use the same crs, got %s and %s", lat.CRS, lon.CRS)
 		}
 	}
 	return nil
@@ -310,29 +310,29 @@ func validateConstraints(p *DataProperty) error {
 	c, typ := p.Constraints, normType(p.Type)
 	where := fmt.Sprintf("property constraints %q", p.Name)
 	if c.ValueType != "" && (c.Range != nil || c.Length != nil || c.Pattern != "" || c.Unit != "") {
-		return specErrorf("%s: the property references value type %q, which holds its value rules; "+
+		return ruleErrorf(RuleValueTypeWithValueRules, map[string]any{"value_type": c.ValueType}, "%s: the property references value type %q, which holds its value rules; "+
 			"write range, length, pattern and unit in the value type, or use another value type", where, c.ValueType)
 	}
 	if err := validateValueRules(where, typ, p.Type, c.Range, c.Length, c.Pattern, c.Unit); err != nil {
 		return err
 	}
 	if c.Unique && containsString(notUniqueTypes, typ) {
-		return specErrorf("%s: unique does not apply to Type %q", where, p.Type)
+		return ruleErrorf(RuleUniqueTypeUnsupported, map[string]any{"type": p.Type}, "%s: unique does not apply to Type %q", where, p.Type)
 	}
 	if c.CRS != "" {
 		if !containsString([]string{SemanticLocation, SemanticLatitude, SemanticLongitude}, p.Semantic) {
-			return specErrorf("%s: crs applies to a property whose Semantic is location, latitude or longitude", where)
+			return ruleErrorf(RuleCRSWithoutGeoSemantic, nil, "%s: crs applies to a property whose Semantic is location, latitude or longitude", where)
 		}
 		if !containsString(validCRS, c.CRS) {
-			return specErrorf("%s: crs must be %s, got %q", where, strings.Join(validCRS, ", "), c.CRS)
+			return ruleErrorf(RuleCRSInvalid, map[string]any{"crs": c.CRS, "allowed": validCRS}, "%s: crs must be %s, got %q", where, strings.Join(validCRS, ", "), c.CRS)
 		}
 	}
 	if c.Timezone != "" {
 		if typ != "datetime" {
-			return specErrorf("%s: timezone applies to Type datetime, got %q", where, p.Type)
+			return ruleErrorf(RuleTimezoneTypeMismatch, map[string]any{"type": p.Type}, "%s: timezone applies to Type datetime, got %q", where, p.Type)
 		}
 		if _, err := time.LoadLocation(c.Timezone); err != nil || c.Timezone == "Local" {
-			return specErrorf("%s: timezone %q is not an IANA time zone name such as Asia/Shanghai", where, c.Timezone)
+			return ruleErrorf(RuleTimezoneInvalid, map[string]any{"timezone": c.Timezone}, "%s: timezone %q is not an IANA time zone name such as Asia/Shanghai", where, c.Timezone)
 		}
 	}
 	return nil
@@ -343,18 +343,18 @@ func validateConstraints(p *DataProperty) error {
 func validateValueRules(where, typ, written string, rng *ValueRange, length *LengthRange, pattern, unit string) error {
 	// The parser refuses these shapes already; a save through the API builds the model directly.
 	if rng != nil && rng.Min == nil && rng.Max == nil {
-		return specErrorf("%s: range must have min, max or both", where)
+		return ruleErrorf(RuleRangeBoundsMissing, nil, "%s: range must have min, max or both", where)
 	}
 	if length != nil {
 		if length.Min == nil && length.Max == nil {
-			return specErrorf("%s: length must have min, max or both", where)
+			return ruleErrorf(RuleLengthBoundsMissing, nil, "%s: length must have min, max or both", where)
 		}
 		for _, bound := range []struct {
 			name  string
 			value *int
 		}{{"min", length.Min}, {"max", length.Max}} {
 			if bound.value != nil && *bound.value < 0 {
-				return specErrorf("%s: length %s must be a non-negative integer", where, bound.name)
+				return ruleErrorf(RuleLengthBoundNegative, map[string]any{"bound": bound.name}, "%s: length %s must be a non-negative integer", where, bound.name)
 			}
 		}
 	}
@@ -365,22 +365,22 @@ func validateValueRules(where, typ, written string, rng *ValueRange, length *Len
 	}
 	if length != nil {
 		if !containsString(stringTypes, typ) {
-			return specErrorf("%s: length needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
+			return ruleErrorf(RuleLengthTypeMismatch, map[string]any{"type": written, "allowed": stringTypes}, "%s: length needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
 		}
 		if length.Min != nil && length.Max != nil && *length.Min > *length.Max {
-			return specErrorf("%s: length min %d is greater than max %d", where, *length.Min, *length.Max)
+			return ruleErrorf(RuleLengthMinGreaterThanMax, map[string]any{"min": *length.Min, "max": *length.Max}, "%s: length min %d is greater than max %d", where, *length.Min, *length.Max)
 		}
 	}
 	if pattern != "" {
 		if !containsString(stringTypes, typ) {
-			return specErrorf("%s: pattern needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
+			return ruleErrorf(RulePatternTypeMismatch, map[string]any{"type": written, "allowed": stringTypes}, "%s: pattern needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
 		}
 		if _, err := regexp.Compile(pattern); err != nil {
-			return specErrorf("%s: pattern is not a valid RE2 expression: %v", where, err)
+			return ruleErrorf(RulePatternInvalid, map[string]any{"pattern": pattern, "error": err.Error()}, "%s: pattern is not a valid RE2 expression: %v", where, err)
 		}
 	}
 	if unit != "" && !containsString(numericTypes, typ) {
-		return specErrorf("%s: unit needs a numeric Type, got %q", where, written)
+		return ruleErrorf(RuleUnitTypeMismatch, map[string]any{"type": written}, "%s: unit needs a numeric Type, got %q", where, written)
 	}
 	return nil
 }
@@ -391,25 +391,25 @@ func validateRange(where, typ string, r *ValueRange) error {
 		lo, loOK := numericBound(r.Min)
 		hi, hiOK := numericBound(r.Max)
 		if (r.Min != nil && !loOK) || (r.Max != nil && !hiOK) {
-			return specErrorf("%s: range of a numeric property takes numbers", where)
+			return ruleErrorf(RuleRangeNotNumeric, nil, "%s: range of a numeric property takes numbers", where)
 		}
 		if loOK && hiOK && lo > hi {
-			return specErrorf("%s: range min %v is greater than max %v", where, r.Min, r.Max)
+			return ruleErrorf(RuleRangeMinGreaterThanMax, map[string]any{"min": r.Min, "max": r.Max}, "%s: range min %v is greater than max %v", where, r.Min, r.Max)
 		}
 	case containsString(dateTypes, typ):
 		lo, loOK := timeBound(typ, r.Min)
 		hi, hiOK := timeBound(typ, r.Max)
 		if (r.Min != nil && !loOK) || (r.Max != nil && !hiOK) {
 			if typ == "date" {
-				return specErrorf("%s: range of a date property takes ISO 8601 dates such as \"2020-01-01\"", where)
+				return ruleErrorf(RuleRangeNotDate, map[string]any{"type": typ}, "%s: range of a date property takes ISO 8601 dates such as \"2020-01-01\"", where)
 			}
-			return specErrorf("%s: range of a %s property takes ISO 8601 times such as \"2020-01-01T00:00:00Z\"", where, typ)
+			return ruleErrorf(RuleRangeNotTime, map[string]any{"type": typ}, "%s: range of a %s property takes ISO 8601 times such as \"2020-01-01T00:00:00Z\"", where, typ)
 		}
 		if loOK && hiOK && lo.After(hi) {
-			return specErrorf("%s: range min %v is later than max %v", where, r.Min, r.Max)
+			return ruleErrorf(RuleRangeMinLaterThanMax, map[string]any{"min": r.Min, "max": r.Max}, "%s: range min %v is later than max %v", where, r.Min, r.Max)
 		}
 	default:
-		return specErrorf("%s: range needs a numeric, date, datetime or timestamp Type, got %q", where, typ)
+		return ruleErrorf(RuleRangeTypeUnsupported, map[string]any{"type": typ}, "%s: range needs a numeric, date, datetime or timestamp Type, got %q", where, typ)
 	}
 	return nil
 }
@@ -481,23 +481,23 @@ func parseAliasesCell(cell string) []string {
 // the names the group belongs to.
 func validateAliases(where string, aliases []string, own ...string) error {
 	if len(aliases) > maxAliases {
-		return specErrorf("%s: %d aliases, at most %d", where, len(aliases), maxAliases)
+		return ruleErrorf(RuleAliasesTooMany, map[string]any{"count": len(aliases), "max": maxAliases}, "%s: %d aliases, at most %d", where, len(aliases), maxAliases)
 	}
 	seen := map[string]bool{}
 	for _, alias := range aliases {
 		switch {
 		case alias == "":
-			return specErrorf("%s: an alias is empty", where)
+			return ruleErrorf(RuleAliasEmpty, nil, "%s: an alias is empty", where)
 		case strings.Contains(alias, fullWidthComma):
-			return specErrorf("%s: alias %q holds a full-width comma; separate aliases with a half-width comma ,", where, alias)
+			return ruleErrorf(RuleAliasFullWidthComma, map[string]any{"alias": alias}, "%s: alias %q holds a full-width comma; separate aliases with a half-width comma ,", where, alias)
 		case strings.Contains(alias, aliasSeparator):
-			return specErrorf("%s: alias %q holds a comma", where, alias)
+			return ruleErrorf(RuleAliasContainsComma, map[string]any{"alias": alias}, "%s: alias %q holds a comma", where, alias)
 		case utf8.RuneCountInString(alias) > maxAliasRunes:
-			return specErrorf("%s: alias %q is longer than %d characters", where, alias, maxAliasRunes)
+			return ruleErrorf(RuleAliasTooLong, map[string]any{"alias": alias, "max": maxAliasRunes}, "%s: alias %q is longer than %d characters", where, alias, maxAliasRunes)
 		case seen[alias]:
-			return specErrorf("%s: alias %q appears twice", where, alias)
+			return ruleErrorf(RuleAliasDuplicated, map[string]any{"alias": alias}, "%s: alias %q appears twice", where, alias)
 		case containsString(own, alias):
-			return specErrorf("%s: alias %q is the same as its own name", where, alias)
+			return ruleErrorf(RuleAliasEqualsOwnName, map[string]any{"alias": alias}, "%s: alias %q is the same as its own name", where, alias)
 		}
 		seen[alias] = true
 	}
@@ -524,11 +524,11 @@ func validatePropertyAliases(props []*DataProperty) error {
 		}
 		where := fmt.Sprintf("data property %q aliases", p.Name)
 		if err := validateAliases(where, p.Aliases, p.Name, p.DisplayName); err != nil {
-			return err
+			return inProperty(err, p.Name)
 		}
 		for _, alias := range p.Aliases {
 			if other, taken := owner[alias]; taken && other != p.Name {
-				return specErrorf("%s: alias %q is the name of data property %q", where, alias, other)
+				return ruleErrorf(RuleAliasConflict, withProperty(p.Name, "alias", alias, "conflicts_with_property", other), "%s: alias %q is the name of data property %q", where, alias, other)
 			}
 		}
 	}
@@ -553,10 +553,10 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 	named := map[string]string{}
 	for _, vt := range doc.ValueTypes {
 		if _, dup := valueTypes[vt.ID]; dup {
-			return specErrorf("value type id %q appears twice", vt.ID)
+			return ruleErrorf(RuleValueTypeDuplicated, map[string]any{"value_type": vt.ID}, "value type id %q appears twice", vt.ID)
 		}
 		if other, dup := named[vt.Name]; dup {
-			return specErrorf("value types %q and %q are both named %q; a value type name is unique in the network", other, vt.ID, vt.Name)
+			return ruleErrorf(RuleValueTypeNameDuplicated, map[string]any{"value_type": vt.ID, "other_value_type": other, "name": vt.Name}, "value types %q and %q are both named %q; a value type name is unique in the network", other, vt.ID, vt.Name)
 		}
 		valueTypes[vt.ID], named[vt.Name] = vt, vt.ID
 	}
@@ -567,10 +567,10 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 			}
 			vt, ok := valueTypes[p.Constraints.ValueType]
 			if !ok {
-				return specErrorf("%s data property %q: value type %q is not defined in this network", owner, p.Name, p.Constraints.ValueType)
+				return ruleErrorf(RuleValueTypeUndefined, withProperty(p.Name, "value_type", p.Constraints.ValueType), "%s data property %q: value type %q is not defined in this network", owner, p.Name, p.Constraints.ValueType)
 			}
 			if normType(p.Type) != vt.BaseType {
-				return specErrorf("%s data property %q: value type %q has base_type %s, the property Type is %q",
+				return ruleErrorf(RuleValueTypeBaseMismatch, withProperty(p.Name, "value_type", vt.ID, "base_type", vt.BaseType, "type", p.Type), "%s data property %q: value type %q has base_type %s, the property Type is %q",
 					owner, p.Name, vt.ID, vt.BaseType, p.Type)
 			}
 		}
@@ -593,7 +593,7 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 	for _, ot := range doc.ObjectTypes {
 		for _, alias := range ot.Aliases {
 			if other, taken := objectNames[alias]; taken && other != ot.ID {
-				return specErrorf("object type %q alias %q is the name of object type %q", ot.ID, alias, other)
+				return ruleErrorf(RuleAliasConflict, map[string]any{"alias": alias, "conflicts_with": other}, "object type %q alias %q is the name of object type %q", ot.ID, alias, other)
 			}
 		}
 	}
@@ -604,7 +604,7 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 	for _, at := range doc.ActionTypes {
 		for _, alias := range at.Aliases {
 			if other, taken := actionNames[alias]; taken && other != at.ID {
-				return specErrorf("action type %q alias %q is the name of action type %q", at.ID, alias, other)
+				return ruleErrorf(RuleAliasConflict, map[string]any{"alias": alias, "conflicts_with": other}, "action type %q alias %q is the name of action type %q", at.ID, alias, other)
 			}
 		}
 	}
