@@ -244,7 +244,9 @@ paths:
         `rule`, `rule_version`, `rule_tool`, `check_schedule`); omitted fields take their zero values,
         they are not kept: leaving out `rule_tool` stops the platform's checks. When `rule_tool` or
         `check_schedule` changes, the tool is tried as the caller as on creation, and the caller
-        becomes the check subject; otherwise the subject is kept. Requires
+        becomes the check subject; otherwise the subject is kept. If someone else saved another
+        `rule_tool` or `check_schedule` while the tool was tried, nothing is written and the response
+        is 409 `BknBackend.KnEvent.RuleChecking`: save again. Requires
         `modify`. `code` and `source` cannot change: the body may omit them or repeat the current values,
         anything else is 400. Existing events keep the severity, type name and other values they were
         written with.

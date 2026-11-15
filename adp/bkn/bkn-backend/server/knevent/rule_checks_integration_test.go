@@ -313,6 +313,63 @@ func TestIntegrationARuleChangedDuringItsCheckIsNotRecorded(t *testing.T) {
 	}
 }
 
+// Trying a rule tool may take as long as the tool may run. An update tries it
+// before it takes the network's class lock, so other changes to the network's
+// types do not wait for the try.
+func TestIntegrationAnUpdateTriesItsToolWithoutHoldingTheNetworksTypes(t *testing.T) {
+	stub := &toolsStub{tool: cypherTool(), reply: reply("o1")}
+	s, _ := ruleCheckService(t, stub)
+	must(s.CreateEventType(userContext(), "kn1", ruleInput()))
+	s.store.classWait = 1
+	tools := &changingTools{toolsStub: stub}
+	s.tools = tools
+	other := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u2", Type: "user"})
+	var created error
+	tools.change = func() {
+		_, created = s.CreateEventType(other, "kn1", interfaces.KnEventTypeInput{Code: "low", Name: "Low", Source: "rule"})
+	}
+
+	moved := ruleInput()
+	moved.CheckSchedule.Cron = "0 10 * * *"
+	got := must(s.UpdateEventType(userContext(), "kn1", "late", moved))
+
+	if created != nil {
+		t.Fatalf("a type created while an update tried its tool: %v", created)
+	}
+	if got.CheckSchedule.Cron != "0 10 * * *" || got.Trial == nil {
+		t.Fatalf("updated %+v", got)
+	}
+}
+
+// A type given another rule tool while an update tried the one it had keeps
+// the other tool: the update was tried on a tool the type no longer has.
+func TestIntegrationAnUpdateTriedOnAToolReplacedSinceIsRefused(t *testing.T) {
+	stub := &toolsStub{tool: cypherTool(), reply: reply("o1")}
+	s, _ := ruleCheckService(t, stub)
+	must(s.CreateEventType(userContext(), "kn1", ruleInput()))
+	tools := &changingTools{toolsStub: stub}
+	s.tools = tools
+	other := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u2", Type: "user"})
+	// u2 sets the rule to five days while u1's update is being tried.
+	tools.change = func() {
+		changed := ruleInput()
+		changed.RuleTool.Parameters["days"] = []byte(`5`)
+		must(s.UpdateEventType(other, "kn1", "late", changed))
+	}
+
+	moved := ruleInput()
+	moved.CheckSchedule.Cron = "0 10 * * *"
+	_, err := s.UpdateEventType(userContext(), "kn1", "late", moved)
+
+	if statusOf(t, err) != http.StatusConflict || errorCode(t, err) != berrors.BknBackend_KnEvent_RuleChecking {
+		t.Fatalf("an update tried on a replaced tool: %v", err)
+	}
+	got := must(s.GetEventType(userContext(), "kn1", "late"))
+	if string(got.RuleTool.Parameters["days"]) != `5` || got.CheckSchedule.Cron != "0 9 * * *" || got.CheckSubject.ID != "u2" {
+		t.Fatalf("u2's save was overwritten: %+v %+v %+v", got.RuleTool, got.CheckSchedule, got.CheckSubject)
+	}
+}
+
 func TestIntegrationRemovingTheToolStopsTheChecks(t *testing.T) {
 	tools := &toolsStub{tool: cypherTool(), reply: reply("o1")}
 	s, c := ruleCheckService(t, tools)

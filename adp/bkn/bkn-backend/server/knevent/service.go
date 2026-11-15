@@ -396,10 +396,17 @@ func (s *service) UpdateEventType(ctx context.Context, knID, code string, input 
 	if err := s.open(ctx, knID, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 		return interfaces.KnEventType{}, err
 	}
+	// The rule tool is tried before the class lock is taken, as at creation: a
+	// try may take as long as the tool may run, far longer than other changes
+	// to the network's types wait for that lock.
+	tried, err := s.tryUpdate(ctx, knID, code, input)
+	if err != nil {
+		return interfaces.KnEventType{}, fail(ctx, "type update", err)
+	}
 	var eventType interfaces.KnEventType
-	err := s.store.exclusive(ctx, classLock(knID), func() error {
+	err = s.store.exclusive(ctx, classLock(knID), func() error {
 		var err error
-		eventType, err = s.updateType(ctx, knID, code, input)
+		eventType, err = s.updateType(ctx, knID, code, input, tried)
 		return err
 	})
 	if err != nil {
@@ -408,8 +415,42 @@ func (s *service) UpdateEventType(ctx context.Context, knID, code string, input 
 	return eventType, nil
 }
 
+// triedUpdate is an update with its rule checks prepared before it is made.
+type triedUpdate struct {
+	// from is the type the update was tried on. It is made only to a type that
+	// still has the same rule tool and schedule.
+	from interfaces.KnEventType
+	// checks is the type with its checks prepared, nil for an update that
+	// keeps the checks as they are.
+	checks *interfaces.KnEventType
+}
+
+// tryUpdate tries the rule tool of an update that changes the tool or the
+// schedule, as the caller, before anything changes.
+func (s *service) tryUpdate(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput) (triedUpdate, error) {
+	before, found, err := s.store.getType(ctx, knID, code)
+	if err != nil {
+		return triedUpdate{}, err
+	}
+	if !found {
+		return triedUpdate{}, notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
+	}
+	after, check, err := updated(before, input, time.UnixMilli(s.now()))
+	if err != nil {
+		return triedUpdate{}, err
+	}
+	tried := triedUpdate{from: before}
+	if check != nil {
+		if err := s.prepareChecks(ctx, &after, *check); err != nil {
+			return triedUpdate{}, err
+		}
+		tried.checks = &after
+	}
+	return tried, nil
+}
+
 // updateType updates an event type holding the network's class lock.
-func (s *service) updateType(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput) (interfaces.KnEventType, error) {
+func (s *service) updateType(ctx context.Context, knID, code string, input interfaces.KnEventTypeInput, tried triedUpdate) (interfaces.KnEventType, error) {
 	actor, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	// The class has the type's name and a relation to its subject, so it is
 	// written again when either changes, and made for a type that has none:
@@ -422,17 +463,9 @@ func (s *service) updateType(ctx context.Context, knID, code string, input inter
 	if !found {
 		return interfaces.KnEventType{}, notFound(ctx, berrors.BknBackend_KnEvent_EventTypeNotFound, code)
 	}
-	after, check, err := updated(before, input, time.UnixMilli(s.now()))
+	after, _, err := updated(before, input, time.UnixMilli(s.now()))
 	if err != nil {
 		return interfaces.KnEventType{}, err
-	}
-	// Tried before anything changes, as at creation. Type changes are one at a
-	// time in a network, so the type under the head lock below has the rule
-	// tool this tried against.
-	if check != nil {
-		if err := s.prepareChecks(ctx, &after, *check); err != nil {
-			return interfaces.KnEventType{}, err
-		}
 	}
 	var class *eventClass
 	if before.ObjectTypeID == "" || after.Name != before.Name || after.Subject != before.Subject {
@@ -461,12 +494,16 @@ func (s *service) updateType(ctx context.Context, knID, code string, input inter
 		if eventType, changed, err = updated(current, input, time.UnixMilli(s.now())); err != nil {
 			return err
 		}
-		if (changed != nil) != (check != nil) {
-			return errChecking{detail: "the event type's rule tool changed during the save; save again"}
+		// The try was decided on the tool and schedule the type had then. A type
+		// given another tool or schedule since was not tried this way.
+		if !sameRuleTool(tried.from.RuleTool, current.RuleTool) || !sameSchedule(tried.from.CheckSchedule, current.CheckSchedule) ||
+			(changed != nil) != (tried.checks != nil) {
+			return errChecking{detail: "the event type's rule tool or check schedule changed during the save; save again"}
 		}
 		if changed != nil {
-			eventType.RuleVersion, eventType.CheckSubject = after.RuleVersion, after.CheckSubject
-			eventType.NextCheckAt, eventType.CheckFailures, eventType.Trial = after.NextCheckAt, 0, after.Trial
+			prepared := tried.checks
+			eventType.RuleVersion, eventType.CheckSubject = prepared.RuleVersion, prepared.CheckSubject
+			eventType.NextCheckAt, eventType.CheckFailures, eventType.Trial = prepared.NextCheckAt, 0, prepared.Trial
 		}
 		if class != nil {
 			// Nothing has been written to a dataset the type does not have yet.
