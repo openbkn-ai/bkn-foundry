@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -29,31 +28,43 @@ const (
 )
 
 type touchFixture struct {
-	svc        *ToolServiceImpl
-	toolBoxDB  *mocks.MockIToolboxDB
-	toolDB     *mocks.MockIToolDB
-	metadata   *mocks.MockIMetadataService
-	dbTx       *mocks.MockDBTx
-	tx         *sql.Tx
-	rolledBack bool
-	committed  bool
+	svc       *ToolServiceImpl
+	toolBoxDB *mocks.MockIToolboxDB
+	toolDB    *mocks.MockIToolDB
+	metadata  *mocks.MockIMetadataService
+	dbTx      *mocks.MockDBTx
+	tx        *sql.Tx
+	sqlMock   sqlmock.Sqlmock
 }
 
 func newTouchFixture(t *testing.T) *touchFixture {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	auth := mocks.NewMockIAuthorizationService(ctrl)
+	db, sqlMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlMock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := sqlMock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
+		}
+		_ = db.Close()
+	})
 	f := &touchFixture{
 		toolBoxDB: mocks.NewMockIToolboxDB(ctrl),
 		toolDB:    mocks.NewMockIToolDB(ctrl),
 		metadata:  mocks.NewMockIMetadataService(ctrl),
 		dbTx:      mocks.NewMockDBTx(ctrl),
-		tx:        &sql.Tx{},
+		tx:        tx,
+		sqlMock:   sqlMock,
 	}
-	rollback := gomonkey.ApplyFunc((*sql.Tx).Rollback, func(*sql.Tx) error { f.rolledBack = true; return nil })
-	t.Cleanup(rollback.Reset)
-	commit := gomonkey.ApplyFunc((*sql.Tx).Commit, func(*sql.Tx) error { f.committed = true; return nil })
-	t.Cleanup(commit.Reset)
 
 	accessor := &interfaces.AuthAccessor{ID: touchUserID}
 	auth.EXPECT().GetAccessor(gomock.Any(), touchUserID).Return(accessor, nil).AnyTimes()
@@ -289,12 +300,9 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newTouchFixture(t)
+			f.sqlMock.ExpectCommit()
 			if err := tc.run(t, f); err != nil {
 				t.Fatalf("err = %v, want nil", err)
-			}
-			if !f.committed || f.rolledBack {
-				t.Fatalf("committed=%v rolledBack=%v, want the tool write and the touch committed together",
-					f.committed, f.rolledBack)
 			}
 		})
 	}
@@ -304,6 +312,7 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 // no tool row is written and the transaction is rolled back instead of leaving the time stale.
 func TestToolBoxTouchFailureAbortsTheToolWrite(t *testing.T) {
 	f := newTouchFixture(t)
+	f.sqlMock.ExpectRollback()
 	f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
 		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI}}, nil)
 	// UpdateToolStatus is not expected: once called, gomock fails the test.
@@ -315,9 +324,6 @@ func TestToolBoxTouchFailureAbortsTheToolWrite(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("err = nil, want the touch failure")
-	}
-	if f.committed || !f.rolledBack {
-		t.Fatalf("committed=%v rolledBack=%v, want the status change rolled back", f.committed, f.rolledBack)
 	}
 }
 
