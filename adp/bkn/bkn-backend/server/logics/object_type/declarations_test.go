@@ -24,6 +24,8 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // declaredObjectType is a stored object type with property declarations.
@@ -516,4 +518,34 @@ func TestObjectTypeLifecycleDeclaration(t *testing.T) {
 	noReason := declaredObjectType()
 	noReason.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED}
 	assert.Error(t, validateDeclarations(ctx, noReason))
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	service := &objectTypeService{ota: ota, nr: &logics.NetworkRelations{}}
+
+	file := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订单",
+			DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "placed_at"}, {Name: "amount"}}},
+	}
+	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "order").Return("订单", true, nil)
+	ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "订单").Return("order", true, nil)
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
+
+	require.NoError(t, service.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ObjectType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, clearedDeclarations(declaredObjectType(), file), collector.Cleared())
+	assert.NotEmpty(t, collector.Cleared())
+	require.Len(t, deferred.ObjectTypes, 1)
+	assert.Same(t, file, deferred.ObjectTypes[0])
+	assert.Equal(t, "kn1", file.KNID)
 }

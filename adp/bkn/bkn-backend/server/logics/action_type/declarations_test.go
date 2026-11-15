@@ -22,6 +22,8 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func approve(aliases ...string) *interfaces.ActionType {
@@ -167,4 +169,30 @@ func TestActionTypeVectorTextCarriesAliases(t *testing.T) {
 	}).Return([]*cond.VectorResp{{Vector: []float32{1}}, {Vector: []float32{1}}}, nil)
 	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	require.NoError(t, ats.InsertDatasetData(ctx, []*interfaces.ActionType{plain, aliased}))
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ats := &actionTypeService{ata: ata, nr: &logics.NetworkRelations{}}
+
+	file := approve()
+	ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "approve").Return("审批", true, nil)
+	ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "审批").Return("approve", true, nil)
+	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).
+		Return([]*interfaces.ActionType{approve("核准")}, nil)
+
+	require.NoError(t, ats.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ActionType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, []interfaces.ClearedDeclaration{{ActionTypeID: "approve", Fields: []string{interfaces.DECLARATION_ALIASES}}},
+		collector.Cleared())
+	require.Len(t, deferred.ActionTypes, 1)
+	assert.Same(t, file, deferred.ActionTypes[0])
 }

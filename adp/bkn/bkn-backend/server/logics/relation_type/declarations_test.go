@@ -22,6 +22,8 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func declHTTPError(t *testing.T, err error) *httperrors.HTTPError {
@@ -206,4 +208,32 @@ func TestStrictRelationPropertyMapsABackingColumn(t *testing.T) {
 	assert.Contains(t, httpErr.ErrorDetails, "position")
 
 	require.NoError(t, rts.validateDependency(ctx, nil, relation("position"), false, nil), "not checked outside strict mode")
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	rts := &relationTypeService{rta: rta, nr: &logics.NetworkRelations{}}
+
+	stored := withProperties(workplace(), titleProperty())
+	stored.ReverseName = "雇员"
+	file := workplace()
+	rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "works_in").Return("任职于", true, nil)
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"works_in"}).
+		Return([]*interfaces.RelationType{stored}, nil)
+
+	require.NoError(t, rts.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.RelationType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, []interfaces.ClearedDeclaration{{RelationTypeID: "works_in", Fields: []string{
+		interfaces.DECLARATION_REVERSE_NAME, interfaces.DECLARATION_PROPERTIES,
+	}}}, collector.Cleared())
+	require.Len(t, deferred.RelationTypes, 1)
+	assert.Same(t, file, deferred.RelationTypes[0])
 }
