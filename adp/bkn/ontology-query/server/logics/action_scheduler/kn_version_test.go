@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
@@ -67,7 +68,8 @@ func TestExecuteMCPRunsAsCallerOnlyWhenMarked(t *testing.T) {
 
 // runOnceAsCaller runs a once-mode execution recorded the way the scheduler records one on the
 // draft or a history version (no proxy, caller-marked model version) and returns its outcome.
-func runOnceAsCaller(t *testing.T, aoAccess *omock.MockAgentOperatorAccess, proxyModelVersion string) (
+func runOnceAsCaller(t *testing.T, aoAccess *omock.MockAgentOperatorAccess, proxyModelVersion string,
+	credential ...interfaces.CallerRuntimeCredential) (
 	*interfaces.ExecutionOutcome, []interfaces.ObjectExecutionResult) {
 	t.Helper()
 	logsService := omock.NewMockActionLogsService(gomock.NewController(t))
@@ -95,7 +97,11 @@ func runOnceAsCaller(t *testing.T, aoAccess *omock.MockAgentOperatorAccess, prox
 			return nil
 		})
 
-	service.executeAsync(execution, actionType, req, interfaces.CallerRuntimeCredential{})
+	callerCredential := interfaces.CallerRuntimeCredential{}
+	if len(credential) > 0 {
+		callerCredential = credential[0]
+	}
+	service.executeAsync(execution, actionType, req, callerCredential)
 	if outcome == nil || len(stored) != 1 {
 		t.Fatalf("execution did not finish with one result: outcome=%v results=%d", outcome, len(stored))
 	}
@@ -186,6 +192,28 @@ func TestExecuteAsyncOnCallerIdentityDoesNotRequireProxySnapshot(t *testing.T) {
 		if outcome.Status != interfaces.ExecutionStatusFailed ||
 			!strings.Contains(results[0].ErrorMessage, "resolve toolbox kind") {
 			t.Fatalf("status = %s, error = %q", outcome.Status, results[0].ErrorMessage)
+		}
+	})
+	// Without Trace Core an asynchronous Function cannot reuse the caller's Interaction, as on
+	// the proxy path; a caller-identity Function must drop those IDs too.
+	t.Run("a Function runs without the caller's managed trace IDs", func(t *testing.T) {
+		aoAccess := omock.NewMockAgentOperatorAccess(gomock.NewController(t))
+		boxKind(aoAccess, interfaces.ProxyTargetTypeFunction, nil)
+		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _ string, _ interfaces.ToolExecutionRequest) (any, error) {
+				traceContext, _ := common.GetTraceContextFromCtx(ctx)
+				credential, _ := interfaces.CallerRuntimeCredentialFromContext(ctx)
+				if traceContext.InteractionID != "" || credential.InteractionID != "" {
+					t.Errorf("Function saw interaction %q / %q, want none", traceContext.InteractionID, credential.InteractionID)
+				}
+				return map[string]any{"exit_code": json.Number("0")}, nil
+			})
+
+		outcome, _ := runOnceAsCaller(t, aoAccess, interfaces.CallerIdentityModelPrefix+"draft@r1",
+			interfaces.CallerRuntimeCredential{ConversationID: "conv_1", InteractionID: "int_1", ParentOperationID: "op_1"})
+
+		if outcome.Status != interfaces.ExecutionStatusCompleted {
+			t.Fatalf("status = %s, want completed", outcome.Status)
 		}
 	})
 }
