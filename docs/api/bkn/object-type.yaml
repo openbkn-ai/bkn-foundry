@@ -20,6 +20,65 @@ info:
     failures return 502, and timeout/unavailable dependencies return 503. Downstream bodies are
     never copied into the public response. Tool-backed logical properties use the same 400/502/503
     dependency classification.
+
+    ### Refused declarations and references
+
+    A save the declaration rules refuse answers 400 `BknBackend.ObjectType.InvalidParameter.Declarations`. As before,
+    `error_details` holds the English text (several issues are joined with `; `). `metadata.issues` holds the same
+    refusal as records, so that a caller words it in its own language and finds the definition and the property:
+
+    ```json
+    {
+      "error_code": "BknBackend.ObjectType.InvalidParameter.Declarations",
+      "error_details": "Semantic end_time needs an event_time property alongside",
+      "metadata": {"issues": [{
+        "rule": "end_time_without_event_time",
+        "object_type_id": "order",
+        "message": "Semantic end_time needs an event_time property alongside"
+      }]}
+    }
+    ```
+
+    Each issue has `rule` (the stable code below), the ID of the definition it concerns (`object_type_id`,
+    `relation_type_id` or `action_type_id`), `property` for a rule of one data property, `params` (the values the
+    message is built from), `involved` (every definition a rule that spans definitions concerns, as `{kind, id}`;
+    the first is the definition that refers first and the one named by the ID field) and `message` (the English
+    text). A rule within one definition lists the first problem it finds. A rule that spans definitions
+    (`replaced_by`, `fallback_for`, deprecated endpoints) lists every problem that involves a definition of the
+    save. An alias that names another definition (`alias_conflict`) reports only the first conflict.
+
+    A delete refused because definitions still refer to it answers 409 `BknBackend.ObjectType.StillReferenced`.
+    `error_details.references` lists the English sentences, as before. `metadata.references` holds one record per
+    reference: `kind` and `id` name what is referred to, `referrer_kind` and `referrer_id` who refers to it, `via`
+    the declaration (`replaced_by` or `fallback_for`), and `message` the English sentence.
+
+    Rules of this definition kind:
+
+    - Property semantics: `semantic_unknown` (`semantic`, `allowed`), `semantic_type_mismatch` (`semantic`, `allowed`,
+      `type`), `semantic_duplicated` (`semantic`, `other_property`), `end_time_without_event_time`,
+      `latitude_longitude_unpaired`, `location_with_latitude_longitude`, `crs_mismatch` (`latitude_crs`,
+      `longitude_crs`).
+    - Property constraints: `value_type_with_value_rules` (`value_type`), `unique_type_unsupported` (`type`),
+      `crs_without_geo_semantic`, `crs_invalid` (`crs`, `allowed`), `timezone_type_mismatch` (`type`),
+      `timezone_invalid` (`timezone`), `range_bounds_missing`, `range_not_numeric`, `range_not_date` (`type`),
+      `range_not_time` (`type`), `range_min_greater_than_max` (`min`, `max`), `range_min_later_than_max` (`min`,
+      `max`), `range_type_unsupported` (`type`), `length_bounds_missing`, `length_bound_negative` (`bound`),
+      `length_type_mismatch` (`type`, `allowed`), `length_min_greater_than_max` (`min`, `max`),
+      `pattern_type_mismatch` (`type`, `allowed`), `pattern_invalid` (`pattern`, `error`; the expression is not RE2),
+      `unit_type_mismatch` (`type`).
+    - Value types: `value_type_undefined` (`value_type`), `value_type_base_mismatch` (`value_type`, `base_type`,
+      `type`); both name the property.
+    - Aliases of the object type or of a property: `aliases_too_many` (`count`, `max`), `alias_empty`,
+      `alias_full_width_comma` (`alias`), `alias_contains_comma` (`alias`), `alias_too_long` (`alias`, `max`),
+      `alias_duplicated` (`alias`), `alias_equals_own_name` (`alias`), `alias_conflict` (`alias`, and
+      `conflicts_with` or, between two properties, `conflicts_with_property`).
+    - Lifecycle: `lifecycle_fields_without_deprecation`, `lifecycle_reason_missing`, `lifecycle_replaced_by_invalid`
+      (`replaced_by`), `lifecycle_replaced_by_self` (`replaced_by`), `lifecycle_status_invalid` (`status`,
+      `allowed`), and across definitions `replaced_by_missing`, `replaced_by_deprecated` (`replaced_by`).
+    - `primary_key_required_false`: a primary key is written as not required; it is required by definition.
+    - Saving a deprecated object type can also refuse on a relation type bound to it: `endpoint_deprecated`
+      (`object_type`), with `relation_type_id`.
+
 security:
   - OAuth2: []
 paths:

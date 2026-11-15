@@ -22,6 +22,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 func approve(aliases ...string) *interfaces.ActionType {
@@ -51,6 +52,10 @@ func TestCheckActionTypeDeclarations(t *testing.T) {
 	err := ats.checkDeclarations(ctx, approve("审批"))
 	assert.Equal(t, berrors.BknBackend_ActionType_InvalidParameter_Declarations, httpError(t, err).ErrorCode,
 		"an alias is not the action type's own name")
+	assert.Equal(t, []logics.DeclarationIssueDetail{{
+		"rule": "alias_equals_own_name", "action_type_id": "approve", "params": map[string]any{"alias": "审批"},
+		"message": `action type aliases: alias "审批" is the same as its own name`,
+	}}, httpError(t, err).Metadata["issues"])
 }
 
 func TestCheckActionTypeAliasNames(t *testing.T) {
