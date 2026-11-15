@@ -385,9 +385,18 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	} else {
 		logger.Errorf("Execution %s has an invalid proxy snapshot: %v", execution.ID, err)
 	}
+	// Without a proxy snapshot the toolbox kind is looked up, so a caller-identity Function is
+	// handled like a proxy one: its trace IDs below and its exit code once it returns.
+	var toolboxKindErr error
+	if interfaces.CallerIdentityExecutionFromContext(ctx) && actionType.ActionSource.Type == interfaces.ActionSourceTypeTool {
+		var kind string
+		kind, toolboxKindErr = s.aoAccess.GetBoxMetadataType(ctx, actionType.ActionSource.BoxID, actionType.ActionSource.ToolID)
+		if toolboxKindErr == nil && kind == interfaces.ProxyTargetTypeFunction {
+			ctx = withCallerFunctionTarget(ctx)
+		}
+	}
 	if s.functionTrace == nil {
-		if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
-			proxy.Binding.TargetType == interfaces.ProxyTargetTypeFunction {
+		if runsFunction(ctx) {
 			// An asynchronous Function cannot reuse the caller's Interaction after
 			// its HTTP request ends. Without Trace Core, run without managed IDs.
 			ctx = withoutManagedActionTrace(ctx)
@@ -407,18 +416,10 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	if err := s.logsService.MarkExecutionRunning(ctx, execution.KNID, execution.ID); err != nil {
 		logger.Warnf("Failed to update execution status to running: %v", err)
 	}
-	if interfaces.CallerIdentityExecutionFromContext(ctx) && actionType.ActionSource.Type == interfaces.ActionSourceTypeTool {
-		// Without a proxy snapshot the toolbox kind is looked up, so a Function that exits
-		// non-zero is still reported as failed.
-		kind, err := s.aoAccess.GetBoxMetadataType(ctx, actionType.ActionSource.BoxID, actionType.ActionSource.ToolID)
-		if err != nil {
-			logger.Errorf("Execution %s cannot resolve its toolbox kind: %v", execution.ID, err)
-			s.failManagedFunctionExecution(ctx, execution, req, fmt.Errorf("resolve toolbox kind: %w", err))
-			return
-		}
-		if kind == interfaces.ProxyTargetTypeFunction {
-			ctx = withCallerFunctionTarget(ctx)
-		}
+	if toolboxKindErr != nil {
+		logger.Errorf("Execution %s cannot resolve its toolbox kind: %v", execution.ID, toolboxKindErr)
+		s.failManagedFunctionExecution(ctx, execution, req, fmt.Errorf("resolve toolbox kind: %w", toolboxKindErr))
+		return
 	}
 	if s.functionTrace != nil && actionType.ActionSource.Type == interfaces.ActionSourceTypeTool {
 		if proxy, ok := interfaces.TrustedProxyContextFromContext(ctx); ok &&
