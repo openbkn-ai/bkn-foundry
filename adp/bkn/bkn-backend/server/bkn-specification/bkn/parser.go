@@ -908,6 +908,16 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 					return nil, specErrorf("action parameter %q has an invalid JSON constant", parameter.Name)
 				}
 			}
+			switch strings.ToLower(parameter.Type) {
+			case "string", "text", "keyword", "date", "datetime":
+				if _, ok := value.(string); !ok {
+					// An unquoted JSON literal in a string parameter is text.
+					continue
+				}
+			}
+			if err := ValidateActionConstantType(parameter.Type, value); err != nil {
+				return nil, specErrorf("action parameter %q: %v", parameter.Name, err)
+			}
 			parameter.Value = value
 		}
 	}
