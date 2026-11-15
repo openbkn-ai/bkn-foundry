@@ -124,7 +124,7 @@ func walkExpressionColumns(value PlanExpression, visit func(table int, column st
 		} else if !node.Star {
 			visit(node.Table, node.Column)
 			for _, key := range node.Keys {
-				visit(node.Table, key.Column)
+				visit(key.Table, key.Column)
 			}
 		}
 	case PlanArithmetic:

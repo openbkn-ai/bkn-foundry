@@ -378,7 +378,10 @@ components:
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). count(n) counts the rows where node n was found, and count(DISTINCT n)
             counts distinct objects by their primary key, by all its properties together when it
-            has several (an object type without one is refused). Cypher has no GROUP BY, and writing one is a syntax error that says
+            has several (an object type without one is refused). count(r) counts relationship r:
+            every row of a MATCH holds one, and in an OPTIONAL MATCH a row with no relationship found
+            is not counted (the node that clause introduces needs a primary key); count(DISTINCT r)
+            counts each pair of objects once by both ends' primary keys, so both need one. Cypher has no GROUP BY, and writing one is a syntax error that says
             so: aggregating anything groups by everything else the query returns. A grouped or DISTINCT result can only be sorted by a value it
             returns.
 
