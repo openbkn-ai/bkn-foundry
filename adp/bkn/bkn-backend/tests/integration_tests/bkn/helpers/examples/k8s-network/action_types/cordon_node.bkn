@@ -6,11 +6,19 @@ tags: [运维操作, 节点管理]
 enabled: false
 risk_level: high
 requires_approval: true
+action_intent: modify
 ---
 
 ## ActionType: 隔离节点
 
 将故障节点标记为不可调度，防止新 Pod 被调度到该节点。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
 
 ### Bound Object
 
@@ -55,9 +63,9 @@ condition:
 
 ### Parameter Binding
 
-| Parameter | Type | Source | Binding | Description |
-|-----------|------|--------|---------|-------------|
-| node | string | property | node_name | Node name |
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| node | string |  |  | property | node_name | Node name |
 
 ### Execution Description
 

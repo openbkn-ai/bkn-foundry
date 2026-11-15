@@ -3,8 +3,8 @@ type: action_type
 id: list_data_domains
 name: 列出数据域列表
 tags: [数据域管理, 数据查询, 灾备]
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 列出数据域列表
@@ -34,11 +34,18 @@ action_intent: add
 }
 ```
 
+### Operation Config
+
+```yaml
+operation_config:
+  type: tool
+```
+
+
 ### Bound Object
 
 | Bound Object |
 |--------------|
-| data_domain |
 
 ### Affect Object
 
@@ -56,13 +63,6 @@ impact_contracts:
 
 
 ### Trigger Condition
-
-```yaml
-object_type_id: agent
-field: initialized
-operation: ==
-value: true
-```
 
 
 ### Action Source
