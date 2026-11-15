@@ -435,9 +435,10 @@ func Test_RedraftKeeps(t *testing.T) {
 			// People read the text in business words; the template keeps its slot.
 			So(finished.Spec.Questions[2].Text, ShouldEqual, "Who joined after a given date?")
 			So(finished.Spec.Questions[2].Template, ShouldEqual, "Who joined after {as_of}?")
-			// A kept question keeps the ontology it was accepted on; the new one is signed now, as
-			// is a kept one never signed.
-			So(finished.Spec.Questions[0].OntologySignature, ShouldEqual, "as accepted")
+			// Drafting again signs what it leaves as the ontology is now: the new question, a kept
+			// one never signed, and a kept one whose items the ontology still adopts, so a change it
+			// still stands on is settled.
+			So(finished.Spec.Questions[0].OntologySignature, ShouldEqual, ontologySignature(staffOntology(), finished.Spec.Questions[0]))
 			So(finished.Spec.Questions[2].OntologySignature, ShouldEqual, ontologySignature(staffOntology(), finished.Spec.Questions[2]))
 			So(finished.Spec.Questions[1].OntologySignature, ShouldNotBeEmpty)
 			// What the concepts and kinetic runs wrote survives drafting.
