@@ -44,8 +44,8 @@ info:
     message is built from), `involved` (every definition a rule that spans definitions concerns, as `{kind, id}`;
     the first is the definition that refers first and the one named by the ID field) and `message` (the English
     text). A rule within one definition lists the first problem it finds. A rule that spans definitions
-    (`replaced_by`, `fallback_for`, deprecated endpoints, aliases that name another definition) lists every problem
-    that involves a definition of the save.
+    (`replaced_by`, `fallback_for`, deprecated endpoints) lists every problem that involves a definition of the
+    save. An alias that names another definition (`alias_conflict`) reports only the first conflict.
 
     A delete refused because definitions still refer to it answers 409 `BknBackend.ActionType.StillReferenced`.
     `error_details.references` lists the English sentences, as before. `metadata.references` holds one record per

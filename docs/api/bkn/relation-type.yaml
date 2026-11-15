@@ -44,8 +44,8 @@ info:
     message is built from), `involved` (every definition a rule that spans definitions concerns, as `{kind, id}`;
     the first is the definition that refers first and the one named by the ID field) and `message` (the English
     text). A rule within one definition lists the first problem it finds. A rule that spans definitions
-    (`replaced_by`, `fallback_for`, deprecated endpoints, aliases that name another definition) lists every problem
-    that involves a definition of the save.
+    (`replaced_by`, `fallback_for`, deprecated endpoints) lists every problem that involves a definition of the
+    save. An alias that names another definition (`alias_conflict`) reports only the first conflict.
 
     A delete refused because definitions still refer to it answers 409 `BknBackend.RelationType.StillReferenced`.
     `error_details.references` lists the English sentences, as before. `metadata.references` holds one record per
@@ -58,7 +58,8 @@ info:
       `allowed`), `verification_invalid` (`verification`, `allowed`), `cardinality_invalid` (`cardinality`,
       `allowed`), `cardinality_cross_join` (`cardinality`), `characteristics_ends_differ` (`source`, `target`),
       `symmetric_cardinality` (`cardinality`), `symmetric_reverse_name`, `symmetric_required`,
-      `list_value_invalid` (`field`, `value`, `allowed`), `list_value_duplicated` (`field`, `value`).
+      `list_value_invalid` (`field`, `value`, `allowed`), `list_value_duplicated` (`field`, `value`); `field` is the
+      declaration field, `required` or `characteristics`.
     - Fallback paths on the relation itself: `fallback_for_invalid` (`fallback_for`), `fallback_for_not_secondary`
       (`fallback_for`), `fallback_for_self` (`fallback_for`), `fallback_cross_join` (`relation_type`),
       `fallback_characteristics` (`relation_type`).
@@ -67,7 +68,7 @@ info:
       `target`, `primary_source`, `primary_target`), `fallback_primary_cardinality` (`fallback_for`,
       `cardinality`), `fallback_already_taken` (`fallback_for`, `other_fallback`).
     - Relation properties: `relation_properties_not_indirect` (`endpoint_type`), `relation_properties_too_many`
-      (`count`, `max`), `relation_property_invalid` (`reason`), `relation_property_joins_ends` (`mapped_field`),
+      (`count`, `max`), `relation_property_invalid` (`reason`, the English text of the property check, not a stable code), `relation_property_joins_ends` (`mapped_field`),
       `relation_property_unique`; and the property rules of an object type (semantics, constraints, aliases),
       which name the property.
     - Lifecycle: `lifecycle_fields_without_deprecation`, `lifecycle_reason_missing`, `lifecycle_replaced_by_invalid`,

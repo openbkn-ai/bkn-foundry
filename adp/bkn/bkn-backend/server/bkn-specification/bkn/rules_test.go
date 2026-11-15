@@ -190,9 +190,9 @@ func TestDeclarationRulesCarryCodeAndParams(t *testing.T) {
 			rt.Endpoint.Cardinality = CardinalityOneToOne
 		}), "", map[string]any{"cardinality": CardinalityOneToOne}},
 		{RuleListValueInvalid, relation(func(rt *BknRelationType) { rt.RequiredEnds = []string{"middle"} }), "",
-			map[string]any{"field": "relation constraints required", "value": "middle", "allowed": relationEnds}},
+			map[string]any{"field": "required", "value": "middle", "allowed": relationEnds}},
 		{RuleListValueDuplicated, relation(func(rt *BknRelationType) { rt.RequiredEnds = []string{EndSource, EndSource} }), "",
-			map[string]any{"field": "relation constraints required", "value": EndSource}},
+			map[string]any{"field": "required", "value": EndSource}},
 		{RuleCharacteristicsEndsDiffer, relation(func(rt *BknRelationType) { rt.Characteristics = []string{CharacteristicSymmetric} }), "",
 			map[string]any{"source": "a", "target": "b"}},
 		{RuleSymmetricCardinality, relation(func(rt *BknRelationType) {

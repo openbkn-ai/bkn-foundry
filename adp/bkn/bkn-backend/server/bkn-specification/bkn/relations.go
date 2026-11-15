@@ -253,10 +253,10 @@ func validateEndpointDeclarations(rt *BknRelationType) error {
 	if rt.Endpoint.Type == RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN && card != "" && card != CardinalityManyToMany {
 		return ruleErrorf(RuleCardinalityCrossJoin, map[string]any{"cardinality": card}, "Endpoint Cardinality of a filtered_cross_join relation can only be many_to_many, which links every pair, got %q", card)
 	}
-	if err := checkSubset("relation constraints required", rt.RequiredEnds, relationEnds); err != nil {
+	if err := checkSubset("required", "relation constraints required", rt.RequiredEnds, relationEnds); err != nil {
 		return err
 	}
-	if err := checkSubset("relation constraints characteristics", rt.Characteristics, characteristics); err != nil {
+	if err := checkSubset("characteristics", "relation constraints characteristics", rt.Characteristics, characteristics); err != nil {
 		return err
 	}
 	if len(rt.Characteristics) > 0 && rt.Endpoint.Source != rt.Endpoint.Target {
@@ -277,15 +277,17 @@ func validateEndpointDeclarations(rt *BknRelationType) error {
 	return nil
 }
 
-// checkSubset checks that a list holds allowed values, each once.
-func checkSubset(where string, items, allowed []string) error {
+// checkSubset checks that a list holds allowed values, each once. field is the stable name
+// of the declaration field, reported as params.field; where is the English locator that
+// only the message carries.
+func checkSubset(field, where string, items, allowed []string) error {
 	seen := map[string]bool{}
 	for _, item := range items {
 		if !containsString(allowed, item) {
-			return ruleErrorf(RuleListValueInvalid, map[string]any{"field": where, "value": item, "allowed": allowed}, "%s: %q is not one of %s", where, item, strings.Join(allowed, ", "))
+			return ruleErrorf(RuleListValueInvalid, map[string]any{"field": field, "value": item, "allowed": allowed}, "%s: %q is not one of %s", where, item, strings.Join(allowed, ", "))
 		}
 		if seen[item] {
-			return ruleErrorf(RuleListValueDuplicated, map[string]any{"field": where, "value": item}, "%s: %q appears twice", where, item)
+			return ruleErrorf(RuleListValueDuplicated, map[string]any{"field": field, "value": item}, "%s: %q appears twice", where, item)
 		}
 		seen[item] = true
 	}
