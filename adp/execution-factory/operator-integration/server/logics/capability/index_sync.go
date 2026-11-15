@@ -751,6 +751,13 @@ func (s *capabilityIndexSync) setInitialized(initialized bool) {
 	s.initialized = initialized
 }
 
+// IsPlaceholder reports whether the dataset is still a placeholder without a usable embedding model.
+func (s *capabilityIndexSync) IsPlaceholder() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.placeholder
+}
+
 func (s *capabilityIndexSync) setPlaceholder(placeholder bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

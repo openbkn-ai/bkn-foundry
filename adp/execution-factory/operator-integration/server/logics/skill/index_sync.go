@@ -65,6 +65,11 @@ func (s *skillIndexSync) EnsureInitialized(ctx context.Context) error {
 	return s.capabilitySync.EnsureInitialized(ctx)
 }
 
+// IsPlaceholder reports whether the capability index is still a placeholder.
+func (s *skillIndexSync) IsPlaceholder() bool {
+	return s.capabilitySync.IsPlaceholder()
+}
+
 // UpsertSkill writes the Skill into the capability index.
 func (s *skillIndexSync) UpsertSkill(ctx context.Context, skill *model.SkillRepositoryDB) error {
 	return s.write(ctx, skill)
