@@ -88,7 +88,17 @@ func TestCountRelationshipStatements(t *testing.T) {
 			name:    "DISTINCT on Postgres",
 			query:   "MATCH (o:Order)-[r:PLACED_BY]->(c:Customer) RETURN count(DISTINCT r) AS n",
 			dialect: DialectPostgres,
-			want:    `COUNT(DISTINCT (t0."f_id", t1."f_code", t1."f_region"))`,
+			want:    `COUNT(DISTINCT CASE WHEN t0."f_id" IS NOT NULL AND t1."f_code" IS NOT NULL AND t1."f_region" IS NOT NULL THEN (t0."f_id", t1."f_code", t1."f_region") END)`,
+		},
+		{
+			// A row with a NULL field is not NULL in Postgres, so a missing
+			// optional end would count once without the guard.
+			name: "DISTINCT on Postgres inside an OPTIONAL MATCH counts no missing end",
+			query: "MATCH (o:Order) OPTIONAL MATCH (o)-[r:PLACED_BY]->(c:Customer) " +
+				"RETURN o.id AS id, count(DISTINCT r) AS n",
+			dialect: DialectPostgres,
+			want: `COUNT(DISTINCT CASE WHEN t0."f_id" IS NOT NULL AND t1."f_code" IS NOT NULL AND t1."f_region" IS NOT NULL ` +
+				`THEN (t0."f_id", t1."f_code", t1."f_region") END)`,
 		},
 		{
 			name:  "DISTINCT starts from the source whichever way the pattern is written",

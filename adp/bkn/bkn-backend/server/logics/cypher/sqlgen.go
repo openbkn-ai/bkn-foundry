@@ -360,9 +360,16 @@ func (g *generator) aggregate(aggregate PlanAggregate) string {
 			columns = append(columns, g.column(key.Table, key.Column))
 		}
 		inner = strings.Join(columns, ", ")
-		// MySQL counts distinct column lists; Postgres counts distinct rows.
+		// MySQL counts distinct column lists, skipping any with a NULL in it.
+		// Postgres counts distinct rows, and a row with NULL fields is not
+		// itself NULL, so the row is written only when every field is there:
+		// a missing optional end then counts nothing, as it does on MySQL.
 		if g.dialect == DialectPostgres {
-			inner = "(" + inner + ")"
+			present := make([]string, len(columns))
+			for i, column := range columns {
+				present[i] = column + " IS NOT NULL"
+			}
+			inner = "CASE WHEN " + strings.Join(present, " AND ") + " THEN (" + inner + ") END"
 		}
 	}
 	if aggregate.Distinct {
