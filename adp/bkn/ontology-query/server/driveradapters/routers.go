@@ -94,6 +94,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph", r.verifyJsonContentType(), r.GetObjectsSubgraphByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph/objects", r.verifyJsonContentType(), r.GetObjectsSubgraphByObjectsByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByEx)
+		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/inspect", r.verifyJsonContentType(), r.InspectActionExecutionByEx)
 
 		// Action execution APIs.
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByEx)

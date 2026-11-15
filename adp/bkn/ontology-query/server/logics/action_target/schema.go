@@ -105,7 +105,7 @@ func (s *Resolver) ExecutionSchema(ctx context.Context, action *interfaces.Actio
 		properties["relation_target"] = map[string]any{"type": "object", "properties": endpoints, "required": []string{"source_identity", "target_identity"}, "additionalProperties": false}
 		required = append(required, "relation_target")
 	}
-	return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}, nil
+	return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false, "x-bkn-execution-observation": true}, nil
 }
 
 func identitySchema(object *interfaces.ObjectType) (map[string]any, error) {

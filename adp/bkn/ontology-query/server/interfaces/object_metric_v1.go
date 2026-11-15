@@ -65,18 +65,35 @@ type ObjectMetricQueryTimeRangeV1 struct {
 	End   int64 `json:"end"`
 }
 
-type ObjectMetricDataV1 struct {
-	IsApproximate   bool                          `json:"is_approximate"`
-	Model           ObjectMetricResultModelV1     `json:"model"`
-	Entries         []ObjectMetricDataEntryV1     `json:"entries"`
-	Status          string                        `json:"status"`
-	EmptyReason     string                        `json:"empty_reason,omitempty"`
-	NextCursor      string                        `json:"next_cursor,omitempty"`
-	TotalCount      int                           `json:"total_count"`
-	Warnings        []string                      `json:"warnings,omitempty"`
-	OverallMs       int64                         `json:"overall_ms"`
-	EvaluatedAt     int64                         `json:"evaluated_at"`
+// ObjectMetricExecutionLineageV1 contains only definitions actually evaluated
+// by this request, including the effective query context of each dependency.
+type ObjectMetricExecutionLineageV1 struct {
+	Complete bool                          `json:"complete"`
+	Entries  []ObjectMetricExecutionStepV1 `json:"entries"`
+}
+
+type ObjectMetricExecutionStepV1 struct {
+	MetricID        string                        `json:"metric_id"`
+	Version         int                           `json:"version"`
+	GroupBy         []ObjectMetricPropertyRefV1   `json:"group_by"`
 	EffectiveWindow *ObjectMetricQueryTimeRangeV1 `json:"effective_window,omitempty"`
+	ResultRows      int                           `json:"result_rows"`
+	Partial         bool                          `json:"partial"`
+}
+
+type ObjectMetricDataV1 struct {
+	ExecutionLineage *ObjectMetricExecutionLineageV1 `json:"execution_lineage,omitempty"`
+	IsApproximate    bool                            `json:"is_approximate"`
+	Model            ObjectMetricResultModelV1       `json:"model"`
+	Entries          []ObjectMetricDataEntryV1       `json:"entries"`
+	Status           string                          `json:"status"`
+	EmptyReason      string                          `json:"empty_reason,omitempty"`
+	NextCursor       string                          `json:"next_cursor,omitempty"`
+	TotalCount       int                             `json:"total_count"`
+	Warnings         []string                        `json:"warnings,omitempty"`
+	OverallMs        int64                           `json:"overall_ms"`
+	EvaluatedAt      int64                           `json:"evaluated_at"`
+	EffectiveWindow  *ObjectMetricQueryTimeRangeV1   `json:"effective_window,omitempty"`
 }
 
 type ObjectMetricResultModelV1 struct {

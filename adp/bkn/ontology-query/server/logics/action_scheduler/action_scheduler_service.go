@@ -8,7 +8,6 @@ package action_scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -122,148 +121,15 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfaces.ActionExecutionRequest) (*interfaces.ActionExecutionResponse, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ExecuteAction")
 	defer span.End()
-	if req == nil {
-		return nil, actionPermissionInvalid(ctx, "action execution request is required")
-	}
-	if req.Branch == "" {
-		req.Branch = interfaces.MAIN_BRANCH
-	}
-	if req.Branch != interfaces.MAIN_BRANCH {
-		return nil, actionPermissionInvalid(ctx, "only the published main branch can execute actions")
-	}
-
-	span.SetAttributes(
-		attr.Key("kn_id").String(req.KNID),
-		attr.Key("action_type_id").String(req.ActionTypeID),
-	)
-
-	// Load the published single-operation definition before target resolution.
-	actionType, actionTypeSnapshot, exists, err := s.omAccess.GetActionType(ctx, req.KNID, req.Branch, req.ActionTypeID)
-	if err != nil {
-		logger.Errorf("Failed to get action type: %v", err)
-		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
-			return nil, versionErr
-		}
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
-			WithErrorDetails(err.Error())
-	}
-	if !exists {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
-			WithErrorDetails(fmt.Sprintf("Action type not found: %s", req.ActionTypeID))
-	}
-
-	if err := validateActionOperation(&actionType); err != nil {
-		return nil, actionTargetError(ctx, err.Error())
-	}
-	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
-			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
-		})
-		if renderErr != nil {
-			logger.Errorf("localized message rendering failed: %v", renderErr)
-		}
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
-	}
-
-	// Resolve the authenticated execution subject before any instance scan or
-	// physical data read. The permission snapshot is entirely server-derived.
-	executor := interfaces.AccountInfo{}
-	if accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); ok {
-		executor = accountInfo
-	}
-	permissionSnapshot, err := s.authorizeActionType(ctx, req.KNID, &actionType)
+	prepared, err := s.prepareActionExecution(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	// The proxy's grants cover only the running version. On the draft or a history version the
-	// action runs with the caller's own identity: no proxy, and the token records the version.
-	var (
-		actionProxy             = &interfaces.TrustedProxyContext{}
-		proxyPermissionSnapshot []interfaces.PermissionRequirement
-	)
-	// Decided once: the instance read below can resolve the pin and change its answer.
-	pin := interfaces.KNVersionPinFromContext(ctx)
-	callerIdentity := pin.UsesCallerIdentity()
-	if callerIdentity {
-		actionProxy.PublishedModelVersion = interfaces.CallerIdentityModelPrefix + pin.Token()
-	} else {
-		actionProxy, proxyPermissionSnapshot, err = s.resolveActionProxyContext(ctx, req.KNID, &actionType)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Resolve the explicitly requested operation targets.
-	instances, objDatas, err := s.getInstancesForAction(ctx, &actionType, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set instances and object data to request
-	req.Instances = instances
-	req.ObjDatas = objDatas
-	for index, data := range objDatas {
-		if _, err := s.buildExecutionParams(&actionType, data, req.DynamicParams, instances[index].InstanceIdentity); err != nil {
-			identity, _ := json.Marshal(instances[index].InstanceIdentity)
-			return nil, actionTargetError(ctx, fmt.Sprintf("target %d identity %s: %v", index+1, identity, err))
-		}
-	}
-
-	// Never accept an execution without a resolved target context.
-	if len(req.Instances) == 0 {
-		logger.Infof("No matching instances found for action type %s", req.ActionTypeID)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails("No matching instances found for the action type condition")
-	}
-
-	logger.Infof("Resolved %d explicit targets for action type %s", len(req.Instances), req.ActionTypeID)
-	span.SetAttributes(attr.Key("instances_count").Int(len(req.Instances)))
-
-	// Check execution objects limit. A condition scan stops one object past the
-	// limit, so the count only proves the match set is larger than the limit.
-	if len(req.Instances) > logics.ActionExecutionMaxObjects {
-		logger.Warnf("More than %d objects match action type %s", logics.ActionExecutionMaxObjects, req.ActionTypeID)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails(fmt.Sprintf("More than %d objects match this action, which exceeds the maximum limit. Please reduce the scope or adjust the ACTION_EXECUTION_MAX_OBJECTS environment variable.",
-				logics.ActionExecutionMaxObjects))
-	}
-
-	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
-	if err != nil {
-		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
-			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
-	}
-	req.InstanceIdentityHash = instanceHash
-
-	// Duplicate check hook (default: reject in-flight same kn + action type + instance set + dynamic_params)
-	if s.duplicateCheckHook != nil {
-		proceed, dupErr := s.duplicateCheckHook(ctx, req)
-		if dupErr != nil {
-			if httpErr, ok := dupErr.(*httperrors.HTTPError); ok {
-				return nil, httpErr
-			}
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
-				WithErrorDetails(dupErr.Error())
-		}
-		if !proceed {
-			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_DuplicateExecution).
-				WithErrorDetails(fmt.Sprintf(
-					"Duplicate execution detected for action_type_id=%s within %ds window",
-					req.ActionTypeID, duplicateWindowSeconds,
-				))
-		}
-	}
-
-	// Resolve how many times the tool actually has to be invoked for this execution.
-	executionMode := resolveExecutionMode(&actionType)
-	invocationCount := len(req.Instances)
-	if executionMode == interfaces.ExecutionModeOnce {
-		invocationCount = 1
-		logger.Infof("Action type %s has no instance-dependent parameter, %d matched instances collapse into a single invocation",
-			actionType.ATID, len(req.Instances))
-	}
-	span.SetAttributes(attr.Key("execution_mode").String(executionMode))
+	actionType, actionTypeSnapshot := prepared.action, prepared.snapshot
+	executor, permissionSnapshot := prepared.executor, prepared.permissions
+	actionProxy, proxyPermissionSnapshot := prepared.proxy, prepared.proxyPermissions
+	callerIdentity, executionMode, invocationCount, instanceHash := prepared.callerIdentity, prepared.mode, prepared.invocationCount, prepared.fingerprint
+	span.SetAttributes(attr.Key("kn_id").String(req.KNID), attr.Key("action_type_id").String(req.ActionTypeID), attr.Key("execution_mode").String(executionMode), attr.Key("target_count").Int(len(req.Instances)))
 
 	// Generate execution ID
 	generatedExecutionID, err := uuid.NewV7()
@@ -315,6 +181,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
 		InstanceIdentityHash:    instanceHash,
+		Preparation:             prepared.observation,
 	}
 
 	// Save initial execution record (metadata only)
@@ -496,30 +363,35 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 		}
 
 		// Execute based on action source type
-		params, result, execErr := s.invokeActionSource(withActionInvocation(ctx, i), execution.PermissionSnapshot, actionType, params)
+		invocationObservation := &interfaces.ActionInvocationObservation{}
+		params, result, execErr := s.invokeActionSource(withInvocationObservation(withActionInvocation(ctx, i), invocationObservation), execution.PermissionSnapshot, actionType, params)
 
 		endTime := time.Now().UnixMilli()
 		if execErr != nil {
 			results.add(interfaces.ObjectExecutionResult{
-				ObjectSystemInfo: req.Instances[i],
-				Status:           interfaces.ObjectStatusFailed,
-				Parameters:       params,
-				Result:           result,
-				ErrorMessage:     execErr.Error(),
-				StartTime:        startTime,
-				EndTime:          endTime,
-				DurationMs:       endTime - startTime,
+				ObjectSystemInfo:      req.Instances[i],
+				Status:                interfaces.ObjectStatusFailed,
+				Parameters:            params,
+				BindingContext:        objData,
+				InvocationObservation: invocationObservation,
+				Result:                result,
+				ErrorMessage:          execErr.Error(),
+				StartTime:             startTime,
+				EndTime:               endTime,
+				DurationMs:            endTime - startTime,
 			})
 			failedCount++
 		} else {
 			results.add(interfaces.ObjectExecutionResult{
-				ObjectSystemInfo: req.Instances[i],
-				Status:           interfaces.ObjectStatusSuccess,
-				Parameters:       params,
-				Result:           result,
-				StartTime:        startTime,
-				EndTime:          endTime,
-				DurationMs:       endTime - startTime,
+				ObjectSystemInfo:      req.Instances[i],
+				Status:                interfaces.ObjectStatusSuccess,
+				Parameters:            params,
+				BindingContext:        objData,
+				InvocationObservation: invocationObservation,
+				Result:                result,
+				StartTime:             startTime,
+				EndTime:               endTime,
+				DurationMs:            endTime - startTime,
 			})
 			successCount++
 		}
@@ -610,8 +482,10 @@ func (s *actionSchedulerService) invokeActionSource(ctx context.Context,
 	permissionSnapshot []interfaces.PermissionRequirement, actionType *interfaces.ActionType,
 	params map[string]any) (map[string]any, any, error) {
 	if err := s.authorizeExecution(ctx, permissionSnapshot); err != nil {
+		observeInvocationAuthorization(ctx, err)
 		return params, nil, err
 	}
+	observeInvocationAuthorization(ctx, nil)
 	// The draft and history versions run as the caller and have no proxy snapshot: the
 	// downstream call then checks the caller's own grants. Every other execution must carry
 	// a trusted proxy snapshot, so a missing or broken one never falls back to the caller.
@@ -657,8 +531,10 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 			InstanceIdentity: map[string]any{},
 			Display:          localizedText,
 		},
-		Targets:   req.Instances,
-		StartTime: startTime,
+		Targets:               req.Instances,
+		BindingContext:        map[string]any{},
+		InvocationObservation: &interfaces.ActionInvocationObservation{},
+		StartTime:             startTime,
 	}
 
 	successCount := 0
@@ -686,7 +562,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.ErrorMessage = fmt.Sprintf("Failed to build parameters: %v", err)
 		failedCount = 1
 	} else {
-		sentParams, invokeResult, execErr := s.invokeActionSource(withActionInvocation(ctx, 0), execution.PermissionSnapshot, actionType, params)
+		sentParams, invokeResult, execErr := s.invokeActionSource(withInvocationObservation(withActionInvocation(ctx, 0), result.InvocationObservation), execution.PermissionSnapshot, actionType, params)
 		result.Parameters = sentParams
 		if execErr != nil {
 			result.Status = interfaces.ObjectStatusFailed
