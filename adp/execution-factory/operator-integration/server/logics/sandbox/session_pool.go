@@ -23,7 +23,10 @@ const (
 	defaultMaxSessions        = 3
 	defaultMaxConcurrentTasks = 100
 	defaultActiveSessions     = 1
-	defaultContextTimeout     = 30 * time.Second
+	// defaultSpreadThreshold is how many tasks a session takes before the next
+	// call is steered to another session.
+	defaultSpreadThreshold = 2
+	defaultContextTimeout  = 30 * time.Second
 	// Maximum number of retries.
 	maxRetryCount = 3
 	// Session health check interval.
@@ -33,6 +36,10 @@ const (
 	// Background worker interval.
 	backgroundWorkerInterval = time.Minute
 )
+
+// DefaultWorkingDirectory is the workspace subdirectory an execution runs in when its
+// caller names none.
+const DefaultWorkingDirectory = "aoi-functions"
 
 // Current environment dependency information.
 type DependenciesInfo struct {
@@ -68,6 +75,8 @@ type sessionPoolImpl struct {
 	maxSessions        int
 	maxConcurrentTasks int
 	activeSessions     int
+	spreadThreshold    int
+	growing            bool // A background session creation is in flight.
 	logger             interfaces.Logger
 	stopCh             chan struct{}
 	templateID         string
@@ -102,20 +111,26 @@ func GetSessionPool() SessionPool {
 			activeSessions = maxSessions
 		}
 
+		spreadThreshold := conf.SandboxControlPlane.SpreadThreshold
+		if spreadThreshold <= 0 {
+			spreadThreshold = defaultSpreadThreshold
+		}
+
 		poolInstance = &sessionPoolImpl{
 			client:             client,
 			sessions:           make(map[string]*sessionItem),
 			maxSessions:        maxSessions,
 			maxConcurrentTasks: maxConcurrentTasks,
 			activeSessions:     activeSessions,
+			spreadThreshold:    spreadThreshold,
 			logger:             conf.GetLogger(),
 			stopCh:             make(chan struct{}),
 			templateID:         conf.SandboxControlPlane.TemplateID,
 			reqConfig:          conf.SandboxControlPlane.SessionResources,
 		}
 		// Print configuration information.
-		poolInstance.logger.Infof("SessionPool initialized with maxSessions: %d, maxConcurrentTasks: %d, activeSessions: %d, templateID: %s, sessionResources: %v",
-			poolInstance.maxSessions, poolInstance.maxConcurrentTasks, poolInstance.activeSessions, poolInstance.templateID, poolInstance.reqConfig)
+		poolInstance.logger.Infof("SessionPool initialized with maxSessions: %d, maxConcurrentTasks: %d, activeSessions: %d, spreadThreshold: %d, templateID: %s, sessionResources: %v",
+			poolInstance.maxSessions, poolInstance.maxConcurrentTasks, poolInstance.activeSessions, poolInstance.spreadThreshold, poolInstance.templateID, poolInstance.reqConfig)
 
 		// Initialization: Synchronize existing deterministic sessions from the control plane and top up the number of activeSessions.
 		poolInstance.initSessions()
@@ -160,6 +175,13 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, executionSpanAttributes(req))
+	// A call without a working directory makes the executor snapshot and scan the
+	// shared workspace root (every session's directories) twice per call, which
+	// costs seconds once many directories pile up. Run in a small shared
+	// directory instead, which scopes both scans to it.
+	if req.WorkingDirectory == "" {
+		req.WorkingDirectory = DefaultWorkingDirectory
+	}
 	sessionID, err := p.acquireSessionWithEnv(ctx, req.EnvVars)
 	if err != nil {
 		return nil, err
@@ -280,11 +302,23 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 		}
 		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, nextStartSlot, nextCreatedID, envVars)
 	}(retryCount)
-	// 1. Stack allocation strategy: Find the session with the highest load but not full.
-	bestSession := p.findBestSession()
+	// 1. Spread allocation strategy: use the busiest session still under the spread
+	// threshold; when every session is at it and the pool can still grow, create
+	// another session so concurrent calls do not queue on one. A retry (after a
+	// failed create) accepts any session with room, so a flaky create never fails a
+	// call that a busy session could serve.
+	isRetry := startSlot != 0 || createdID != "" || retryCount < p.slotRetryBudget()
+	growable := !isRetry && p.canGrow()
+	bestSession := p.findBestSession(growable)
+	if bestSession == nil && growable && p.hasSessions() {
+		// Every session is at the threshold. Add one in the background for the
+		// calls that follow, and run this one now on the least-loaded session
+		// instead of waiting for a pod to start.
+		p.growAsync()
+		bestSession = p.findBestSession(false)
+	}
 	if bestSession != nil {
-		p.updateRunningTasks(bestSession.ID, 1)
-		sessionID = bestSession.ID
+		sessionID = bestSession.ID // findBestSession already reserved a task slot.
 		return
 	}
 
@@ -331,7 +365,59 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 		needRetry = true
 		return
 	}
+	p.updateRunningTasks(targetID, 1)
 	return targetID, nil
+}
+
+// canGrow reports whether a deterministic session slot is still free.
+func (p *sessionPoolImpl) canGrow() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.sessions) < p.maxSessions
+}
+
+func (p *sessionPoolImpl) hasSessions() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.sessions) > 0
+}
+
+// growAsync starts one more session in the background. At most one runs at a
+// time; an idle surplus session is shrunk by maintainPool later.
+func (p *sessionPoolImpl) growAsync() {
+	p.mu.Lock()
+	if p.growing {
+		p.mu.Unlock()
+		return
+	}
+	targetID := ""
+	for j := 0; j < p.maxSessions; j++ {
+		id := fmt.Sprintf("%s%d", sessionIDPrefix, j)
+		if _, ok := p.sessions[id]; !ok {
+			targetID = id
+			break
+		}
+	}
+	if targetID == "" {
+		p.mu.Unlock()
+		return
+	}
+	p.growing = true
+	p.mu.Unlock()
+
+	go func() {
+		defer func() {
+			p.mu.Lock()
+			p.growing = false
+			p.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		p.logger.Infof("Adding session %s: every session is at the spread threshold (%d)", targetID, p.spreadThreshold)
+		if err := p.ensureRemoteSession(ctx, targetID); err != nil {
+			p.logger.Errorf("Failed to add session %s: %v", targetID, err)
+		}
+	}()
 }
 
 func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID string) error {
@@ -681,8 +767,17 @@ func (p *sessionPoolImpl) updateRunningTasks(sessionID string, delta int) {
 	}
 }
 
-// findBestSession Finds the best session: Stacked allocation strategy: Finds the session with the highest load but not full.
-func (p *sessionPoolImpl) findBestSession() (bestSession *sessionItem) {
+// findBestSession picks the session to run on. Sessions below the spread
+// threshold are stacked (busiest first, so idle ones can be shrunk); once every
+// session is at the threshold, the least-loaded one with room is used, unless
+// the caller wants a new session instead (growOnSaturation), in which case nil
+// is returned.
+func (p *sessionPoolImpl) findBestSession(growOnSaturation bool) (bestSession *sessionItem) {
+	threshold := p.spreadThreshold
+	if threshold <= 0 {
+		// Unset: pure stacking until a session is full.
+		threshold = p.maxConcurrentTasks
+	}
 	p.mu.Lock()
 	type sessionCandidate struct {
 		id           string
@@ -692,7 +787,8 @@ func (p *sessionPoolImpl) findBestSession() (bestSession *sessionItem) {
 	candidates := make([]sessionCandidate, 0, len(p.sessions))
 	for _, item := range p.sessions {
 		p.logger.Infof("Session %s: RunningTasks=%d, LastUsedAt=%v\n", item.ID, item.RunningTasks, item.LastUsedAt)
-		if item.RunningTasks < p.maxConcurrentTasks {
+		if item.RunningTasks < p.maxConcurrentTasks &&
+			(!growOnSaturation || item.RunningTasks < threshold) {
 			candidates = append(candidates, sessionCandidate{
 				id:           item.ID,
 				runningTasks: item.RunningTasks,
@@ -702,8 +798,16 @@ func (p *sessionPoolImpl) findBestSession() (bestSession *sessionItem) {
 	}
 	p.mu.Unlock()
 
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].runningTasks > candidates[j].runningTasks
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i].runningTasks, candidates[j].runningTasks
+		aBelow, bBelow := a < threshold, b < threshold
+		if aBelow != bBelow {
+			return aBelow
+		}
+		if aBelow {
+			return a > b // stack below the threshold.
+		}
+		return a < b // spread once saturated.
 	})
 
 	invalidIDs := make([]string, 0)
@@ -713,9 +817,19 @@ func (p *sessionPoolImpl) findBestSession() (bestSession *sessionItem) {
 			invalidIDs = append(invalidIDs, c.id)
 			continue
 		}
-		if item, ok := p.getSessionItem(c.id); ok {
+		// Reserve the slot under the lock: concurrent callers all see the same
+		// counts while they validate sessions over the network, and would otherwise
+		// pile onto the same session.
+		p.mu.Lock()
+		item, ok := p.sessions[c.id]
+		if ok && item.RunningTasks < p.maxConcurrentTasks &&
+			(!growOnSaturation || item.RunningTasks < threshold) {
+			item.RunningTasks++
+			item.LastUsedAt = time.Now()
+			p.mu.Unlock()
 			return item
 		}
+		p.mu.Unlock()
 	}
 
 	for _, sessionID := range invalidIDs {

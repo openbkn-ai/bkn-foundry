@@ -80,6 +80,7 @@ service:
   proxyModule:
     defaultTimeout: 300 # Unit second.
     maxTimeout: 300 # Unit second.
+    platformFunctionGrace: 5 # Unit second. Added to the client timeout of platform Function calls.
     maxClients: 50 # Unit second.
     clientLifetime: 600 # Unit second.
   skillIndexBuild:
@@ -178,6 +179,8 @@ depServices:
     maxSessions: 3
     activeSessions: 1
     maxConcurrentTasks: 100
+    spreadThreshold: 2 # Tasks one session takes before the next call goes to another session.
+    syncPollDeadline: 300 # Unit second. Control plane polling deadline for sync executions.
   oss-gateway-backend:
     privateHost: "oss-gateway-backend"
     privatePort: 8080
