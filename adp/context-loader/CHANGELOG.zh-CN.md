@@ -13,6 +13,8 @@
 
 - `get_relation_types` 不传 `ids` 时列举关系类索引：按名称排序分页返回（默认 50 条，上限 200），带 `total_count` 与 `next_offset`，条目不含 `mapping_rules`，`comment` 只保留前 120 个字符；单页超过约 3 万字符时提前截断，从 `next_offset` 续页。传 `object_type_ids` 时只列起点或终点是这些对象类之一的关系类。两种模式都支持 `branch`。在 main 上按 `ids` 调用的行为不变。
 
+- `get_object_types` 不传 `ids` 列举时与 `get_relation_types` 一样限定单页大小：索引条目的 `comment` 只保留前 120 个字符（被截断时以「…」结尾）；单页超过约 3 万字符时提前截断，`next_offset` 指向被截掉的第一条，`notice` 说明原因。按 `ids` 取定义仍返回完整 `comment`，行为不变。
+
 - `search_schema` 带出属性所引用值类型的单位。引用了值类型的属性不能自己声明单位，完整模式下 `unit` 现在取自值类型（枚举与非枚举都适用），与直接声明单位的属性一致；精简模式及没有单位的值类型输出不变。值类型每次请求至多读一次，读取失败时保留 `value_type`、不补单位。
 
 - 增加可选 HTTP MCP 扩展，按同源路径转发认证、核验许可，并在完整及精简入口直接发布控制工具。支持接入 EE Eval 参评工具，不内嵌 Eval 业务逻辑；默认工具目录不变。 (#2570)

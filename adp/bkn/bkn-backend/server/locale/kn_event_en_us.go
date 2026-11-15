@@ -21,6 +21,20 @@ var knEventEnUS = i18n.I18nMessages{
 		"BknBackend.KnEvent.InternalError":     "Event service error. Retry later or contact an administrator if the problem persists.",
 		"BknBackend.KnEvent.RuleEventTitle":    "{{.type}}: {{.object}}",
 
+		"BknBackend.KnEvent.RuleToolUnavailable":    "The rule tool is unavailable: it does not exist, is disabled, or its tool box is not published.",
+		"BknBackend.KnEvent.RuleToolNotCypherTable": "The rule tool must be a Cypher function of this knowledge network that returns a table.",
+		"BknBackend.KnEvent.RuleChecking":           "The event type is being checked, or its rule changed during the check. Retry later.",
+		"BknBackend.KnEvent.CheckedByPlatform":      "The event type has a rule tool and is checked by the platform on its schedule. It does not accept submitted checks.",
+
+		// What a platform check records: in the network's one business language.
+		"BknBackend.KnEvent.Check.NoPermission":    "The check subject has no permission. Ask someone with permission to save the rule again.",
+		"BknBackend.KnEvent.Check.ToolUnavailable": "The rule tool is unavailable.",
+		"BknBackend.KnEvent.Check.Failed":          "The rule tool failed: {{.error}}",
+		"BknBackend.KnEvent.Check.NoKeyColumn":     "The result has no key column.",
+		"BknBackend.KnEvent.Check.BadKey":          "The key of row {{.row}} is not a string or a number.",
+		"BknBackend.KnEvent.Check.BadResult":       "The result cannot be used: {{.detail}}",
+		"BknBackend.KnEvent.Check.Limited":         "The result was truncated: only the objects returned were updated, and the other objects' events do not recover. Narrow the statement's conditions or raise its LIMIT.",
+
 		// What the event classes show: written into the network's definitions in one business language.
 		"BknBackend.KnEvent.Class.Comment":                 "Event class: each object is one \"{{.name}}\" event, written by the platform's event module.",
 		"BknBackend.KnEvent.Class.Relation":                "About",

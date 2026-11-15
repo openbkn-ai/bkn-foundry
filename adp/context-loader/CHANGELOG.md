@@ -13,6 +13,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 - `get_relation_types` lists the relation type index when called without `ids`: one page in name order (50 by default, 200 at most) with `total_count` and `next_offset`, entries without `mapping_rules` and with the first 120 characters of `comment`; a page past about 30,000 characters is cut short and continues at `next_offset`. `object_type_ids` keeps the relation types that start or end at the given object types. The tool also takes `branch` in both modes. Calls with `ids` on main are unchanged.
 
+- `get_object_types` bounds a listing page (called without `ids`) the way `get_relation_types` does: an index entry keeps the first 120 characters of `comment` (ending in `…` when cut), and a page past about 30,000 characters is cut short, continues at the first entry it left out through `next_offset`, and says why in `notice`. Naming ids returns the whole comment and is unchanged.
+
 - `search_schema` gives the unit of a property's value type. A property that names a value type cannot declare its own unit, so in full mode `unit` now comes from the value type, enum or not, as it does from a property that declares it; brief mode and value types without a unit are unchanged. Reading the value types still happens at most once per request, and a failed read leaves `value_type` in place without a unit.
 
 - Add opt-in HTTP MCP extensions with same-origin authenticated forwarding, licence gating, and direct control-plane tools in the full and compact profiles. Enables the EE Eval participant tools without embedding Eval business logic; the default catalogue is unchanged. (#2570)

@@ -48,6 +48,8 @@ var typeColumns = []string{
 	"f_kn_id", "f_code", "f_name", "f_source", "f_subject", "f_severity", "f_merge_hours",
 	"f_rule", "f_rule_version", "f_creator", "f_creator_type", "f_create_time",
 	"f_updater", "f_updater_type", "f_update_time", "f_object_type_id", "f_dataset_id",
+	"f_rule_tool", "f_check_cron", "f_check_timezone", "f_check_subject_id", "f_check_subject_type",
+	"f_next_check_at", "f_check_failures",
 }
 
 var eventColumns = []string{
@@ -109,15 +111,69 @@ func rawJSON(value string) json.RawMessage {
 func scanType(row scanner) (interfaces.KnEventType, error) {
 	var eventType interfaces.KnEventType
 	var rule string
+	var ruleTool sql.NullString
+	var check interfaces.KnEventCheckSchedule
+	var subject interfaces.KnEventCheckSubject
 	err := row.Scan(
 		&eventType.KNID, &eventType.Code, &eventType.Name, &eventType.Source, &eventType.Subject,
 		&eventType.Severity, &eventType.MergeHours, &rule, &eventType.RuleVersion,
 		&eventType.Creator, &eventType.CreatorType, &eventType.CreateTime,
 		&eventType.Updater, &eventType.UpdaterType, &eventType.UpdateTime,
 		&eventType.ObjectTypeID, &eventType.DatasetID,
+		&ruleTool, &check.Cron, &check.Timezone, &subject.ID, &subject.Type,
+		&eventType.NextCheckAt, &eventType.CheckFailures,
 	)
+	if err != nil {
+		return eventType, err
+	}
 	eventType.Rule = rawJSON(rule)
-	return eventType, err
+	if ruleTool.String != "" {
+		var tool interfaces.KnEventRuleTool
+		if err := json.Unmarshal([]byte(ruleTool.String), &tool); err != nil {
+			return eventType, fmt.Errorf("decode rule tool of event type %s: %w", eventType.Code, err)
+		}
+		eventType.RuleTool = &tool
+	}
+	if check.Cron != "" {
+		eventType.CheckSchedule = &check
+	}
+	if subject.ID != "" {
+		eventType.CheckSubject = &subject
+	}
+	return eventType, nil
+}
+
+// ruleToolColumn is how a rule tool is stored: NULL for none.
+func ruleToolColumn(tool *interfaces.KnEventRuleTool) (any, error) {
+	if tool == nil {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(tool)
+	if err != nil {
+		return nil, fmt.Errorf("encode rule tool: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// checkColumnsOf are the stored values of a type's platform checks.
+func checkColumnsOf(eventType interfaces.KnEventType) (map[string]any, error) {
+	tool, err := ruleToolColumn(eventType.RuleTool)
+	if err != nil {
+		return nil, err
+	}
+	var check interfaces.KnEventCheckSchedule
+	if eventType.CheckSchedule != nil {
+		check = *eventType.CheckSchedule
+	}
+	var subject interfaces.KnEventCheckSubject
+	if eventType.CheckSubject != nil {
+		subject = *eventType.CheckSubject
+	}
+	return map[string]any{
+		"f_rule_tool": tool, "f_check_cron": check.Cron, "f_check_timezone": check.Timezone,
+		"f_check_subject_id": subject.ID, "f_check_subject_type": subject.Type,
+		"f_next_check_at": eventType.NextCheckAt, "f_check_failures": eventType.CheckFailures,
+	}, nil
 }
 
 // scanEvent reads eventSelectColumns after any leading columns.
@@ -210,12 +266,19 @@ func (s *store) getType(ctx context.Context, knID, code string) (interfaces.KnEv
 
 // createType inserts an event type, reporting false when the code is taken.
 func (w *writer) createType(eventType interfaces.KnEventType) (bool, error) {
+	checks, err := checkColumnsOf(eventType)
+	if err != nil {
+		return false, err
+	}
 	query, args, err := sq.Insert(typeTable).Columns(typeColumns...).Values(
 		eventType.KNID, eventType.Code, eventType.Name, eventType.Source, eventType.Subject,
 		eventType.Severity, eventType.MergeHours, string(eventType.Rule), eventType.RuleVersion,
 		eventType.Creator, eventType.CreatorType, eventType.CreateTime,
 		eventType.Updater, eventType.UpdaterType, eventType.UpdateTime,
 		eventType.ObjectTypeID, eventType.DatasetID,
+		checks["f_rule_tool"], checks["f_check_cron"], checks["f_check_timezone"],
+		checks["f_check_subject_id"], checks["f_check_subject_type"],
+		checks["f_next_check_at"], checks["f_check_failures"],
 	).Suffix("ON DUPLICATE KEY UPDATE f_code = f_code").ToSql()
 	if err != nil {
 		return false, err
@@ -232,12 +295,19 @@ func (w *writer) createType(eventType interfaces.KnEventType) (bool, error) {
 // dataset has none of its events there yet; MariaDB assigns in order, so that
 // is decided before the dataset is.
 func (w *writer) updateType(eventType interfaces.KnEventType) error {
-	query, args, err := sq.Update(typeTable).SetMap(map[string]any{
+	values, err := checkColumnsOf(eventType)
+	if err != nil {
+		return err
+	}
+	for column, value := range map[string]any{
 		"f_name": eventType.Name, "f_subject": eventType.Subject, "f_severity": eventType.Severity,
 		"f_merge_hours": eventType.MergeHours, "f_rule": string(eventType.Rule), "f_rule_version": eventType.RuleVersion,
 		"f_updater": eventType.Updater, "f_updater_type": eventType.UpdaterType, "f_update_time": eventType.UpdateTime,
 		"f_object_type_id": eventType.ObjectTypeID,
-	}).
+	} {
+		values[column] = value
+	}
+	query, args, err := sq.Update(typeTable).SetMap(values).
 		Set("f_dataset_synced", sq.Expr("IF(f_dataset_id = ?, f_dataset_synced, 0)", eventType.DatasetID)).
 		Set("f_dataset_id", eventType.DatasetID).
 		Where(sq.Eq{"f_kn_id": eventType.KNID, "f_code": eventType.Code}).ToSql()
@@ -618,6 +688,40 @@ func (s *store) queryTypes(ctx context.Context, where sq.Sqlizer, limit uint64) 
 		types = append(types, eventType)
 	}
 	return types, rows.Err()
+}
+
+// dueTypes lists the event types whose platform check is due at now, the
+// longest due first.
+func (s *store) dueTypes(ctx context.Context, now int64, limit int) ([]interfaces.KnEventType, error) {
+	query, args, err := sq.Select("f_kn_id", "f_code").From(typeTable).
+		Where(sq.And{sq.Gt{"f_next_check_at": 0}, sq.LtOrEq{"f_next_check_at": now}}).
+		OrderBy("f_next_check_at ASC").Limit(uint64(limit)).ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	due := []interfaces.KnEventType{}
+	for rows.Next() {
+		var eventType interfaces.KnEventType
+		if err := rows.Scan(&eventType.KNID, &eventType.Code); err != nil {
+			return nil, err
+		}
+		due = append(due, eventType)
+	}
+	return due, rows.Err()
+}
+
+// setCheckState keeps what a platform check leaves on its type. The type's
+// definition is not changed, nor its update time.
+func (w *writer) setCheckState(code, ruleVersion string, failures int, next int64) error {
+	_, err := w.tx.ExecContext(w.ctx, "UPDATE "+typeTable+
+		" SET f_rule_version = ?, f_check_failures = ?, f_next_check_at = ? WHERE f_kn_id = ? AND f_code = ?",
+		ruleVersion, failures, next, w.knID, code)
+	return err
 }
 
 // classlessTypes lists event types that have no class yet: those created

@@ -108,6 +108,10 @@ var calls = []struct {
 	{"delete type", "modify", func(s *service, ctx context.Context, kn string) error {
 		return s.DeleteEventType(ctx, kn, "t")
 	}},
+	{"check type", "modify", func(s *service, ctx context.Context, kn string) error {
+		_, err := s.CheckEventType(ctx, kn, "t")
+		return err
+	}},
 	{"list events", "query_data", func(s *service, ctx context.Context, kn string) error {
 		_, err := s.ListEvents(ctx, kn, interfaces.KnEventFilter{})
 		return err

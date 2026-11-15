@@ -21,6 +21,20 @@ var knEventZhCN = i18n.I18nMessages{
 		"BknBackend.KnEvent.InternalError":     "事件服务内部错误。请稍后重试；若问题持续，请联系管理员。",
 		"BknBackend.KnEvent.RuleEventTitle":    "{{.type}}：{{.object}}",
 
+		"BknBackend.KnEvent.RuleToolUnavailable":    "规则工具不可用：工具不存在、未启用，或所在工具箱未发布。",
+		"BknBackend.KnEvent.RuleToolNotCypherTable": "规则工具必须是本知识网络的 Cypher 函数，返回形状为“表”。",
+		"BknBackend.KnEvent.RuleChecking":           "该事件类型正在检查，或规则在检查期间被修改。请稍后重试。",
+		"BknBackend.KnEvent.CheckedByPlatform":      "该事件类型设置了规则工具，由平台按检查时间检查，不接受提交的检查结果。",
+
+		// What a platform check records: in the network's one business language.
+		"BknBackend.KnEvent.Check.NoPermission":    "执行身份没有权限，请有权限的人重新保存规则",
+		"BknBackend.KnEvent.Check.ToolUnavailable": "规则工具不可用",
+		"BknBackend.KnEvent.Check.Failed":          "规则工具执行失败：{{.error}}",
+		"BknBackend.KnEvent.Check.NoKeyColumn":     "结果缺少 key 列",
+		"BknBackend.KnEvent.Check.BadKey":          "第 {{.row}} 行的 key 不是字符串或数字",
+		"BknBackend.KnEvent.Check.BadResult":       "结果无法使用：{{.detail}}",
+		"BknBackend.KnEvent.Check.Limited":         "结果被截断：只更新了返回的对象，其余对象的事件不恢复。请在语句里收窄条件或提高 LIMIT。",
+
 		// What the event classes show: written into the network's definitions in one business language.
 		"BknBackend.KnEvent.Class.Comment":                 "事件类：每个对象是一条“{{.name}}”事件，由平台的事件模块写入。",
 		"BknBackend.KnEvent.Class.Relation":                "关于",

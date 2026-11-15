@@ -1134,7 +1134,7 @@ paths:
                 - properties:
                     timeout:
                       type: integer
-                      description: 指定超时时间，单位（秒）
+                      description: 指定超时时间，单位（秒）。不传时使用 proxy_module.default_timeout（默认 300），并以 proxy_module.max_timeout（默认 300）为上限；函数工具在此基础上再多等 proxy_module.platform_function_grace（默认 5）秒，以便沙箱先报告自身超时。代理等待上游超时后在响应 status_code 中返回 504 并说明原因。
       responses:
         "200":
           description: "API代理接口"
@@ -1211,7 +1211,7 @@ paths:
                 - properties:
                     timeout:
                       type: integer
-                      description: 指定超时时间，单位（秒）
+                      description: 指定超时时间，单位（秒）。不传时使用 proxy_module.default_timeout（默认 300），并以 proxy_module.max_timeout（默认 300）为上限；函数工具在此基础上再多等 proxy_module.platform_function_grace（默认 5）秒，以便沙箱先报告自身超时。代理等待上游超时后在响应 status_code 中返回 504 并说明原因。
       responses:
         "200":
           description: "API代理接口"

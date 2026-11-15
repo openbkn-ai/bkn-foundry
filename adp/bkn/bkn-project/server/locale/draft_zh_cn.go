@@ -35,7 +35,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.RelationName":                "{{.object_type}}的{{.field}}",
 		"BknProject.Draft.InvalidIncrementalKey":       "更新字段不合法 请给出该对象类的一个属性，记录每次变化时它的值都会增大，类型须为 integer、unsigned integer、string、date、time、datetime 或 timestamp；传空值可清除。",
 		"BknProject.Draft.NotRestorable":               "字段无法恢复 该字段因类型无法映射到 BKN 而被排除。",
-		"BknProject.Draft.FieldNotFound":               "源字段不存在 该字段已不在它的表中，或你无权读取该表，请重新起草。",
+		"BknProject.Draft.FieldNotFound":               "这个字段已不在它的数据表中，或你没有读取这张表的权限，请重新起草后再试。",
 		"BknProject.Draft.NothingAdopted":              "没有采纳任何对象类 至少采纳一个对象类，才能确认草稿。",
 		"BknProject.Draft.InvalidItem":                 "草稿项不完整 有已采纳的项缺少必要信息，无法写成定义，见 error_details。请重新起草。",
 		"BknProject.Draft.InvalidQuestion":             "问题不合法 请写下要问的问题，最多 500 个字。",
