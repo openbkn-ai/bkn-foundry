@@ -112,20 +112,6 @@ func (mr *MockOpenSearchAccessMockRecorder) CreateIndex(ctx, indexName, body any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockOpenSearchAccess)(nil).CreateIndex), ctx, indexName, body)
 }
 
-// PutMapping mocks base method.
-func (m *MockOpenSearchAccess) PutMapping(ctx context.Context, indexName string, body any) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PutMapping", ctx, indexName, body)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// PutMapping indicates an expected call of PutMapping.
-func (mr *MockOpenSearchAccessMockRecorder) PutMapping(ctx, indexName, body any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutMapping", reflect.TypeOf((*MockOpenSearchAccess)(nil).PutMapping), ctx, indexName, body)
-}
-
 // DeleteByQuery mocks base method.
 func (m *MockOpenSearchAccess) DeleteByQuery(ctx context.Context, indexName string, query any) (int64, error) {
 	m.ctrl.T.Helper()

@@ -240,17 +240,10 @@ func (s *Resolver) loadActionTarget(ctx context.Context, req *interfaces.ActionE
 	if err != nil {
 		return interfaces.ObjectSystemInfo{}, nil, err
 	}
-	if objects.Incomplete && req.Inspection != nil {
-		req.Inspection.Decision = "unavailable"
-	}
 	if len(objects.Datas) != 1 || objects.Incomplete {
 		return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target identity must resolve to exactly one accessible instance")
 	}
 	data := objects.Datas[0]
-	if condition != nil && req.Inspection != nil {
-		req.Inspection.Phase = "precondition"
-		req.Inspection.PreconditionsChecked++
-	}
 	resolved, err := resolveActionTargetCondition(ctx, data, condition, object, req.DynamicParams)
 	if err != nil {
 		return interfaces.ObjectSystemInfo{}, nil, err
@@ -265,9 +258,6 @@ func (s *Resolver) loadActionTarget(ctx context.Context, req *interfaces.ActionE
 		if err != nil {
 			return interfaces.ObjectSystemInfo{}, nil, err
 		}
-		if matched.Incomplete && req.Inspection != nil {
-			req.Inspection.Decision = "unavailable"
-		}
 		if len(matched.Datas) != 1 || matched.Incomplete {
 			return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target does not satisfy the action applicability condition")
 		}
@@ -279,9 +269,6 @@ func (s *Resolver) loadActionTarget(ctx context.Context, req *interfaces.ActionE
 		if !match {
 			return interfaces.ObjectSystemInfo{}, nil, actionTargetError(ctx, "target does not satisfy the action applicability condition")
 		}
-	}
-	if req.Inspection != nil {
-		req.Inspection.Phase = "target"
 	}
 	return interfaces.ObjectSystemInfo{InstanceIdentity: identity, InstanceID: data[interfaces.SYSTEM_PROPERTY_INSTANCE_ID], Display: data[interfaces.SYSTEM_PROPERTY_DISPLAY]}, data, nil
 }

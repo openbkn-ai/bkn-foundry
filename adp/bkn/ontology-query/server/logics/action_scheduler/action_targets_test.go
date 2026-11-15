@@ -94,13 +94,10 @@ func TestActionRelationResolvesDirectedPairAndReferences(t *testing.T) {
 	})
 	svc := &actionSchedulerService{omAccess: models, ots: objects}
 	action := &interfaces.ActionType{ObjectTypeID: "suppliers", OperationConfig: &interfaces.ActionOperationConfig{Type: "relation", RelationTypeID: "supplier", RelationOperation: "create", AnchorRole: "target", OtherObjectCondition: &cond.CondCfg{Name: "status", Operation: "==", Value: "pending"}}, Condition: &cond.CondCfg{Name: "status", Operation: "==", ValueFrom: "input", Value: "status"}, Parameters: []interfaces.Parameter{{Name: "order_id", ValueFrom: "source_identity"}, {Name: "supplier_id", ValueFrom: "target_identity"}}}
-	req := &interfaces.ActionExecutionRequest{Inspection: &interfaces.ActionExecutionInspection{}, KNID: "kn", Branch: "main", DynamicParams: map[string]any{"status": "active"}, RelationTarget: &interfaces.ActionRelationTarget{SourceIdentity: map[string]any{"order_id": "O1"}, TargetIdentity: map[string]any{"supplier_id": "S1"}}}
+	req := &interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main", DynamicParams: map[string]any{"status": "active"}, RelationTarget: &interfaces.ActionRelationTarget{SourceIdentity: map[string]any{"order_id": "O1"}, TargetIdentity: map[string]any{"supplier_id": "S1"}}}
 	instances, data, err := svc.getInstancesForAction(context.Background(), action, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.Inspection.PreconditionsChecked != 2 || req.Inspection.Phase != "target" {
-		t.Fatalf("both relation ends were not observed: %+v", req.Inspection)
 	}
 	if !reflect.DeepEqual("S1", data[0]["supplier_id"]) {
 		t.Fatalf("expected %v, got %v", "S1", data[0]["supplier_id"])

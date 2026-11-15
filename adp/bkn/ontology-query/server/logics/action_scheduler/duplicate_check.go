@@ -115,11 +115,6 @@ func (s *actionSchedulerService) defaultDuplicateCheck(ctx context.Context, req 
 		return false, fmt.Errorf("query in-flight executions for duplicate check: %w", err)
 	}
 	if list != nil && len(list.Entries) > 0 {
-		if req.Inspection != nil {
-			req.Inspection.DuplicateCheckEnabled = true
-			req.Inspection.DuplicateWindowSeconds = duplicateWindowSeconds
-			req.Inspection.DuplicateExecutionID = list.Entries[0].ID
-		}
 		logger.Infof(
 			"Duplicate action execution detected: kn_id=%s action_type_id=%s hash=%s existing=%s",
 			req.KNID, req.ActionTypeID, hash, list.Entries[0].ID,

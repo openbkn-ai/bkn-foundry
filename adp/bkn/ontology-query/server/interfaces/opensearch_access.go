@@ -37,7 +37,6 @@ type Hit struct {
 // OpenSearchAccess defines the OpenSearch access interface.
 type OpenSearchAccess interface {
 	CreateIndex(ctx context.Context, indexName string, body any) error
-	PutMapping(ctx context.Context, indexName string, body any) error
 
 	// IndexExists checks whether the specified index exists.
 	IndexExists(ctx context.Context, indexName string) (bool, error)

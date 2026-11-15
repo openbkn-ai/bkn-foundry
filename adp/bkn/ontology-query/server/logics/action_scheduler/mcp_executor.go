@@ -58,7 +58,6 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 	} else {
 		result, err = aoAccess.ExecuteMCPAsProxy(execCtx, mcpID, toolName, mcpRequest)
 	}
-	observeSourceAuthorization(ctx, err)
 	if err != nil {
 		logger.Errorf("MCP execution failed: %v", err)
 		return nil, fmt.Errorf("MCP execution failed: %w", err)

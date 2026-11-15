@@ -228,7 +228,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 			}}
 		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
 			boxID, toolID, httpErr.HTTPCode, httpErr.ErrorCode)
-		return toolResult, sanitizedSourceStatus(httpErr.HTTPCode, httpErr.ErrorCode)
+		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
 	}
 
 	if result == nil {
@@ -304,7 +304,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 			}}
 		logger.Errorf("MCP execution [%s/%s] failed with status [%d] and code [%s]",
 			mcpID, toolName, httpErr.HTTPCode, httpErr.ErrorCode)
-		return mcpResult, sanitizedSourceStatus(httpErr.HTTPCode, httpErr.ErrorCode)
+		return mcpResult, fmt.Errorf("proxy MCP execution returned status %d", httpErr.HTTPCode)
 	}
 
 	if result == nil {
@@ -367,10 +367,4 @@ func (r mcpCallToolResult) normalize() map[string]any {
 	}
 
 	return map[string]any{"text": joined}
-}
-
-// Preserve typed source status for runtime authorization observations without
-// persisting remote response bodies, request headers or credentials in action logs.
-func sanitizedSourceStatus(status int, code string) error {
-	return &httperrors.HTTPError{HTTPCode: status, BaseError: httperrors.BaseError{ErrorCode: code, Description: http.StatusText(status)}}
 }

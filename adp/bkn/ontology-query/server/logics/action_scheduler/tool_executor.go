@@ -67,7 +67,6 @@ func ExecuteTool(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, a
 	} else {
 		result, err = aoAccess.ExecuteToolAsProxy(execCtx, source.BoxID, source.ToolID, execRequest)
 	}
-	observeSourceAuthorization(ctx, err)
 	if err != nil {
 		logger.Errorf("Tool execution failed: %v", err)
 		return nil, fmt.Errorf("tool execution failed: %w", err)
