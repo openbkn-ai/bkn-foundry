@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -163,9 +164,18 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 	// Send request.
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		status := http.StatusInternalServerError
+		message := err.Error()
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			// Say the proxy gave up waiting, so callers can tell "cut off" from "failed".
+			status = http.StatusGatewayTimeout
+			message = fmt.Sprintf("proxy timed out waiting for the upstream after %.0fs: %s",
+				time.Since(startTime).Seconds(), err.Error())
+		}
 		return &interfaces.HTTPResponse{
-			StatusCode: http.StatusInternalServerError,
-			Error:      err.Error(),
+			StatusCode: status,
+			Error:      message,
 			Duration:   time.Since(startTime).Milliseconds(),
 		}, nil
 	}
