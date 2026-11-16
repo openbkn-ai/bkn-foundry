@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   description: |
     Lets MCP clients such as WorkBuddy, Claude Code and Cursor sign a user in
-    with only the Context Loader MCP URL: the client reads the protected-resource
+    with only an MCP URL (Context Loader's, or Workshop's in the licensed
+    editions): the client reads the protected-resource
     metadata (RFC 9728) and the authorization-server metadata (RFC 8414),
     registers itself (RFC 7591) and opens Hydra's authorize endpoint in the
     browser. Hydra's own dynamic registration stays disabled; bkn-safe admits
@@ -40,9 +41,10 @@ paths:
       operationId: getProtectedResourceMetadataForPath
       summary: Protected-resource metadata for one MCP endpoint path
       description: |
-        Path-suffixed form (RFC 9728 §3.1). Only Context Loader MCP paths
-        (`api/agent-retrieval/v1/mcp…`) are answered; `resource` echoes the
-        origin the caller used.
+        Path-suffixed form (RFC 9728 §3.1). Only MCP paths are answered:
+        Context Loader's (`api/agent-retrieval/v1/mcp…`, resource_name
+        "OpenBKN Context Loader") and Workshop's (`api/workshop/v1/mcp`,
+        "OpenBKN Workshop"); `resource` echoes the origin the caller used.
       security: []
       parameters:
         - name: resourcePath
@@ -59,7 +61,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProtectedResourceMetadata'
         '404':
-          description: Not a Context Loader MCP path.
+          description: Not an MCP path.
         '502':
           $ref: '#/components/responses/OAuthUpstreamError'
   /.well-known/oauth-authorization-server:
