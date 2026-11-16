@@ -33,6 +33,9 @@ const (
 	// BLOCKER_LINK_TYPES_MISMATCH: an adopted relation links records by two fields whose types of
 	// value can never match, so it would find no link until one of the types changes.
 	BLOCKER_LINK_TYPES_MISMATCH = "link_types_mismatch"
+	// BLOCKER_SOURCE_PLAN_PENDING: an adopted relation says a document's object and a table's are
+	// the same business object, and waits for a person to decide which source each field comes from.
+	BLOCKER_SOURCE_PLAN_PENDING = "source_plan_pending"
 	// What the project branch would refuse confirming for, read ahead.
 	BLOCKER_BRANCH_NOT_V3     = "branch_not_v3"
 	BLOCKER_LINEAGE_NOT_V3    = "lineage_not_v3"

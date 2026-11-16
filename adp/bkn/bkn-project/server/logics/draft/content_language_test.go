@@ -162,6 +162,45 @@ func Test_NameInLanguage(t *testing.T) {
 			So(ctx.Err(), ShouldBeNil)
 		})
 
+		Convey("A relation named by its id, from a field nobody named, takes the business name the Agent gives\n", func() {
+			// Nothing of this catalog was understood: tables and fields keep their own names.
+			raw := func() []*interfaces.VegaTable {
+				materials := table("r_materials", "c1", "erp_material", 30, []string{"material_code"},
+					col("material_code", "string", ""))
+				forecasts := table("r_forecasts", "c1", "erp_mds_forecast", 137, []string{"id"},
+					col("id", "string", ""), col("material_number", "string", ""))
+				forecasts.ForeignKeys = []interfaces.VegaForeignKey{fk("material_number", "erp_material", "material_code")}
+				return []*interfaces.VegaTable{materials, forecasts}
+			}
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(zh)
+			items, err := d.draft(context.Background(), raw(), nil)
+			So(err, ShouldBeNil)
+			r := relation(items, "erp_mds_forecast", "erp_material")
+			So(r, ShouldNotBeNil)
+			So(r.Name, ShouldEqual, r.ID)
+			var message string
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ interfaces.AccountInfo, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
+					message = req.Message
+					return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+						Output: `{"items":[{"key":"r:` + r.ID + `","name":"预测物料","description":""}]}`}, nil
+				})
+
+			svc.nameInLanguage(context.Background(), caller, &items, zh, raw())
+
+			var in namingInput
+			So(json.Unmarshal([]byte(message), &in), ShouldBeNil)
+			So(in.Items, ShouldHaveLength, 1)
+			So(in.Items[0].Key, ShouldEqual, "r:"+r.ID)
+			So(in.Items[0].Kind, ShouldEqual, namingRelationType)
+			So(in.Items[0].Source, ShouldEqual, "erp_mds_forecast.material_number -> erp_material.material_code")
+
+			So(r.Name, ShouldEqual, "预测物料")
+			So(r.Aliases, ShouldBeEmpty)
+			// The tables keep their own names: understanding them names them later.
+			So(objectType(items, "erp_mds_forecast").Name, ShouldEqual, "erp_mds_forecast")
+		})
+
 		Convey("Without the Agent drafting names as before\n", func() {
 			items := draftIn(en)
 			(&draftService{setting: testSetting}).nameInLanguage(context.Background(), caller, &items, en, catalog())

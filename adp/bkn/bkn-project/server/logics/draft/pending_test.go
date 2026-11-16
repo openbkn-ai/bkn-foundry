@@ -267,6 +267,28 @@ func Test_PendingOf(t *testing.T) {
 			})
 		})
 
+		Convey("An adopted relation waiting for where its object's fields come from is listed, to settle or leave out\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: pendingSourcePlans{ids: map[string]bool{"orders_to_customers": true}}})()
+			d := confirmableDraft()
+
+			p := pendingOf(project, d, nil)
+
+			So(len(p.Items), ShouldEqual, 1)
+			item := p.Items[0]
+			So([]string{item.Kind, item.ItemID, item.Reason}, ShouldResemble,
+				[]string{"relation_types", "orders_to_customers", interfaces.BLOCKER_SOURCE_PLAN_PENDING})
+			So(item.Blocking, ShouldBeTrue)
+			So(item.Options[0].Action, ShouldEqual, interfaces.ACTION_UNADOPT)
+			So(pendingItems(&d.Items), ShouldResemble, map[string][]string{
+				interfaces.BLOCKER_SOURCE_PLAN_PENDING: {"orders_to_customers"},
+			})
+
+			Convey("Left out, it waits no more\n", func() {
+				d.Items.RelationTypes[0].Adopted = false
+				So(pendingItems(&d.Items), ShouldBeEmpty)
+			})
+		})
+
 		Convey("Each relation is told once, in ID order, its waiting ends before its links\n", func() {
 			// b_link waits for an end and cannot link either; a_link only cannot link.
 			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: mismatchedLinks{ids: map[string]bool{"a_link": true, "b_link": true}}})()
@@ -404,5 +426,16 @@ type mismatchedLinks struct {
 }
 
 func (m mismatchedLinks) LinkTypesMismatch(_ *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool {
+	return m.ids[rt.ID]
+}
+
+// pendingSourcePlans is an edition that tells the relations by ID that wait for a person to say
+// where the fields of the business object they join come from.
+type pendingSourcePlans struct {
+	noDocumentHooks
+	ids map[string]bool
+}
+
+func (m pendingSourcePlans) SourcePlanPending(_ *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool {
 	return m.ids[rt.ID]
 }

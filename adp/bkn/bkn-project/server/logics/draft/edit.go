@@ -310,13 +310,31 @@ func editAliases(ctx context.Context, items *interfaces.DraftItems, kind string,
 // recorded, while they were counted against the key the target still has. One the counts now
 // refute, or a person adopted or not, is left as it is.
 func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, id string) []*interfaces.DraftDecision {
+	return regateRelationsAfter(setting, items, id, false)
+}
+
+// keptOutWhileWaiting tells a decision that left an item out while drafting had it out, without a
+// reason, as accepting what drafting suggested records it: no one said why it should stay out.
+func keptOutWhileWaiting(d *interfaces.DraftDecision) bool {
+	return d.Action == interfaces.DRAFT_DECISION_UNADOPT && d.Before == false && d.Reason == ""
+}
+
+// regateRelationsAfter is regateRelations; keptOutWaits tells that leaving a relation out while it
+// was out anyway and without a reason, as accepting what drafting suggested does while an end
+// waits for its identity, did not decide it: such a relation is adopted with its end like one nobody decided on.
+func regateRelationsAfter(setting common.DraftSetting, items *interfaces.DraftItems, id string,
+	keptOutWaits bool) []*interfaces.DraftDecision {
 	// As undecidedItems counts them: only adopting or not is a decision on the relation itself.
 	decided := map[string]bool{}
 	for _, d := range items.Decisions {
-		if d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES &&
-			(d.Action == interfaces.DRAFT_DECISION_ADOPT || d.Action == interfaces.DRAFT_DECISION_UNADOPT) {
-			decided[d.ItemID] = true
+		if d.Kind != interfaces.DRAFT_KIND_RELATION_TYPES ||
+			(d.Action != interfaces.DRAFT_DECISION_ADOPT && d.Action != interfaces.DRAFT_DECISION_UNADOPT) {
+			continue
 		}
+		if keptOutWaits && keptOutWhileWaiting(d) && !decided[d.ItemID] {
+			continue
+		}
+		decided[d.ItemID] = true
 	}
 	decisions := []*interfaces.DraftDecision{}
 	for _, r := range items.RelationTypes {

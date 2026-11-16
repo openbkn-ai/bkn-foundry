@@ -272,3 +272,40 @@ func Test_DraftRelationName(t *testing.T) {
 		})
 	})
 }
+
+func Test_RenameTableNameIn(t *testing.T) {
+	Convey("Test a relation named after its end's table name following the end's business name\n", t, func() {
+		items := &interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{
+				{ID: "hd_product_view", Name: "hd_product_view", Table: interfaces.DraftTable{Name: "hd_product_view"}},
+				{ID: "material_doc", Name: "物料（文档侧）"},
+			},
+			RelationTypes: []*interfaces.DraftRelationType{
+				{ID: "material_doc_link", Name: "物料（文档侧）对应hd_product_view", Source: "material_doc", Target: "hd_product_view"},
+				{ID: "renamed", Name: "看hd_product_view", Source: "material_doc", Target: "hd_product_view"},
+				{ID: "longer", Name: "对应hd_product_view_v2", Source: "material_doc", Target: "hd_product_view"},
+				{ID: "elsewhere", Name: "对应hd_product_view", Source: "material_doc", Target: "material_doc"},
+			},
+			Decisions: []*interfaces.DraftDecision{
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "renamed", Action: interfaces.DRAFT_DECISION_RENAME},
+			},
+		}
+		decided := []string{}
+		decide := func(kind string, id string, action string, _ any, _ any) { decided = append(decided, id+":"+action) }
+
+		renameTableNameIn(items, items.ObjectTypes[0], "产品", decide)
+
+		So(items.RelationTypes[0].Name, ShouldEqual, "物料（文档侧）对应产品")
+		So(items.RelationTypes[1].Name, ShouldEqual, "看hd_product_view")
+		So(items.RelationTypes[2].Name, ShouldEqual, "对应hd_product_view_v2")
+		So(items.RelationTypes[3].Name, ShouldEqual, "对应hd_product_view")
+		So(decided, ShouldResemble, []string{"material_doc_link:" + interfaces.DRAFT_DECISION_RENAME})
+
+		Convey("An object type named otherwise than its table changes no relation's name\n", func() {
+			items.ObjectTypes[0].Name = "产品"
+			decided = nil
+			renameTableNameIn(items, items.ObjectTypes[0], "产品视图", decide)
+			So(decided, ShouldBeEmpty)
+		})
+	})
+}

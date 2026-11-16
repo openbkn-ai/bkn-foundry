@@ -24,7 +24,9 @@ import (
 
 // pendingItems lists what waits for a person before a draft can be confirmed: adopted object
 // types without an identity, adopted relations whose ends are not both adopted, and adopted
-// relations whose linking fields can never match, as the edition tells. An object
+// relations whose linking fields can never match, and adopted relations that wait for a person to
+// decide where the fields of one business object read from two sources come from, as the edition
+// tells. An object
 // type that is not adopted waits for no one; it is not written.
 func pendingItems(items *interfaces.DraftItems) map[string][]string {
 	pending := map[string][]string{}
@@ -47,6 +49,18 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 			}
 			if rt.Adopted && !rt.Existing && checker.LinkTypesMismatch(items, rt) {
 				pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH] = append(pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH], rt.ID)
+			}
+		}
+	}
+	if checker, ok := documentHooks().(projecthooks.SourcePlanChecker); ok {
+		for _, rt := range items.RelationTypes {
+			// Told once: a relation whose ends wait, or whose fields never match, is settled first.
+			if slices.Contains(pending["unadopted_ends"], rt.ID) ||
+				slices.Contains(pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH], rt.ID) {
+				continue
+			}
+			if rt.Adopted && !rt.Existing && checker.SourcePlanPending(items, rt) {
+				pending[interfaces.BLOCKER_SOURCE_PLAN_PENDING] = append(pending[interfaces.BLOCKER_SOURCE_PLAN_PENDING], rt.ID)
 			}
 		}
 	}

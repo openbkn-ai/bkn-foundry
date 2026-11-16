@@ -180,6 +180,14 @@ type LinkChecker interface {
 	LinkTypesMismatch(items *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool
 }
 
+// SourcePlanChecker is what an edition's Drafts add when a relation can say that two items are
+// the same business object, read from two sources: it tells an adopted relation that waits for a
+// person to decide, field by field, which source each value comes from. It is asserted on Drafts
+// like LinkChecker; without it no relation waits for this.
+type SourcePlanChecker interface {
+	SourcePlanPending(items *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool
+}
+
 // DocumentConcept is what a document item is as a concept.
 type DocumentConcept struct {
 	// Evidence locates a business item's text: it follows its business items and is no concept.
