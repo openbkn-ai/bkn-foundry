@@ -173,6 +173,21 @@ spec:
             value: {{ .Values.bknSafe.url | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- if .Values.actionGovernance.managedActions }}
+          - name: GOVERNANCE_MANAGED_ACTIONS
+            value: {{ .Values.actionGovernance.managedActions | quote }}
+          - name: GOVERNANCE_BASE_URL
+            value: {{ required "actionGovernance.baseURL is required for managed actions" .Values.actionGovernance.baseURL | quote }}
+          - name: GOVERNANCE_OAUTH_TOKEN_URL
+            value: {{ required "actionGovernance.oauthTokenURL is required for managed actions" .Values.actionGovernance.oauthTokenURL | quote }}
+          - name: GOVERNANCE_OAUTH_CLIENT_ID
+            value: {{ required "actionGovernance.oauthClientID is required for managed actions" .Values.actionGovernance.oauthClientID | quote }}
+          - name: GOVERNANCE_OAUTH_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "actionGovernance.oauthClientSecretName is required for managed actions" .Values.actionGovernance.oauthClientSecretName | quote }}
+                key: {{ .Values.actionGovernance.oauthClientSecretKey | quote }}
+          {{- end }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

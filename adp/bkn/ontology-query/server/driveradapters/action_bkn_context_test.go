@@ -69,6 +69,17 @@ func Test_RestHandler_ExecuteAction_BKNContext(t *testing.T) {
 			So(seen.InteractionID, ShouldEqual, "int_1")
 		})
 
+		Convey("governance references and bkn_context are both forwarded", func() {
+			accept()
+			w := post(`{"_instance_identities":[{"id":"1"}],"governance_request_id":"request_1","governance_permit_id":"permit_1","governance_plan_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","bkn_context":{"conversation_id":"conv_1","interaction_id":"int_1"}}`, nil)
+			So(w.Code, ShouldEqual, http.StatusAccepted)
+			So(seen.GovernanceRequestID, ShouldEqual, "request_1")
+			So(seen.GovernancePermitID, ShouldEqual, "permit_1")
+			So(seen.GovernancePlanDigest, ShouldEqual, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+			So(seen.ConversationID, ShouldEqual, "conv_1")
+			So(seen.InteractionID, ShouldEqual, "int_1")
+		})
+
 		Convey("without a body bkn_context the headers are used", func() {
 			accept()
 			w := post(`{"_instance_identities":[{"id":"1"}]}`, map[string]string{

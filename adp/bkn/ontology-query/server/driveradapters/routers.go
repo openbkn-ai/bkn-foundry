@@ -58,11 +58,21 @@ type restHandler struct {
 }
 
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
+	return newRestHandler(appSetting, action_scheduler.NewActionSchedulerService(appSetting))
+}
+
+// NewRestHandlerWithGovernance injects the enterprise action gate into the
+// same scheduler used by public and internal execution routes.
+func NewRestHandlerWithGovernance(appSetting *common.AppSetting, gate interfaces.ActionGovernanceGate) RestHandler {
+	return newRestHandler(appSetting, action_scheduler.NewActionSchedulerServiceWithGovernance(appSetting, gate))
+}
+
+func newRestHandler(appSetting *common.AppSetting, scheduler interfaces.ActionSchedulerService) RestHandler {
 	r := &restHandler{
 		appSetting:            appSetting,
 		als:                   action_logs.NewActionLogsService(appSetting),
 		as:                    auth.NewAuthService(appSetting),
-		ass:                   action_scheduler.NewActionSchedulerService(appSetting),
+		ass:                   scheduler,
 		ats:                   action_type.NewActionTypeService(appSetting),
 		kns:                   knowledge_network.NewKnowledgeNetworkService(appSetting),
 		ots:                   object_type.NewObjectTypeService(appSetting),

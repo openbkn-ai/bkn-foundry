@@ -341,6 +341,9 @@ type RequirementQuestion struct {
 	// OntologyChanged, computed when read, says those items changed since: the question may be out
 	// of date. Names and descriptions do not count.
 	OntologyChanged bool `json:"ontology_changed,omitempty"`
+	// OntologyGone, computed when read on a changed question, names the items it rests on that the
+	// ontology no longer adopts. Empty when what changed is in items it still has.
+	OntologyGone []string `json:"ontology_gone,omitempty"`
 	// Source is ask for a question adopted from Ask AI; empty otherwise.
 	Source string `json:"source,omitempty"`
 }

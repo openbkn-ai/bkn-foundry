@@ -17,6 +17,10 @@ const (
 
 	// 409
 	OntologyQuery_ActionExecution_DuplicateExecution = "OntologyQuery.ActionExecution.DuplicateExecution"
+	OntologyQuery_ActionExecution_GovernanceRequired = "OntologyQuery.ActionExecution.GovernanceRequired"
+
+	// 503
+	OntologyQuery_ActionExecution_GovernanceUnavailable = "OntologyQuery.ActionExecution.GovernanceUnavailable"
 
 	// 500
 	OntologyQuery_ActionExecution_GetActionTypeFailed   = "OntologyQuery.ActionExecution.GetActionTypeFailed"
@@ -38,6 +42,10 @@ var (
 
 		// 409
 		OntologyQuery_ActionExecution_DuplicateExecution,
+		OntologyQuery_ActionExecution_GovernanceRequired,
+
+		// 503
+		OntologyQuery_ActionExecution_GovernanceUnavailable,
 
 		// 500
 		OntologyQuery_ActionExecution_GetActionTypeFailed,

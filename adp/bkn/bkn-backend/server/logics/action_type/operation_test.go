@@ -6,11 +6,30 @@ package action_type
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCheckOperationNormalizesStoredStringConstants(t *testing.T) {
+	action := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+		OperationConfig: &interfaces.ActionOperationConfig{Type: interfaces.ActionOperationTool},
+		Parameters:      []interfaces.Parameter{{Name: "code", Type: "string", ValueFrom: "const", Value: json.Number("123")}},
+	}}
+	svc := &actionTypeService{}
+	if err := svc.checkOperation(context.Background(), nil, action, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if action.Parameters[0].Value != "123" {
+		t.Fatalf("stored constant was not normalized: %v", action.Parameters[0].Value)
+	}
+	action.Parameters[0] = interfaces.Parameter{Name: "count", Type: "integer", ValueFrom: "const", Value: "123"}
+	if err := svc.checkOperation(context.Background(), nil, action, nil, false); err == nil {
+		t.Fatal("invalid integer constant was accepted")
+	}
+}
 
 func TestResolveActionRelationDirection(t *testing.T) {
 	relation := &interfaces.RelationType{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "supplier", SourceObjectTypeID: "orders", TargetObjectTypeID: "suppliers"}}

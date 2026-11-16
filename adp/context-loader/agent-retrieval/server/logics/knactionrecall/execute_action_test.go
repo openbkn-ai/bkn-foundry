@@ -41,10 +41,13 @@ func TestExecuteAction_Success(t *testing.T) {
 
 		ctx := context.Background()
 		req := &interfaces.KnActionExecuteRequest{
-			KnID:               "kn-001",
-			AtID:               "at-001",
-			InstanceIdentities: []map[string]any{{"key_id": "14"}},
-			DynamicParams:      map[string]any{"message": "hi", "name": "zhangsan"},
+			KnID:                 "kn-001",
+			AtID:                 "at-001",
+			InstanceIdentities:   []map[string]any{{"key_id": "14"}},
+			DynamicParams:        map[string]any{"message": "hi", "name": "zhangsan"},
+			GovernanceRequestID:  "request-1",
+			GovernancePermitID:   "permit-1",
+			GovernancePlanDigest: "digest-1",
 		}
 
 		// The execReq that asserts transparent transmission carries dynamic parameters and instance identifiers.
@@ -55,6 +58,9 @@ func TestExecuteAction_Success(t *testing.T) {
 				convey.So(r.DynamicParams["message"], convey.ShouldEqual, "hi")
 				convey.So(r.DynamicParams["name"], convey.ShouldEqual, "zhangsan")
 				convey.So(len(r.InstanceIdentities), convey.ShouldEqual, 1)
+				convey.So(r.GovernanceRequestID, convey.ShouldEqual, "request-1")
+				convey.So(r.GovernancePermitID, convey.ShouldEqual, "permit-1")
+				convey.So(r.GovernancePlanDigest, convey.ShouldEqual, "digest-1")
 				return &interfaces.ExecuteActionsResponse{
 					ExecutionID: "exec-xyz",
 					Status:      "pending",

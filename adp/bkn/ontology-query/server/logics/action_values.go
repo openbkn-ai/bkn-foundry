@@ -23,7 +23,8 @@ func ValidateActionValue(declared string, value any) error {
 	kind := reflect.TypeOf(value).Kind()
 	switch strings.ToLower(declared) {
 	case "string", "text", "keyword", "date", "datetime":
-		valid = kind == reflect.String
+		_, isNumber := value.(json.Number)
+		valid = kind == reflect.String && !isNumber
 	case "bool", "boolean":
 		valid = kind == reflect.Bool
 	case "array":
@@ -58,4 +59,22 @@ func ValidateActionValue(declared string, value any) error {
 		return fmt.Errorf("value does not match declared type %q", declared)
 	}
 	return nil
+}
+
+// NormalizeActionConstant preserves the declared string type for constants
+// imported before unquoted JSON literals stopped being decoded as JSON values.
+func NormalizeActionConstant(declared string, value any) any {
+	switch strings.ToLower(declared) {
+	case "string", "text", "keyword", "date", "datetime":
+	default:
+		return value
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	return string(encoded)
 }

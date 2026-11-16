@@ -8,6 +8,7 @@ package action_scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -23,6 +24,24 @@ import (
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
+
+func TestBuildExecutionParamsNormalizesStoredStringConstants(t *testing.T) {
+	s := &actionSchedulerService{}
+	action := &interfaces.ActionType{Parameters: []interfaces.Parameter{
+		{Name: "code", Type: "string", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: json.Number("123")},
+		{Name: "flag", Type: "string", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: true},
+		{Name: "missing", Type: "string", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_CONST, Value: nil},
+	}}
+	params, err := s.buildExecutionParams(action, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"code": "123", "flag": "true", "missing": "null"} {
+		if params[name] != want {
+			t.Errorf("%s = %v, want %q", name, params[name], want)
+		}
+	}
+}
 
 func Test_buildExecutionParams(t *testing.T) {
 	Convey("Test buildExecutionParams", t, func() {

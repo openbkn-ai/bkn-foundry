@@ -184,6 +184,35 @@ disabled accounts, BKN Safe failures, timeouts, invalid responses, or incomplete
 published dependencies prevent the data query from running; authorization
 infrastructure failures return HTTP 503.
 
+### Action governance pilot
+
+`GOVERNANCE_MANAGED_ACTIONS` is an optional comma-separated rollout list of
+`{kn_id}/{action_type_id}` entries. An empty list leaves action execution
+unchanged. Invalid entries make all action execution return 503, including
+actions outside the pilot list. The list selects pilot actions; the
+governance policy and one-time permit still belong to the Professional Edition
+governance service. Do not populate the list before its adapter is installed.
+
+An EE composition can inject an `ActionGovernanceGate` through
+`Application.InstallActionGovernanceGate` between Boot and Run. All public and
+internal execute routes share that scheduler, including requests forwarded by
+Context Loader. After existing
+action and proxy authorization, the scheduler resolves the exact target,
+rejects duplicate submissions, then asks the gate to compare the current
+action plan with the approved plan and atomically claim its permit. A managed
+action without an adapter returns 503; missing, stale or consumed permits
+return 409. The gate must verify the authenticated initiator, resolved target,
+parameters, action definition, request, and permit. The caller-provided digest
+is a reference, not proof of approval. A permit is claimed before the
+execution record is saved; if that write fails, the caller needs a new permit.
+
+The Helm `actionGovernance` values set the pilot list, governance service URL,
+Hydra token URL, executor client ID and a Kubernetes Secret reference for its
+client secret. The list defaults to empty. When it is set, the chart requires
+all connection values and the EE executable obtains a client-credentials token
+for each claim. The first rollout supports network-scoped policies; a trusted
+bkn-project binding must be added before using project-scoped policies.
+
 ### EE metric result pagination
 
 Published metric queries and trials with `page_size` retain the final ordered

@@ -21,12 +21,15 @@ import (
 // The execute endpoint of ontology-query is completed, and this layer only performs transparent transmission.
 func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *interfaces.KnActionExecuteRequest) (*interfaces.KnActionExecuteResponse, error) {
 	execReq := &interfaces.ExecuteActionsRequest{
-		KnID:               req.KnID,
-		AtID:               req.AtID,
-		InstanceIdentities: req.InstanceIdentities,
-		DynamicParams:      req.DynamicParams,
-		RelationTarget:     req.RelationTarget,
-		ObjectInput:        req.ObjectInput,
+		KnID:                 req.KnID,
+		AtID:                 req.AtID,
+		InstanceIdentities:   req.InstanceIdentities,
+		DynamicParams:        req.DynamicParams,
+		RelationTarget:       req.RelationTarget,
+		ObjectInput:          req.ObjectInput,
+		GovernanceRequestID:  req.GovernanceRequestID,
+		GovernancePermitID:   req.GovernancePermitID,
+		GovernancePlanDigest: req.GovernancePlanDigest,
 	}
 
 	resp, err := s.ontologyQuery.ExecuteActions(ctx, execReq)

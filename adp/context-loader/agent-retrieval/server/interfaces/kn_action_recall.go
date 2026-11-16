@@ -164,8 +164,11 @@ type KnActionExecuteRequest struct {
 	AtID string `json:"at_id" validate:"required"` // Action Type ID
 
 	// Request Body
-	InstanceIdentities []map[string]any `json:"_instance_identities" validate:"omitempty"` // Explicit targets for object modification and deletion
-	DynamicParams      map[string]any   `json:"dynamic_params" validate:"omitempty"`       // Dynamic parameter values (value_from=input)
+	InstanceIdentities   []map[string]any `json:"_instance_identities" validate:"omitempty"` // Explicit targets for object modification and deletion
+	DynamicParams        map[string]any   `json:"dynamic_params" validate:"omitempty"`       // Dynamic parameter values (value_from=input)
+	GovernanceRequestID  string           `json:"governance_request_id,omitempty"`
+	GovernancePermitID   string           `json:"governance_permit_id,omitempty"`
+	GovernancePlanDigest string           `json:"governance_plan_digest,omitempty"`
 
 	// Header Fields
 	AccountID   string `json:"-" header:"x-account-id"`
@@ -182,12 +185,15 @@ type KnActionExecuteResponse struct {
 
 // ExecuteActionsRequest Action Execution Request to ontology-query
 type ExecuteActionsRequest struct {
-	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
-	ObjectInput        map[string]any        `json:"object_input,omitempty"`
-	KnID               string                `json:"-"`
-	AtID               string                `json:"-"`
-	InstanceIdentities []map[string]any      `json:"_instance_identities"`
-	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
+	RelationTarget       *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput          map[string]any        `json:"object_input,omitempty"`
+	KnID                 string                `json:"-"`
+	AtID                 string                `json:"-"`
+	InstanceIdentities   []map[string]any      `json:"_instance_identities"`
+	DynamicParams        map[string]any        `json:"dynamic_params,omitempty"`
+	GovernanceRequestID  string                `json:"governance_request_id,omitempty"`
+	GovernancePermitID   string                `json:"governance_permit_id,omitempty"`
+	GovernancePlanDigest string                `json:"governance_plan_digest,omitempty"`
 }
 
 // ExecuteActionsResponse Action Execution Response from ontology-query

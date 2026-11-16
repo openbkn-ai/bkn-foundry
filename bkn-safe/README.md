@@ -296,6 +296,15 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 - introspect 的 user-type `ext` 5 字段必须齐全，否则旧 lib 解析 panic（无 nil 检查）——
   `ExtClaims` 保证这一点，`contract/` 用真实 lib 守护。
 
+## BKN 项目文档存储账户（openbkn-ee#611）
+
+启用 `SAFE_SEED_ON_START` 时，启动会预置应用账户 `bkn-project-dataset-storage`
+（固定 UUID `e68bf3bc-3754-4b64-9fbd-e8919e544112`，无密码、不能登录），并只授予
+`catalog:*` 的 `create`。专业版 BKN 项目在未配置存储账户时用它创建自己的文档
+数据目录，目录内的权限来自创建者授权，不由 seed 授予。账户只在缺失时创建：
+管理员禁用后重启不会恢复启用；删除后重启会重新创建。账户名已被其他账户占用时
+只记日志，不阻断启动。
+
 ## 业务溯源旧内置账户清理（#2823）
 
 业务溯源不再初始化 `openbkn-business-provenance` 应用账户。启动时仅清理

@@ -298,8 +298,18 @@ func ptcCallSignature(tool MCPToolInfo, tolerated []string) string {
 	}
 	// kn_version and draft_revision arrived the same way: after scripts used the
 	// optional arguments positionally, so they are by-name only for every tool.
+	// Governance references must also leave execute_action's existing positional
+	// object_input, relation_target and bkn_context slots unchanged.
 	var keywordOnly []string
-	for _, kw := range []string{"draft_revision: int = None", "kn_version: str = None"} {
+	keywordOnlySpecs := []string{"draft_revision: int = None", "kn_version: str = None"}
+	if tool.Name == toolKeyExecuteAction {
+		keywordOnlySpecs = append([]string{
+			"governance_plan_digest: str = None",
+			"governance_permit_id: str = None",
+			"governance_request_id: str = None",
+		}, keywordOnlySpecs...)
+	}
+	for _, kw := range keywordOnlySpecs {
 		if strings.Contains(signature, ", "+kw) {
 			signature = strings.Replace(signature, ", "+kw, "", 1)
 			keywordOnly = append(keywordOnly, kw)
