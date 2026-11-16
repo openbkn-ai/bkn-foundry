@@ -180,6 +180,20 @@ func Test_ProjectStatus(t *testing.T) {
 			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_LINK_TYPES_MISMATCH)
 		})
 
+		Convey("An adopted relation waiting for where its object's fields come from keeps the draft in deciding\n", func() {
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: pendingSourcePlans{ids: map[string]bool{"orders_to_customers": true}}})()
+
+			s := status(project(), ready(), nil, owner, fresh)
+
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_DECIDING)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_SOURCE_PLAN_PENDING, Count: 1, WaitingFor: interfaces.WAITING_FOR_EDITOR},
+			})
+			confirm := action(s, interfaces.ACTION_CONFIRM_DRAFT)
+			So(confirm.Allowed, ShouldBeFalse)
+			So(confirm.Reason, ShouldEqual, interfaces.BLOCKER_SOURCE_PLAN_PENDING)
+		})
+
 		Convey("An edition that does not check links holds back no relation\n", func() {
 			defer projecthooks.SetForTest(projecthooks.Hooks{})()
 

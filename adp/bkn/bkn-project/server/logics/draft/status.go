@@ -655,7 +655,8 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 	// What waits for a person, in the one order confirming checks it.
 	pending := pendingItems(&draft.Items)
 	deciding := []interfaces.ProjectStatusBlocker{}
-	for _, code := range []string{interfaces.BLOCKER_NEEDS_IDENTITY, interfaces.BLOCKER_UNADOPTED_ENDS, interfaces.BLOCKER_LINK_TYPES_MISMATCH} {
+	for _, code := range []string{interfaces.BLOCKER_NEEDS_IDENTITY, interfaces.BLOCKER_UNADOPTED_ENDS, interfaces.BLOCKER_LINK_TYPES_MISMATCH,
+		interfaces.BLOCKER_SOURCE_PLAN_PENDING} {
 		if n := len(pending[code]); n > 0 {
 			deciding = append(deciding, interfaces.ProjectStatusBlocker{
 				Code: code, Count: n, WaitingFor: interfaces.WAITING_FOR_EDITOR,

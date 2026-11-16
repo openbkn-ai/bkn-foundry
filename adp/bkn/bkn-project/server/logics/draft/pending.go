@@ -149,14 +149,22 @@ func pendingOf(project *interfaces.Project, draft *interfaces.Draft,
 
 	relationTypes := slices.Clone(draft.Items.RelationTypes)
 	slices.SortFunc(relationTypes, func(a, b *interfaces.DraftRelationType) int { return strings.Compare(a.ID, b.ID) })
-	// Each relation is told once, in ID order: the ends it waits for, or else linking fields that can
-	// never match, settled by changing a field's type in the item itself or by leaving it out.
-	linkMismatch := pending[interfaces.BLOCKER_LINK_TYPES_MISMATCH]
+	// Each relation is told once, in ID order: the ends it waits for, or else what is settled on the
+	// item itself or by leaving it out: linking fields that can never match, or one business object
+	// read from two sources whose fields wait for a person to say where each comes from.
+	settled := func(rt *interfaces.DraftRelationType) string {
+		for _, reason := range []string{interfaces.BLOCKER_LINK_TYPES_MISMATCH, interfaces.BLOCKER_SOURCE_PLAN_PENDING} {
+			if slices.Contains(pending[reason], rt.ID) {
+				return reason
+			}
+		}
+		return ""
+	}
 	for _, rt := range relationTypes {
-		if slices.Contains(linkMismatch, rt.ID) {
+		if reason := settled(rt); reason != "" {
 			p.Items = append(p.Items, interfaces.PendingItem{
 				Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: rt.ID, Name: rt.Name, Blocking: true,
-				Reason: interfaces.BLOCKER_LINK_TYPES_MISMATCH, Evidence: rt.Evidence,
+				Reason: reason, Evidence: rt.Evidence,
 				Options: []interfaces.PendingOption{setAdopted(interfaces.DRAFT_KIND_RELATION_TYPES, rt.ID, false, interfaces.ACTION_UNADOPT)},
 			})
 			continue

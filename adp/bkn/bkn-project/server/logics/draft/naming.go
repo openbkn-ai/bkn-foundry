@@ -193,4 +193,59 @@ func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftO
 			r.Name = again
 		}
 	}
+	renameTableNameIn(items, objectType, name, decide)
+}
+
+// renameTableNameIn writes name for an object type's table name in the names of the relations
+// that end at it, once the object type, still named by its table, takes a business name: a
+// relation named when its end had no other name, such as 物料对应hd_product_view, reads
+// 物料对应产品 then. Only the table name as a whole word is replaced, and a relation a person
+// renamed stays as named.
+func renameTableNameIn(items *interfaces.DraftItems, objectType *interfaces.DraftObjectType, name string,
+	decide func(kind string, id string, action string, before any, after any)) {
+	old := objectType.Name
+	if old == "" || old == name || old != objectType.Table.Name || !isASCII(old) {
+		return
+	}
+	named := map[string]bool{}
+	for _, d := range items.Decisions {
+		if d.Kind == interfaces.DRAFT_KIND_RELATION_TYPES && d.Action == interfaces.DRAFT_DECISION_RENAME {
+			named[d.ItemID] = true
+		}
+	}
+	for _, r := range items.RelationTypes {
+		if r.Existing || named[r.ID] || r.Name == r.ID || (r.Source != objectType.ID && r.Target != objectType.ID) {
+			continue
+		}
+		again := replaceWord(r.Name, old, name)
+		if again == r.Name || utf8.RuneCountInString(again) > maxDisplayNameRunes {
+			continue
+		}
+		decide(interfaces.DRAFT_KIND_RELATION_TYPES, r.ID, interfaces.DRAFT_DECISION_RENAME, r.Name, again)
+		r.Name = again
+	}
+}
+
+// replaceWord replaces each occurrence of word in text that no letter, digit or underscore of an
+// ASCII name continues on either side.
+func replaceWord(text string, word string, with string) string {
+	part := func(b byte) bool {
+		return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+	}
+	var out strings.Builder
+	for {
+		at := strings.Index(text, word)
+		if at < 0 {
+			out.WriteString(text)
+			return out.String()
+		}
+		end := at + len(word)
+		if (at > 0 && part(text[at-1])) || (end < len(text) && part(text[end])) {
+			out.WriteString(text[:end])
+		} else {
+			out.WriteString(text[:at])
+			out.WriteString(with)
+		}
+		text = text[end:]
+	}
 }

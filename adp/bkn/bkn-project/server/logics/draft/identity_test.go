@@ -61,7 +61,11 @@ func Test_ChooseIdentity(t *testing.T) {
 		ps := pmock.NewMockProjectService(ctrl)
 		setting := testSetting
 		setting.QueryTimeout = 60
-		svc := &draftService{setting: setting, da: da, va: va, ps: ps, ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
+		rqa := pmock.NewMockRequirementAccess(ctrl)
+		rqa.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil).AnyTimes()
+		// Tables nobody named are read for whether their catalog's understanding completed.
+		va.EXPECT().ListSemanticTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).AnyTimes()
+		svc := &draftService{setting: setting, da: da, va: va, ps: ps, rqa: rqa, ira: &fakeIDRegistry{}, run: func(fn func()) { fn() }}
 		ctx := context.Background()
 		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}
 		ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).AnyTimes()
@@ -69,9 +73,10 @@ func Test_ChooseIdentity(t *testing.T) {
 		expectWrite := func() {
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
 		}
-		// The other object types' tables, read to draft relations to a single-field identity.
+		// The other object types' tables, read to draft relations to a single-field identity, and
+		// the tables read to name an object type taken in with its identity.
 		noTables := func() {
-			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil).AnyTimes()
 		}
 		choose := func(properties ...string) interfaces.DraftIdentity {
 			return interfaces.DraftIdentity{UpdateTime: readTime, Properties: properties}
@@ -94,8 +99,8 @@ func Test_ChooseIdentity(t *testing.T) {
 			lines := got.Items.ObjectTypes[0]
 			So(lines.PrimaryKeys, ShouldResemble, []string{"order_no"})
 			So(lines.NeedsIdentity, ShouldBeFalse)
-			// Adopting stays a decision of its own.
-			So(lines.Adopted, ShouldBeFalse)
+			// Drafting left it out only for want of an identity: choosing one takes it in.
+			So(lines.Adopted, ShouldBeTrue)
 			So(lines.DisplayKey, ShouldEqual, "order_no")
 			So(lines.Key, ShouldResemble, interfaces.DraftKeyEvidence{
 				Source: interfaces.DRAFT_KEY_CHOSEN, Field: "order_no", Computed: true, Rows: 10, Distinct: 9,
@@ -108,6 +113,7 @@ func Test_ChooseIdentity(t *testing.T) {
 
 		Convey("A composite identity is kept without counts\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			noTables()
 			expectWrite()
 
 			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no", "line_no"), caller)
@@ -195,7 +201,7 @@ func Test_ChooseIdentity(t *testing.T) {
 			}
 			// joins is how many joins are counted besides the key.
 			counts := func(orphans float64, joins int) {
-				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(tables, nil)
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(tables, nil).AnyTimes()
 				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
 					DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
 						if strings.Contains(sql, "LEFT JOIN") {
@@ -208,7 +214,7 @@ func Test_ChooseIdentity(t *testing.T) {
 					}).Times(1 + joins)
 			}
 
-			Convey("Borne out, it is drafted with its counts, proposed while the order lines are not adopted\n", func() {
+			Convey("Borne out, it is drafted with its counts, and adopted with the order lines it now takes in\n", func() {
 				d := withShipments()
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
 				counts(0, 1)
@@ -225,8 +231,8 @@ func Test_ChooseIdentity(t *testing.T) {
 				So(r.Evidence, ShouldResemble, interfaces.DraftJoinEvidence{
 					Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20,
 				})
-				So(r.Adopted, ShouldBeFalse)
-				So(r.ProposedBecause, ShouldEqual, proposedEndNotAdopted)
+				So(r.Adopted, ShouldBeTrue)
+				So(r.ProposedBecause, ShouldBeEmpty)
 			})
 
 			Convey("Refuted by the counts, it is not drafted\n", func() {
@@ -266,7 +272,7 @@ func Test_ChooseIdentity(t *testing.T) {
 					table("r_ship", "c1", "shipments", 0, []string{"shipment_id"},
 						col("shipment_id", "string", ""), col("order_number", "string", ""))}
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
-				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(stemTables, nil)
+				va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_lines", "r_customers", "r_ship"}).Return(stemTables, nil).AnyTimes()
 				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
 					DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
 						if strings.Contains(sql, "LEFT JOIN") {
@@ -290,7 +296,7 @@ func Test_ChooseIdentity(t *testing.T) {
 				da.EXPECT().GetDraft(gomock.Any(), "p1").Return(withShipments(), true, nil)
 				va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
 					Return([]map[string]any{{"total": float64(10), "distinct_values": float64(10), "nulls": float64(0)}}, nil)
-				va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("vega is down"))
+				va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("vega is down")).AnyTimes()
 				expectWrite()
 
 				got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
@@ -299,6 +305,59 @@ func Test_ChooseIdentity(t *testing.T) {
 				So(got.Items.ObjectTypes[0].PrimaryKeys, ShouldResemble, []string{"order_no"})
 				So(got.Items.RelationTypes, ShouldBeEmpty)
 			})
+		})
+
+		Convey("Taken in with its identity, an object type is named as understanding named its table, with its relations\n", func() {
+			d := identityDraft()
+			lines := d.Items.ObjectTypes[0]
+			lines.Name = "order_lines"
+			// The order line refers to its customer; drafting proposed it only because the line was out,
+			// and accepting what drafting suggested kept it out while the line had no identity.
+			lines.Properties = append(lines.Properties, &interfaces.DraftProperty{Name: "customer_id", Type: "string", MappedField: "customer_id"})
+			d.Items.RelationTypes = []*interfaces.DraftRelationType{
+				{ID: "order_lines_to_customers", Name: "order_lines_to_customers", Source: "order_lines", Target: "customers",
+					Origin:  interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "customer_id", TargetProperty: "id"}},
+					Evidence: interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
+					ProposedBecause: proposedEndNotAdopted},
+				// One a person left out with its end adopted stays out.
+				{ID: "decided", Name: "decided", Source: "order_lines", Target: "customers",
+					Origin:  interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "order_no", TargetProperty: "id"}},
+					Evidence: interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
+					ProposedBecause: proposedEndNotAdopted},
+			}
+			d.Items.Decisions = []*interfaces.DraftDecision{
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "order_lines_to_customers", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: false, After: false},
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_ADOPT, Before: false, After: true},
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: true, After: false},
+			}
+			understood := table("r_lines", "c1", "order_lines", 0, nil, col("order_no", "string", ""), col("line_no", "integer", ""))
+			understood.Name, understood.Description = "订单行", "订单中的一行商品。"
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).
+				Return([]*interfaces.VegaTable{understood, table("r_customers", "c1", "customers", 0, []string{"ID"}, col("ID", "string", ""))}, nil).AnyTimes()
+			expectWrite()
+
+			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no", "line_no"), caller)
+
+			So(err, ShouldBeNil)
+			taken := got.Items.ObjectTypes[0]
+			So(taken.Adopted, ShouldBeTrue)
+			So(taken.Name, ShouldEqual, "订单行")
+			So(taken.Description, ShouldEqual, "订单中的一行商品。")
+			So(taken.Aliases, ShouldContain, "order_lines")
+			So(got.Items.RelationTypes[0].Adopted, ShouldBeTrue)
+			So(got.Items.RelationTypes[0].ProposedBecause, ShouldBeEmpty)
+			So(got.Items.RelationTypes[1].Adopted, ShouldBeFalse)
+			actions := []string{}
+			for _, decision := range got.Items.Decisions[3:] {
+				actions = append(actions, decision.ItemID+":"+decision.Action)
+			}
+			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_IDENTITY)
+			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_RENAME)
+			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_ADOPT)
+			So(actions, ShouldContain, "order_lines_to_customers:"+interfaces.DRAFT_DECISION_ADOPT)
 		})
 
 		Convey("Choosing the identity an object type already has changes nothing\n", func() {

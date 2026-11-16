@@ -96,11 +96,16 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		return draft, nil
 	}
 
+	// Drafting left out an object type of a table only for want of an identity: choosing one takes it in.
+	waiting := objectType.NeedsIdentity && !objectType.Adopted && objectType.Document == nil
 	before := s.setIdentity(ctx, draft, objectType, properties, caller)
 	decisions := []*interfaces.DraftDecision{{
 		Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: itemID, Action: interfaces.DRAFT_DECISION_IDENTITY,
 		Before: before, After: objectType.PrimaryKeys,
 	}}
+	if waiting {
+		decisions = append(decisions, s.adoptWithIdentity(ctx, projectID, draft, objectType, caller)...)
+	}
 	if err := s.commitItem(ctx, draft, decisions, caller, objectType.Document); err != nil {
 		span.SetStatus(codes.Error, "Write draft failed")
 		return nil, err
@@ -212,4 +217,28 @@ func (s *draftService) setIdentity(ctx context.Context, draft *interfaces.Draft,
 	d.namingLanguage = draftLanguage(draft)
 	proposeRelations(countCtx, d, s.va, caller, &draft.Items, objectType)
 	return before
+}
+
+// adoptWithIdentity adopts an object type drafting left out only because no identity was chosen,
+// as judging its concept an object would: named as semantic understanding named its table, and
+// with the relations drafting proposed only because it was out. A relation a person left out while
+// the object type was out could not be in then, and follows it now. What cannot be adopted stays
+// out, for the person to see on the item.
+func (s *draftService) adoptWithIdentity(ctx context.Context, projectID string, draft *interfaces.Draft,
+	objectType *interfaces.DraftObjectType, caller interfaces.AccountInfo) []*interfaces.DraftDecision {
+	decisions := []*interfaces.DraftDecision{}
+	if concepts, err := s.readConcepts(ctx, projectID, draft, caller); err == nil {
+		if concept := findConcept(concepts, itemKey(interfaces.DRAFT_KIND_OBJECT_TYPES, objectType.ID)); concept != nil {
+			decisions = append(decisions, understoodName(ctx, &draft.Items, concept)...)
+		}
+	}
+	adopt := true
+	edited, err := applyEdit(ctx, &draft.Items, interfaces.DRAFT_KIND_OBJECT_TYPES, objectType.ID,
+		interfaces.DraftItemEdit{Adopted: &adopt})
+	if err != nil {
+		return decisions
+	}
+	decisions = append(decisions, edited...)
+	decisions = append(decisions, regateRelationsAfter(s.setting, &draft.Items, objectType.ID, true)...)
+	return append(decisions, followEvidence(&draft.Items)...)
 }

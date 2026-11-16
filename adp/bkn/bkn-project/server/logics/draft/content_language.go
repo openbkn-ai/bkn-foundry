@@ -181,6 +181,16 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 		if rt.Existing || !newTypes[rt.Source] && !newTypes[rt.Target] {
 			continue
 		}
+		if rt.Name == rt.ID && rt.LinkTable == nil {
+			// Named by its id, as one drafted from a field nobody named is: the Agent names it from
+			// its ends and the fields that join them, whatever language the id reads in.
+			relations = append(relations, namingItem{Key: "r:" + rt.ID, Kind: namingRelationType, Name: rt.Name,
+				Description: truncateRunes(rt.Description, interfaces.DRAFT_DESCRIPTION_MAX_LENGTH),
+				Source: relationSource(items, newTables, rt)})
+			targets["r:"+rt.ID] = &namingTarget{name: &rt.Name, description: &rt.Description, renames: true,
+				redescribes: inOtherLanguage(language, rt.Description)}
+			continue
+		}
 		if source := before[rt.Source]; source != nil && len(rt.Mapping) > 0 &&
 			rt.Name == relationNameIn(language, source, rt.Mapping[0].SourceProperty, rt.ID) {
 			fromField[rt.ID] = true
@@ -235,6 +245,34 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 			}
 		}
 	}
+}
+
+// relationSource is what a relation joins, by the physical names of its tables and fields, as
+// "erp_mds_forecast.material_number -> erp_material.material_code": what names a relation drafted
+// from a field nobody named.
+func relationSource(items *interfaces.DraftItems, tables []*interfaces.VegaTable, rt *interfaces.DraftRelationType) string {
+	end := func(id string, property string) string {
+		ot := findObjectType(items, id)
+		if ot == nil {
+			return id
+		}
+		name := ot.Table.Name
+		if table := tableOf(tables, ot.Table.ResourceID); table != nil {
+			name = physicalName(table)
+		}
+		if name == "" {
+			name = ot.ID
+		}
+		if p := findProperty(ot, property); p != nil && p.MappedField != "" {
+			return name + "." + p.MappedField
+		}
+		return name
+	}
+	if len(rt.Mapping) == 0 {
+		return end(rt.Source, "") + " -> " + end(rt.Target, "")
+	}
+	m := rt.Mapping[0]
+	return end(rt.Source, m.SourceProperty) + " -> " + end(rt.Target, m.TargetProperty)
 }
 
 // snapshotNames copies what names an object type's relations: its name and its properties' names.
