@@ -67,9 +67,34 @@
           "additionalProperties": true
         }
       },
+      "runtime": {
+        "type": "object",
+        "description": "平台能否执行该 Skill。目前只有 Python 一种运行时。",
+        "properties": {
+          "runtime": {
+            "type": "string",
+            "description": "Skill 的执行运行时：python"
+          },
+          "executable": {
+            "type": "boolean",
+            "description": "为 false 表示该 Skill 只能阅读、不能执行，不要对它调用 execute_skill"
+          },
+          "entry_points": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "包内的 .py 文件，可作 execute_skill 的 entry_point"
+          },
+          "reason": {
+            "type": "string",
+            "description": "不可执行的原因及迁移办法；仅 executable 为 false 时出现"
+          }
+        }
+      },
       "message": {
         "type": "string",
-        "description": "补充说明（如截断提示）"
+        "description": "补充说明（如截断提示，或该 Skill 不可执行的原因）"
       }
     }
   }

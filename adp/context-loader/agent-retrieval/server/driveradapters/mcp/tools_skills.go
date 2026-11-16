@@ -105,8 +105,8 @@ func handleExecuteSkill(svc knskills.KnSkillsService) func(ctx context.Context, 
 		if execReq.SkillID == "" {
 			return mcp.NewToolResultError(knskills.SkillIDRequiredError(ctx).Error()), nil
 		}
-		if execReq.EntryShell == "" {
-			return mcp.NewToolResultError(knskills.EntryShellRequiredError(ctx).Error()), nil
+		if execReq.EntryPoint == "" && execReq.EntryShell == "" {
+			return mcp.NewToolResultError(knskills.EntryPointRequiredError(ctx).Error()), nil
 		}
 
 		resp, err := svc.ExecuteSkill(ctx, execReq)

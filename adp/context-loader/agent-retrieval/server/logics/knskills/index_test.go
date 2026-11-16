@@ -189,10 +189,10 @@ func TestReadSkillFileRequiresRelPath(t *testing.T) {
 	}
 }
 
-func TestExecuteSkillRequiresEntryShellAndTruncatesStreams(t *testing.T) {
+func TestExecuteSkillRequiresEntryAndTruncatesStreams(t *testing.T) {
 	svc := newTestService(&fakeOperator{}, "sk-1")
-	if _, err := svc.ExecuteSkill(context.Background(), &ExecuteSkillReq{KnID: "kn1", SkillID: "sk-1"}); !errors.Is(err, ErrEntryShellRequired) {
-		t.Fatalf("缺 entry_shell 时 err = %v，want ErrEntryShellRequired", err)
+	if _, err := svc.ExecuteSkill(context.Background(), &ExecuteSkillReq{KnID: "kn1", SkillID: "sk-1"}); !errors.Is(err, ErrEntryPointRequired) {
+		t.Fatalf("missing entry: err = %v, want ErrEntryPointRequired", err)
 	}
 
 	fake := &fakeOperator{execResp: &interfaces.ExecuteSkillResponse{
@@ -209,8 +209,8 @@ func TestExecuteSkillRequiresEntryShellAndTruncatesStreams(t *testing.T) {
 	if !resp.Truncated || len(resp.Stdout) != maxStreamChars {
 		t.Fatalf("stdout 未按上限截断: truncated=%v len=%d", resp.Truncated, len(resp.Stdout))
 	}
-	if fake.gotExecReq.EntryShell != "python main.py" {
-		t.Fatalf("entry_shell 未去空白: %q", fake.gotExecReq.EntryShell)
+	if fake.gotExecReq.EntryPoint != "main.py" || fake.gotExecReq.EntryShell != "" {
+		t.Fatalf("legacy entry_shell was not translated: %+v", fake.gotExecReq)
 	}
 	if fake.gotExecReq.Timeout != 30 {
 		t.Fatalf("timeout 未透传: %d", fake.gotExecReq.Timeout)

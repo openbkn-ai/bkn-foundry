@@ -53,6 +53,17 @@ type GetSkillContentResponse struct {
 	Content []byte
 	Status  string
 	Files   []SkillFileSummary
+	// Runtime is what the execution factory reports about running the package; nil when the
+	// factory predates the field.
+	Runtime *SkillRuntime
+}
+
+// SkillRuntime says whether the platform can run a Skill package, as the execution factory reports it.
+type SkillRuntime struct {
+	Runtime     string   `json:"runtime"`
+	Executable  bool     `json:"executable"`
+	EntryPoints []string `json:"entry_points,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
 }
 
 // ReadSkillFileRequest reads a single file in the skill package.
@@ -70,11 +81,17 @@ type ReadSkillFileResponse struct {
 	Content  []byte
 }
 
-// ExecuteSkillRequest executes the skill entry command in the sandbox.
+// ExecuteSkillRequest executes a Python script of the skill package in the sandbox.
+//
+// Send EntryPoint and Arguments. EntryShell is the deprecated spelling ("python <script> [args]");
+// the service layer translates it, and it reaches the execution factory only when it cannot be
+// translated, so the factory reports the precise reason.
 type ExecuteSkillRequest struct {
-	SkillID    string `json:"-"`
-	EntryShell string `json:"entry_shell"`
-	Timeout    int    `json:"timeout,omitempty"` // seconds.
+	SkillID    string   `json:"-"`
+	EntryPoint string   `json:"entry_point,omitempty"` // Package-relative .py path.
+	Arguments  []string `json:"arguments,omitempty"`   // argv of the script.
+	EntryShell string   `json:"entry_shell,omitempty"` // Deprecated.
+	Timeout    int      `json:"timeout,omitempty"`     // seconds.
 }
 
 // ExecuteSkillResponse sandbox execution result.
