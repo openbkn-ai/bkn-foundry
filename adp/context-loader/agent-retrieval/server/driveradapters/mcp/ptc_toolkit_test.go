@@ -666,6 +666,18 @@ func TestPTCBranchKeepsExistingPositionalArguments(t *testing.T) {
 	}
 }
 
+func TestPTCExecuteActionKeepsExistingPositionalArguments(t *testing.T) {
+	input, _ := loadToolSchemas(toolKeyExecuteAction)
+	tool := MCPToolInfo{Name: toolKeyExecuteAction, InputSchema: offerBKNContext(input)}
+	want := "execute_action(at_id: str, kn_id: str, _instance_identities: list = None, dynamic_params: dict = None, object_input: dict = None, relation_target: dict = None, bkn_context: dict = None, *, kn_version: str = None, draft_revision: int = None, governance_request_id: str = None, governance_permit_id: str = None, governance_plan_digest: str = None)"
+	if got := ptcStubSignature(tool); got != want {
+		t.Fatalf("execute_action stub signature = %s, want %s", got, want)
+	}
+	if got := ptcDigestSignature(tool); got != strings.Replace(want, ", bkn_context: dict = None", "", 1) {
+		t.Fatalf("execute_action digest signature = %s", got)
+	}
+}
+
 // The digest shown to the model lists arguments in the same slots as the stub it will
 // call: by-name-only arguments sit after the star there too. Only the plumbing parameters
 // the stub tolerates are left out of the digest.
