@@ -17,6 +17,8 @@ import (
 
 type testActionGate struct{}
 
+func (testActionGate) Available() error { return nil }
+
 func (testActionGate) ClaimActionPermit(context.Context, interfaces.ActionGovernanceClaim) error {
 	return nil
 }

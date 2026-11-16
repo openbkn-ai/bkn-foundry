@@ -20,10 +20,13 @@ import (
 )
 
 type actionGateStub struct {
-	calls int
-	claim interfaces.ActionGovernanceClaim
-	err   error
+	calls        int
+	claim        interfaces.ActionGovernanceClaim
+	err          error
+	availableErr error
 }
+
+func (gate *actionGateStub) Available() error { return gate.availableErr }
 
 func (gate *actionGateStub) ClaimActionPermit(_ context.Context, claim interfaces.ActionGovernanceClaim) error {
 	gate.calls++
@@ -58,6 +61,18 @@ func TestManagedActionRequiresGateAndPermit(t *testing.T) {
 	gate := &actionGateStub{}
 	service.governanceGate = gate
 	request.GovernancePermitID = ""
+	gate.availableErr = errors.New("action governance adapter is not configured")
+	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusServiceUnavailable || gate.calls != 0 {
+		t.Fatalf("unavailable gate with missing permit status=%d calls=%d", status(err), gate.calls)
+	}
+	request.GovernancePermitID = "permit1"
+	request.Instances = append(request.Instances, interfaces.ObjectSystemInfo{InstanceIdentity: map[string]any{"order_id": "o2"}})
+	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusServiceUnavailable || gate.calls != 0 {
+		t.Fatalf("unavailable gate with multiple targets status=%d calls=%d", status(err), gate.calls)
+	}
+	request.Instances = request.Instances[:1]
+	request.GovernancePermitID = ""
+	gate.availableErr = nil
 	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusConflict || gate.calls != 0 {
 		t.Fatalf("missing permit status=%d calls=%d", status(err), gate.calls)
 	}

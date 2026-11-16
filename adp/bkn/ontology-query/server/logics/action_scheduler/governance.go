@@ -59,6 +59,9 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 	if s.governanceGate == nil {
 		return governanceUnavailable(ctx, errors.New("action governance adapter is not configured"))
 	}
+	if err := s.governanceGate.Available(); err != nil {
+		return governanceUnavailable(ctx, err)
+	}
 	if req.GovernanceRequestID == "" || req.GovernancePermitID == "" || !planDigestPattern.MatchString(req.GovernancePlanDigest) {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired)
 	}

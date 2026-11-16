@@ -35,5 +35,8 @@ type ActionGovernanceClaim struct {
 // governance plan and atomically claim its permit. Returning nil is an
 // authorization to create exactly one execution record.
 type ActionGovernanceGate interface {
+	// Available is checked before client-supplied permit fields are inspected.
+	// It must reflect the current license so an expired gate fails as unavailable.
+	Available() error
 	ClaimActionPermit(context.Context, ActionGovernanceClaim) error
 }
