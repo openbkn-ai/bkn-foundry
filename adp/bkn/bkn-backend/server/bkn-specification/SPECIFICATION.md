@@ -1061,7 +1061,7 @@ sub_conds:
 以保留 `false`、`0`、`null`、数组、对象与大整数：`integer`、`number`、`boolean`、`array`、`object` 参数必须写合法的 JSON，
 且解码后的类型必须与声明类型一致，否则拒绝导入并指出参数名。非字符串参数的 JSON `null` 仍可作为空值。显式声明为字符串类型（`string`、`text`、`keyword`、`date`、`datetime`）的参数可写成带双引号的 JSON 字符串，
 如 `"P1"`、`"123"`，导入时去掉外层引号；未加引号的值按原文读作字符串，`123`、`true`、`null` 等也不会
-被转成其他类型。未写类型的常量保留既有规则：合法 JSON 按 JSON 值解析，其他文本按原文保留（附录 A-12）。导出器总是按 JSON 写出常量。通过 API 保存行动时，显式字符串类型的常量会规范化为字符串；其他已知类型的常量不匹配时拒绝保存并指出参数名。已有行动中的非字符串常量若类型不匹配，执行仍会拒绝；再次保存前须修正该参数。
+被转成其他类型。未写类型的常量保留既有规则：合法 JSON 按 JSON 值解析，其他文本按原文保留。导出器总是按 JSON 写出常量。通过 API 保存行动时，显式字符串类型的常量会规范化为字符串；其他已知类型的常量不匹配时拒绝保存并指出参数名。已有行动中的非字符串常量若类型不匹配，执行仍会拒绝；再次保存前须修正该参数。
 
 **参数名。** 参数名必须非空且不重复；点分的名称（如 `order.id`）表示嵌套位置，两个参数的路径不能互为前缀，
 路径中不能出现空段及 `__proto__`、`constructor`、`prototype`。
@@ -1619,7 +1619,6 @@ unit: 元
 | A-9 | 子目录与 frontmatter `type` 可以不一致 | 2.x 现状：解析看子目录，CHECKSUM 看 `type`。3.0 拒绝不一致（§1.3） | 同一文件在两处被当作不同类型 |
 | A-10 | 能力依赖缺少版本与接口信息 | 只有 ID 和名称 | 按名称匹配到的工具与原工具参数不兼容时无法发现 |
 | A-11 | BKN 包不携带能力实现 | 函数代码、OpenAPI 定义、MCP 配置、Skill 包都要另外通过执行工厂搬迁（§13.1） | 跨环境迁移需要多步手工操作，顺序错误时静默失败；规划见 §13.2 |
-| A-12 | 字符串常量按 JSON 解码时不看声明类型 | 写了 `Operation Config` 的行动类中，`string` 等字符串参数的 `const` 写成 `123`、`true`、`null`、`{"a":1}` 这类合法 JSON 文本时，被解码成数字、布尔、空值或对象；不是合法 JSON 的文本才按原文保留。导入校验不核对常量类型 | 字符串参数中，带引号的 JSON 字符串去掉外层引号，其他文本原样保留为字符串；非字符串参数的 JSON 值还须匹配声明类型，否则拒绝导入并指出参数。已有且声明为字符串类型的行动常量在保存、执行和预览时转为 JSON 文本字符串；导出器写出的包不受影响 |
 
 ## 附录 B：相对 2.0.1 的变化
 
@@ -1637,7 +1636,7 @@ unit: 元
 | 行动类小节 | 含 `Pre-conditions`、`Scope of Impact`、`Execution Description` | 不再结构化解析，写了会并入描述 |
 | 行动类 frontmatter | 含 `enabled`、`risk_level`、`requires_approval` | 不再解析，写了会被忽略 |
 | Bound Object 的 Action Type | 含 `query` | 只有 `add`、`modify`、`delete` |
-| 行动的操作定义 | 无；按是否绑定对象推断，执行时可按条件扫描实例 | `### Operation Config` 必需（OpenBKN 0.2.2 起，2.x 包同样适用）：对象、关系或工具调用三类，执行目标须明确指定；参数来源增加 `source_identity`、`target_identity`；`const` 按 JSON 解析（§8.7、§8.9） |
+| 行动的操作定义 | 无；按是否绑定对象推断，执行时可按条件扫描实例 | `### Operation Config` 必需（OpenBKN 0.2.2 起，2.x 包同样适用）：对象、关系或工具调用三类，执行目标须明确指定；参数来源增加 `source_identity`、`target_identity`；`const` 按 JSON 解析，字符串类型参数按文本读取（§8.7、§8.9） |
 | 风险类小节 | `Control Scope`、`Control Policy` 等 | 不再结构化解析，全部并入描述 |
 | 指标 | `metrics/*.bkn` | `object_metrics/{id}@{version}.json`；旧目录报错 |
 | 数据属性 | 5 列 | 增加可选的 `Mask Rule` 列；类型增加 `keyword`、`unsigned integer`、`timestamp`、`vector`、`point`、`shape`、`ip` |
