@@ -37,6 +37,69 @@ func TestToSql(t *testing.T) {
 			assert.JSONEq(t, string(before), string(after))
 		}
 	})
+	t.Run("union unknown outputs retain branch type inference boundaries", func(t *testing.T) {
+		for _, clause := range []struct {
+			name, input, output string
+		}{
+			{"order", " ORDER BY id", ` ORDER BY "id" ASC NULLS FIRST`},
+			{"limit", " LIMIT 1", " LIMIT 1"},
+			{"builder offset without limit", "", " OFFSET 1"},
+			{"combined", " ORDER BY id LIMIT 1 OFFSET 1", ` ORDER BY "id" ASC NULLS FIRST LIMIT 1 OFFSET 1`},
+		} {
+			for _, operator := range []string{"UNION", "UNION DISTINCT", "UNION ALL"} {
+				for _, first := range []string{"NULL", "CAST(NULL AS INTEGER)", "1"} {
+					t.Run(clause.name+"/"+operator+"/"+first, func(t *testing.T) {
+						second := "1"
+						if first == "1" {
+							second = "NULL"
+						}
+						query, err := compiler.ParseSQL("(SELECT " + first + " AS v FROM {{a}}" + clause.input + ") " + operator + " (SELECT " + second + " AS v FROM {{b}}" + clause.input + ")")
+						require.NoError(t, err)
+						union := query.FromPart.(*sb.Union)
+						union.Left.FromPart.(*sb.Table).SourceIdentifier = `"a"`
+						union.Right.FromPart.(*sb.Table).SourceIdentifier = `"b"`
+						// 输入语法要求 OFFSET 随 LIMIT；Builder 仍单独支持 OFFSET。
+						if clause.name == "builder offset without limit" {
+							union.Left.Offset(1)
+							union.Right.Offset(1)
+						}
+						left, right := "NULL", "CAST(1 AS BIGINT)"
+						if first == "1" {
+							left, right = right, left
+						} else if first != "NULL" {
+							left = "CAST(NULL AS BIGINT)"
+						}
+						quantifier := " UNION "
+						if operator == "UNION ALL" {
+							quantifier = " UNION ALL "
+						}
+						statement, args, err := ToSql(query)
+						require.NoError(t, err)
+						assert.Equal(t, `SELECT * FROM ((SELECT `+left+` AS "v" FROM "a"`+clause.output+`)`+quantifier+`(SELECT `+right+` AS "v" FROM "b"`+clause.output+`)) AS "_union_result"`, statement)
+						assert.Empty(t, args)
+					})
+				}
+			}
+		}
+	})
+	t.Run("union local limits keep unknown parameters and binding order", func(t *testing.T) {
+		left := sb.Select(&sb.Alias{Expr: &sb.Param{}, Name: "v"}).From(&sb.Table{SourceIdentifier: `"a"`}).Where(&sb.Eq{Left: &sb.Column{Name: "id"}, Right: &sb.Param{Value: 7}}).Limit(1)
+		right := sb.Select(&sb.Alias{Expr: &sb.Param{Value: 1}, Name: "v"}).From(&sb.Table{SourceIdentifier: `"b"`}).Where(&sb.Eq{Left: &sb.Column{Name: "id"}, Right: &sb.Param{Value: 8}}).Limit(1)
+		query := sb.UnionQuery(left, right, true).OrderBy(sb.Order{Expr: &sb.Column{Name: "v"}}).Limit(2).Offset(1)
+		before, err := json.Marshal(query)
+		require.NoError(t, err)
+		statement, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT * FROM ((SELECT $1 AS "v" FROM "a" WHERE ("id" = CAST($2 AS BIGINT)) LIMIT 1) UNION ALL (SELECT CAST($3 AS BIGINT) AS "v" FROM "b" WHERE ("id" = CAST($4 AS BIGINT)) LIMIT 1)) AS "_union_result" ORDER BY "v" ASC NULLS FIRST LIMIT 2 OFFSET 1`, statement)
+		assert.Equal(t, []any{nil, 7, 1, 8}, args)
+		again, bound, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, statement, again)
+		assert.Equal(t, args, bound)
+		after, err := json.Marshal(query)
+		require.NoError(t, err)
+		assert.Equal(t, before, after)
+	})
 	t.Run("union branch limits and nested mixed operators retain boundaries", func(t *testing.T) {
 		left := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"a"`}).OrderBy(sb.Order{Expr: &sb.Column{Name: "id"}}).Limit(2).Offset(1)
 		right := sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"b"`}).Limit(0)
@@ -44,7 +107,7 @@ func TestToSql(t *testing.T) {
 		query := sb.UnionQuery(inner, sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: `"c"`}), false).Limit(4)
 		statement, args, err := ToSql(query)
 		require.NoError(t, err)
-		assert.Equal(t, `SELECT * FROM (SELECT * FROM (SELECT "id" FROM "a" ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1) AS "_union_left" UNION ALL SELECT * FROM (SELECT "id" FROM "b" LIMIT 0) AS "_union_right" UNION SELECT "id" FROM "c") AS "_union_result" LIMIT 4`, statement)
+		assert.Equal(t, `SELECT * FROM ((SELECT "id" FROM "a" ORDER BY "id" ASC NULLS FIRST LIMIT 2 OFFSET 1) UNION ALL (SELECT "id" FROM "b" LIMIT 0) UNION SELECT "id" FROM "c") AS "_union_result" LIMIT 4`, statement)
 		assert.Empty(t, args)
 		count := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).FromSelect(query, "total")
 		statement, _, err = ToSql(count)
