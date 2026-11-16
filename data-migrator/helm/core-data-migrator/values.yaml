@@ -43,7 +43,7 @@ depServices:
     type: mariadb
     host: mariadb-mariadb-master.resource.svc.cluster.local.
     port: 3306
-    user: anyshare
+    user: openbkn
     password: ""
     hostRead: mariadb-mariadb-cluster.resource.svc.cluster.local.
     portRead: 3306
