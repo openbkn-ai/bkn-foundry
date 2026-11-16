@@ -6,6 +6,7 @@
 package identity
 
 import (
+	"errors"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"gorm.io/gorm"
 )
@@ -17,12 +18,17 @@ type Source = model.Source
 
 const AccountTypeOther = model.AccountTypeOther
 
-// Cleanup joins the core delete transaction. Returning an error rolls back both
-// the directory deletion and the extension's companion-row cleanup. Registration
+// ErrExternalIdentity rejects local writes to fields managed by an identity provider.
+var ErrExternalIdentity = errors.New("identity fields are managed by an external provider")
+
+// Cleanup supplies companion cleanup and origin metadata to the core directory.
+// Delete hooks join the core transaction; errors roll the deletion back. Registration
 // is per database and happens during assembly, before requests are served.
 type Cleanup struct {
-	User       func(tx *gorm.DB, id string) error
-	Department func(tx *gorm.DB, id string) error
+	// DepartmentSources supplies read-only origin metadata in a single batch.
+	DepartmentSources func(tx *gorm.DB, ids []string) (map[string]string, error)
+	User              func(tx *gorm.DB, id string) error
+	Department        func(tx *gorm.DB, id string) error
 }
 
 func (c Cleanup) Name() string              { return "identity-companion-cleanup" }
@@ -41,4 +47,12 @@ func CleanupDepartment(tx *gorm.DB, id string) error {
 		return c.Department(tx, id)
 	}
 	return nil
+}
+
+// DepartmentSources returns origins owned by the installed identity extension.
+func DepartmentSources(db *gorm.DB, ids []string) (map[string]string, error) {
+	if c, ok := db.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.DepartmentSources != nil && len(ids) > 0 {
+		return c.DepartmentSources(db, ids)
+	}
+	return map[string]string{}, nil
 }

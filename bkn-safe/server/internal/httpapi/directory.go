@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -608,6 +609,8 @@ func registerDeptAdmin(g *gin.RouterGroup, dir *directory.Service, e *authz.Enfo
 
 func writeDepartmentValidationError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, identity.ErrExternalIdentity):
+		replyPublicError(c, http.StatusForbidden)
 	case errors.Is(err, directory.ErrDepartmentCycle):
 		httperrors.WriteCode(c, http.StatusBadRequest, httperrors.DepartmentCycle, nil)
 	case errors.Is(err, directory.ErrUnknownDepartment):

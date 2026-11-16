@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -121,8 +122,11 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if !bind(c, &req) {
 			return
 		}
-		if err := users.ResetPassword(c.Request.Context(), c.Param("id"), req.Password); errors.Is(err, managedproxy.ErrManagedAccount) {
+		if err := users.ResetPassword(c.Request.Context(), c.Param("id"), req.Password); errors.Is(err, managedproxy.ErrManagedAccount) || errors.Is(err, identity.ErrExternalIdentity) {
 			replyPublicError(c, http.StatusForbidden)
+			return
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			replyPublicError(c, http.StatusNotFound)
 			return
 		} else if err != nil {
 			serverError(c, err)
@@ -214,7 +218,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		}
 		if len(fields) > 0 {
 			err := users.UpdateUser(ctx, id, fields)
-			if errors.Is(err, managedproxy.ErrManagedAccount) {
+			if errors.Is(err, managedproxy.ErrManagedAccount) || errors.Is(err, identity.ErrExternalIdentity) {
 				replyPublicError(c, http.StatusForbidden)
 				return
 			}
@@ -260,7 +264,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			return
 		}
 		err := users.DeleteUser(c.Request.Context(), id)
-		if errors.Is(err, managedproxy.ErrManagedAccount) {
+		if errors.Is(err, managedproxy.ErrManagedAccount) || errors.Is(err, identity.ErrExternalIdentity) {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}

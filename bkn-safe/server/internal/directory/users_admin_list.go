@@ -38,6 +38,7 @@ type UserSummary struct {
 	Telephone       string    `json:"telephone"`
 	Enabled         bool      `json:"enabled"`
 	AccountType     string    `json:"account_type"`
+	Source          string    `json:"source"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	DepartmentIDs   []string  `json:"department_ids"`
 	DepartmentNames []string  `json:"department_names"`
@@ -47,7 +48,7 @@ type UserSummary struct {
 
 // userSummaryCols selects the scalar user fields for list queries.
 var userSummaryCols = []string{
-	"id", "account", "name", "email", "telephone", "enabled", "account_type", "updated_at",
+	"id", "account", "name", "email", "telephone", "enabled", "source", "account_type", "updated_at",
 }
 
 // ListUsers returns a filtered, paginated user list plus the total match count.
@@ -118,6 +119,7 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		Email       string
 		Enabled     bool
 		AccountType string
+		Source      string
 		UpdatedAt   time.Time
 	}, 0, defaultUserPageSize)
 	if err := q.Select(userSummaryCols).Order("account").Offset(offset).Limit(limit).Scan(&rows).Error; err != nil {
@@ -130,8 +132,8 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 			Name:        row.Name,
 			Email:       row.Email,
 			Enabled:     row.Enabled,
-			AccountType: row.AccountType,
-			UpdatedAt:   row.UpdatedAt,
+			AccountType: row.AccountType, Source: row.Source,
+			UpdatedAt: row.UpdatedAt,
 		})
 	}
 	if err := s.enrichUserSummaries(ctx, out); err != nil {
