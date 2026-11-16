@@ -193,8 +193,9 @@ governance policy and one-time permit still belong to the Professional Edition
 governance service. Do not populate the list before its adapter is installed.
 
 An EE composition can inject an `ActionGovernanceGate` through
-`NewRestHandlerWithGovernance`. All public and internal execute routes share
-that scheduler, including requests forwarded by Context Loader. After existing
+`Application.InstallActionGovernanceGate` between Boot and Run. All public and
+internal execute routes share that scheduler, including requests forwarded by
+Context Loader. After existing
 action and proxy authorization, the scheduler resolves the exact target,
 rejects duplicate submissions, then asks the gate to compare the current
 action plan with the approved plan and atomically claim its permit. A managed
