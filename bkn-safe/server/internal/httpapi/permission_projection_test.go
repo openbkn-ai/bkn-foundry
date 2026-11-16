@@ -7,11 +7,84 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
+
+func TestPermissionProjectionRoleSourceIdentityAndManagementPermission(t *testing.T) {
+	for _, point := range []struct {
+		resource, operation string
+		manage              bool
+	}{
+		{"admin-role", "permissions", true},
+		{"admin-role", "edit", false},
+		{"admin-authz", "grant", true},
+		{"admin-authz", "revoke", true},
+	} {
+		t.Run(point.resource+"-"+point.operation, func(t *testing.T) {
+			r, e, db, _ := newAdminServer(t)
+			seedCatalogOps(t, db, "knowledge_network", "view_detail", "modify")
+			seedCatalogOps(t, db, "admin-authz", "view", "grant", "revoke")
+			seedCatalogOps(t, db, "admin-role", "permissions", "edit")
+			seedCatalogOps(t, db, "safe_admin", "manage")
+			if err := db.Create(&model.Role{ID: "selected-role", Name: "Selected role"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&model.User{ID: "inspector", Account: "inspector", Enabled: true}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, grant := range []struct{ subject, object, op string }{
+				{"inspector", "admin-authz:*", "view"},
+				{"inspector", "safe_admin:console", "manage"},
+				{"inspector", point.resource + ":*", point.operation},
+			} {
+				if err := e.Grant(grant.subject, grant.object, grant.op); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := e.GrantRolePermission("selected-role", "knowledge_network", "*", "view_detail"); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.GrantRolePermission("selected-role", "knowledge_network", "kn-1", "modify"); err != nil {
+				t.Fatal(err)
+			}
+			body := map[string]any{"subject": map[string]string{"type": "role", "id": "selected-role"}, "network_id": "kn-1", "resources": []map[string]string{{"type": "knowledge_network", "id": "kn-1"}}, "include_sources": true}
+			w := tokReq(t, r, http.MethodPost, "/api/safe/v1/admin/permission-projection", body, "inspector")
+			if w.Code != http.StatusOK {
+				t.Fatalf("projection = %d %s", w.Code, w.Body.String())
+			}
+			// Decode wire names explicitly so a subject-kind regression cannot hide behind defaults.
+			var wire struct {
+				Targets map[string]struct {
+					Kind        string `json:"kind"`
+					SubjectType string `json:"subject_type"`
+					ResourceID  string `json:"resource_id"`
+					CanManage   bool   `json:"can_manage"`
+				} `json:"source_targets"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &wire); err != nil {
+				t.Fatal(err)
+			}
+			if len(wire.Targets) != 2 {
+				t.Fatalf("missing sources: %s", w.Body.String())
+			}
+			for _, target := range wire.Targets {
+				if target.SubjectType != "role" {
+					t.Fatalf("role source mislabeled: %+v", target)
+				}
+				if strings.Contains(target.ResourceID, "*") && (target.Kind != "role_permissions" || target.CanManage != point.manage) {
+					t.Fatalf("wrong role management target: %+v", target)
+				}
+			}
+			if strings.Contains(w.Body.String(), `"subject_kind":"user"`) {
+				t.Fatalf("role trace mislabeled: %s", w.Body.String())
+			}
+		})
+	}
+}
 
 func TestPermissionProjectionRoleAndNetworkBoundary(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
@@ -111,7 +184,9 @@ func TestPermissionProjectionEffectiveDecisionsAndSources(t *testing.T) {
 	}
 	foundRole, foundDeny := false, false
 	for _, decision := range entry.Decisions {
-		if decision.Operation == "create" { t.Fatal("instance projection exposed type-level creation") }
+		if decision.Operation == "create" {
+			t.Fatal("instance projection exposed type-level creation")
+		}
 		if decision.Operation == "modify" && decision.Decision == "deny" {
 			foundDeny = true
 		}

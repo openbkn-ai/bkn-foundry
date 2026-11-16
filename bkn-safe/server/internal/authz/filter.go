@@ -308,6 +308,7 @@ type grantRow struct {
 // the (few) wildcard patterns are walked per resource, which keeps a list page
 // linear in resources rather than resources x policies.
 type grantIndex struct {
+	primarySubjectKind string                    // empty retains the existing user explanation contract
 	explanationRecords map[string][]PolicyRecord // request-local, keyed by concrete resource
 	exact              map[string][]grantRow     // object key -> rules
 	wildcard           []grantRow

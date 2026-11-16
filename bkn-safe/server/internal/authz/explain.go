@@ -78,6 +78,16 @@ func (en *Enforcer) ExplainOperation(ctx context.Context, accessorID, resourceTy
 // ExplainResourceOperations shares a single authorization index and batch
 // decision pass across an on-demand resource detail request.
 func (en *Enforcer) ExplainResourceOperations(ctx context.Context, accessorID string, resource ResourceRef, operations []string) ([]OperationExplanation, error) {
+	return en.explainResourceOperations(ctx, accessorID, "user", resource, operations)
+}
+
+// ExplainRoleResourceOperations preserves the selected role's identity in all
+// source and prerequisite traces. Existing user explanation callers are unchanged.
+func (en *Enforcer) ExplainRoleResourceOperations(ctx context.Context, roleID string, resource ResourceRef, operations []string) ([]OperationExplanation, error) {
+	return en.explainResourceOperations(ctx, roleID, "role", resource, operations)
+}
+
+func (en *Enforcer) explainResourceOperations(ctx context.Context, accessorID, subjectKind string, resource ResourceRef, operations []string) ([]OperationExplanation, error) {
 	results, err := en.CheckResourceOpsScoped(ctx, accessorID, []ResourceOperationCheck{{Resource: resource, Operations: operations}}, ScopeEffective)
 	if err != nil {
 		return nil, err
@@ -87,6 +97,7 @@ func (en *Enforcer) ExplainResourceOperations(ctx context.Context, accessorID st
 		return nil, err
 	}
 	out := make([]OperationExplanation, 0, len(operations))
+	idx.primarySubjectKind = subjectKind
 	for _, result := range results {
 		for _, decision := range result.Decisions {
 			final := Evaluation{Scope: ScopeEffective, Decision: decision.Decision, Basis: decision.Basis, Requirements: decision.Requirements, DeniedRequirement: decision.DeniedRequirement, RequirementBasis: decision.RequirementBasis}
@@ -204,6 +215,9 @@ func (en *Enforcer) explanationGrants(ctx context.Context, idx *grantIndex, reso
 		default:
 			if position == 0 {
 				kind = "user"
+				if idx.primarySubjectKind != "" {
+					kind = idx.primarySubjectKind
+				}
 			}
 		}
 		subjects[subject] = kind

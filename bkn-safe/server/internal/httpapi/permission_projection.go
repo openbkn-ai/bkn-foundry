@@ -122,15 +122,23 @@ func registerPermissionProjection(g *gin.RouterGroup, e *authz.Enforcer, db *gor
 		sourceTargets := map[string]gin.H{}
 		canManageObjects, canManageRoles := false, false
 		if req.IncludeSources {
-			canManageObjects, err = e.Check(c.GetString(ctxAccessorID), "admin-authz", "*", "grant")
+			canManageObjects, err = e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID), "admin-authz", "*", "grant")
 			if err != nil {
 				serverError(c, err)
 				return
 			}
-			canManageRoles, err = e.Check(c.GetString(ctxAccessorID), "admin-role", "*", "edit")
+			canManageRoles, err = e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID), "admin-role", "*", "permissions")
 			if err != nil {
 				serverError(c, err)
 				return
+			}
+			canManageRoles = canManageRoles || canManageObjects
+			if !canManageRoles {
+				canManageRoles, err = e.CheckContext(c.Request.Context(), c.GetString(ctxAccessorID), "admin-authz", "*", "revoke")
+				if err != nil {
+					serverError(c, err)
+					return
+				}
 			}
 		}
 		for _, result := range results {
@@ -140,7 +148,11 @@ func registerPermissionProjection(g *gin.RouterGroup, e *authz.Enforcer, db *gor
 				for _, decision := range result.Decisions {
 					ops = append(ops, decision.Operation)
 				}
-				traces, err := e.ExplainResourceOperations(c.Request.Context(), req.Subject.ID, authz.ResourceRef{Type: result.Type, ID: result.ID}, ops)
+				explain := e.ExplainResourceOperations
+				if req.Subject.Type == "role" {
+					explain = e.ExplainRoleResourceOperations
+				}
+				traces, err := explain(c.Request.Context(), req.Subject.ID, authz.ResourceRef{Type: result.Type, ID: result.ID}, ops)
 				if err != nil {
 					serverError(c, err)
 					return
