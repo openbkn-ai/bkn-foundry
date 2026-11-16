@@ -35,7 +35,7 @@ func TestCountDistinctNodeWithAKeyOfSeveralColumns(t *testing.T) {
 	plan := compile("MATCH (c:Customer) RETURN count(DISTINCT c) AS n")
 	for dialect, want := range map[Dialect]string{
 		DialectMySQL:    "COUNT(DISTINCT t0.`f_code`, t0.`f_region`)",
-		DialectPostgres: `COUNT(DISTINCT (t0."f_code", t0."f_region"))`,
+		DialectPostgres: `COUNT(DISTINCT CASE WHEN t0."f_code" IS NOT NULL AND t0."f_region" IS NOT NULL THEN (t0."f_code", t0."f_region") END)`,
 	} {
 		statement, err := Generate(plan, GenerateOptions{Dialect: dialect})
 		if err != nil {

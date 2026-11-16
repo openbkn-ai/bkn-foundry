@@ -6,6 +6,7 @@ package requirement
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -48,7 +49,7 @@ func shipmentSpec(draft *interfaces.Draft) *interfaces.RequirementSpec {
 			{ID: "q2", ScenarioIDs: []string{"s2", "s1"}, Needs: []interfaces.RequirementItemRef{shipmentRef}},
 		},
 	}
-	signQuestions(spec.Questions, draft)
+	signQuestions(spec.Questions, draft, nil)
 	return spec
 }
 
@@ -93,6 +94,44 @@ func Test_OntologyChanges(t *testing.T) {
 			markOntologyChanges(spec, draft)
 
 			So(spec.Questions[0].OntologyChanged && spec.Questions[1].OntologyChanged, ShouldBeTrue)
+		})
+
+		Convey("An item no longer adopted is named; drafting again leaves the question marked\n", func() {
+			draft := shipmentOntology()
+			spec := shipmentSpec(draft)
+			spec.Concepts = []*interfaces.RequirementConcept{{ID: "c1", Term: "Station", MapsTo: &stationRef}}
+			spec.Questions[0].Basis.ConceptIDs = []string{"c1"}
+			draft.Items.ObjectTypes[1].Adopted = false
+
+			markOntologyChanges(spec, draft)
+			So(spec.Questions[0].OntologyGone, ShouldResemble, []string{"Stations"})
+			So(spec.Questions[1].OntologyGone, ShouldBeEmpty)
+
+			// No longer drafted at all, it reads by the question's concept that maps to it.
+			draft.Items.ObjectTypes = slices.Delete(draft.Items.ObjectTypes, 1, 2)
+			signQuestions(spec.Questions, draft, spec.Concepts)
+			markOntologyChanges(spec, draft)
+			So(spec.Questions[0].OntologyChanged, ShouldBeTrue)
+			So(spec.Questions[0].OntologyGone, ShouldResemble, []string{"Station"})
+		})
+
+		Convey("Drafting again settles a change the kept questions still stand on\n", func() {
+			draft := shipmentOntology()
+			spec := shipmentSpec(draft)
+			// One rests on no item it names: it signs the whole adopted ontology.
+			spec.Questions = append(spec.Questions, &interfaces.RequirementQuestion{ID: "q3", ScenarioIDs: []string{"s2"}})
+			signQuestions(spec.Questions, draft, nil)
+			draft.Items.ObjectTypes[1].Properties = append(draft.Items.ObjectTypes[1].Properties,
+				&interfaces.DraftProperty{Name: "city", Type: "string", MappedField: "city"})
+			markOntologyChanges(spec, draft)
+			So(spec.Questions[0].OntologyChanged && spec.Questions[2].OntologyChanged, ShouldBeTrue)
+			So(spec.Questions[0].OntologyGone, ShouldBeEmpty)
+
+			signQuestions(spec.Questions, draft, nil)
+			markOntologyChanges(spec, draft)
+
+			So(spec.Questions[0].OntologyChanged || spec.Questions[1].OntologyChanged || spec.Questions[2].OntologyChanged, ShouldBeFalse)
+			So(spec.Scenarios[0].OntologyChanged || spec.Scenarios[1].OntologyChanged, ShouldBeFalse)
 		})
 
 		Convey("Without a draft, or a signature, nothing is known to change\n", func() {

@@ -146,6 +146,16 @@ metricResultSnapshot:
   maxAccountEntries: 8
   ttlSeconds: 900
 
+# Optional Professional Edition action-governance pilot. Leave managedActions
+# empty until the EE service, current-fact verifier and executor credentials are ready.
+actionGovernance:
+  managedActions: ""
+  baseURL: ""
+  oauthTokenURL: ""
+  oauthClientID: ""
+  oauthClientSecretName: ""
+  oauthClientSecretKey: "client_secret"
+
 bknTrace:
   lifecycle:
     coreURL: "http://agent-observability-internal:8081"

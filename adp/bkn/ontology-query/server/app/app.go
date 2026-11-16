@@ -43,6 +43,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/driveradapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	proxycontext "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/proxy_context"
@@ -56,22 +57,39 @@ type Options struct{}
 // Application is a booted ontology-query process that has not started serving yet.
 // Extension assembly belongs between Boot and Run.
 type Application struct {
-	appSetting       *common.AppSetting
-	otelProviders    *otel.Providers
-	restHandler      driveradapters.RestHandler
-	evidenceRuntime  *evidencepublisher.PublisherRuntime
-	evidenceProducer interface{ Close() error }
-	retentionOnly    bool
-	refresh          func(stop <-chan struct{})
-	stop             chan struct{}
-	extensionMu      sync.Mutex
-	extensionsFrozen bool
-	routeExtensions  map[string]func(*gin.Engine)
+	appSetting              *common.AppSetting
+	otelProviders           *otel.Providers
+	restHandler             driveradapters.RestHandler
+	evidenceRuntime         *evidencepublisher.PublisherRuntime
+	evidenceProducer        interface{ Close() error }
+	retentionOnly           bool
+	refresh                 func(stop <-chan struct{})
+	stop                    chan struct{}
+	extensionMu             sync.Mutex
+	extensionsFrozen        bool
+	governanceGateInstalled bool
+	routeExtensions         map[string]func(*gin.Engine)
 }
 
 // Setting exposes immutable boot configuration to explicitly assembled extensions.
 func (server *Application) Setting() *common.AppSetting {
 	return server.appSetting
+}
+
+// InstallActionGovernanceGate replaces the action scheduler before routes are
+// registered. Paid distributions assemble this between Boot and Run.
+func (server *Application) InstallActionGovernanceGate(gate interfaces.ActionGovernanceGate) error {
+	server.extensionMu.Lock()
+	defer server.extensionMu.Unlock()
+	if server.extensionsFrozen {
+		return errors.New("ontology-query app: install action governance gate after Run")
+	}
+	if gate == nil || server.retentionOnly || server.governanceGateInstalled {
+		return errors.New("ontology-query app: action governance gate cannot be installed")
+	}
+	server.restHandler = driveradapters.NewRestHandlerWithGovernance(server.appSetting, gate)
+	server.governanceGateInstalled = true
+	return nil
 }
 
 // RegisterRoutes adds one explicitly named route extension. Registration is

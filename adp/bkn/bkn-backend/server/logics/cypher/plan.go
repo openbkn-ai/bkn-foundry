@@ -192,14 +192,17 @@ type PlanAggregate struct {
 	Column   string
 	Property string
 	Argument PlanExpression
-	// Keys are the further primary key columns of a node counted with
-	// Column, when its object type has more than one: count(DISTINCT n)
-	// counts each combination once.
+	// Keys are the further primary key columns counted with Column: those of
+	// a node whose object type has more than one, or both ends' keys for
+	// count(DISTINCT r). Each combination is counted once.
 	Keys []PlanAggregateKey
 }
 
-// PlanAggregateKey is one further primary key column of a counted node.
+// PlanAggregateKey is one further primary key column of what is counted.
+// Table is the aggregate's own table for a node, and either end's table for
+// count(DISTINCT r), which tells relationships apart by both ends' keys.
 type PlanAggregateKey struct {
+	Table    int
 	Column   string
 	Property string
 }
@@ -1822,15 +1825,22 @@ func (p *planner) resolveProperty(ref PropertyRef) (int, string, error) {
 	if !bound {
 		return 0, "", planErrorf(ref.Pos, "variable %q is not defined in the MATCH pattern", ref.Variable)
 	}
-	column, err := p.schema.PropertyColumn(p.objectType[table], ref.Property)
+	column, err := p.tableProperty(table, ref.Property, ref.Pos)
+	return table, column, err
+}
+
+// tableProperty resolves a property of one table of the pattern to its column
+// and records it as read, whether or not a variable names the table.
+func (p *planner) tableProperty(table int, property string, pos Position) (string, error) {
+	column, err := p.schema.PropertyColumn(p.objectType[table], property)
 	if err != nil {
-		return 0, "", &PlanError{Pos: ref.Pos, Err: err}
+		return "", &PlanError{Pos: pos, Err: err}
 	}
 	p.plan.Properties = append(p.plan.Properties, PlanProperty{
 		ObjectTypeID: p.objectType[table].OTID,
-		Property:     ref.Property,
+		Property:     property,
 	})
-	return table, column, nil
+	return column, nil
 }
 
 // unknownSortName refuses ORDER BY on a name nothing is returned as, and says
@@ -1912,6 +1922,9 @@ func isIn(set map[string]struct{}, key string) bool {
 // node that must match is on every row, so without a key count(n) is count(*).
 func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
 	table, bound := p.tableOf[aggregate.Variable]
+	if relationship, isRelationship := p.relationshipOf[aggregate.Variable]; !bound && isRelationship {
+		return p.planRelationshipCount(aggregate, relationship)
+	}
 	if !bound {
 		return nil, planErrorf(aggregate.Pos, "variable %q is not defined in the MATCH pattern", aggregate.Variable)
 	}
@@ -1946,10 +1959,68 @@ func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
 			if err != nil {
 				return nil, err
 			}
-			planned.Keys = append(planned.Keys, PlanAggregateKey{Column: column, Property: property})
+			planned.Keys = append(planned.Keys, PlanAggregateKey{Table: table, Column: column, Property: property})
 		}
 	}
 	return planned, nil
+}
+
+// planRelationshipCount plans count(r) and count(DISTINCT r). A relationship
+// here is a join between two objects, so it is there when both ends are: on
+// every row of a MATCH, and on a row of an OPTIONAL MATCH when the node that
+// clause attaches is, which its key says. DISTINCT tells relationships apart
+// by both ends' keys, since one pair of objects is one relationship of the
+// type, and a row whose optional end is missing has no key to count.
+func (p *planner) planRelationshipCount(aggregate Aggregate, relationship joinVariable) (*PlanAggregate, error) {
+	join := p.plan.Joins[relationship.join]
+	if !aggregate.Distinct {
+		if !join.Optional {
+			return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
+		}
+		return p.planEndCount(aggregate, join.OptionalTable)
+	}
+	var planned *PlanAggregate
+	for _, table := range []int{relationship.sourceTable, relationship.targetTable} {
+		keys := p.objectType[table].PrimaryKeys
+		if len(keys) == 0 {
+			return nil, planErrorf(aggregate.Pos,
+				"count(DISTINCT %s) needs both ends to have a primary key to tell its relationships apart; "+
+					"the object type %q has none",
+				aggregate.Variable, p.objectType[table].OTName)
+		}
+		for _, property := range keys {
+			column, err := p.tableProperty(table, property, aggregate.Pos)
+			if err != nil {
+				return nil, err
+			}
+			if planned == nil {
+				planned = &PlanAggregate{
+					Function: aggregate.Function, Distinct: true,
+					Table: table, Column: column, Property: property,
+				}
+				continue
+			}
+			planned.Keys = append(planned.Keys, PlanAggregateKey{Table: table, Column: column, Property: property})
+		}
+	}
+	return planned, nil
+}
+
+// planEndCount counts the rows on which the optional end of a relationship
+// was found, by its first key.
+func (p *planner) planEndCount(aggregate Aggregate, table int) (*PlanAggregate, error) {
+	keys := p.objectType[table].PrimaryKeys
+	if len(keys) == 0 {
+		return nil, planErrorf(aggregate.Pos,
+			"count(%s) needs the object type %q to have a primary key to tell a found relationship from a missing one; "+
+				"count one of its properties instead",
+			aggregate.Variable, p.objectType[table].OTName)
+	}
+	column, err := p.tableProperty(table, keys[0], aggregate.Pos)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanAggregate{Function: aggregate.Function, Table: table, Column: column, Property: keys[0]}, nil
 }
 
 // planGroupKeys resolves what a WITH grouped by. A node groups by its primary

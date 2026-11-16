@@ -214,7 +214,7 @@ func buildActionFromInstanceData(instanceData map[string]any,
 				return action, err
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-			paramsJson, err = sjson.Set(paramsJson, param.Name, param.Value)
+			paramsJson, err = sjson.Set(paramsJson, param.Name, logics.NormalizeActionConstant(param.Type, param.Value))
 			if err != nil {
 				return action, fmt.Errorf("error setting action type[%s]'s parameter path %s: %v",
 					actionType.ATName, param.Name, err)

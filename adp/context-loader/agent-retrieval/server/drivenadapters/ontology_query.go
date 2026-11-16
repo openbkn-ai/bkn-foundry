@@ -486,6 +486,15 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	if len(req.DynamicParams) > 0 {
 		body["dynamic_params"] = req.DynamicParams
 	}
+	if req.GovernanceRequestID != "" {
+		body["governance_request_id"] = req.GovernanceRequestID
+	}
+	if req.GovernancePermitID != "" {
+		body["governance_permit_id"] = req.GovernancePermitID
+	}
+	if req.GovernancePlanDigest != "" {
+		body["governance_plan_digest"] = req.GovernancePlanDigest
+	}
 
 	// Record request logs (desensitization: dynamic_params is any tool input and may contain sensitive values such as tokens/passwords.
 	// Only the parameter name and instance number are recorded, and parameter values are not output. See PR #379 review P1)

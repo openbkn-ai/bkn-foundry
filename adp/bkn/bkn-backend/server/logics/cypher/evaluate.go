@@ -654,7 +654,7 @@ func evaluateAggregate(aggregate PlanAggregate, group []binding) (any, error) {
 			// not counted where any of them is missing, as SQL does.
 			parts := []any{value}
 			for _, key := range aggregate.Keys {
-				part := scope{row: row}.column(aggregate.Table, key.Column)
+				part := scope{row: row}.column(key.Table, key.Column)
 				if part == nil {
 					parts = nil
 					break

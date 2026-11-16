@@ -291,13 +291,15 @@ openbkn bkn search kn_abc123 "近三个月高价值客户"
 openbkn bkn action-type list kn_abc123
 openbkn bkn action-type query kn_abc123 at_send_email
 openbkn bkn action-type execute kn_abc123 at_send_email \
-  --params '{"to":"user@example.com","subject":"提醒","body":"您好"}'
+  --body '{"dynamic_params":{"to":"user@example.com","subject":"提醒","body":"您好"}}'
 
 openbkn bkn action-log list kn_abc123 --limit 20
 openbkn bkn action-log get kn_abc123 log_789
 openbkn bkn action-log cancel kn_abc123 log_789
-openbkn bkn action-execution get kn_abc123 exec_456
+openbkn bkn action-execution kn_abc123 exec_456
 ```
+
+`--body` 是执行请求体。执行目标按行动类的操作类别填写，不按适用条件扫描：修改、删除传 `_instance_identities` 指定实例；新建传 `object_input` 给出新实例被引用的属性值；建立或解除关系传 `relation_target`（`source_identity` 与 `target_identity` 各一个实例）；独立的工具调用（如上例）只传 `dynamic_params`。
 
 ### 端到端流程
 
@@ -452,10 +454,14 @@ curl -sk -X POST "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/k
   }'
 
 # 执行动作
-curl -sk -X POST "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/kn_abc123/actions/at_send_email/execute" \
+curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/knowledge-networks/kn_abc123/action-types/at_send_email/execute" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "params": {"to": "user@example.com", "subject": "提醒", "body": "您好"}
+    "dynamic_params": {"to": "user@example.com", "subject": "提醒", "body": "您好"}
   }'
+
+# 查询执行结果（execution_id 取自上一步的响应）
+curl -sk "https://<访问地址>/api/ontology-query/v1/knowledge-networks/kn_abc123/action-executions/exec_456" \
+  -H "Authorization: Bearer $(openbkn token)"
 ```

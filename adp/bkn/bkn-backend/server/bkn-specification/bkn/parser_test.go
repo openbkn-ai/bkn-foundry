@@ -7,6 +7,8 @@
 package bkn
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +16,76 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParseActionTypeKeepsUnquotedStringConstants(t *testing.T) {
+	text := `---
+type: action_type
+id: create
+name: Create
+action_type: add
+---
+
+## ActionType: Create
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| code | string | Body | | const | 123 | |
+| enabled | string | Body | | const | true | |
+| missing | string | Body | | const | null | |
+| items | text | Body | | const | [1,2] | |
+| detail | keyword | Body | | const | {"a":1} | |
+| quoted | string | Body | | const | "123" | |
+| count | integer | Body | | const | 42 | |
+| nullable | boolean | Body | | const | null | |
+| untyped | | Body | | const | 17 | |
+` + "\n### Operation Config\n\n```yaml\noperation_config:\n  type: object\n```\n"
+	at, err := ParseActionTypeFile(text, "create.bkn")
+	require.NoError(t, err)
+	require.Len(t, at.Parameters, 9)
+	for index, want := range []string{"123", "true", "null", "[1,2]", `{"a":1}`, "123"} {
+		assert.Equal(t, want, at.Parameters[index].Value)
+	}
+	assert.Equal(t, json.Number("42"), at.Parameters[6].Value)
+	assert.Nil(t, at.Parameters[7].Value)
+	assert.Equal(t, json.Number("17"), at.Parameters[8].Value)
+}
+
+func TestParseActionTypeRejectsMismatchedTypedConstants(t *testing.T) {
+	for _, tc := range []struct {
+		name, declared, raw string
+	}{
+		{"boolean number", "boolean", "123"},
+		{"boolean string", "boolean", `"true"`},
+		{"integer boolean", "integer", "true"},
+		{"integer fraction", "integer", "1.5"},
+		{"number string", "number", `"1.5"`},
+		{"array object", "array", `{}`},
+		{"object array", "object", `[]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text := fmt.Sprintf(`---
+type: action_type
+id: notify
+name: Notify
+action_type: add
+---
+
+## ActionType: Notify
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Description |
+|------|------|--------|-----------|-----------|-------|-------------|
+| payload | %s | Body | | const | %s | |
+`, tc.declared, tc.raw) + "\n### Operation Config\n\n```yaml\noperation_config:\n  type: tool\n```\n"
+			_, err := ParseActionTypeFile(text, "notify.bkn")
+			require.ErrorContains(t, err, `action parameter "payload"`)
+			require.ErrorContains(t, err, tc.declared)
+		})
+	}
+}
 
 // === Parse Frontmatter Tests ===
 
