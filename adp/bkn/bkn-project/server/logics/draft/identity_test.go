@@ -316,15 +316,15 @@ func Test_ChooseIdentity(t *testing.T) {
 			lines.Properties = append(lines.Properties, &interfaces.DraftProperty{Name: "customer_id", Type: "string", MappedField: "customer_id"})
 			d.Items.RelationTypes = []*interfaces.DraftRelationType{
 				{ID: "order_lines_to_customers", Name: "order_lines_to_customers", Source: "order_lines", Target: "customers",
-					Origin:  interfaces.DRAFT_ORIGIN_NAME_MATCH,
-					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "customer_id", TargetProperty: "id"}},
-					Evidence: interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
+					Origin:          interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping:         []interfaces.DraftFieldMapping{{SourceProperty: "customer_id", TargetProperty: "id"}},
+					Evidence:        interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
 					ProposedBecause: proposedEndNotAdopted},
 				// One a person left out with its end adopted stays out.
 				{ID: "decided", Name: "decided", Source: "order_lines", Target: "customers",
-					Origin:  interfaces.DRAFT_ORIGIN_NAME_MATCH,
-					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "order_no", TargetProperty: "id"}},
-					Evidence: interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
+					Origin:          interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping:         []interfaces.DraftFieldMapping{{SourceProperty: "order_no", TargetProperty: "id"}},
+					Evidence:        interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
 					ProposedBecause: proposedEndNotAdopted},
 			}
 			d.Items.Decisions = []*interfaces.DraftDecision{

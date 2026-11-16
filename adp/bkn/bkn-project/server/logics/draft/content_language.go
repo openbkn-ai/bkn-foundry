@@ -186,7 +186,7 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 			// its ends and the fields that join them, whatever language the id reads in.
 			relations = append(relations, namingItem{Key: "r:" + rt.ID, Kind: namingRelationType, Name: rt.Name,
 				Description: truncateRunes(rt.Description, interfaces.DRAFT_DESCRIPTION_MAX_LENGTH),
-				Source: relationSource(items, newTables, rt)})
+				Source:      relationSource(items, newTables, rt)})
 			targets["r:"+rt.ID] = &namingTarget{name: &rt.Name, description: &rt.Description, renames: true,
 				redescribes: inOtherLanguage(language, rt.Description)}
 			continue
