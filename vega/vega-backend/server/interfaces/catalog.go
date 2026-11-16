@@ -34,6 +34,14 @@ var CATALOG_SORT = map[string]struct{}{
 	CatalogSortUpdateTime: {},
 }
 
+// CatalogVariable 将变量值及其保护标记保存在同一个声明中。
+// Value 为 nil 或缺省均表示未配置，创建和完整替换时拒绝；嵌套业务数据的 nil 不受影响。
+// 普通读取仅省略敏感声明的 value，保留变量名与 sensitive 标记。
+type CatalogVariable struct {
+	Value     any  `json:"value" mapstructure:"value"`
+	Sensitive bool `json:"sensitive" mapstructure:"sensitive"`
+}
+
 // CatalogDeletionTaskImpact 统计全部关联任务记录，包括待执行任务和终态历史。
 // 存在阻断任务时，整个目录均不可删除。
 type CatalogDeletionTaskImpact struct {

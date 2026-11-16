@@ -1476,18 +1476,57 @@ func (cs *catalogService) testConnectorConnection(ctx context.Context, connector
 	return connector.TestConnection(testCtx)
 }
 
+// catalogVariables 仅在独立副本上将 Go 变量声明还原为可修改的配置 map。
+func catalogVariables(config interfaces.ConnectorConfig, fields []string) map[string]any {
+	if len(fields) == 0 {
+		return nil
+	}
+	variables, ok := config["variables"].(map[string]any)
+	if !ok {
+		typed, ok := config["variables"].(map[string]interfaces.CatalogVariable)
+		if !ok {
+			return nil
+		}
+		variables = make(map[string]any, len(typed))
+		for name, variable := range typed {
+			variables[name] = map[string]any{"value": variable.Value, "sensitive": variable.Sensitive}
+		}
+		config["variables"] = variables
+	}
+	for _, name := range fields {
+		if variable, ok := variables[name].(interfaces.CatalogVariable); ok {
+			variables[name] = map[string]any{"value": variable.Value, "sensitive": variable.Sensitive}
+		}
+	}
+	return variables
+}
+
+// sensitiveVariableValue 读取声明中的敏感值，其他连接器的直接变量值沿用原保护规则。
+func sensitiveVariableValue(variable any) any {
+	if declaration, ok := variable.(map[string]any); ok {
+		if sensitive, _ := declaration["sensitive"].(bool); sensitive {
+			return declaration["value"]
+		}
+		return nil
+	}
+	return variable
+}
+
 // encryptSensitiveFields validates plaintext and returns an independent storage configuration.
 func (cs *catalogService) encryptSensitiveFields(sensitiveFields []string,
 	config interfaces.ConnectorConfig) (encryptedConfig interfaces.ConnectorConfig, err error) {
 	encryptedConfig = deepcopy.Copy(config).(interfaces.ConnectorConfig)
-	variables, _ := encryptedConfig["variables"].(map[string]any)
-	targets := []interfaces.ConnectorConfig{encryptedConfig, variables}
+	variables := catalogVariables(encryptedConfig, sensitiveFields)
 	for _, field := range sensitiveFields {
-		for _, target := range targets {
-			value, ok := target[field].(string)
-			if ok && len(value) >= len(EncryptedPrefix) && strings.EqualFold(value[:len(EncryptedPrefix)], EncryptedPrefix) {
-				return nil, fmt.Errorf("field %s: %w", field, errSensitivePlaintextPrefix)
-			}
+		value, ok := encryptedConfig[field].(string)
+		if ok && len(value) >= len(EncryptedPrefix) && strings.EqualFold(value[:len(EncryptedPrefix)], EncryptedPrefix) {
+			return nil, fmt.Errorf("field %s: %w", field, errSensitivePlaintextPrefix)
+		}
+	}
+	for _, field := range sensitiveFields {
+		value, ok := sensitiveVariableValue(variables[field]).(string)
+		if ok && len(value) >= len(EncryptedPrefix) && strings.EqualFold(value[:len(EncryptedPrefix)], EncryptedPrefix) {
+			return nil, fmt.Errorf("field %s: %w", field, errSensitivePlaintextPrefix)
 		}
 	}
 	if !cs.appSetting.CryptoSetting.Enabled {
@@ -1497,22 +1536,35 @@ func (cs *catalogService) encryptSensitiveFields(sensitiveFields []string,
 		return nil, errors.New("catalog encryption key is unavailable")
 	}
 	for _, field := range sensitiveFields {
-		for _, target := range targets {
-			value, ok := target[field].(string)
-			if !ok || value == "" {
-				continue
-			}
-			ciphertext, err := cs.cipher.Encrypt(value)
-			if err != nil {
-				return nil, fmt.Errorf("field %s: encryption failed", field)
-			}
-			target[field] = EncryptedPrefix + ciphertext
+		value, ok := encryptedConfig[field].(string)
+		if !ok || value == "" {
+			continue
+		}
+		ciphertext, err := cs.cipher.Encrypt(value)
+		if err != nil {
+			return nil, fmt.Errorf("field %s: encryption failed", field)
+		}
+		encryptedConfig[field] = EncryptedPrefix + ciphertext
+	}
+	for _, field := range sensitiveFields {
+		value, ok := sensitiveVariableValue(variables[field]).(string)
+		if !ok || value == "" {
+			continue
+		}
+		ciphertext, err := cs.cipher.Encrypt(value)
+		if err != nil {
+			return nil, fmt.Errorf("field %s: encryption failed", field)
+		}
+		if variable, ok := variables[field].(map[string]any); ok {
+			variable["value"] = EncryptedPrefix + ciphertext
+		} else {
+			variables[field] = EncryptedPrefix + ciphertext
 		}
 	}
 	return encryptedConfig, nil
 }
 
-// removeSensitiveFields hides declared names in both the top level and variables.
+// removeSensitiveFields 隐藏受保护字段值，保留变量声明的名称和敏感标记。
 func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) error {
 	if catalog == nil || catalog.ConnectorType == "" {
 		return nil
@@ -1522,9 +1574,21 @@ func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) err
 		return err
 	}
 	config := deepcopy.Copy(catalog.ConnectorCfg).(interfaces.ConnectorConfig)
-	variables, _ := config["variables"].(map[string]any)
+	variables := catalogVariables(config, fields)
 	for _, field := range fields {
 		delete(config, field)
+	}
+	for _, field := range fields {
+		if variable, ok := variables[field].(map[string]any); ok {
+			_, hasValue := variable["value"]
+			_, hasSensitive := variable["sensitive"]
+			if hasValue || hasSensitive {
+				if sensitive, _ := variable["sensitive"].(bool); sensitive {
+					delete(variable, "value")
+				}
+				continue
+			}
+		}
 		delete(variables, field)
 	}
 	catalog.ConnectorCfg = config
@@ -1535,21 +1599,37 @@ func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) err
 func (cs *catalogService) decryptSensitiveFields(sensitiveFields []string,
 	config interfaces.ConnectorConfig) (decryptedConfig interfaces.ConnectorConfig, err error) {
 	decryptedConfig = deepcopy.Copy(config).(interfaces.ConnectorConfig)
-	variables, _ := decryptedConfig["variables"].(map[string]any)
+	variables := catalogVariables(decryptedConfig, sensitiveFields)
 	for _, field := range sensitiveFields {
-		for _, target := range []interfaces.ConnectorConfig{decryptedConfig, variables} {
-			value, ok := target[field].(string)
-			if !ok || value == "" || !strings.HasPrefix(value, EncryptedPrefix) {
-				continue
-			}
-			if cs.cipher == nil {
-				return nil, fmt.Errorf("field %s: decryption key is unavailable", field)
-			}
-			plaintext, err := cs.cipher.Decrypt(strings.TrimPrefix(value, EncryptedPrefix))
-			if err != nil {
-				return nil, fmt.Errorf("field %s: invalid encrypted value", field)
-			}
-			target[field] = plaintext
+		value, ok := decryptedConfig[field].(string)
+		if !ok || value == "" || !strings.HasPrefix(value, EncryptedPrefix) {
+			continue
+		}
+		if cs.cipher == nil {
+			return nil, fmt.Errorf("field %s: decryption key is unavailable", field)
+		}
+		plaintext, err := cs.cipher.Decrypt(strings.TrimPrefix(value, EncryptedPrefix))
+		if err != nil {
+			return nil, fmt.Errorf("field %s: invalid encrypted value", field)
+		}
+		decryptedConfig[field] = plaintext
+	}
+	for _, field := range sensitiveFields {
+		value, ok := sensitiveVariableValue(variables[field]).(string)
+		if !ok || value == "" || !strings.HasPrefix(value, EncryptedPrefix) {
+			continue
+		}
+		if cs.cipher == nil {
+			return nil, fmt.Errorf("field %s: decryption key is unavailable", field)
+		}
+		plaintext, err := cs.cipher.Decrypt(strings.TrimPrefix(value, EncryptedPrefix))
+		if err != nil {
+			return nil, fmt.Errorf("field %s: invalid encrypted value", field)
+		}
+		if variable, ok := variables[field].(map[string]any); ok {
+			variable["value"] = plaintext
+		} else {
+			variables[field] = plaintext
 		}
 	}
 	return decryptedConfig, nil

@@ -68,6 +68,68 @@ func requireRedactedConnectorInitializationError(t *testing.T, err error, sensit
 }
 
 func TestEncryptSensitiveFields(t *testing.T) {
+	t.Run("protects typed variable declarations used by Go callers", func(t *testing.T) {
+		for _, variables := range []any{
+			map[string]interfaces.CatalogVariable{"token": {Value: "fixture", Sensitive: true}},
+			map[string]any{"token": interfaces.CatalogVariable{Value: "fixture", Sensitive: true}},
+		} {
+			cfg := interfaces.ConnectorConfig{"variables": variables}
+			before, err := json.Marshal(cfg)
+			require.NoError(t, err)
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: true}}, cipher: &mockCipher{}}
+			got, err := cs.encryptSensitiveFields([]string{"token"}, cfg)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"value": "ENC:encrypted_fixture", "sensitive": true}, got["variables"].(map[string]any)["token"])
+			after, err := json.Marshal(cfg)
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+		}
+	})
+	t.Run("encrypts only sensitive variable values and preserves their declarations", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			var encrypted []string
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{encryptFunc: func(value string) (string, error) {
+				encrypted = append(encrypted, value)
+				return "sealed_" + value, nil
+			}}}
+			cfg := interfaces.ConnectorConfig{"password": "fixed-fixture", "variables": map[string]any{
+				"token":    map[string]any{"value": "token-fixture", "sensitive": true},
+				"password": map[string]any{"value": "public-fixture", "sensitive": false},
+				"zero":     map[string]any{"value": json.Number("9007199254740993.123456789")},
+				"nil":      map[string]any{"value": nil},
+				"flag":     map[string]any{"value": false},
+				"object":   map[string]any{"value": map[string]any{"sensitive": true, "value": "business-data"}},
+			}}
+			got, err := cs.encryptSensitiveFields([]string{"password", "token"}, cfg)
+			require.NoError(t, err)
+			variables := got["variables"].(map[string]any)
+			token := variables["token"].(map[string]any)
+			assert.Equal(t, true, token["sensitive"])
+			if enabled {
+				assert.Equal(t, []string{"fixed-fixture", "token-fixture"}, encrypted)
+				assert.Equal(t, "ENC:sealed_token-fixture", token["value"])
+			} else {
+				assert.Empty(t, encrypted)
+				assert.Equal(t, "token-fixture", token["value"])
+			}
+			for _, name := range []string{"password", "zero", "nil", "flag", "object"} {
+				assert.Equal(t, cfg["variables"].(map[string]any)[name], variables[name])
+			}
+			assert.Equal(t, "token-fixture", cfg["variables"].(map[string]any)["token"].(map[string]any)["value"])
+		}
+	})
+	t.Run("rejects ciphertext-looking sensitive variable values before any write", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			for _, value := range []string{"ENC:fixture", "enc:fixture", "EnC:fixture"} {
+				cfg := interfaces.ConnectorConfig{"variables": map[string]any{"token": map[string]any{"value": value, "sensitive": true}}}
+				cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}}
+				got, err := cs.encryptSensitiveFields([]string{"token"}, cfg)
+				require.ErrorIs(t, err, errSensitivePlaintextPrefix)
+				assert.Nil(t, got)
+				assert.Equal(t, value, cfg["variables"].(map[string]any)["token"].(map[string]any)["value"])
+			}
+		}
+	})
 	t.Run("reserved plaintext prefix is rejected before encryption regardless of the switch", func(t *testing.T) {
 		for _, enabled := range []bool{false, true} {
 			for _, value := range []string{"ENC:", "enc:fixture", "EnC:fixture"} {
@@ -147,15 +209,15 @@ func TestEncryptSensitiveFields(t *testing.T) {
 			encrypted = append(encrypted, value)
 			return "sealed_" + value, nil
 		}}}
-		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": "key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}, "options": map[string]any{"driver_option": "unchanged"}}
+		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": map[string]any{"value": "key-fixture", "sensitive": true}, "tenant": map[string]any{"value": "public"}}, "options": map[string]any{"driver_option": "unchanged"}}
 		got, err := cs.encryptSensitiveFields([]string{"token", "api_key"}, cfg)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"fixed-fixture", "key-fixture"}, encrypted)
 		assert.Equal(t, "ENC:sealed_fixed-fixture", got["token"])
-		assert.Equal(t, "ENC:sealed_key-fixture", got["variables"].(map[string]any)["api_key"])
-		assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"])
+		assert.Equal(t, "ENC:sealed_key-fixture", got["variables"].(map[string]any)["api_key"].(map[string]any)["value"])
+		assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"].(map[string]any)["value"])
 		assert.Equal(t, cfg["options"], got["options"])
-		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"])
+		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"].(map[string]any)["value"])
 	})
 	t.Run("retained keys support off on off writes without migrating existing values", func(t *testing.T) {
 		setting := &common.AppSetting{}
@@ -263,6 +325,42 @@ func TestEncryptSensitiveFields(t *testing.T) {
 }
 
 func TestDecryptSensitiveFields(t *testing.T) {
+	t.Run("decrypts typed variable declarations on an independent copy", func(t *testing.T) {
+		cfg := interfaces.ConnectorConfig{"variables": map[string]interfaces.CatalogVariable{"token": {Value: "ENC:fixture", Sensitive: true}, "plain": {Value: nil}}}
+		cs := &catalogService{cipher: &mockCipher{decryptFunc: func(string) (string, error) { return "plaintext-fixture", nil }}}
+		got, err := cs.decryptSensitiveFields([]string{"token"}, cfg)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"value": "plaintext-fixture", "sensitive": true}, got["variables"].(map[string]any)["token"])
+		assert.Equal(t, map[string]any{"value": nil, "sensitive": false}, got["variables"].(map[string]any)["plain"])
+		assert.Equal(t, "ENC:fixture", cfg["variables"].(map[string]interfaces.CatalogVariable)["token"].Value)
+	})
+	t.Run("decrypts sensitive variable values without changing stored metadata or ordinary values", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{decryptFunc: func(value string) (string, error) {
+				assert.Equal(t, "sealed_fixture", value)
+				return "plain-fixture", nil
+			}}}
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{
+				"token":  map[string]any{"value": "ENC:sealed_fixture", "sensitive": true},
+				"normal": map[string]any{"value": "ENC:literal", "sensitive": false},
+			}}
+			got, err := cs.decryptSensitiveFields([]string{"token"}, cfg)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"value": "plain-fixture", "sensitive": true}, got["variables"].(map[string]any)["token"])
+			assert.Equal(t, cfg["variables"].(map[string]any)["normal"], got["variables"].(map[string]any)["normal"])
+			assert.Equal(t, "ENC:sealed_fixture", cfg["variables"].(map[string]any)["token"].(map[string]any)["value"])
+		}
+	})
+	t.Run("sensitive variable decryption failures never expose stored ciphertext", func(t *testing.T) {
+		for _, cipher := range []kwcrypto.Cipher{nil, &mockCipher{decryptFunc: func(string) (string, error) { return "", errors.New("private fixture disclosure") }}} {
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"token": map[string]any{"value": "ENC:bad", "sensitive": true}}}
+			got, err := (&catalogService{cipher: cipher}).decryptSensitiveFields([]string{"token"}, cfg)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.NotContains(t, err.Error(), "private fixture")
+			assert.Equal(t, "ENC:bad", cfg["variables"].(map[string]any)["token"].(map[string]any)["value"])
+		}
+	})
 	t.Run("top-level fields do not shadow encrypted variables", func(t *testing.T) {
 		for _, value := range []any{"ENC:fixed", "plain", "", nil, false, 0} {
 			cs := &catalogService{cipher: &mockCipher{decryptFunc: func(ciphertext string) (string, error) { return "plain_" + ciphertext, nil }}}
@@ -293,12 +391,12 @@ func TestDecryptSensitiveFields(t *testing.T) {
 	t.Run("decrypts declared variables independently of the write encryption switch", func(t *testing.T) {
 		for _, enabled := range []bool{false, true} {
 			cs := &catalogService{appSetting: &common.AppSetting{CryptoSetting: common.CryptoSetting{Enabled: enabled}}, cipher: &mockCipher{decryptFunc: func(value string) (string, error) { return strings.TrimPrefix(value, "sealed_"), nil }}}
-			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"api_key": "ENC:sealed_key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}}
+			cfg := interfaces.ConnectorConfig{"variables": map[string]any{"api_key": map[string]any{"value": "ENC:sealed_key-fixture", "sensitive": true}, "tenant": map[string]any{"value": "public"}}}
 			got, err := cs.decryptSensitiveFields([]string{"api_key"}, cfg)
 			require.NoError(t, err)
-			assert.Equal(t, "key-fixture", got["variables"].(map[string]any)["api_key"])
-			assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"])
-			assert.Equal(t, "ENC:sealed_key-fixture", cfg["variables"].(map[string]any)["api_key"])
+			assert.Equal(t, "key-fixture", got["variables"].(map[string]any)["api_key"].(map[string]any)["value"])
+			assert.Equal(t, "public", got["variables"].(map[string]any)["tenant"].(map[string]any)["value"])
+			assert.Equal(t, "ENC:sealed_key-fixture", cfg["variables"].(map[string]any)["api_key"].(map[string]any)["value"])
 		}
 	})
 	t.Run("variable presence takes precedence over driver options", func(t *testing.T) {
@@ -570,7 +668,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			db, sqlMock, err := sqlmock.New()
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = db.Close() })
-			cfg := interfaces.ConnectorConfig{"token": "client-fixture", "variables": map[string]any{"fixture_option": "literal-client", "nested": map[string]any{"value": false}}, "sensitive_variables": []string{"fixture_option"}}
+			cfg := interfaces.ConnectorConfig{"token": "client-fixture", "variables": map[string]any{"fixture_option": map[string]any{"value": "literal-client", "sensitive": true}, "nested": map[string]any{"value": false}}}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
 			sourceChecked := false
@@ -588,10 +686,10 @@ func TestCatalogServiceCreate(t *testing.T) {
 			ca.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog) error {
 				if cryptoEnabled {
 					assert.Equal(t, "ENC:encrypted_client-fixture", saved.ConnectorCfg["token"])
-					assert.Equal(t, "ENC:encrypted_literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"])
+					assert.Equal(t, "ENC:encrypted_literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"].(map[string]any)["value"])
 				} else {
 					assert.Equal(t, "client-fixture", saved.ConnectorCfg["token"])
-					assert.Equal(t, "literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"])
+					assert.Equal(t, "literal-client", saved.ConnectorCfg["variables"].(map[string]any)["fixture_option"].(map[string]any)["value"])
 				}
 				assert.Equal(t, false, saved.ConnectorCfg["variables"].(map[string]any)["nested"].(map[string]any)["value"])
 				return nil
@@ -603,7 +701,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: cfg}, false)
 			require.NoError(t, err)
 			assert.Equal(t, "client-fixture", cfg["token"])
-			assert.Equal(t, "literal-client", cfg["variables"].(map[string]any)["fixture_option"])
+			assert.Equal(t, "literal-client", cfg["variables"].(map[string]any)["fixture_option"].(map[string]any)["value"])
 			assert.Equal(t, false, cfg["variables"].(map[string]any)["nested"].(map[string]any)["value"])
 			require.NoError(t, sqlMock.ExpectationsWereMet())
 		})
@@ -3349,6 +3447,39 @@ func newS2SCatalogService(t *testing.T) (
 }
 
 func TestCatalogServiceRemoveSensitiveFields(t *testing.T) {
+	t.Run("retains metadata when hiding a typed variable value", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return([]string{"token"}, nil)
+		cfg := interfaces.ConnectorConfig{"variables": map[string]interfaces.CatalogVariable{"token": {Value: "ENC:fixture", Sensitive: true}, "flag": {Value: false}}}
+		catalog := &interfaces.Catalog{ConnectorType: "http", ConnectorCfg: cfg}
+		require.NoError(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
+		assert.Equal(t, map[string]any{"sensitive": true}, catalog.ConnectorCfg["variables"].(map[string]any)["token"])
+		assert.Equal(t, map[string]any{"value": false, "sensitive": false}, catalog.ConnectorCfg["variables"].(map[string]any)["flag"])
+		assert.Equal(t, "ENC:fixture", cfg["variables"].(map[string]interfaces.CatalogVariable)["token"].Value)
+	})
+	t.Run("omits only sensitive wrapper values and retains their names and flags idempotently", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return([]string{"token"}, nil).Times(2)
+		cfg := interfaces.ConnectorConfig{"variables": map[string]any{
+			"token":  map[string]any{"value": "ENC:fixture", "sensitive": true},
+			"normal": map[string]any{"value": false, "sensitive": false},
+			"nil":    map[string]any{"value": nil},
+			"tree":   map[string]any{"value": map[string]any{"sensitive": true, "value": "business-data"}},
+		}}
+		catalog := &interfaces.Catalog{ConnectorType: "http", ConnectorCfg: cfg}
+		cs := &catalogService{cf: cf}
+		for range 2 {
+			require.NoError(t, cs.removeSensitiveFields(catalog))
+		}
+		variables := catalog.ConnectorCfg["variables"].(map[string]any)
+		assert.Equal(t, map[string]any{"sensitive": true}, variables["token"])
+		for _, name := range []string{"normal", "nil", "tree"} {
+			assert.Equal(t, cfg["variables"].(map[string]any)[name], variables[name])
+		}
+		assert.Equal(t, "ENC:fixture", cfg["variables"].(map[string]any)["token"].(map[string]any)["value"])
+	})
 	t.Run("driver options are not removed when the selected field is absent", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cf := vmock.NewMockConnectorFactory(ctrl)
@@ -3361,16 +3492,15 @@ func TestCatalogServiceRemoveSensitiveFields(t *testing.T) {
 	t.Run("hides declared variables and preserves other configuration", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cf := vmock.NewMockConnectorFactory(ctrl)
-		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": "key-fixture", "tenant": "public"}, "sensitive_variables": []string{"api_key"}, "options": map[string]any{"driver_option": "unchanged"}}
+		cfg := interfaces.ConnectorConfig{"token": "fixed-fixture", "variables": map[string]any{"api_key": map[string]any{"value": "key-fixture", "sensitive": true}, "tenant": map[string]any{"value": "public"}}, "options": map[string]any{"driver_option": "unchanged"}}
 		cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "api_key"}, nil)
 		catalog := &interfaces.Catalog{ConnectorType: "http", ConnectorCfg: cfg}
 		require.NoError(t, (&catalogService{cf: cf}).removeSensitiveFields(catalog))
 		assert.NotContains(t, catalog.ConnectorCfg, "token")
-		assert.NotContains(t, catalog.ConnectorCfg["variables"], "api_key")
-		assert.Equal(t, "public", catalog.ConnectorCfg["variables"].(map[string]any)["tenant"])
+		assert.Equal(t, map[string]any{"sensitive": true}, catalog.ConnectorCfg["variables"].(map[string]any)["api_key"])
+		assert.Equal(t, "public", catalog.ConnectorCfg["variables"].(map[string]any)["tenant"].(map[string]any)["value"])
 		assert.Equal(t, cfg["options"], catalog.ConnectorCfg["options"])
-		assert.Equal(t, []string{"api_key"}, catalog.ConnectorCfg["sensitive_variables"])
-		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"])
+		assert.Equal(t, "key-fixture", cfg["variables"].(map[string]any)["api_key"].(map[string]any)["value"])
 	})
 	t.Run("removes both top-level and variable fields", func(t *testing.T) {
 		for _, value := range []any{"top-value", "", nil, false, 0} {
