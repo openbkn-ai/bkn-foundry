@@ -2291,6 +2291,92 @@ func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 
 // TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
 func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
+	for _, operator := range []string{"UNION", "UNION DISTINCT", "UNION ALL"} {
+		for _, reversed := range []bool{false, true} {
+			for _, window := range []struct {
+				name, logical, dataWindow string
+				limit, offset             int
+				total                     int64
+				full                      bool
+			}{
+				{"full result", "", " LIMIT 5", 5, 0, 2, true},
+				{"API page", "", " LIMIT 1 OFFSET 1", 1, 1, 2, false},
+				{"logical window", " LIMIT 1 OFFSET 1", " LIMIT 1 OFFSET 1", 5, 0, 1, false},
+			} {
+				name := operator + "/" + window.name
+				if reversed {
+					name += "/reversed"
+				}
+				t.Run("UNION NULL branch limits/"+name, func(t *testing.T) {
+					svc, rs, cs, cf := mysqlRawServices(t)
+					resource := builderTestResource()
+					resource.SourceIdentifier = `"public"."orders"`
+					mysqlRawMetadata(rs, cs, resource, true, "postgresql")
+					mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
+					left, right := "NULL", "1"
+					leftSQL, rightSQL := "NULL", "CAST(1 AS BIGINT)"
+					if reversed {
+						left, right, leftSQL, rightSQL = right, left, rightSQL, leftSQL
+					}
+					quantifier := " UNION "
+					if operator == "UNION ALL" {
+						quantifier = " UNION ALL "
+					}
+					base := `SELECT * FROM ((SELECT ` + leftSQL + ` AS "v" FROM "public"."orders" LIMIT 1)` + quantifier + `(SELECT ` + rightSQL + ` AS "v" FROM "public"."orders" LIMIT 1)) AS "_union_result" ORDER BY "v" ASC NULLS FIRST`
+					mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + window.logical + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(window.total)).RowsWillBeClosed()
+					mocks[0].ExpectClose()
+					rows := sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("v").OfType("INT8", int64(0)))
+					want := []map[string]any{{"v": int64(1)}}
+					if window.full {
+						rows.AddRow(nil)
+						want = []map[string]any{{"v": nil}, {"v": int64(1)}}
+					}
+					rows.AddRow(1)
+					mocks[1].ExpectQuery(base + window.dataWindow).WithoutArgs().WillReturnRows(rows).RowsWillBeClosed()
+					mocks[1].ExpectClose()
+					result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+						QueryFormat: interfaces.QueryFormatSQL,
+						Query:       "(SELECT " + left + " AS v FROM {{orders}} LIMIT 1) " + operator + " (SELECT " + right + " AS v FROM {{orders}} LIMIT 1) ORDER BY v" + window.logical,
+						NeedTotal:   true, Paging: interfaces.PagingRequest{Limit: window.limit, Offset: window.offset},
+					})
+					require.NoError(t, err)
+					assert.Equal(t, want, result.Entries)
+					require.NotNil(t, result.TotalCount)
+					assert.Equal(t, window.total, *result.TotalCount)
+					assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+					assert.Nil(t, result.Paging.NextCursor)
+				})
+			}
+		}
+	}
+	t.Run("UNION NULL branch limits retain one cursor and independent count", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SourceIdentifier = `"public"."orders"`
+		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
+		mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
+		base := `SELECT * FROM ((SELECT NULL AS "v" FROM "public"."orders" LIMIT 1) UNION ALL (SELECT CAST(1 AS BIGINT) AS "v" FROM "public"."orders" LIMIT 1)) AS "_union_result" ORDER BY "v" ASC NULLS FIRST LIMIT 2`
+		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(2)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		mocks[1].ExpectQuery(base).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("v").OfType("INT8", int64(0))).AddRow(nil).AddRow(1)).RowsWillBeClosed()
+		mocks[1].ExpectClose()
+		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+			QueryFormat: interfaces.QueryFormatSQL,
+			Query:       "(SELECT NULL AS v FROM {{orders}} LIMIT 1) UNION ALL (SELECT 1 AS v FROM {{orders}} LIMIT 1) ORDER BY v LIMIT 2",
+			NeedTotal:   true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"v": nil}}, first.Entries)
+		require.NotNil(t, first.TotalCount)
+		assert.EqualValues(t, 2, *first.TotalCount)
+		require.NotNil(t, first.Paging.NextCursor)
+		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(resource, nil)
+		second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"v": int64(1)}}, second.Entries)
+		assert.Nil(t, second.Paging.NextCursor)
+	})
 	t.Run("mysql input generates PG constants and independent logical count", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()

@@ -489,19 +489,21 @@ func (b *pgSQLBuffer) unionBody(union *sb.Union) {
 	if left := sb.UnionSource(union.Left); left != nil {
 		b.unionBody(left)
 	} else {
-		b.unionBranch(union.Left, "_union_left")
+		b.unionBranch(union.Left)
 	}
 	b.write(" UNION ")
 	if union.All {
 		b.write("ALL ")
 	}
-	b.unionBranch(union.Right, "_union_right")
+	b.unionBranch(union.Right)
 }
 
-// unionBranch 通过派生表限定分支自己的 ORDER BY、LIMIT 和 OFFSET。
-func (b *pgSQLBuffer) unionBranch(query *sb.SelectBuilder, alias string) {
+// unionBranch 用原生括号限定分支子句，避免派生表提前确定未知输出的类型。
+func (b *pgSQLBuffer) unionBranch(query *sb.SelectBuilder) {
 	if len(query.OrderByPart) > 0 || query.LimitPart != nil || query.OffsetPart != 0 {
-		b.node(sb.Select(&sb.Star{}).FromSelect(query, alias))
+		b.write("(")
+		b.node(query)
+		b.write(")")
 		return
 	}
 	b.node(query)
