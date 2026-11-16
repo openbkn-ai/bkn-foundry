@@ -6,6 +6,9 @@ package action_scheduler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -65,9 +68,18 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 	if executor.ID == "" || executor.Type == "" {
 		return governanceUnavailable(ctx, errors.New("authenticated action initiator is missing"))
 	}
+	if len(snapshot) == 0 {
+		return governanceUnavailable(ctx, errors.New("published action snapshot is missing"))
+	}
+	snapshotBytes, err := json.Marshal(snapshot)
+	if err != nil {
+		return governanceUnavailable(ctx, fmt.Errorf("cannot encode published action snapshot: %w", err))
+	}
+	snapshotHash := sha256.Sum256(snapshotBytes)
 	claim := interfaces.ActionGovernanceClaim{
 		KNID: req.KNID, ActionTypeID: req.ActionTypeID, Initiator: executor,
-		RequestID: req.GovernanceRequestID, PermitID: req.GovernancePermitID, PlanDigest: req.GovernancePlanDigest,
+		DefinitionDigest: hex.EncodeToString(snapshotHash[:]),
+		RequestID:        req.GovernanceRequestID, PermitID: req.GovernancePermitID, PlanDigest: req.GovernancePlanDigest,
 		TargetIdentity: req.Instances[0].InstanceIdentity, DynamicParams: req.DynamicParams,
 		RelationTarget: req.RelationTarget, ObjectInput: req.ObjectInput, ActionTypeSnapshot: snapshot,
 	}

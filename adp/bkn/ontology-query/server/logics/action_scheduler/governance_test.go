@@ -6,6 +6,8 @@ package action_scheduler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"testing"
@@ -64,6 +66,10 @@ func TestManagedActionRequiresGateAndPermit(t *testing.T) {
 	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusConflict || gate.calls != 0 {
 		t.Fatalf("multiple targets status=%d calls=%d", status(err), gate.calls)
 	}
+	request.Instances = request.Instances[:1]
+	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusServiceUnavailable || gate.calls != 0 {
+		t.Fatalf("missing published snapshot status=%d calls=%d", status(err), gate.calls)
+	}
 }
 
 func TestManagedActionPassesTrustedResolvedTargetToGate(t *testing.T) {
@@ -75,7 +81,8 @@ func TestManagedActionPassesTrustedResolvedTargetToGate(t *testing.T) {
 	if err := service.claimActionGovernance(context.Background(), request, interfaces.AccountInfo{ID: "alice", Type: "user"}, snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if gate.calls != 1 || gate.claim.Initiator.ID != "alice" || gate.claim.TargetIdentity["order_id"] != "o1" || gate.claim.ActionTypeSnapshot["revision"] != "v2" {
+	sum := sha256.Sum256([]byte(`{"id":"pay","revision":"v2"}`))
+	if gate.calls != 1 || gate.claim.Initiator.ID != "alice" || gate.claim.TargetIdentity["order_id"] != "o1" || gate.claim.ActionTypeSnapshot["revision"] != "v2" || gate.claim.DefinitionDigest != hex.EncodeToString(sum[:]) {
 		t.Fatalf("untrusted or incomplete claim: %+v", gate.claim)
 	}
 	gate.err = interfaces.ErrActionPermitRejected

@@ -19,6 +19,7 @@ var ErrActionPermitRejected = errors.New("action governance permit rejected")
 type ActionGovernanceClaim struct {
 	KNID               string
 	ActionTypeID       string
+	DefinitionDigest   string
 	Initiator          AccountInfo
 	RequestID          string
 	PermitID           string
