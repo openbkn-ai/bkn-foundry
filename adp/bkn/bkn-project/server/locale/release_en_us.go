@@ -21,7 +21,6 @@ var releaseEnUS = i18n.I18nMessages{
 		"BknProject.Release.ValidationFailed":    "Publish Checks Failed. The network still needs fixing; see error_details.",
 		"BknProject.Release.PublishPending":      "Publish Not Confirmed. This version was sent for publishing and no answer came back. Publish again to finish it before preparing it anew.",
 		"BknProject.Release.NotVersioned":        "Network Not Versioned. The project's network does not keep versions yet; turn versioning on first.",
-		"BknProject.Release.NoRunningVersion":    "No Published Version. The network has no published version to go back to, so its unpublished edits cannot be discarded.",
 		"BknProject.Release.VersionPurged":       "Only the Record Is Kept. This version's content was cleaned up and only its record is kept. Copy it from the project history and publish it again.",
 		"BknProject.Release.NotReady":            "Network Not Ready. The network is still preparing search or data access; try again later.",
 		"BknProject.Rollback.BrokenReferences":   "Cannot Roll Back. The target version refers to things that no longer exist; see error_details.",
