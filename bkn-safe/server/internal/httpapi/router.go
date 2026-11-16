@@ -217,6 +217,7 @@ func New(deps Deps) *gin.Engine {
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)
 		registerObjectGrants(admin, deps.Enforcer, deps.DB, deps.Directory, deps.AuthorizationResources, permissionRequests)
+		registerEffectiveFieldPermissions(admin, deps.Enforcer, deps.DB, deps.RowFilterPublishedObjectTypes)
 		if permissionRequests != nil {
 			registerAdminPermissionRequests(admin, permissionRequests, deps.Enforcer)
 		}

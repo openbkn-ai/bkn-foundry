@@ -132,6 +132,28 @@ func Resolve(ctx context.Context, request Request) (Response, error) {
 	return apply(request, resolution)
 }
 
+// ResolveRole projects an existing role as a subject, rather than treating its
+// ID as a user. The same base clamp and downgrade fallback apply.
+func ResolveRole(ctx context.Context, request Request) (Response, error) {
+	if err := validateRequest(request); err != nil {
+		return Response{}, err
+	}
+	if !Available() {
+		return Fallback(request)
+	}
+	resolver, ok := load().(interface {
+		ResolveRole(context.Context, Request) (Resolution, error)
+	})
+	if !ok {
+		return Response{}, ErrInvalidResolution
+	}
+	resolution, err := resolver.ResolveRole(ctx, request)
+	if err != nil {
+		return Response{}, err
+	}
+	return apply(request, resolution)
+}
+
 // Fallback derives decisions exclusively from core's BaseLevel. It is also
 // used for inactive accessors so no enterprise resolver is consulted for an
 // identity that core has already rejected.

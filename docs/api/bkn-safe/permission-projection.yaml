@@ -1,0 +1,164 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+openapi: 3.0.3
+info:
+  title: Administrator permission projection
+  version: 0.1.0
+  description: Read-only projections for Studio's knowledge-network permission matrix. Requires admin-authz:view. Existing grant editing contracts are unchanged.
+servers:
+  - url: /api/safe/v1/admin
+security:
+  - BearerAuth: []
+paths:
+  /permission-projection:
+    post:
+      operationId: projectKnowledgeNetworkPermissions
+      summary: Project effective operations for the current resource page
+      description: Includes direct, inherited, wildcard and parent-resource decisions. Creation is a type-level capability and is excluded. Source details require exactly one resource. Enterprise assemblies optionally add configuration_summary counts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [network_id, subject, resources]
+              properties:
+                network_id:
+                  type: string
+                subject:
+                  $ref: '#/components/schemas/Subject'
+                include_sources:
+                  type: boolean
+                  default: false
+                resources:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [type, id]
+                    properties:
+                      type:
+                        type: string
+                        enum: [knowledge_network, object_type, relation_type, action_type, metric]
+                      id:
+                        type: string
+                        description: Concrete resource within network_id; child resources use network/resource.
+      responses:
+        '200':
+          description: Effective decisions; unavailable Enterprise summaries are omitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  subjects:
+                    type: object
+                    additionalProperties: true
+                  source_targets:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: Invalid subject, resource scope, page size or source request.
+        '401':
+          description: Missing or invalid authentication.
+        '403':
+          description: Missing admin-authz:view.
+        '404':
+          description: Subject does not exist or is inactive.
+        '500':
+          description: Projection could not be computed; never reported as empty permissions.
+  /permission-projection/fields:
+    get:
+      operationId: projectEffectiveFieldPermissions
+      summary: Read effective levels for every published data field
+      description: Resolves the selected user's or role's field rules and clamps them to effective object access. Missing explicit configuration does not mean there are no fields.
+      parameters:
+        - name: accessor_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: accessor_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [user, role]
+        - name: object_type_ref
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Published network/object reference.
+      responses:
+        '200':
+          description: Complete effective field projection.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessor, object_type_ref, entries, decisions]
+                properties:
+                  accessor:
+                    $ref: '#/components/schemas/Subject'
+                  object_type_ref:
+                    type: string
+                  entries:
+                    type: array
+                    description: Empty; explicit grant editing uses the existing property-grants endpoint.
+                    items:
+                      type: object
+                  decisions:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, display_name, level, source]
+                      properties:
+                        name:
+                          type: string
+                        display_name:
+                          type: string
+                        level:
+                          type: string
+                          enum: [none, schema, masked, full]
+                        source:
+                          type: string
+                          enum: [object_type, property]
+        '400':
+          description: Invalid subject or object reference.
+        '401':
+          description: Missing or invalid authentication.
+        '403':
+          description: Missing admin-authz:view.
+        '404':
+          description: Subject does not exist or is inactive.
+        '409':
+          description: Object type is not published.
+        '500':
+          description: Published schema or effective resolver failed.
+        '503':
+          description: Published-model resolver is unavailable.
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Subject:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [user, role]
