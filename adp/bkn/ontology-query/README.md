@@ -205,6 +205,13 @@ parameters, action definition, request, and permit. The caller-provided digest
 is a reference, not proof of approval. A permit is claimed before the
 execution record is saved; if that write fails, the caller needs a new permit.
 
+The Helm `actionGovernance` values set the pilot list, governance service URL,
+Hydra token URL, executor client ID and a Kubernetes Secret reference for its
+client secret. The list defaults to empty. When it is set, the chart requires
+all connection values and the EE executable obtains a client-credentials token
+for each claim. The first rollout supports network-scoped policies; a trusted
+bkn-project binding must be added before using project-scoped policies.
+
 ### EE metric result pagination
 
 Published metric queries and trials with `page_size` retain the final ordered
