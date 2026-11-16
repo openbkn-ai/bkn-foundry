@@ -256,6 +256,163 @@ def test_fallback_network_failure_is_not_hidden():
         asyncio.run(structured_extract(m, [], SCHEMA))
 
 
+@pytest.fixture(autouse=True)
+def _forget_native_refusals():
+    structured._native_unsupported.clear()
+    yield
+    structured._native_unsupported.clear()
+
+
+class _StatusError(Exception):
+    def __init__(self, status_code, message):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class _Provider:
+    """A ChatOpenAI-like model at (openai_api_base, model_name): the native call
+    raises native_error, or returns native_obj; the fallback answers JSON."""
+
+    openai_api_base = "http://mf-model-api/api/private/v1"
+
+    def __init__(self, model_name, native_error=None, native_obj=None):
+        self.model_name = model_name
+        self.native_error = native_error
+        self.native_obj = native_obj
+        self.native_calls = 0
+        self.fallback_calls = 0
+
+    def with_structured_output(self, schema):
+        outer = self
+
+        class _R:
+            async def ainvoke(self, messages):
+                outer.native_calls += 1
+                if outer.native_error is not None:
+                    raise outer.native_error
+                return outer.native_obj
+
+        return _R()
+
+    async def ainvoke(self, messages):
+        self.fallback_calls += 1
+        return AIMessage(content='{"greeting": "hi"}')
+
+
+# mf-model-api wraps DeepSeek's json_schema refusal as a 500 (#403).
+_MF_REFUSAL = (
+    "Error code: 500 - {'code': 'ModelFactory.ModelController.Model.Error', "
+    "'detail': 'This response_format type is unavailable now'}"
+)
+
+
+def test_native_refusal_is_remembered_per_model():
+    """#403: once a model refused json_schema, later calls skip the native try."""
+    deepseek = _Provider("deepseek-chat", native_error=_StatusError(500, _MF_REFUSAL))
+    for _ in range(2):
+        out, path = asyncio.run(structured_extract_with_path(deepseek, [], SCHEMA))
+        assert (out, path) == ({"greeting": "hi"}, "fallback")
+    assert deepseek.native_calls == 1
+    assert deepseek.fallback_calls == 2
+
+    qwen = _Provider("qwen", native_obj={"greeting": "pong"})
+    out, path = asyncio.run(structured_extract_with_path(qwen, [], SCHEMA))
+    assert (out, path) == ({"greeting": "pong"}, "native")
+    assert qwen.native_calls == 1
+
+
+def test_native_success_keeps_the_native_path():
+    qwen = _Provider("qwen", native_obj={"greeting": "pong"})
+    for _ in range(2):
+        assert asyncio.run(structured_extract_with_path(qwen, [], SCHEMA))[1] == "native"
+    assert qwen.native_calls == 2
+    assert qwen.fallback_calls == 0
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _StatusError(503, "Service Unavailable"),
+        _StatusError(429, "rate limited"),
+        _StatusError(408, "request timeout"),
+        TimeoutError("timed out"),
+        ConnectionError("connection reset"),
+    ],
+)
+def test_passing_native_failure_is_not_remembered(error):
+    model = _Provider("qwen", native_error=error)
+    for _ in range(2):
+        assert asyncio.run(structured_extract_with_path(model, [], SCHEMA))[1] == "fallback"
+    assert model.native_calls == 2
+
+
+def test_invalid_native_result_is_not_remembered():
+    model = _Provider("qwen", native_obj={"wrong": 1})
+    for _ in range(2):
+        assert asyncio.run(structured_extract_with_path(model, [], SCHEMA))[1] == "fallback"
+    assert model.native_calls == 2
+
+
+def test_native_refused_with_a_4xx_is_remembered():
+    model = _Provider(
+        "deepseek-chat",
+        native_error=_StatusError(400, "This response_format type is unavailable now"),
+    )
+    for _ in range(2):
+        asyncio.run(structured_extract_with_path(model, [], SCHEMA))
+    assert model.native_calls == 1
+
+
+@pytest.mark.parametrize("status", [400, 500])
+def test_error_not_naming_the_response_format_is_not_remembered(status):
+    """A 400 for an over-long context says nothing about json_schema support."""
+    model = _Provider("qwen", native_error=_StatusError(status, "maximum context length exceeded"))
+    for _ in range(2):
+        asyncio.run(structured_extract_with_path(model, [], SCHEMA))
+    assert model.native_calls == 2
+
+
+def test_refusal_in_thinking_mode_leaves_thinking_off_alone():
+    refusal = _StatusError(400, "json_schema response_format is not supported when enable_thinking is true")
+    thinking = _Provider("qwen", native_error=refusal)
+    thinking.default_headers = {"x-bkn-model-thinking-mode": "enabled"}
+    for _ in range(2):
+        asyncio.run(structured_extract_with_path(thinking, [], SCHEMA))
+    assert thinking.native_calls == 1
+
+    plain = _Provider("qwen", native_obj={"greeting": "pong"})
+    assert asyncio.run(structured_extract_with_path(plain, [], SCHEMA))[1] == "native"
+    assert plain.native_calls == 1
+
+
+def test_remembered_refusal_still_fails_when_the_fallback_does():
+    model = _Provider("deepseek-chat", native_error=_StatusError(500, _MF_REFUSAL))
+    asyncio.run(structured_extract_with_path(model, [], SCHEMA))
+
+    async def bad(messages):
+        return AIMessage(content="不是 JSON")
+
+    model.ainvoke = bad
+    with pytest.raises(structured.StructuredOutputError):
+        asyncio.run(structured_extract_with_path(model, [], SCHEMA))
+    assert model.native_calls == 1
+
+
+def test_real_chat_model_is_keyed_by_base_url_model_and_thinking_mode(monkeypatch):
+    from app.core import llm
+
+    monkeypatch.setattr(llm.config, "MF_MODEL_API_PRIVATE_BASE", "http://mf/api/private/v1")
+    assert structured._model_key(llm.build_chat_model("deepseek-chat", streaming=False)) == (
+        "http://mf/api/private/v1", "deepseek-chat", "",
+    )
+    token = llm.set_thinking_mode("enabled")
+    try:
+        model = llm.build_chat_model("deepseek-chat", streaming=False)
+    finally:
+        llm.reset_thinking_mode(token)
+    assert structured._model_key(model) == ("http://mf/api/private/v1", "deepseek-chat", "enabled")
+
+
 def _length_error(reasoning_tokens):
     from openai import LengthFinishReasonError
     from openai.types.chat import ChatCompletion
