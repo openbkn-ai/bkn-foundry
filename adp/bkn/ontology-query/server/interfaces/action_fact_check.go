@@ -9,6 +9,7 @@ package interfaces
 type ActionFactCheck struct {
 	KNID             string                `json:"-"`
 	ActionTypeID     string                `json:"-"`
+	Initiator        string                `json:"initiator"`
 	DefinitionDigest string                `json:"definition_digest"`
 	TargetIdentity   map[string]any        `json:"target_identity"`
 	DynamicParams    map[string]any        `json:"dynamic_params,omitempty"`

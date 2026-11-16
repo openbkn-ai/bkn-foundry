@@ -221,12 +221,22 @@ The governance service may also call the read-only internal endpoint
 Set `actionGovernance.factsClientID` in the Helm chart (or
 `GOVERNANCE_FACTS_CLIENT_ID` directly) to the OAuth application client ID
 allowed to call it. This endpoint requires that application's bearer token; an unset ID
-rejects every caller. The JSON body contains `definition_digest`,
+rejects every caller. The JSON body requires the immutable plan's `initiator`
+user ID, `definition_digest`,
 `target_identity`, and the action's `dynamic_params`, `object_input` or
 `relation_target`. It returns 204 only when the published action definition,
 single explicit target, target conditions and parameter bindings still pass.
-It returns no source data and never creates an execution. Governance separately
-rechecks the original initiator's action permission before calling it.
+It returns no source data and never creates an execution. The configured
+application is a trusted delegator: it must derive `initiator`
+from the saved plan, never an unverified browser field. Model permissions, data
+permissions, proxy binding and row filters are evaluated as that user; the
+application token only authenticates this service call. Governance also rechecks
+the same initiator's network-scoped action permission before calling it.
+
+The internal facts contract requires coordinated rollout with the governance
+adapter that supplies the saved initiator. An older caller without `initiator`
+is rejected with 400; do not enable managed actions until both services have
+been upgraded.
 
 ### EE metric result pagination
 

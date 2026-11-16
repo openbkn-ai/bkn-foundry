@@ -28,6 +28,7 @@ func TestActionFactCheckAcceptsOnlyTrustedApplication(t *testing.T) {
 		status  int
 	}{
 		{"trusted app", hydra.Visitor{ID: "governance", ClientID: "governance", Type: hydra.VisitorType_App}, "governance", http.StatusNoContent},
+		{"missing initiator", hydra.Visitor{ID: "governance", ClientID: "governance", Type: hydra.VisitorType_App}, "governance", http.StatusBadRequest},
 		{"other app", hydra.Visitor{ID: "other", ClientID: "other", Type: hydra.VisitorType_App}, "governance", http.StatusForbidden},
 		{"user", hydra.Visitor{ID: "alice", ClientID: "governance", Type: hydra.VisitorType_User}, "governance", http.StatusForbidden},
 		{"disabled", hydra.Visitor{ID: "governance", ClientID: "governance", Type: hydra.VisitorType_App}, "", http.StatusForbidden},
@@ -39,7 +40,11 @@ func TestActionFactCheckAcceptsOnlyTrustedApplication(t *testing.T) {
 			scheduler := omock.NewMockActionSchedulerService(ctrl)
 			auth.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(sample.visitor, nil)
 			if sample.status == http.StatusNoContent {
-				scheduler.EXPECT().CheckActionFacts(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, check *interfaces.ActionFactCheck) error {
+				scheduler.EXPECT().CheckActionFacts(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, check *interfaces.ActionFactCheck) error {
+					account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+					if account.ID != "alice" || account.Type != string(hydra.VisitorType_User) || check.Initiator != "alice" {
+						t.Errorf("fact check did not use saved initiator permissions: %+v", account)
+					}
 					if check.KNID != "kn" || check.ActionTypeID != "pay" {
 						t.Errorf("route IDs were not authoritative: %+v", check)
 					}
@@ -49,8 +54,12 @@ func TestActionFactCheckAcceptsOnlyTrustedApplication(t *testing.T) {
 			handler := &restHandler{as: auth, ass: scheduler}
 			engine := gin.New()
 			engine.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/facts/check", handler.CheckActionFactsByIn)
+			initiator := "alice"
+			if sample.name == "missing initiator" {
+				initiator = ""
+			}
 			request := httptest.NewRequest(http.MethodPost, "/knowledge-networks/kn/action-types/pay/execute/facts/check",
-				strings.NewReader(`{"definition_digest":"`+strings.Repeat("a", 64)+`","target_identity":{"id":"one"}}`))
+				strings.NewReader(`{"initiator":"`+initiator+`","definition_digest":"`+strings.Repeat("a", 64)+`","target_identity":{"id":"one"}}`))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)
