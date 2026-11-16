@@ -46,12 +46,18 @@ func (r *restHandler) CheckActionFactsByIn(c *gin.Context) {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden))
 		return
 	}
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: caller.ID, Type: string(caller.Type)})
 	check := interfaces.ActionFactCheck{}
 	if err := common.BindPreciseJSON(c.Request.Body, &check); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter))
 		return
 	}
+	if check.Initiator == "" || strings.TrimSpace(check.Initiator) != check.Initiator || len(check.Initiator) > 128 {
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter))
+		return
+	}
+	// Only the authenticated governance application may assert the saved plan
+	// initiator. Model/data permissions and row filters run as that user.
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: check.Initiator, Type: string(hydra.VisitorType_User)})
 	check.KNID = c.Param("kn_id")
 	check.ActionTypeID = c.Param("at_id")
 	if err := r.ass.CheckActionFacts(ctx, &check); err != nil {
