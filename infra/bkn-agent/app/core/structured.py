@@ -19,6 +19,13 @@ syntactically JSON, and drops it when the provider has neither. A reply cut off
 at the output cap (finish_reason length) is never valid JSON: the retry asks for
 a shorter answer, and the final error says the output was truncated, so the
 caller can ask for less at a time.
+
+A provider that refuses json_schema refuses it every time, so the refusal is
+remembered per (base_url, model, thinking mode) for the life of the process and later calls go
+straight to the fallback instead of paying for the same failed call again
+(#403). Only a refusal is remembered: a timeout, a network failure or a native
+result that does not match the schema says nothing about support, and neither
+does an error that does not name the response format.
 """
 import json
 import logging
@@ -90,6 +97,39 @@ def _request_refused(error: Exception) -> bool:
     return "response_format" in str(error)
 
 
+# (base_url, model, thinking mode) of providers that refused the native
+# json_schema request. The thinking mode is part of it: a thinking-mode model
+# refuses parameters the same model takes with thinking off.
+_native_unsupported: set[tuple[str, str, str]] = set()
+
+
+def _model_key(model) -> tuple[str, str, str] | None:
+    """The (base_url, model, thinking mode) a ChatOpenAI talks to; None for
+    anything else, which is then never remembered. The thinking mode is the
+    header build_chat_model sets, empty when the task does not pick one."""
+    base = getattr(model, "openai_api_base", None)
+    name = getattr(model, "model_name", None)
+    if not (isinstance(base, str) and isinstance(name, str)):
+        return None
+    headers = getattr(model, "default_headers", None) or {}
+    return base, name, str(headers.get("x-bkn-model-thinking-mode", ""))
+
+
+def _native_refused(error: Exception) -> bool:
+    """Whether the provider refused the native json_schema request itself, as
+    opposed to failing for another reason. The error must name the
+    response_format or json_schema, so a 400 for an over-long context is not
+    taken for one; with a status, it must be a 4xx or 5xx (mf-model-api wraps a
+    provider refusal as a 500) other than a timeout (408) or rate limit (429)."""
+    text = str(error)
+    if "response_format" not in text and "json_schema" not in text:
+        return False
+    status = getattr(error, "status_code", None)
+    if isinstance(status, int):
+        return 400 <= status < 600 and status not in (408, 429)
+    return True
+
+
 def _with_system_prompt(messages: list, system_prompt: str | None) -> list:
     """Put the agent system prompt back at the head of the extraction messages.
 
@@ -147,44 +187,61 @@ async def structured_extract_with_path(
             break
 
     messages = _with_system_prompt(messages, system_prompt)
-    # 1. Native
-    try:
-        norm = normalize_response_format(schema)
-        r = await model.with_structured_output(norm).ainvoke(messages)
-        obj = r.model_dump() if hasattr(r, "model_dump") else dict(r)
-        # Validate the native result too: with_structured_output does not run in
-        # strict mode, so a required field may be missing or a type may not
-        # match. An invalid result is not returned as a success; it falls through
-        # to the prompt fallback below.
-        _jsonschema_validate(obj, schema)
-        # If the path only reached bkn-trace evidence, one broken trace ingest
-        # (a 503 INGEST_AUTH_NOT_CONFIGURED happened once) would make it
-        # impossible to tell which path ran. Keep a local line: when
-        # investigating "the structured result is poor", the first thing to know
-        # is whether it came from the native or the fallback path, and whether
-        # the prompt was present.
-        # warning rather than info: main.py calls uvicorn.run directly with no
-        # log_config, and the repository configures no basicConfig or
-        # dictConfig, so root stays at WARNING with no handlers and an
-        # application-side logger.info is dropped entirely (measured in a Pod:
-        # zero [Toolbox] hits across 3000 log lines). This is one line per call
-        # that carries response_format, so the volume stays manageable.
+    key = _model_key(model)
+    if key in _native_unsupported:
         logger.warning(
-            "[Structured] path=native system_prompt=%s", bool(system_prompt)
+            "[Structured] native structured output skipped: %s refused it before", key[1] or "default model"
         )
-        return obj, "native"
-    except SchemaError:
-        # The schema itself is invalid. The request boundary already rejects
-        # that with check_schema (models.py ResponseFormat) and this is the
-        # backstop. The fallback path would fail just as surely, so raise
-        # immediately instead of wasting a model call.
-        raise
-    except Exception as e:  # The model does not support structured output, or the native result was invalid
-        logger.warning(
-            "[Structured] native structured output failed or was invalid; "
-            "falling back to prompt mode: %s", e
-        )
+    else:
+        try:
+            return await _native_extract(model, messages, schema, system_prompt), "native"
+        except SchemaError:
+            # The schema itself is invalid. The request boundary already rejects
+            # that with check_schema (models.py ResponseFormat) and this is the
+            # backstop. The fallback path would fail just as surely, so raise
+            # immediately instead of wasting a model call.
+            raise
+        except Exception as e:  # The model does not support structured output, or the native result was invalid
+            if key is not None and _native_refused(e):
+                _native_unsupported.add(key)
+            logger.warning(
+                "[Structured] native structured output failed or was invalid; "
+                "falling back to prompt mode: %s", e
+            )
 
+    return await _fallback_extract(model, messages, schema, system_prompt), "fallback"
+
+
+async def _native_extract(model, messages: list, schema: dict, system_prompt: str | None) -> dict:
+    """The native path: with_structured_output, validated against the schema."""
+    norm = normalize_response_format(schema)
+    r = await model.with_structured_output(norm).ainvoke(messages)
+    obj = r.model_dump() if hasattr(r, "model_dump") else dict(r)
+    # Validate the native result too: with_structured_output does not run in
+    # strict mode, so a required field may be missing or a type may not
+    # match. An invalid result is not returned as a success; it falls through
+    # to the prompt fallback.
+    _jsonschema_validate(obj, schema)
+    # If the path only reached bkn-trace evidence, one broken trace ingest
+    # (a 503 INGEST_AUTH_NOT_CONFIGURED happened once) would make it
+    # impossible to tell which path ran. Keep a local line: when
+    # investigating "the structured result is poor", the first thing to know
+    # is whether it came from the native or the fallback path, and whether
+    # the prompt was present.
+    # warning rather than info: main.py calls uvicorn.run directly with no
+    # log_config, and the repository configures no basicConfig or
+    # dictConfig, so root stays at WARNING with no handlers and an
+    # application-side logger.info is dropped entirely (measured in a Pod:
+    # zero [Toolbox] hits across 3000 log lines). This is one line per call
+    # that carries response_format, so the volume stays manageable.
+    logger.warning(
+        "[Structured] path=native system_prompt=%s", bool(system_prompt)
+    )
+    return obj
+
+
+async def _fallback_extract(model, messages: list, schema: dict, system_prompt: str | None) -> dict:
+    """The prompt fallback: JSON forced by the prompt, validated, one retry."""
     # 2. Prompt-forced JSON, validated, with a single retry
     # Stating that no tools are available for this call is necessary: the
     # system_prompt may contain skill sections, and the body load_skills injects
@@ -231,7 +288,7 @@ async def structured_extract_with_path(
                 attempt,
                 bool(system_prompt),
             )
-            return obj, "fallback"
+            return obj
         except (json.JSONDecodeError, ValidationError, ValueError) as e:
             last_err = e
             if truncated:
