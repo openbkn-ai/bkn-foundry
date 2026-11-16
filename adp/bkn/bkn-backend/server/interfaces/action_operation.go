@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	bkn "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
 const (
@@ -124,8 +126,13 @@ func ValidateActionOperation(at *ActionType) error {
 		}
 		names[p.Name] = true
 		switch p.ValueFrom {
-		case "const", "input":
-			inputs[p.Name] = p.ValueFrom == "input"
+		case "const":
+			if err := bkn.ValidateActionConstantType(p.Type, p.Value); err != nil {
+				return fmt.Errorf("action parameter %q: %w", p.Name, err)
+			}
+			inputs[p.Name] = false
+		case "input":
+			inputs[p.Name] = true
 		case "property":
 			if at.ObjectTypeID == "" {
 				return fmt.Errorf("property parameter %q requires an object type", p.Name)
@@ -152,6 +159,23 @@ func ValidateActionOperation(at *ActionType) error {
 		return err
 	}
 	return ValidateActionConditionReferences(cfg.OtherObjectCondition, "", inputs)
+}
+
+// NormalizeActionStringConstants preserves the declared type when an action
+// definition arrives through JSON or contains a legacy decoded constant.
+func NormalizeActionStringConstants(at *ActionType) error {
+	for index := range at.Parameters {
+		parameter := &at.Parameters[index]
+		if parameter.ValueFrom != "const" {
+			continue
+		}
+		value, err := bkn.NormalizeActionStringConstant(parameter.Type, parameter.Value)
+		if err != nil {
+			return fmt.Errorf("action parameter %q: %w", parameter.Name, err)
+		}
+		parameter.Value = value
+	}
+	return nil
 }
 
 // ValidateActionConditionReferences validates references without treating their names as literals.

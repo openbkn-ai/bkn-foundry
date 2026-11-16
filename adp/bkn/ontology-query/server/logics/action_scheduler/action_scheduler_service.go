@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -37,14 +38,17 @@ var (
 )
 
 type actionSchedulerService struct {
-	appSetting    *common.AppSetting
-	omAccess      interfaces.OntologyManagerAccess
-	aoAccess      interfaces.AgentOperatorAccess
-	logsService   interfaces.ActionLogsService
-	ots           interfaces.ObjectTypeService
-	permissions   interfaces.ActionExecutionPermissionService
-	proxy         interfaces.ProxyContextResolver
-	functionTrace managedFunctionTrace
+	appSetting            *common.AppSetting
+	omAccess              interfaces.OntologyManagerAccess
+	aoAccess              interfaces.AgentOperatorAccess
+	logsService           interfaces.ActionLogsService
+	ots                   interfaces.ObjectTypeService
+	permissions           interfaces.ActionExecutionPermissionService
+	proxy                 interfaces.ProxyContextResolver
+	functionTrace         managedFunctionTrace
+	managedActions        managedActionScopes
+	governanceGate        interfaces.ActionGovernanceGate
+	governanceConfigError error
 
 	duplicateCheckHook interfaces.DuplicateCheckHook
 }
@@ -52,21 +56,38 @@ type actionSchedulerService struct {
 // NewActionSchedulerService creates a singleton instance of ActionSchedulerService
 func NewActionSchedulerService(appSetting *common.AppSetting) interfaces.ActionSchedulerService {
 	assOnce.Do(func() {
-		svc := &actionSchedulerService{
-			appSetting:  appSetting,
-			omAccess:    logics.OMA,
-			aoAccess:    logics.AOA,
-			logsService: action_logs.NewActionLogsService(appSetting),
-			ots:         object_type.NewObjectTypeService(appSetting),
-			proxy:       logics.PCR,
-		}
-		svc.permissions = permission.NewPermissionService(appSetting)
-		svc.functionTrace = newManagedFunctionTraceFromEnv()
-		// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
-		svc.duplicateCheckHook = svc.defaultDuplicateCheck
-		assService = svc
+		assService = newActionSchedulerService(appSetting, nil)
 	})
 	return assService
+}
+
+// NewActionSchedulerServiceWithGovernance assembles an enterprise adapter
+// without importing enterprise code into the open-core scheduler.
+func NewActionSchedulerServiceWithGovernance(appSetting *common.AppSetting, gate interfaces.ActionGovernanceGate) interfaces.ActionSchedulerService {
+	return newActionSchedulerService(appSetting, gate)
+}
+
+func newActionSchedulerService(appSetting *common.AppSetting, gate interfaces.ActionGovernanceGate) *actionSchedulerService {
+	scopes, scopeErr := parseManagedActionScopes(os.Getenv("GOVERNANCE_MANAGED_ACTIONS"))
+	if scopeErr != nil {
+		logger.Errorf("Invalid GOVERNANCE_MANAGED_ACTIONS at scheduler assembly: %v", scopeErr)
+	}
+	svc := &actionSchedulerService{
+		appSetting:            appSetting,
+		omAccess:              logics.OMA,
+		aoAccess:              logics.AOA,
+		logsService:           action_logs.NewActionLogsService(appSetting),
+		ots:                   object_type.NewObjectTypeService(appSetting),
+		proxy:                 logics.PCR,
+		managedActions:        scopes,
+		governanceGate:        gate,
+		governanceConfigError: scopeErr,
+	}
+	svc.permissions = permission.NewPermissionService(appSetting)
+	svc.functionTrace = newManagedFunctionTraceFromEnv()
+	// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
+	svc.duplicateCheckHook = svc.defaultDuplicateCheck
+	return svc
 }
 
 // CheckActionExecution verifies the current subject against the trusted,
@@ -254,6 +275,15 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 				))
 		}
 	}
+	if err := s.claimActionGovernance(ctx, req, executor, actionTypeSnapshot); err != nil {
+		return nil, err
+	}
+	var governanceRequestID, governancePermitID, governancePlanDigest string
+	if s.managedActions.contains(req.KNID, req.ActionTypeID) {
+		governanceRequestID = req.GovernanceRequestID
+		governancePermitID = req.GovernancePermitID
+		governancePlanDigest = req.GovernancePlanDigest
+	}
 
 	// Resolve how many times the tool actually has to be invoked for this execution.
 	executionMode := resolveExecutionMode(&actionType)
@@ -305,6 +335,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		FailedCount:             0,
 		Results:                 []interfaces.ObjectExecutionResult{}, // Empty initially to save space
 		DynamicParams:           req.DynamicParams,
+		GovernanceRequestID:     governanceRequestID,
+		GovernancePermitID:      governancePermitID,
+		GovernancePlanDigest:    governancePlanDigest,
 		ExecutorID:              executor.ID, // deprecated, kept for backward compatibility
 		Executor:                executor,    // full executor info
 		StartTime:               now,
@@ -843,7 +876,7 @@ func (s *actionSchedulerService) buildExecutionParams(actionType *interfaces.Act
 				return nil, fmt.Errorf("missing property %q for parameter %q", propName, param.Name)
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-			value = param.Value
+			value = logics.NormalizeActionConstant(param.Type, param.Value)
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
 			value = logics.ActionDynamicParamGetValue(dynamicParams, param.Name)
 			if value == nil {

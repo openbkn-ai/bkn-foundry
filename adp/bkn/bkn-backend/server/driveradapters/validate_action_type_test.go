@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -18,6 +19,24 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
+
+func TestValidateActionTypeNormalizesAndChecksConstants(t *testing.T) {
+	action := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+		ATID: "notify", ATName: "Notify", ActionType: interfaces.ACTION_TYPE_ADD,
+		OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+		Parameters:      []interfaces.Parameter{{Name: "code", Type: "string", ValueFrom: "const", Value: json.Number("123")}},
+	}}
+	if err := ValidateActionType(context.Background(), action, true); err != nil {
+		t.Fatal(err)
+	}
+	if action.Parameters[0].Value != "123" {
+		t.Fatalf("string constant was not normalized: %v", action.Parameters[0].Value)
+	}
+	action.Parameters[0] = interfaces.Parameter{Name: "enabled", Type: "boolean", ValueFrom: "const", Value: json.Number("1")}
+	if err := ValidateActionType(context.Background(), action, true); err == nil {
+		t.Fatal("invalid boolean constant was accepted")
+	}
+}
 
 func Test_ValidateActionType(t *testing.T) {
 	Convey("Test ValidateActionType\n", t, func() {

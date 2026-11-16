@@ -13,6 +13,8 @@ var actionExecutionEnUS = i18n.I18nMessages{
 		"OntologyQuery.ActionExecution.ActionTypeNotFound":    "Action type not found. Please check if the action type ID is correct.",
 		"OntologyQuery.ActionExecution.ExecutionNotFound":     "Execution record not found. Please check if the execution ID is correct.",
 		"OntologyQuery.ActionExecution.DuplicateExecution":    "Duplicate execution detected. An in-flight execution already exists for the same action type, instance set, and dynamic_params within the duplicate window. Please wait for it to complete or query the existing execution.",
+		"OntologyQuery.ActionExecution.GovernanceRequired":    "This action requires a valid governance request and one-time execution permit.",
+		"OntologyQuery.ActionExecution.GovernanceUnavailable": "Action governance is unavailable. The managed action was not executed.",
 		"OntologyQuery.ActionExecution.GetActionTypeFailed":   "Failed to get action type. Please try again. If the error occurs again, please submit a ticket or contact technical support.",
 		"OntologyQuery.ActionExecution.CreateExecutionFailed": "Failed to create execution record. Please try again. If the error occurs again, please submit a ticket or contact technical support.",
 		"OntologyQuery.ActionExecution.ExecuteToolFailed":     "Tool execution failed. Please check the tool configuration and try again.",

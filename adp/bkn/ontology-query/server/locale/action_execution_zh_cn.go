@@ -13,6 +13,8 @@ var actionExecutionZhCN = i18n.I18nMessages{
 		"OntologyQuery.ActionExecution.ActionTypeNotFound":    "行动类不存在。请检查行动类ID是否正确。",
 		"OntologyQuery.ActionExecution.ExecutionNotFound":     "执行记录不存在。请检查执行ID是否正确。",
 		"OntologyQuery.ActionExecution.DuplicateExecution":    "检测到重复执行。同一行动类、实例集合与 dynamic_params 在防重复窗口内已有进行中的执行，请等待完成或查询已有 execution。",
+		"OntologyQuery.ActionExecution.GovernanceRequired":    "此行动需要有效的治理请求和一次性执行授权。",
+		"OntologyQuery.ActionExecution.GovernanceUnavailable": "行动治理服务当前不可用，受管控行动未执行。",
 		"OntologyQuery.ActionExecution.GetActionTypeFailed":   "获取行动类失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"OntologyQuery.ActionExecution.CreateExecutionFailed": "创建执行记录失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"OntologyQuery.ActionExecution.ExecuteToolFailed":     "工具执行失败。请检查工具配置并重试。",

@@ -1179,7 +1179,7 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 			q.Text = plainText(q, spec, draft, project.NamingLanguage)
 		}
 	}
-	signQuestions(spec.Questions, draft)
+	signQuestions(spec.Questions, draft, spec.Concepts)
 	spec.TablesOmitted, spec.PropertiesOmitted, spec.DraftRetried = omitted, propertiesOmitted, retried
 	spec.CatalogsUnlisted = nil
 	if len(unlisted) > 0 {

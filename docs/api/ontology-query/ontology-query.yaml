@@ -2406,6 +2406,8 @@ paths:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
           description: |
             检测到重复执行（`OntologyQuery.ActionExecution.DuplicateExecution`）。
+            受管控行动缺少许可，或许可已使用、过期、与当前计划不符时返回
+            `OntologyQuery.ActionExecution.GovernanceRequired`。
             同一 kn + 行动类 + 指纹（目标实例集合 + `dynamic_params`）在窗口期内
             已有 **start_time 落在窗口内** 的 pending/running 执行时拒绝。
             仍在运行但启动时间早于窗口的执行**不会**被拦截（防连点/短重试，非全程 in-flight 锁）。
@@ -2426,6 +2428,8 @@ paths:
         引用对象类的 `query_data`。`action_type.execute` 不从父知识网络继承。
         默认启用防重复：同一知识网络、行动类、目标实例与 dynamic_params 指纹在配置窗口内
         若已有进行中（pending/running）且 start_time 落在窗口内的执行，则返回 409。
+        试点行动由 `GOVERNANCE_MANAGED_ACTIONS` 指定。受管控行动在上述权限校验之后、
+        创建执行记录之前核验一次性许可；治理服务不可用时返回 503，不会执行。
 
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}:
@@ -4759,6 +4763,7 @@ components:
     ActionExecutionRequest:
       description: |
         行动执行请求体。当行动类 parameters 中存在 value_from 为 input 的项时，须在 dynamic_params 中传入全部对应非空取值，否则返回 400（错误码 OntologyQuery.ActionExecution.InvalidParameter）。
+        受管控行动须提供已获审批的请求、单次许可与计划摘要；服务端以当前解析后的行动定义、目标和参数核对，不信任客户端摘要本身。
       type: object
       properties:
         relation_target:
@@ -4776,6 +4781,16 @@ components:
           description: 与行动类 input 参数名对应的取值（支持点分路径）。有 input 参数时必填且不能为 null。
           type: object
           additionalProperties: true
+        governance_request_id:
+          description: 治理请求 ID；受管控行动必填。
+          type: string
+        governance_permit_id:
+          description: 单次执行许可 ID；受管控行动必填。
+          type: string
+        governance_plan_digest:
+          description: 审批计划的 SHA-256 小写十六进制摘要；受管控行动必填。
+          type: string
+          pattern: '^[0-9a-f]{64}$'
         bkn_context:
           description: |
             可选。调用方声明本次执行所属的 Conversation / Interaction（BKN Trace），与 Context Loader 的 `bkn_context` 同形。
@@ -4893,6 +4908,15 @@ components:
           description: 动态参数
           type: object
           additionalProperties: true
+        governance_request_id:
+          description: 已核验的治理请求 ID；仅受管控行动返回。
+          type: string
+        governance_permit_id:
+          description: 已核验的单次许可 ID；仅受管控行动返回。
+          type: string
+        governance_plan_digest:
+          description: 已核验计划摘要；仅受管控行动返回。
+          type: string
         executor_id:
           description: 执行者ID（已废弃，请使用 executor）
           type: string
