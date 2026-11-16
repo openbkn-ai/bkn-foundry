@@ -174,6 +174,14 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, err
 	}
+	// From here the draft holds this release. A step that fails takes it back out: left there, no
+	// release would own it, and every later review would report it as edits made outside the project.
+	prepared := false
+	defer func() {
+		if !prepared {
+			s.withdrawDraft(ctx, token, lineageID, checked.versioning.RunningVersion)
+		}
+	}()
 	if imported.Capabilities != nil && len(imported.Capabilities.Skipped) > 0 {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_CapabilitiesSkipped).
 			WithErrorDetails(map[string]any{"network_id": lineageID, "version": req.Version, "skipped": imported.Capabilities.Skipped})
@@ -226,7 +234,32 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
 			WithErrorDetails(map[string]any{"lineage_id": lineageID, "version": req.Version})
 	}
+	prepared = true
 	return release, nil
+}
+
+// withdrawDraftTimeout bounds taking a failed preparing back out of the draft, which runs even when
+// the request that prepared was cancelled.
+const withdrawDraftTimeout = 30 * time.Second
+
+// withdrawDraft puts the draft back to the running version after a preparing failed halfway. With
+// no running version there is nothing to go back to, and the draft stays; a failure is logged, and
+// the owner can still discard the draft's edits.
+func (s *lineageService) withdrawDraft(ctx context.Context, token string, lineageID string, running int) {
+	if running < 1 {
+		otellog.LogWarn(ctx, fmt.Sprintf("Preparing a release of %s failed; its definitions stay in the draft: the network has no running version", lineageID))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), withdrawDraftTimeout)
+	defer cancel()
+	// What this preparing wrote, the edition's mounting included, raised the draft's revision.
+	versioning, err := s.kva.GetVersioning(ctx, token, lineageID)
+	if err == nil {
+		err = s.kva.ResetDraft(ctx, token, lineageID, running, versioning.Draft.Revision, true)
+	}
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Preparing a release of %s failed and its definitions stay in the draft: %v", lineageID, err))
+	}
 }
 
 // publication readies what the edition adds to the release, if anything.

@@ -226,6 +226,41 @@ func (s *projectReleaseService) CommitDrift(ctx context.Context, token string, p
 	return &interfaces.ProjectDriftCommit{Drift: drift, Sync: synced}, nil
 }
 
+// DiscardDrift drops what was edited in the network's draft and not published, such as what a
+// preparing that failed halfway left there: the draft goes back to the running version, as long as
+// no one wrote to it since it was read.
+func (s *projectReleaseService) DiscardDrift(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscardProjectDrift")
+	defer span.End()
+
+	entry, err := s.ownedProject(ctx, token, projectID, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Project not writable")
+		return err
+	}
+	versioning, err := s.kva.GetVersioning(ctx, token, entry.KNID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get versioning failed")
+		return versionError(ctx, "Get versioning failed", err)
+	}
+	if !versioning.Draft.HasChanges {
+		span.SetStatus(codes.Ok, "")
+		return nil
+	}
+	if versioning.RunningVersion < 1 {
+		span.SetStatus(codes.Error, "No running version")
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_NoRunningVersion).
+			WithErrorDetails(map[string]any{"network_id": entry.KNID})
+	}
+	if err = s.kva.ResetDraft(ctx, token, entry.KNID, versioning.RunningVersion, versioning.Draft.Revision, true); err != nil {
+		span.SetStatus(codes.Error, "Discard drift failed")
+		return versionError(ctx, "Discard drift failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // ownedProject returns the project when the caller owns it and it is not archived.
 func (s *projectReleaseService) ownedProject(ctx context.Context, token string, projectID string,
 	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {

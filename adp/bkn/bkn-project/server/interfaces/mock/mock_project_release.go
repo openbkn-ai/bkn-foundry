@@ -71,6 +71,20 @@ func (mr *MockProjectReleaseServiceMockRecorder) CopyVersion(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CopyVersion", reflect.TypeOf((*MockProjectReleaseService)(nil).CopyVersion), ctx, token, projectID, knVersion, req, caller, author)
 }
 
+// DiscardDrift mocks base method.
+func (m *MockProjectReleaseService) DiscardDrift(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiscardDrift", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DiscardDrift indicates an expected call of DiscardDrift.
+func (mr *MockProjectReleaseServiceMockRecorder) DiscardDrift(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiscardDrift", reflect.TypeOf((*MockProjectReleaseService)(nil).DiscardDrift), ctx, token, projectID, caller)
+}
+
 // GetRegression mocks base method.
 func (m *MockProjectReleaseService) GetRegression(ctx context.Context, token, projectID, version string) (*interfaces.Regression, error) {
 	m.ctrl.T.Helper()

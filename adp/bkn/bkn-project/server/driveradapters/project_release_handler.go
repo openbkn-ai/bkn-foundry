@@ -26,6 +26,7 @@ import (
 const (
 	projectActionSync    = "branch:sync"
 	driftActionCommit    = "drift:commit"
+	driftActionDiscard   = "drift:discard"
 	regressionActionRun  = "regression:run"
 	releaseActionPrepare = "prepare"
 )
@@ -146,6 +147,23 @@ func (r *restHandler) CommitProjectDrift(c *gin.Context, visitor hydra.Visitor) 
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// DiscardProjectDrift serves POST /projects/{id}/drift:discard.
+func (r *restHandler) DiscardProjectDrift(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	if err := r.prs.DiscardDrift(ctx, visitor.TokenID, id, visitorAccount(visitor)); err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 // GetRegression serves GET /projects/{id}/releases/{version}/regression.

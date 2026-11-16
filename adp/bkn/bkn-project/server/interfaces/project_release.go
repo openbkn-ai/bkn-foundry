@@ -292,6 +292,9 @@ type ProjectReleaseService interface {
 	// owner.
 	CommitDrift(ctx context.Context, token string, projectID string, caller AccountInfo,
 		author GitAuthor) (*ProjectDriftCommit, error)
+	// DiscardDrift drops the edits made to the network's draft and not published, for the owner:
+	// the draft goes back to the running version.
+	DiscardDrift(ctx context.Context, token string, projectID string, caller AccountInfo) error
 	// GetRegression returns the regression of a release of the project, read by anyone who can
 	// read the project.
 	GetRegression(ctx context.Context, token string, projectID string, version string) (*Regression, error)

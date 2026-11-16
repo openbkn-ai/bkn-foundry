@@ -38,6 +38,8 @@ const (
 	BknProject_Release_NothingToPublish = "BknProject.Release.NothingToPublish"
 	BknProject_Release_ValidationFailed = "BknProject.Release.ValidationFailed"
 	BknProject_Release_NotVersioned     = "BknProject.Release.NotVersioned"
+	// The network has no published version for its draft to go back to.
+	BknProject_Release_NoRunningVersion = "BknProject.Release.NoRunningVersion"
 	// A publish of the version was sent and its answer never came; publishing again finishes it.
 	BknProject_Release_PublishPending = "BknProject.Release.PublishPending"
 	// A project's release.
@@ -86,6 +88,7 @@ var (
 		BknProject_Release_NothingToPublish,
 		BknProject_Release_ValidationFailed,
 		BknProject_Release_NotVersioned,
+		BknProject_Release_NoRunningVersion,
 		BknProject_Release_PublishPending,
 		BknProject_Rollback_BrokenReferences,
 		BknProject_Rollback_NotActivatable,

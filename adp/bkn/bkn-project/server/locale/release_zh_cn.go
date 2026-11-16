@@ -21,6 +21,7 @@ var releaseZhCN = i18n.I18nMessages{
 		"BknProject.Release.ValidationFailed":    "发布前检查没有通过 网络还有需要修改的地方，详见 error_details。",
 		"BknProject.Release.PublishPending":      "发布结果尚未确认 这个版本已经发出发布，但没有收到结果。请先再次点击发布完成它，不要重新准备。",
 		"BknProject.Release.NotVersioned":        "网络未开启版本管理 这个项目的网络还没有开启版本管理，请先开启。",
+		"BknProject.Release.NoRunningVersion":    "网络还没有发布过的版本 没有可以退回的线上版本，未发布的修改不能丢弃。",
 		"BknProject.Release.VersionPurged":       "版本只保留了记录 这个版本的内容已经清理，只保留了记录。可以从项目历史里复制后重新发布。",
 		"BknProject.Release.NotReady":            "网络还没准备好 网络正在准备检索或数据访问，请稍后再试。",
 		"BknProject.Rollback.BrokenReferences":   "无法回退 目标版本引用的内容已经不存在，详见 error_details。",

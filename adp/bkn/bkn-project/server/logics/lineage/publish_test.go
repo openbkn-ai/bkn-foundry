@@ -270,8 +270,11 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 				So(release.BranchCommit, ShouldEqual, branchHead)
 			})
 
-			Convey("but a version published in the meantime replies 409\n", func() {
+			Convey("but a version published in the meantime replies 409, and the draft goes back to the running version\n", func() {
 				prepared.Return(false, nil)
+				// Nothing owns what was written: left there, it would read as edits outside the project.
+				read := kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+				kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).After(read).Return(nil)
 
 				_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -406,6 +409,19 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Release_ReviewOutdated)
 		})
 
+		Convey("Before a first publish there is no version to go back to: the draft stays\n", func() {
+			id := newLineageID()
+			_, _ = setUp(id)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(0, 7, false), nil, nil)
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{KNID: id}, int64(8), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(versionRefusal(interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED))
+			// No GetVersioning or ResetDraft: the mock expects none.
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("Skipped capabilities fail preparing without recording it\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
@@ -413,6 +429,8 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{
 				KNID: id, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, int64(8), nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).Return(nil)
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -428,7 +446,10 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{KNID: id}, int64(8), nil)
 			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(versionRefusal(interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED))
-			// No PrepareRelease: the mock expects none.
+			// No PrepareRelease: the mock expects none. The draft goes back to the running version;
+			// a failure to put it back is only logged, the preparing's own error is the reply.
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).Return(versionRefusal("DraftChanged"))
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
