@@ -69,6 +69,9 @@ func NewActionSchedulerServiceWithGovernance(appSetting *common.AppSetting, gate
 
 func newActionSchedulerService(appSetting *common.AppSetting, gate interfaces.ActionGovernanceGate) *actionSchedulerService {
 	scopes, scopeErr := parseManagedActionScopes(os.Getenv("GOVERNANCE_MANAGED_ACTIONS"))
+	if scopeErr != nil {
+		logger.Errorf("Invalid GOVERNANCE_MANAGED_ACTIONS at scheduler assembly: %v", scopeErr)
+	}
 	svc := &actionSchedulerService{
 		appSetting:            appSetting,
 		omAccess:              logics.OMA,
