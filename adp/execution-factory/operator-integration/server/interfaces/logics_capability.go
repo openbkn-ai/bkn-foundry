@@ -112,6 +112,9 @@ type IndexedCapability struct {
 type CapabilityIndexSyncService interface {
 	Init(ctx context.Context) error
 	EnsureInitialized(ctx context.Context) error
+	// IsPlaceholder reports whether the dataset was built without a usable embedding model, so
+	// writes are skipped until one is registered and the dataset is rebuilt.
+	IsPlaceholder() bool
 	UpsertCapability(ctx context.Context, doc *CapabilityDocument) error
 	DeleteCapability(ctx context.Context, ref CapabilityRef) error
 	// ListIndexed returns every document of one capability type currently in the index.

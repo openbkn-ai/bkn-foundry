@@ -498,6 +498,9 @@ type SkillIndexBuildService interface {
 type SkillIndexSyncService interface {
 	Init(ctx context.Context) error
 	EnsureInitialized(ctx context.Context) error
+	// IsPlaceholder reports whether the capability index is still a placeholder without an
+	// embedding model, in which case Skill writes are skipped.
+	IsPlaceholder() bool
 	UpsertSkill(ctx context.Context, skill *model.SkillRepositoryDB) error
 	UpdateSkill(ctx context.Context, skill *model.SkillRepositoryDB) error
 	DeleteSkill(ctx context.Context, skillID string) error

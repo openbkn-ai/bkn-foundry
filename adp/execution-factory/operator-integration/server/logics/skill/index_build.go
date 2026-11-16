@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,6 +20,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/redis/go-redis/v9"
 )
+
+// errSkillIndexPlaceholder is why a build fails before any embedding model is registered.
+var errSkillIndexPlaceholder = errors.New("no embedding model is registered, so the skill index cannot be built yet; it is rebuilt automatically once a model is registered")
 
 const skillIndexBuildBatchSize = 200
 const skillIndexBuildAssignLockExpiry = 5 * time.Second
@@ -327,6 +331,11 @@ func (s *skillIndexBuildService) runTask(ctx context.Context, taskID string) err
 	}
 	if err = s.indexSync.EnsureInitialized(ctx); err != nil {
 		return s.failTask(ctx, task, err)
+	}
+	// While the index is a placeholder every Skill write is skipped, so a build would report
+	// each Skill as indexed while nothing was written. Fail the task with the reason instead.
+	if s.indexSync.IsPlaceholder() {
+		return s.failTask(ctx, task, errSkillIndexPlaceholder)
 	}
 
 	cursorUpdateTime := task.CursorUpdateTime

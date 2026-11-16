@@ -612,6 +612,40 @@ func TestSkillIndexBuildService(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("runTask fails the task while the index is a placeholder", func() {
+			mockTaskRepo := mocks.NewMockISkillIndexBuildTaskDB(ctrl)
+			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
+			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
+			mockIndexSync := mocks.NewMockSkillIndexSyncService(ctrl)
+			svc := &skillIndexBuildService{
+				logger:      logger.DefaultLogger(),
+				taskRepo:    mockTaskRepo,
+				skillRepo:   mockSkillRepo,
+				releaseRepo: mockReleaseRepo,
+				indexSync:   mockIndexSync,
+			}
+			gomock.InOrder(
+				mockTaskRepo.EXPECT().SelectByTaskID(gomock.Any(), gomock.Nil(), "task-11").Return(&model.SkillIndexBuildTaskDB{
+					TaskID:      "task-11",
+					Status:      interfaces.SkillIndexBuildStatusRunning.String(),
+					ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull.String(),
+				}, nil),
+				mockIndexSync.EXPECT().EnsureInitialized(gomock.Any()).Return(nil),
+				mockIndexSync.EXPECT().IsPlaceholder().Return(true),
+				mockTaskRepo.EXPECT().UpdateByTaskID(gomock.Any(), gomock.Nil(), gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ *sql.Tx, task *model.SkillIndexBuildTaskDB) error {
+						So(task.Status, ShouldEqual, interfaces.SkillIndexBuildStatusFailed.String())
+						So(task.ErrorMsg, ShouldContainSubstring, "no embedding model is registered")
+						So(task.SuccessCount, ShouldEqual, 0)
+						return nil
+					}),
+			)
+			mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).Times(0)
+
+			_ = svc.runTask(context.Background(), "task-11")
+		})
+
 		Convey("runTask persists accumulated counters", func() {
 			mockTaskRepo := mocks.NewMockISkillIndexBuildTaskDB(ctrl)
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
@@ -631,6 +665,7 @@ func TestSkillIndexBuildService(t *testing.T) {
 					ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull.String(),
 				}, nil),
 				mockIndexSync.EXPECT().EnsureInitialized(gomock.Any()).Return(nil),
+				mockIndexSync.EXPECT().IsPlaceholder().Return(false),
 				mockTaskRepo.EXPECT().SelectByTaskID(gomock.Any(), gomock.Nil(), "task-10").Return(&model.SkillIndexBuildTaskDB{
 					TaskID:      "task-10",
 					Status:      interfaces.SkillIndexBuildStatusRunning.String(),

@@ -578,6 +578,20 @@ func (mr *MockSkillIndexSyncServiceMockRecorder) Init(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Init", reflect.TypeOf((*MockSkillIndexSyncService)(nil).Init), ctx)
 }
 
+// IsPlaceholder mocks base method.
+func (m *MockSkillIndexSyncService) IsPlaceholder() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPlaceholder")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsPlaceholder indicates an expected call of IsPlaceholder.
+func (mr *MockSkillIndexSyncServiceMockRecorder) IsPlaceholder() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPlaceholder", reflect.TypeOf((*MockSkillIndexSyncService)(nil).IsPlaceholder))
+}
+
 // UpdateSkill mocks base method.
 func (m *MockSkillIndexSyncService) UpdateSkill(ctx context.Context, skill *model.SkillRepositoryDB) error {
 	m.ctrl.T.Helper()
