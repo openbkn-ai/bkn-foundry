@@ -31,6 +31,9 @@ func TestActionTransportForwardsExplicitTargetsAndPreciseValues(t *testing.T) {
 			if execute && values["dynamic_params"].(map[string]any)["notify"] != false {
 				t.Fatal("lost false dynamic value")
 			}
+			if execute && (values["governance_request_id"] != "request-1" || values["governance_permit_id"] != "permit-1" || values["governance_plan_digest"] != "digest-1") {
+				t.Fatalf("lost governance references: %#v", values)
+			}
 			if execute && headers["x-http-method-override"] != "" {
 				t.Fatal("execution must be a real POST")
 			}
@@ -40,7 +43,7 @@ func TestActionTransportForwardsExplicitTargetsAndPreciseValues(t *testing.T) {
 			return 200, []byte(`{"execution_id":"e1","execution_schema":{"type":"object","properties":{}}}`), nil
 		})
 		if execute {
-			_, err := service.ExecuteActions(context.Background(), &interfaces.ExecuteActionsRequest{KnID: "kn", AtID: "a", RelationTarget: target, DynamicParams: map[string]any{"notify": false}})
+			_, err := service.ExecuteActions(context.Background(), &interfaces.ExecuteActionsRequest{KnID: "kn", AtID: "a", RelationTarget: target, DynamicParams: map[string]any{"notify": false}, GovernanceRequestID: "request-1", GovernancePermitID: "permit-1", GovernancePlanDigest: "digest-1"})
 			if err != nil {
 				t.Fatal(err)
 			}
