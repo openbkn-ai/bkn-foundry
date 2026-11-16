@@ -38,6 +38,10 @@ type Hit struct {
 type OpenSearchAccess interface {
 	CreateIndex(ctx context.Context, indexName string, body any) error
 
+	// PutMapping adds fields to the mapping of an existing index. It only adds: a field the
+	// index already maps with the same type is accepted, a conflicting type is an error.
+	PutMapping(ctx context.Context, indexName string, body any) error
+
 	// IndexExists checks whether the specified index exists.
 	IndexExists(ctx context.Context, indexName string) (bool, error)
 

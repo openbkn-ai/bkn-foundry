@@ -34,7 +34,9 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		}
 		if slices.Contains(objectType.PrimaryKeys, p.Name) {
 			if p.Declares(interfaces.DECLARATION_REQUIRED) && !p.Required {
-				return invalidDeclarations(ctx, fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name))
+				return invalidDeclarations(ctx, logics.NewDeclarationIssue(RulePrimaryKeyRequiredFalse, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+					objectType.OTID, p.Name, nil,
+					fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name)))
 			}
 			// A primary key is required by definition, so required on it says nothing. It is not
 			// stored, as the 3.0 export already leaves it out; a value stored before is dropped on
@@ -49,7 +51,7 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 	objectType.Aliases = interfaces.NormalizeAliases(objectType.Aliases)
 	objectType.Lifecycle = interfaces.NormalizeLifecycle(objectType.Lifecycle)
 	if err := bknsdk.ValidateObjectTypeDeclarations(logics.ToBKNObjectType(objectType)); err != nil {
-		return invalidDeclarations(ctx, err.Error())
+		return invalidDeclarations(ctx, logics.SpecIssueDetail(interfaces.RESOURCE_TYPE_OBJECT_TYPE, objectType.OTID, err))
 	}
 	return nil
 }
@@ -99,7 +101,7 @@ func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, obje
 		doc.ValueTypes = append(doc.ValueTypes, logics.ToBKNValueType(vt))
 	}
 	if err := bknsdk.ValidateNetworkDeclarations(doc); err != nil {
-		return invalidDeclarations(ctx, err.Error())
+		return invalidDeclarations(ctx, logics.SpecIssueDetail(interfaces.RESOURCE_TYPE_OBJECT_TYPE, objectType.OTID, err))
 	}
 	return nil
 }
@@ -130,8 +132,8 @@ func (ots *objectTypeService) checkAliasNames(ctx context.Context, knID, branch 
 				WithErrorDetails(err.Error())
 		}
 	}
-	if conflict := logics.AliasConflict("object type", incoming, namedObjectTypes(storedNamed), namedObjectTypes(storedAliased)); conflict != "" {
-		return invalidDeclarations(ctx, conflict)
+	if conflict := logics.FindAliasConflict("object type", incoming, namedObjectTypes(storedNamed), namedObjectTypes(storedAliased)); conflict != nil {
+		return invalidDeclarations(ctx, logics.AliasConflictDetail(interfaces.RESOURCE_TYPE_OBJECT_TYPE, conflict))
 	}
 	return nil
 }
@@ -144,10 +146,14 @@ func namedObjectTypes(objectTypes []*interfaces.ObjectType) []logics.NamedDefini
 	return named
 }
 
-func invalidDeclarations(ctx context.Context, detail string) error {
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_Declarations).
-		WithErrorDetails(detail)
+func invalidDeclarations(ctx context.Context, issue logics.DeclarationIssueDetail) error {
+	return logics.DeclarationRefusal(ctx, berrors.BknBackend_ObjectType_InvalidParameter_Declarations,
+		issue["message"].(string), issue)
 }
+
+// RulePrimaryKeyRequiredFalse is the rule of a primary key written as not required. Only the API
+// model can carry it: a file leaves a primary key's required cell alone.
+const RulePrimaryKeyRequiredFalse = "primary_key_required_false"
 
 // keepUndeclared merges an interactive update into the stored object type: a data property of the
 // request keeps each declaration field it leaves out from the stored property of the same name.
@@ -264,6 +270,10 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 			updates[0].KNID, ids, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return err
 		}
+	}
+	// An import checks every kind of definition before it refuses, and lists them all at once.
+	if interfaces.CollectClearedDeclarations(ctx, cleared) {
+		return nil
 	}
 	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{

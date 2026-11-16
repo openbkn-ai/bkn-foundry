@@ -9,6 +9,14 @@ action_intent: modify
 
 ## ActionType: 评估部门
 
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
+
 ### Bound Object
 
 | Bound Object |

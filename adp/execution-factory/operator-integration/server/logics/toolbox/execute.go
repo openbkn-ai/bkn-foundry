@@ -389,7 +389,7 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
 	if tool.SourceType == model.SourceTypeFunction && isPlatformFunctionTarget(url) {
-		proxyReq.ClientTimeoutGrace = 5 * time.Second
+		proxyReq.ClientTimeoutGrace = s.functionGrace()
 		// The HTTP client timeout alone does not control sandbox execution. The internal
 		// Function endpoint accepts milliseconds through its timeout query parameter.
 		// Do not allow an existing URL query or a user-supplied query.timeout to
@@ -568,4 +568,16 @@ func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, 
 		}
 	}
 	return attrs
+}
+
+// defaultFunctionGrace is used when the service was built without a configured grace.
+const defaultFunctionGrace = 5 * time.Second
+
+// functionGrace is how long the proxy keeps waiting past a platform Function's own
+// timeout, so the sandbox can report that timeout with a reason.
+func (s *ToolServiceImpl) functionGrace() time.Duration {
+	if s.ProxyFunctionGrace > 0 {
+		return s.ProxyFunctionGrace
+	}
+	return defaultFunctionGrace
 }

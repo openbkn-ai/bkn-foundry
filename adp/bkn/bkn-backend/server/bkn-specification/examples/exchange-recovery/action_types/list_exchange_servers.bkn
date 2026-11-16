@@ -3,8 +3,8 @@ type: action_type
 id: list_exchange_servers
 name: 列出Exchange服务器列表
 tags: [数据查询, 服务器管理, 灾备]
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 列出Exchange服务器列表
@@ -29,6 +29,14 @@ action_intent: add
   ]
 }
 ```
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 
 ### Bound Object
 
@@ -71,8 +79,8 @@ value: Online
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| data_domain_id | string | property |  | id |  | 数据域ID |
-| data_domain_ip | string | property |  | domain_ip |  | 数据域IP地址 |
+| data_domain_id | integer |  |  | property | id | 数据域ID |
+| data_domain_ip | string |  |  | property | domain_ip | 数据域IP地址 |
 
 ### Schedule
 

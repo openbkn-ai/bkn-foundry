@@ -30,7 +30,8 @@ func (s *localSearchImpl) enumExpandLimit() int {
 //     included: stored data still holds them, and a filter for "revoked" must take the old code too.
 //   - A larger enum, or any enum in brief mode, gives its item count instead. enum_query then lists
 //     the items whose display name or code contains one of its words, up to the expansion limit.
-//   - A value type that is not an enum adds nothing, so value_type is dropped with it.
+//   - A value type that is not an enum adds no enum, so value_type is dropped with it.
+//   - In full mode the value type's unit becomes the property's unit, enum or not.
 //
 // The value types are one read, made only when some property names one, and bounded by the schema
 // read timeout. When it fails or times out the properties keep their value_type and go without the
@@ -76,6 +77,11 @@ func (s *localSearchImpl) expandEnums(ctx context.Context, knID string, objectTy
 	words := strings.Fields(strings.ToLower(enumQuery))
 	for _, p := range named {
 		vt := byID[p.ValueType]
+		// A property that names a value type cannot declare its own unit (SPECIFICATION.md §6.8),
+		// so the unit comes from the value type, in full mode only, as a declared one does.
+		if vt != nil && !brief && p.Unit == "" {
+			p.Unit = vt.Unit
+		}
 		if vt == nil || len(vt.Enum) == 0 {
 			p.ValueType = ""
 			continue

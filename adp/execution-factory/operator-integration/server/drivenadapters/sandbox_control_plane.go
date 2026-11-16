@@ -28,7 +28,12 @@ type sandBoxControlPlaneClient struct {
 	httpClient        interfaces.HTTPClient
 	executeHTTPClient interfaces.HTTPClient
 	templateID        string // Template ID.
+	// syncPollDeadline is how many seconds the control plane polls a synchronous execution.
+	syncPollDeadline int
 }
+
+// defaultSyncPollDeadline is the control plane's default polling deadline in seconds.
+const defaultSyncPollDeadline = 300
 
 var (
 	sbcpInstance *sandBoxControlPlaneClient // Sandbox control service Client instance.
@@ -46,6 +51,7 @@ func NewSandBoxControlPlaneClient() interfaces.SandBoxControlPlane {
 			httpClient:        rest.NewHTTPClient(),
 			executeHTTPClient: rest.NewHTTPClientWithOptions(rest.HTTPClientOptions{TimeOut: 3605}),
 			templateID:        conf.SandboxControlPlane.PrivateHost,
+			syncPollDeadline:  conf.SandboxControlPlane.SyncPollDeadline,
 		}
 	})
 	return sbcpInstance
@@ -197,7 +203,11 @@ func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, session
 	src := fmt.Sprintf("%s/executions/sessions/%s/execute-sync", c.baseURL, sessionID)
 	// The control plane defaults to a 300-second polling deadline. Leave time for
 	// it to return the terminal execution status when the requested limit is near it.
-	if req.Timeout > 295 {
+	deadline := c.syncPollDeadline
+	if deadline <= 0 {
+		deadline = defaultSyncPollDeadline
+	}
+	if req.Timeout > deadline-5 {
 		syncTimeout := 3600 // Control plane's maximum sync_timeout.
 		if req.Timeout <= 3595 {
 			syncTimeout = req.Timeout + 5

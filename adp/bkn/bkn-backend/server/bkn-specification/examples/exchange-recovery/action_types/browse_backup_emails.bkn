@@ -3,8 +3,8 @@ type: action_type
 id: browse_backup_emails
 name: 浏览备份邮件
 tags: [备份浏览, 灾备, 邮件]
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 浏览备份邮件
@@ -25,6 +25,14 @@ action_intent: add
    - 邮件ID、邮件主题、发件人、收件人、邮件日期、邮件大小
    - 是否有附件、附件数量
    - 邮件状态
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 
 ### Bound Object
 
@@ -60,12 +68,12 @@ impact_contracts:
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| backup_timepoint_id | integer | property |  | id |  | 备份时间点副本ID |
-| backup_timepoint_time | datetime | property |  | snapshot_time |  | 备份时间 |
-| metadata | json | property |  | metadata |  | 备份时间点副本元数据 |
-| email_subject_filter | string | input |  | - |  | 邮件主题过滤（可选） |
-| email_sender_filter | string | input |  | - |  | 邮件发件人过滤（可选） |
-| email_date_filter | datetime | input |  | - |  | 邮件日期过滤（可选） |
+| backup_timepoint_id | integer |  |  | property | id | 备份时间点副本ID |
+| backup_timepoint_time | datetime |  |  | property | snapshot_time | 备份时间 |
+| metadata | json |  |  | property | metadata | 备份时间点副本元数据 |
+| email_subject_filter | string |  |  | input |  | 邮件主题过滤（可选） |
+| email_sender_filter | string |  |  | input |  | 邮件发件人过滤（可选） |
+| email_date_filter | datetime |  |  | input |  | 邮件日期过滤（可选） |
 
 ### Schedule
 

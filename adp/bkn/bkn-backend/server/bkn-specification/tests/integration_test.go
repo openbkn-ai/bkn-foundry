@@ -46,6 +46,20 @@ func allExampleDirs(t *testing.T) []string {
 	return dirs
 }
 
+// TestExampleChecksumsMatchTheirFiles keeps each example's CHECKSUM in step with
+// its files: an edited example with a stale CHECKSUM fails here, not on import.
+func TestExampleChecksumsMatchTheirFiles(t *testing.T) {
+	for _, dir := range allExampleDirs(t) {
+		if _, err := os.Stat(filepath.Join(dir, "CHECKSUM")); err != nil {
+			continue
+		}
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			ok, problems := bkn.VerifyChecksumFile(dir)
+			assert.True(t, ok, "regenerate %s/CHECKSUM: %v", dir, problems)
+		})
+	}
+}
+
 // tempDir creates a temporary directory that is removed when the test ends.
 func tempDir(t *testing.T) string {
 	t.Helper()

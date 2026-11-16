@@ -3,13 +3,21 @@ type: action_type
 id: find_backup_timepoints
 name: 查找备份时间点副本
 tags: [备份查找, 时间点, 灾备]
-action_type: add
-action_intent: add
+action_type: modify
+action_intent: modify
 ---
 
 ## ActionType: 查找备份时间点副本
 
 根据备份的exchange服务器查找该服务器的备份时间点副本。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
 
 ### Bound Object
 
@@ -45,8 +53,8 @@ impact_contracts:
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| server_name | string | property |  | server_name |  | Exchange服务器名称 |
-| server_address | string | property |  | server_address |  | Exchange服务器地址 |
+| server_name | string |  |  | property | server_name | Exchange服务器名称 |
+| server_address | string |  |  | property | server_address | Exchange服务器地址 |
 
 ### Schedule
 

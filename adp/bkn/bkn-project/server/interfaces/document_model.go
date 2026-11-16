@@ -33,9 +33,39 @@ type DraftSourceCitation struct {
 	Quote            string `json:"quote,omitempty"`
 }
 
+// DraftExtractionField is how a document property is read from the text. Method is how its
+// value is taken: verbatim copies the text as written, inferred judges or normalizes it as the
+// instruction says. A field without a method, as drafts saved before it had one, reads verbatim,
+// which is how every property was extracted until then.
 type DraftExtractionField struct {
+	Method      string                `json:"method,omitempty"`
 	Instruction string                `json:"instruction"`
 	Examples    []DraftSourceCitation `json:"examples"`
+}
+
+const (
+	// DRAFT_EXTRACTION_VERBATIM takes the value as the text states it, only its format made to
+	// fit the property's type.
+	DRAFT_EXTRACTION_VERBATIM = "verbatim"
+	// DRAFT_EXTRACTION_INFERRED judges or normalizes the value from what the text states, as the
+	// instruction says, such as whether a price includes tax.
+	DRAFT_EXTRACTION_INFERRED = "inferred"
+)
+
+// DraftExtractionMethods are the methods a document property can be extracted by.
+var DraftExtractionMethods = []string{DRAFT_EXTRACTION_VERBATIM, DRAFT_EXTRACTION_INFERRED}
+
+// ValidDraftExtractionMethod is whether a method can be saved; empty reads verbatim.
+func ValidDraftExtractionMethod(method string) bool {
+	return method == "" || method == DRAFT_EXTRACTION_VERBATIM || method == DRAFT_EXTRACTION_INFERRED
+}
+
+// MethodOf is the method a field is extracted by, verbatim when it names none.
+func (f *DraftExtractionField) MethodOf() string {
+	if f == nil || f.Method == "" {
+		return DRAFT_EXTRACTION_VERBATIM
+	}
+	return f.Method
 }
 
 // DraftDocumentMapping has no table projection. Linking resolves a mention to a

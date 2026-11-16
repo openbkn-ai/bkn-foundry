@@ -188,7 +188,8 @@ infrastructure failures return HTTP 503.
 
 `GOVERNANCE_MANAGED_ACTIONS` is an optional comma-separated rollout list of
 `{kn_id}/{action_type_id}` entries. An empty list leaves action execution
-unchanged. Invalid entries fail closed. The list selects pilot actions; the
+unchanged. Invalid entries make all action execution return 503, including
+actions outside the pilot list. The list selects pilot actions; the
 governance policy and one-time permit still belong to the Professional Edition
 governance service. Do not populate the list before its adapter is installed.
 

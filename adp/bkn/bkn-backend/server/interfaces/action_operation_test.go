@@ -6,6 +6,7 @@ package interfaces
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,68 @@ func TestActionJSONPreservesTypedNumbers(t *testing.T) {
 	}
 	if value, ok := action.Parameters[0].Value.(json.Number); !ok || value.String() != "9223372036854775807" {
 		t.Fatalf("value=%#v", action.Parameters[0].Value)
+	}
+}
+
+func TestActionOperationValidatesConstantTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name, declared string
+		value          any
+		valid          bool
+	}{
+		{"string", "string", "123", true},
+		{"string number", "string", json.Number("123"), false},
+		{"string null", "string", nil, false},
+		{"boolean", "boolean", false, true},
+		{"boolean null", "boolean", nil, true},
+		{"boolean number", "boolean", json.Number("1"), false},
+		{"integer", "integer", json.Number("9223372036854775807"), true},
+		{"integer fraction", "integer", json.Number("1.5"), false},
+		{"number", "number", json.Number("1.5"), true},
+		{"number string", "number", "1.5", false},
+		{"array", "array", []any{1}, true},
+		{"array object", "array", map[string]any{}, false},
+		{"object", "object", map[string]any{"a": 1}, true},
+		{"object array", "object", []any{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			action := &ActionType{ActionTypeWithKeyField: ActionTypeWithKeyField{
+				OperationConfig: &ActionOperationConfig{Type: ActionOperationTool},
+				Parameters:      []Parameter{{Name: "payload", Type: tc.declared, ValueFrom: "const", Value: tc.value}},
+			}}
+			err := ValidateActionOperation(action)
+			if (err == nil) != tc.valid {
+				t.Fatalf("value %T for %s: %v", tc.value, tc.declared, err)
+			}
+			if !tc.valid && !strings.Contains(err.Error(), `parameter "payload"`) {
+				t.Fatalf("parameter name missing: %v", err)
+			}
+		})
+	}
+}
+
+func TestNormalizeActionStringConstantsBeforeSave(t *testing.T) {
+	action := &ActionType{ActionTypeWithKeyField: ActionTypeWithKeyField{
+		OperationConfig: &ActionOperationConfig{Type: ActionOperationTool},
+		Parameters: []Parameter{
+			{Name: "code", Type: "string", ValueFrom: "const", Value: json.Number("123")},
+			{Name: "enabled", Type: "text", ValueFrom: "const", Value: true},
+			{Name: "missing", Type: "keyword", ValueFrom: "const", Value: nil},
+			{Name: "count", Type: "integer", ValueFrom: "const", Value: json.Number("42")},
+		},
+	}}
+	if err := NormalizeActionStringConstants(action); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateActionOperation(action); err != nil {
+		t.Fatal(err)
+	}
+	for index, want := range []string{"123", "true", "null"} {
+		if action.Parameters[index].Value != want {
+			t.Errorf("parameter %d = %v, want %q", index, action.Parameters[index].Value, want)
+		}
+	}
+	if action.Parameters[3].Value != json.Number("42") {
+		t.Fatalf("numeric constant changed: %v", action.Parameters[3].Value)
 	}
 }

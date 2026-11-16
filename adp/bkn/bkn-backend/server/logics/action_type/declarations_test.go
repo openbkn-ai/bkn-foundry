@@ -22,6 +22,8 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func approve(aliases ...string) *interfaces.ActionType {
@@ -51,6 +53,10 @@ func TestCheckActionTypeDeclarations(t *testing.T) {
 	err := ats.checkDeclarations(ctx, approve("审批"))
 	assert.Equal(t, berrors.BknBackend_ActionType_InvalidParameter_Declarations, httpError(t, err).ErrorCode,
 		"an alias is not the action type's own name")
+	assert.Equal(t, []logics.DeclarationIssueDetail{{
+		"rule": "alias_equals_own_name", "action_type_id": "approve", "params": map[string]any{"alias": "审批"},
+		"message": `action type aliases: alias "审批" is the same as its own name`,
+	}}, httpError(t, err).Metadata["issues"])
 }
 
 func TestCheckActionTypeAliasNames(t *testing.T) {
@@ -119,7 +125,7 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 	ats := &actionTypeService{ata: ata, ps: ps}
 
 	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).
-		Return([]*interfaces.ActionType{approve("核准")}, nil).Times(3)
+		Return([]*interfaces.ActionType{approve("核准")}, nil).Times(4)
 
 	err := ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve()}, false)
 	httpErr := httpError(t, err)
@@ -127,6 +133,11 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Equal(t, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared, httpErr.ErrorCode)
 	assert.Equal(t, []interfaces.ClearedDeclaration{{ActionTypeID: "approve", Fields: []string{interfaces.DECLARATION_ALIASES}}},
 		httpErr.ErrorDetails.(map[string]any)["cleared"])
+
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, ats.checkOverwriteKeepsDeclarations(collectCtx, []*interfaces.ActionType{approve()}, false))
+	assert.Equal(t, httpErr.ErrorDetails.(map[string]any)["cleared"], collector.Cleared())
 
 	require.NoError(t, ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve("批准")}, false),
 		"changed aliases are not cleared")
@@ -162,4 +173,30 @@ func TestActionTypeVectorTextCarriesAliases(t *testing.T) {
 	}).Return([]*cond.VectorResp{{Vector: []float32{1}}, {Vector: []float32{1}}}, nil)
 	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	require.NoError(t, ats.InsertDatasetData(ctx, []*interfaces.ActionType{plain, aliased}))
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	ats := &actionTypeService{ata: ata, nr: &logics.NetworkRelations{}}
+
+	file := approve()
+	ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "approve").Return("审批", true, nil)
+	ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "审批").Return("approve", true, nil)
+	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).
+		Return([]*interfaces.ActionType{approve("核准")}, nil)
+
+	require.NoError(t, ats.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ActionType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, []interfaces.ClearedDeclaration{{ActionTypeID: "approve", Fields: []string{interfaces.DECLARATION_ALIASES}}},
+		collector.Cleared())
+	require.Len(t, deferred.ActionTypes, 1)
+	assert.Same(t, file, deferred.ActionTypes[0])
 }

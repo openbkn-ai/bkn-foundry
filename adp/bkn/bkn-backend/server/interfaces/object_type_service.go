@@ -43,4 +43,9 @@ type ObjectTypeService interface {
 	// ValidateObjectTypes validates dependency existence only and does not persist data.
 	// When batch is nil, behavior matches history (DB existence only). For full-KN / concept-group preflight, pass an index from batchindex.CollectKNFromPayload / batchindex.CollectFromConceptGroups.
 	ValidateObjectTypes(ctx context.Context, knID string, branch string, objectTypes []*ObjectType, strictMode bool, batch *BatchIDIndex, mode string) error
+
+	// CheckOverwriteDeclarations is the first step of an overwrite import and writes nothing: it records the
+	// declarations the overwrite would clear in the collector of ctx (WithClearedDeclarationCollector), and the
+	// definitions it would write for the network check of a deferred save (logics.WithDeferredNetworkRelations).
+	CheckOverwriteDeclarations(ctx context.Context, knID string, branch string, objectTypes []*ObjectType, mode string) error
 }

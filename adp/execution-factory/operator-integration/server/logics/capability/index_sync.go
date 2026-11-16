@@ -53,7 +53,13 @@ type capabilityIndexSync struct {
 
 	mu          sync.RWMutex
 	initialized bool
-	datasetID   string
+	// placeholder is true while the dataset was built (or kept) without a usable embedding model.
+	// Its vector dimension is the default, not a model's, so no embedding can be written to it:
+	// writes are skipped until a model is registered and Init rebuilds the dataset.
+	placeholder bool
+	// placeholderWarned limits the skipped-write warning to one per placeholder spell.
+	placeholderWarned bool
+	datasetID         string
 	// embeddingModelName is the name the embeddings API accepts, not the model ID vega stores.
 	// It is a build-time snapshot: the model that vectorised the documents must be the model that
 	// vectorises the query, or the two live in different spaces.
@@ -121,9 +127,11 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 	// interval. Writes in that window are skipped, and a skipped delete is never retried by
 	// anything: the MCP pass only walks servers that still exist, so a server deleted during it
 	// would leave its tools in the index permanently.
+	placeholder := false
 	defer func() {
 		if err == nil {
 			s.setInitialized(true)
+			s.setPlaceholder(placeholder)
 		}
 	}()
 
@@ -141,8 +149,21 @@ func (s *capabilityIndexSync) Init(ctx context.Context) (err error) {
 
 	embeddingModel, err := s.resolveEmbeddingModel(ctx)
 	if err != nil {
-		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", capabilityDataset, err)
-		return err
+		// Same rule as the BKN concept index: no embedding model is not a reason to stay
+		// without an index. A fresh install, or a dataset that is itself still a placeholder,
+		// gets the default dimension and no default_embedding_model, and Init succeeds. Once a
+		// model is registered, rebuildReason sees the model reference differ and rebuilds.
+		//
+		// A dataset built for a real model is left alone: the failure may be a blip, and
+		// rebuilding it to a placeholder would drop a working index.
+		if resource != nil && !isPlaceholderDataset(resource) {
+			s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", capabilityDataset, err)
+			return err
+		}
+		s.logger.WithContext(ctx).Warnf("no usable embedding model, using the default dimension %d without a default embedding model, resource_id=%s, err=%v",
+			defaultEmbeddingDim, capabilityDataset, err)
+		embeddingModel = placeholderEmbeddingModel()
+		placeholder = true
 	}
 
 	if resource != nil {
@@ -211,9 +232,38 @@ func (s *capabilityIndexSync) createDataset(ctx context.Context, catalogID strin
 		// Vega validates the resource-level index_config as a model ID. The embeddings API name
 		// stays in memory: it must not reach a vector feature's config, which vega copies into
 		// the knn_vector mapping verbatim and OpenSearch then rejects.
-		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelID},
+		IndexConfig: datasetIndexConfig(embeddingModel),
 	})
 	return err
+}
+
+// defaultEmbeddingDim is the vector dimension of a dataset built before any embedding model is
+// registered. It is the BKN concept index's default as well.
+const defaultEmbeddingDim = 768
+
+// placeholderEmbeddingModel stands in for a model that is not registered yet. It has no model ID,
+// so the dataset carries no default_embedding_model, and the embeddings API name is the one every
+// deployment registers its model under.
+func placeholderEmbeddingModel() *interfaces.EmbeddingModel {
+	return &interfaces.EmbeddingModel{
+		ModelName:    interfaces.SmallModelTypeEmbedding,
+		EmbeddingDim: defaultEmbeddingDim,
+	}
+}
+
+// datasetIndexConfig leaves index_config out for a placeholder: Vega validates the field as a
+// model ID, and an empty one is not.
+func datasetIndexConfig(embeddingModel *interfaces.EmbeddingModel) *interfaces.VegaResourceIndexConfig {
+	if strings.TrimSpace(embeddingModel.ModelID) == "" {
+		return nil
+	}
+	return &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelID}
+}
+
+// isPlaceholderDataset reports whether the dataset was built without an embedding model.
+func isPlaceholderDataset(resource *interfaces.VegaResource) bool {
+	return resource != nil &&
+		(resource.IndexConfig == nil || strings.TrimSpace(resource.IndexConfig.DefaultEmbeddingModel) == "")
 }
 
 // rebuildDataset drops and recreates the dataset. The caller is expected to repopulate it: this
@@ -459,6 +509,9 @@ func (s *capabilityIndexSync) UpsertCapability(ctx context.Context, doc *interfa
 			readableKey(doc.CapabilityRef))
 		return nil
 	}
+	if s.skipPlaceholderWrite(ctx) {
+		return nil
+	}
 	document, err := s.buildDocument(ctx, doc)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("build capability document failed, key=%s, err=%v",
@@ -696,6 +749,34 @@ func (s *capabilityIndexSync) setInitialized(initialized bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.initialized = initialized
+}
+
+func (s *capabilityIndexSync) setPlaceholder(placeholder bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.placeholder = placeholder
+	if !placeholder {
+		s.placeholderWarned = false
+	}
+}
+
+// skipPlaceholderWrite reports whether a write must be skipped because the dataset is still a
+// placeholder: it has the default vector dimension and no embedding model, so every embedding
+// request would be doomed and any vector written could mismatch the dataset. It warns once per
+// placeholder spell, not once per capability per reconciler pass.
+func (s *capabilityIndexSync) skipPlaceholderWrite(ctx context.Context) bool {
+	s.mu.Lock()
+	skip := s.placeholder
+	warn := skip && !s.placeholderWarned
+	if warn {
+		s.placeholderWarned = true
+	}
+	s.mu.Unlock()
+	if warn {
+		s.logger.WithContext(ctx).Warnf("capability index has no usable embedding model, skipping capability writes until one is registered, resource_id=%s",
+			capabilityDataset)
+	}
+	return skip
 }
 
 func (s *capabilityIndexSync) getDatasetID() string {

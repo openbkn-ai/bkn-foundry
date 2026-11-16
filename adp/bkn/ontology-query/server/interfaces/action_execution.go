@@ -61,12 +61,28 @@ type ActionExecutionRequest struct {
 	GovernanceRequestID  string                `json:"governance_request_id,omitempty"`
 	GovernancePermitID   string                `json:"governance_permit_id,omitempty"`
 	GovernancePlanDigest string                `json:"governance_plan_digest,omitempty"`
+	// BKNContext is the caller's optional correlation label: the Conversation and Interaction
+	// (BKN Trace) the execution belongs to. It is never used for authorization.
+	BKNContext *ActionBKNContext `json:"bkn_context,omitempty"`
+
+	// ConversationID and InteractionID are the resolved correlation ids (body bkn_context, else
+	// the bkn-conversation-id / bkn-interaction-id headers), set by the handler. Empty for
+	// scheduled executions.
+	ConversationID string `json:"-"`
+	InteractionID  string `json:"-"`
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`
 	// InstanceIdentityHash is a stable fingerprint of resolved Instances + dynamic_params
 	// (set by scheduler before duplicate check).
 	InstanceIdentityHash string `json:"-"`
+}
+
+// ActionBKNContext is the same {conversation_id, interaction_id} shape the Context Loader
+// surface uses. Both ids are caller-owned labels, not credentials.
+type ActionBKNContext struct {
+	ConversationID string `json:"conversation_id,omitempty"`
+	InteractionID  string `json:"interaction_id,omitempty"`
 }
 
 // ActionExecutionResponse represents the immediate response after submitting execution
@@ -113,6 +129,8 @@ type ActionExecution struct {
 	ProxyModelVersion       string                  `json:"proxy_model_version,omitempty"`       // Published model version synchronized to the proxy.
 	ProxyPermissionSnapshot []PermissionRequirement `json:"proxy_permission_snapshot,omitempty"` // Downstream facts enforced by the final proxy PEP.
 	InstanceIdentityHash    string                  `json:"instance_identity_hash,omitempty"`    // fingerprint of instances + dynamic_params for duplicate detection
+	ConversationID          string                  `json:"conversation_id,omitempty"`           // caller-declared Conversation the execution belongs to; correlation only
+	InteractionID           string                  `json:"interaction_id,omitempty"`            // caller-declared Interaction (one Agent run); correlation only
 }
 
 // ObjectExecutionResult represents execution result for a single object.
@@ -153,11 +171,13 @@ type ActionLogQuery struct {
 	Status               string   `json:"status,omitempty" form:"status"`
 	Statuses             []string `json:"statuses,omitempty"` // when set, OR-match any status (takes precedence over Status)
 	TriggerType          string   `json:"trigger_type,omitempty" form:"trigger_type"`
-	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"` // exact match on duplicate fingerprint
-	Keyword              string   `json:"keyword,omitempty" form:"keyword"` // case-insensitive literal substring of the execution id
-	StartTimeRange       []int64  `json:"start_time_range,omitempty"`       // [start, end] for JSON body
-	StartTimeFrom        int64    `json:"-" form:"start_time_from"`         // for GET query params
-	StartTimeTo          int64    `json:"-" form:"start_time_to"`           // for GET query params
+	InstanceIdentityHash string   `json:"instance_identity_hash,omitempty"`                 // exact match on duplicate fingerprint
+	ConversationID       string   `json:"conversation_id,omitempty" form:"conversation_id"` // exact match
+	InteractionID        string   `json:"interaction_id,omitempty" form:"interaction_id"`   // exact match
+	Keyword              string   `json:"keyword,omitempty" form:"keyword"`                 // case-insensitive literal substring of the execution id
+	StartTimeRange       []int64  `json:"start_time_range,omitempty"`                       // [start, end] for JSON body
+	StartTimeFrom        int64    `json:"-" form:"start_time_from"`                         // for GET query params
+	StartTimeTo          int64    `json:"-" form:"start_time_to"`                           // for GET query params
 	Offset               int      `json:"offset,omitempty" form:"offset"`
 	Limit                int      `json:"limit,omitempty" form:"limit"`
 	NeedTotal            bool     `json:"need_total,omitempty" form:"need_total"`

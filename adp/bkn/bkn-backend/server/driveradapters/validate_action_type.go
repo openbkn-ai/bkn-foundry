@@ -183,6 +183,9 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 		}
 	}
 
+	if err := interfaces.NormalizeActionStringConstants(actionType); err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
+	}
 	if err := interfaces.ValidateActionOperation(actionType); err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
 	}

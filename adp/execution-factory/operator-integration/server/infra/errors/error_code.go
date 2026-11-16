@@ -82,6 +82,8 @@ const (
 	ErrExtSkillNameDuplicate ErrorCode = "SkillNameDuplicate" // Duplicate skill name.
 	// Skill classification does not exist.
 	ErrExtSkillCategoryNotFound ErrorCode = "SkillCategoryNotFound" // Skill classification does not exist.
+	// The Skill execution entry is not a Python script of the Skill package.
+	ErrExtSkillEntryInvalid ErrorCode = "SkillEntryInvalid" // The Skill execution entry is invalid.
 )
 
 // Agent module error code definition.

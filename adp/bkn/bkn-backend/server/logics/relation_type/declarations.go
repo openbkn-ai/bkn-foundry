@@ -30,14 +30,14 @@ import (
 func validateDeclarations(ctx context.Context, relationType *interfaces.RelationType) error {
 	relationType.NormalizeDeclarations()
 	if err := bknsdk.ValidateRelationTypeDeclarations(logics.ToBKNRelationType(relationType)); err != nil {
-		return invalidDeclarations(ctx, err.Error())
+		return invalidDeclarations(ctx, logics.SpecIssueDetail(interfaces.RESOURCE_TYPE_RELATION_TYPE, relationType.RTID, err))
 	}
 	return nil
 }
 
-func invalidDeclarations(ctx context.Context, detail string) error {
-	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter_Declarations).
-		WithErrorDetails(detail)
+func invalidDeclarations(ctx context.Context, issue logics.DeclarationIssueDetail) error {
+	return logics.DeclarationRefusal(ctx, berrors.BknBackend_RelationType_InvalidParameter_Declarations,
+		issue["message"].(string), issue)
 }
 
 // clearedDeclarations lists the declaration fields of stored that overwriting it with incoming would
@@ -96,6 +96,10 @@ func (rts *relationTypeService) checkOverwriteKeepsDeclarations(ctx context.Cont
 			updates[0].KNID, clearedIDs, interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return err
 		}
+	}
+	// An import checks every kind of definition before it refuses, and lists them all at once.
+	if interfaces.CollectClearedDeclarations(ctx, cleared) {
+		return nil
 	}
 	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_RelationType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{

@@ -17,6 +17,14 @@ action_intent: modify
 3. 等待控制器重建
 4. 验证新 Pod 状态
 
+### Operation Config
+
+```yaml
+operation_config:
+  type: object
+```
+
+
 ### Bound Object
 
 | Bound Object |
@@ -60,9 +68,9 @@ value:
 
 | Name | Type | Source | Operation | ValueFrom | Value | Description |
 |------|------|--------|-----------|-----------|-------|-------------|
-| pod_name | string | property |  |  | pod_name | Pod 名称 |
-| pod_namespace | string | property |  |  | pod_namespace | 命名空间 |
-| grace_period | integer | const |  |  | 30 | 优雅停止等待秒数 |
+| pod_name | string |  |  | property | pod_name | Pod 名称 |
+| pod_namespace | string |  |  | property | pod_namespace | 命名空间 |
+| grace_period | integer |  |  | const | 30 | 优雅停止等待秒数 |
 
 ### Schedule
 

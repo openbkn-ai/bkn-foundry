@@ -24,6 +24,8 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // declaredObjectType is a stored object type with property declarations.
@@ -65,6 +67,20 @@ func TestValidateDeclarations(t *testing.T) {
 	err := validateDeclarations(ctx, ot)
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
 	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "Semantic end_time needs an event_time property")
+	// The English text stays a string; the issue record rides in metadata.
+	assert.Equal(t, []logics.DeclarationIssueDetail{{
+		"rule": "end_time_without_event_time", "object_type_id": "order",
+		"message": "Semantic end_time needs an event_time property alongside",
+	}}, err.(*httperrors.HTTPError).Metadata["issues"])
+
+	ot = declaredObjectType()
+	ot.DataProperties[1].Type = "string"
+	err = validateDeclarations(ctx, ot)
+	assert.Equal(t, []logics.DeclarationIssueDetail{{
+		"rule": "semantic_type_mismatch", "object_type_id": "order", "property": "placed_at",
+		"params":  map[string]any{"semantic": "event_time", "type": "string", "allowed": []string{"date", "datetime", "timestamp"}},
+		"message": `data property "placed_at": Semantic event_time needs Type date, datetime, timestamp, got "string"`,
+	}}, err.(*httperrors.HTTPError).Metadata["issues"])
 
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
@@ -79,6 +95,10 @@ func TestValidateDeclarations(t *testing.T) {
 	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":false}`)
 	err = validateDeclarations(ctx, ot)
 	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `data property "id": a primary key is required by definition`)
+	issues, _ := err.(*httperrors.HTTPError).Metadata["issues"].([]logics.DeclarationIssueDetail)
+	require.Len(t, issues, 1)
+	assert.Equal(t, RulePrimaryKeyRequiredFalse, issues[0]["rule"])
+	assert.Equal(t, "id", issues[0]["property"])
 
 	ot = declaredObjectType()
 	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":true}`)
@@ -129,6 +149,13 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 	details := httpErr.ErrorDetails.(map[string]any)
 	assert.Len(t, details["cleared"], 2)
 	assert.Equal(t, "confirm_clear_declarations=true", details["confirm_with"])
+
+	// Under a collector, as an import runs it, the overwrite records what it would clear and does not refuse.
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
+	collectCtx, collector := interfaces.WithClearedDeclarationCollector(ctx)
+	require.NoError(t, service.checkOverwriteKeepsDeclarations(collectCtx, nil, []*interfaces.ObjectType{file}, false))
+	assert.Equal(t, details["cleared"], collector.Cleared())
 
 	// Confirmed, it reads nothing and lets the overwrite through.
 	require.NoError(t, service.checkOverwriteKeepsDeclarations(interfaces.WithClearDeclarationsConfirmed(ctx), nil, []*interfaces.ObjectType{file}, false))
@@ -381,6 +408,11 @@ func TestCheckAliasNames(t *testing.T) {
 		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("order", "订单", "订货单", "客户")})
 		assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
 		assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
+		assert.Equal(t, []logics.DeclarationIssueDetail{{
+			"rule": "alias_conflict", "object_type_id": "order",
+			"params":  map[string]any{"alias": "客户", "conflicts_with": "customer"},
+			"message": `object type "order" alias "客户" is the name of object type "customer"`,
+		}}, err.(*httperrors.HTTPError).Metadata["issues"])
 	})
 
 	t.Run("a new object type named like a stored alias", func(t *testing.T) {
@@ -509,4 +541,34 @@ func TestObjectTypeLifecycleDeclaration(t *testing.T) {
 	noReason := declaredObjectType()
 	noReason.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED}
 	assert.Error(t, validateDeclarations(ctx, noReason))
+}
+
+// CheckOverwriteDeclarations on the real service, as an import runs it: it lists what the overwrite
+// would clear in the collector, defers the definition it writes to the network check, and does not
+// refuse.
+func TestCheckOverwriteDeclarationsRecordsClearedAndDeferredDefinitions(t *testing.T) {
+	ctx, collector := interfaces.WithClearedDeclarationCollector(context.Background())
+	ctx, deferred := logics.WithDeferredNetworkRelations(ctx)
+	ctx = permission.WithKNImportPermissionPrechecked(ctx)
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	service := &objectTypeService{ota: ota, nr: &logics.NetworkRelations{}}
+
+	file := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订单",
+			DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "placed_at"}, {Name: "amount"}}},
+	}
+	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "order").Return("订单", true, nil)
+	ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "订单").Return("order", true, nil)
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
+
+	require.NoError(t, service.CheckOverwriteDeclarations(ctx, "kn1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ObjectType{file}, interfaces.ImportMode_Overwrite))
+
+	assert.Equal(t, clearedDeclarations(declaredObjectType(), file), collector.Cleared())
+	assert.NotEmpty(t, collector.Cleared())
+	require.Len(t, deferred.ObjectTypes, 1)
+	assert.Same(t, file, deferred.ObjectTypes[0])
+	assert.Equal(t, "kn1", file.KNID)
 }

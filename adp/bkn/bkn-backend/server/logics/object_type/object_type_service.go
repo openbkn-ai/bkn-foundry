@@ -441,6 +441,31 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	return otIDs, nil
 }
 
+// CheckOverwriteDeclarations lists what an overwrite import of objectTypes would clear, and records
+// the definitions it would write for the network check, before the import writes anything: an
+// import refuses once, for every kind of definition together, and its writes reach beyond the
+// transaction, so a refusal must come before the first of them.
+func (ots *objectTypeService) CheckOverwriteDeclarations(ctx context.Context, knID string, branch string,
+	objectTypes []*interfaces.ObjectType, mode string) error {
+	if len(objectTypes) == 0 {
+		return nil
+	}
+	for _, objectType := range objectTypes {
+		objectType.KNID = knID
+		objectType.Branch = branch
+	}
+	creates, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
+	if err != nil {
+		return err
+	}
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	_, err = ots.nr.CheckSave(ctx, knID, branch,
+		logics.SavedDefinitions{ObjectTypes: append(append([]*interfaces.ObjectType{}, creates...), updates...)})
+	return err
+}
+
 // ValidateObjectTypes authorizes the validation request and checks dependency
 // existence without writing to the database.
 func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID string, branch string,

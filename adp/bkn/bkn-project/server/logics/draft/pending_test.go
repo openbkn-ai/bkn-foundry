@@ -236,6 +236,13 @@ func Test_PendingOf(t *testing.T) {
 			p = pendingOf(project, d, nil)
 			So(p.Items[0].Reason, ShouldEqual, interfaces.BLOCKER_NEEDS_IDENTITY)
 			So(p.Items[len(p.Items)-1].Reason, ShouldEqual, interfaces.PENDING_REASON_NEEDS_UPDATE_FIELD)
+
+			// A document object type has no update field to choose, whatever time properties it has.
+			d.Items.ObjectTypes[0].NeedsIdentity = false
+			orders.Document = &interfaces.DraftDocumentModel{Role: "fact"}
+			So(updateFieldCandidates(orders), ShouldBeEmpty)
+			So(updateField(orders).Pending, ShouldBeFalse)
+			So(pendingOf(project, d, nil).Items, ShouldBeEmpty)
 		})
 
 		Convey("An adopted relation whose linking fields cannot match is listed, to leave out or retype\n", func() {

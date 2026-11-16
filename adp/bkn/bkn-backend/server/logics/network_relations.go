@@ -114,6 +114,11 @@ func DeferNetworkRelations(ctx context.Context) (deferredCtx context.Context, sa
 // definition it writes; one between two stored definitions is not this save's doing. Under
 // WithDeferredNetworkRelations it records the definitions and lists nothing.
 func (nr *NetworkRelations) CheckSave(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]string, error) {
+	issues, err := nr.checkSaveIssues(ctx, knID, branch, saved)
+	return IssueMessages(issues), err
+}
+
+func (nr *NetworkRelations) checkSaveIssues(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]bknsdk.DeclarationIssue, error) {
 	if nr == nil || saved.empty() {
 		return nil, nil
 	}
@@ -121,7 +126,16 @@ func (nr *NetworkRelations) CheckSave(ctx context.Context, knID, branch string, 
 		deferred.add(saved)
 		return nil, nil
 	}
-	return nr.Check(ctx, knID, branch, saved)
+	return nr.CheckIssues(ctx, knID, branch, saved)
+}
+
+// IssueMessages lists each issue's message, for callers that report the issues as text.
+func IssueMessages(issues []bknsdk.DeclarationIssue) []string {
+	var messages []string
+	for _, issue := range issues {
+		messages = append(messages, issue.Err.Error())
+	}
+	return messages
 }
 
 // Check lists the issues involving a definition of saved in the network saved would produce over
@@ -130,6 +144,13 @@ func (nr *NetworkRelations) CheckSave(ctx context.Context, knID, branch string, 
 // saved deprecates. A network without lifecycles or fallback paths answers the list reads with no
 // rows.
 func (nr *NetworkRelations) Check(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]string, error) {
+	issues, err := nr.CheckIssues(ctx, knID, branch, saved)
+	return IssueMessages(issues), err
+}
+
+// CheckIssues is Check with the issues as the specification library found them: each carries its
+// rule and the definitions it involves.
+func (nr *NetworkRelations) CheckIssues(ctx context.Context, knID, branch string, saved SavedDefinitions) ([]bknsdk.DeclarationIssue, error) {
 	if nr == nil || saved.empty() {
 		return nil, nil
 	}
@@ -137,36 +158,45 @@ func (nr *NetworkRelations) Check(ctx context.Context, knID, branch string, save
 	if err != nil {
 		return nil, err
 	}
-	var problems []string
+	var found []bknsdk.DeclarationIssue
 	for _, issue := range bknsdk.NetworkRelationIssues(doc) {
 		if saved.involvedIn(issue) {
-			problems = append(problems, issue.Err.Error())
+			found = append(found, issue)
 		}
 	}
-	return problems, nil
+	return found, nil
 }
 
 // SaveRefusal runs CheckSave and answers its issues as a 400 with invalidCode, joined in the
 // details; a failed read answers 500 with internalCode.
 func (nr *NetworkRelations) SaveRefusal(ctx context.Context, knID, branch string, saved SavedDefinitions,
 	invalidCode, internalCode string) error {
-	problems, err := nr.CheckSave(ctx, knID, branch, saved)
-	return nr.saveRefusal(ctx, problems, err, invalidCode, internalCode)
+	issues, err := nr.checkSaveIssues(ctx, knID, branch, saved)
+	return nr.saveRefusal(ctx, issues, err, invalidCode, internalCode)
 }
 
 // CheckRefusal is SaveRefusal for Check: it checks now, also under WithDeferredNetworkRelations.
 func (nr *NetworkRelations) CheckRefusal(ctx context.Context, knID, branch string, saved SavedDefinitions,
 	invalidCode, internalCode string) error {
-	problems, err := nr.Check(ctx, knID, branch, saved)
-	return nr.saveRefusal(ctx, problems, err, invalidCode, internalCode)
+	issues, err := nr.CheckIssues(ctx, knID, branch, saved)
+	return nr.saveRefusal(ctx, issues, err, invalidCode, internalCode)
 }
 
-func (nr *NetworkRelations) saveRefusal(ctx context.Context, problems []string, err error, invalidCode, internalCode string) error {
+// Refusal answers the outcome of CheckIssues as SaveRefusal does.
+func (nr *NetworkRelations) Refusal(ctx context.Context, issues []bknsdk.DeclarationIssue, err error, invalidCode, internalCode string) error {
+	return nr.saveRefusal(ctx, issues, err, invalidCode, internalCode)
+}
+
+func (nr *NetworkRelations) saveRefusal(ctx context.Context, issues []bknsdk.DeclarationIssue, err error, invalidCode, internalCode string) error {
 	if err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, internalCode).WithErrorDetails(err.Error())
 	}
-	if len(problems) > 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, invalidCode).WithErrorDetails(strings.Join(problems, "; "))
+	if len(issues) > 0 {
+		details := make([]DeclarationIssueDetail, 0, len(issues))
+		for _, issue := range issues {
+			details = append(details, NetworkIssueDetail(issue))
+		}
+		return DeclarationRefusal(ctx, invalidCode, strings.Join(IssueMessages(issues), "; "), details...)
 	}
 	return nil
 }
@@ -175,13 +205,12 @@ func (nr *NetworkRelations) saveRefusal(ctx context.Context, problems []string, 
 // in the details; a failed read answers 500 with internalCode.
 func (nr *NetworkRelations) DeleteRefusal(ctx context.Context, knID, branch, kind string, ids []string,
 	referencedCode, internalCode string) error {
-	references, err := nr.DeleteReferrers(ctx, knID, branch, kind, ids)
+	references, err := nr.DeleteReferences(ctx, knID, branch, kind, ids)
 	if err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, internalCode).WithErrorDetails(err.Error())
 	}
 	if len(references) > 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusConflict, referencedCode).
-			WithErrorDetails(map[string]any{"references": references})
+		return ReferencedRefusal(ctx, referencedCode, references)
 	}
 	return nil
 }
@@ -344,6 +373,17 @@ func (nr *NetworkRelations) network(ctx context.Context, knID, branch string, sa
 // removes: a deprecated definition of the same kind whose replaced_by names one, or a relation type
 // whose fallback_for names one. A referrer the same delete removes does not count.
 func (nr *NetworkRelations) DeleteReferrers(ctx context.Context, knID, branch, kind string, ids []string) ([]string, error) {
+	references, err := nr.DeleteReferences(ctx, knID, branch, kind, ids)
+	var referrers []string
+	for _, reference := range references {
+		referrers = append(referrers, reference.Message)
+	}
+	return referrers, err
+}
+
+// DeleteReferences is DeleteReferrers with each reference as a record: what is still referred to,
+// who refers to it, and through which declaration.
+func (nr *NetworkRelations) DeleteReferences(ctx context.Context, knID, branch, kind string, ids []string) ([]Reference, error) {
 	if nr == nil || len(ids) == 0 {
 		return nil, nil
 	}
@@ -352,10 +392,13 @@ func (nr *NetworkRelations) DeleteReferrers(ctx context.Context, knID, branch, k
 		interfaces.RESOURCE_TYPE_RELATION_TYPE: "relation type",
 		interfaces.RESOURCE_TYPE_ACTION_TYPE:   "action type",
 	}[kind]
-	var referrers []string
+	var referrers []Reference
 	replacedBy := func(id string, lc *interfaces.Lifecycle) {
 		if lc != nil && lc.ReplacedBy != "" && slices.Contains(ids, lc.ReplacedBy) && !slices.Contains(ids, id) {
-			referrers = append(referrers, fmt.Sprintf("%s %q is the lifecycle replaced_by of %s %q", label, lc.ReplacedBy, label, id))
+			referrers = append(referrers, Reference{
+				Kind: kind, ID: lc.ReplacedBy, ReferrerKind: kind, ReferrerID: id, Via: ReferenceViaReplacedBy,
+				Message: fmt.Sprintf("%s %q is the lifecycle replaced_by of %s %q", label, lc.ReplacedBy, label, id),
+			})
 		}
 	}
 	switch kind {
@@ -390,7 +433,10 @@ func (nr *NetworkRelations) DeleteReferrers(ctx context.Context, knID, branch, k
 		for _, rt := range stored {
 			replacedBy(rt.RTID, rt.Lifecycle)
 			if rt.FallbackFor != "" && slices.Contains(ids, rt.FallbackFor) && !slices.Contains(ids, rt.RTID) {
-				referrers = append(referrers, fmt.Sprintf("relation type %q is the fallback_for of relation type %q", rt.FallbackFor, rt.RTID))
+				referrers = append(referrers, Reference{
+					Kind: kind, ID: rt.FallbackFor, ReferrerKind: kind, ReferrerID: rt.RTID, Via: ReferenceViaFallbackFor,
+					Message: fmt.Sprintf("relation type %q is the fallback_for of relation type %q", rt.FallbackFor, rt.RTID),
+				})
 			}
 		}
 	}

@@ -194,6 +194,9 @@ func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, _ interface {
 	if err := seedAdminUser(db); err != nil {
 		return fmt.Errorf("seed admin user: %w", err)
 	}
+	if err := seedDatasetStorageAccount(db, enforcer); err != nil {
+		return fmt.Errorf("seed dataset storage account: %w", err)
+	}
 	if err := enforcer.PrimeDerivedRules(context.Background()); err != nil {
 		return fmt.Errorf("prime derived authorization rules: %w", err)
 	}

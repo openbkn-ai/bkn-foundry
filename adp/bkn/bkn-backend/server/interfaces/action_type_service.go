@@ -32,4 +32,7 @@ type ActionTypeService interface {
 
 	// ValidateActionTypes validates dependency existence only and does not persist data.
 	ValidateActionTypes(ctx context.Context, knID string, branch string, actionTypes []*ActionType, strictMode bool, batch *BatchIDIndex, mode string) error
+
+	// CheckOverwriteDeclarations is the first step of an overwrite import and writes nothing: see ObjectTypeService.
+	CheckOverwriteDeclarations(ctx context.Context, knID string, branch string, actionTypes []*ActionType, mode string) error
 }

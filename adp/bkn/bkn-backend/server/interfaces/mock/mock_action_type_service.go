@@ -235,3 +235,17 @@ func (mr *MockActionTypeServiceMockRecorder) ValidateActionTypes(ctx, knID, bran
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateActionTypes", reflect.TypeOf((*MockActionTypeService)(nil).ValidateActionTypes), ctx, knID, branch, actionTypes, strictMode, batch, mode)
 }
+
+// CheckOverwriteDeclarations mocks base method.
+func (m *MockActionTypeService) CheckOverwriteDeclarations(ctx context.Context, knID, branch string, actionTypes []*interfaces.ActionType, mode string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckOverwriteDeclarations", ctx, knID, branch, actionTypes, mode)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckOverwriteDeclarations indicates an expected call of CheckOverwriteDeclarations.
+func (mr *MockActionTypeServiceMockRecorder) CheckOverwriteDeclarations(ctx, knID, branch, actionTypes, mode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckOverwriteDeclarations", reflect.TypeOf((*MockActionTypeService)(nil).CheckOverwriteDeclarations), ctx, knID, branch, actionTypes, mode)
+}

@@ -19,6 +19,49 @@ info:
     lookups. A missing or unpublished binding returns 400. Permission/configuration failures,
     downstream 5xx responses, and invalid responses return 502; timeout or unavailable failures
     return 503. Raw dependency response bodies are not included in public errors.
+
+    ### Refused declarations and references
+
+    A save the declaration rules refuse answers 400 `BknBackend.ActionType.InvalidParameter.Declarations`. As before,
+    `error_details` holds the English text (several issues are joined with `; `). `metadata.issues` holds the same
+    refusal as records, so that a caller words it in its own language and finds the definition and the property:
+
+    ```json
+    {
+      "error_code": "BknBackend.ActionType.InvalidParameter.Declarations",
+      "error_details": "action type aliases: alias \"order\" is the same as its own name",
+      "metadata": {"issues": [{
+        "rule": "alias_equals_own_name",
+        "action_type_id": "order",
+        "params": {"alias": "order"},
+        "message": "action type aliases: alias \"order\" is the same as its own name"
+      }]}
+    }
+    ```
+
+    Each issue has `rule` (the stable code below), the ID of the definition it concerns (`object_type_id`,
+    `relation_type_id` or `action_type_id`), `property` for a rule of one data property, `params` (the values the
+    message is built from), `involved` (every definition a rule that spans definitions concerns, as `{kind, id}`;
+    the first is the definition that refers first and the one named by the ID field) and `message` (the English
+    text). A rule within one definition lists the first problem it finds. A rule that spans definitions
+    (`replaced_by`, `fallback_for`, deprecated endpoints) lists every problem that involves a definition of the
+    save. An alias that names another definition (`alias_conflict`) reports only the first conflict.
+
+    A delete refused because definitions still refer to it answers 409 `BknBackend.ActionType.StillReferenced`.
+    `error_details.references` lists the English sentences, as before. `metadata.references` holds one record per
+    reference: `kind` and `id` name what is referred to, `referrer_kind` and `referrer_id` who refers to it, `via`
+    the declaration (`replaced_by` or `fallback_for`), and `message` the English sentence.
+
+    Rules of this definition kind:
+
+    - Aliases: `aliases_too_many` (`count`, `max`), `alias_empty`, `alias_full_width_comma` (`alias`),
+      `alias_contains_comma` (`alias`), `alias_too_long` (`alias`, `max`), `alias_duplicated` (`alias`),
+      `alias_equals_own_name` (`alias`), `alias_conflict` (`alias`, `conflicts_with`: another action type is
+      named like the alias).
+    - Lifecycle: `lifecycle_fields_without_deprecation`, `lifecycle_reason_missing`, `lifecycle_replaced_by_invalid`
+      (`replaced_by`), `lifecycle_replaced_by_self` (`replaced_by`), `lifecycle_status_invalid` (`status`,
+      `allowed`), and across action types `replaced_by_missing`, `replaced_by_deprecated` (`replaced_by`).
+
 security:
   - OAuth2: []
 paths:

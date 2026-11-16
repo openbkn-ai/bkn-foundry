@@ -115,20 +115,20 @@ func validateLifecycle(where string, lc *Lifecycle, ownID string) error {
 	switch lc.Status {
 	case LifecycleActive:
 		if lc.Reason != "" || lc.ReplacedBy != "" {
-			return specErrorf("%s: reason and replaced_by go with status deprecated only", where)
+			return ruleErrorf(RuleLifecycleFieldsWithoutDeprecation, nil, "%s: reason and replaced_by go with status deprecated only", where)
 		}
 	case LifecycleDeprecated:
 		if strings.TrimSpace(lc.Reason) == "" {
-			return specErrorf("%s: status deprecated needs a reason", where)
+			return ruleErrorf(RuleLifecycleReasonMissing, nil, "%s: status deprecated needs a reason", where)
 		}
 		if lc.ReplacedBy != "" && !idPattern.MatchString(lc.ReplacedBy) {
-			return specErrorf("%s: replaced_by %q is not an id; an id must match %s", where, lc.ReplacedBy, idPattern.String())
+			return ruleErrorf(RuleLifecycleReplacedByInvalid, map[string]any{"replaced_by": lc.ReplacedBy}, "%s: replaced_by %q is not an id; an id must match %s", where, lc.ReplacedBy, idPattern.String())
 		}
 		if lc.ReplacedBy != "" && lc.ReplacedBy == ownID {
-			return specErrorf("%s: replaced_by %q is the definition itself", where, lc.ReplacedBy)
+			return ruleErrorf(RuleLifecycleReplacedBySelf, map[string]any{"replaced_by": lc.ReplacedBy}, "%s: replaced_by %q is the definition itself", where, lc.ReplacedBy)
 		}
 	default:
-		return specErrorf("%s: status must be %s, got %q", where, strings.Join(lifecycleStatuses, " or "), lc.Status)
+		return ruleErrorf(RuleLifecycleStatusInvalid, map[string]any{"status": lc.Status, "allowed": lifecycleStatuses}, "%s: status must be %s, got %q", where, strings.Join(lifecycleStatuses, " or "), lc.Status)
 	}
 	return nil
 }
@@ -209,7 +209,7 @@ func parseRelationConstraintsV3(rel *BknRelationType, sectionText string) error 
 func ValidateRelationTypeDeclarations(rt *BknRelationType) error {
 	if rt.ReverseName != "" {
 		if msg := validateFieldDisplayName(rt.ReverseName); msg != "" {
-			return specErrorf("relation type reverse_name: %s", msg)
+			return ruleErrorf(RuleReverseNameInvalid, map[string]any{"reverse_name": rt.ReverseName, "reason": msg}, "relation type reverse_name: %s", msg)
 		}
 	}
 	if err := validateAliases("relation type aliases", rt.Aliases, rt.Name, rt.ReverseName); err != nil {
@@ -219,23 +219,23 @@ func ValidateRelationTypeDeclarations(rt *BknRelationType) error {
 		return err
 	}
 	if rt.Importance != "" && !containsString(importances, rt.Importance) {
-		return specErrorf("relation type importance must be %s, got %q", strings.Join(importances, " or "), rt.Importance)
+		return ruleErrorf(RuleImportanceInvalid, map[string]any{"importance": rt.Importance, "allowed": importances}, "relation type importance must be %s, got %q", strings.Join(importances, " or "), rt.Importance)
 	}
 	if rt.Verification != "" && !containsString(verifications, rt.Verification) {
-		return specErrorf("relation type verification must be %s, got %q", strings.Join(verifications, " or "), rt.Verification)
+		return ruleErrorf(RuleVerificationInvalid, map[string]any{"verification": rt.Verification, "allowed": verifications}, "relation type verification must be %s, got %q", strings.Join(verifications, " or "), rt.Verification)
 	}
 	if err := validateEndpointDeclarations(rt); err != nil {
 		return err
 	}
 	if rt.FallbackFor != "" {
 		if !idPattern.MatchString(rt.FallbackFor) {
-			return specErrorf("relation type fallback_for %q is not a relation type id; an id must match %s", rt.FallbackFor, idPattern.String())
+			return ruleErrorf(RuleFallbackForInvalid, map[string]any{"fallback_for": rt.FallbackFor}, "relation type fallback_for %q is not a relation type id; an id must match %s", rt.FallbackFor, idPattern.String())
 		}
 		if rt.Importance != ImportanceSecondary {
-			return specErrorf("relation type fallback_for goes with importance: secondary; a fallback path is a secondary relation")
+			return ruleErrorf(RuleFallbackForNotSecondary, map[string]any{"fallback_for": rt.FallbackFor}, "relation type fallback_for goes with importance: secondary; a fallback path is a secondary relation")
 		}
 		if rt.FallbackFor == rt.ID {
-			return specErrorf("relation type fallback_for %q is the relation itself", rt.FallbackFor)
+			return ruleErrorf(RuleFallbackForSelf, map[string]any{"fallback_for": rt.FallbackFor}, "relation type fallback_for %q is the relation itself", rt.FallbackFor)
 		}
 		if err := checkFallbackShape("relation type fallback path", rt); err != nil {
 			return err
@@ -248,44 +248,46 @@ func ValidateRelationTypeDeclarations(rt *BknRelationType) error {
 func validateEndpointDeclarations(rt *BknRelationType) error {
 	card := rt.Endpoint.Cardinality
 	if card != "" && !containsString(cardinalities, card) {
-		return specErrorf("Endpoint Cardinality must be one of %s, got %q", strings.Join(cardinalities, ", "), card)
+		return ruleErrorf(RuleCardinalityInvalid, map[string]any{"cardinality": card, "allowed": cardinalities}, "Endpoint Cardinality must be one of %s, got %q", strings.Join(cardinalities, ", "), card)
 	}
 	if rt.Endpoint.Type == RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN && card != "" && card != CardinalityManyToMany {
-		return specErrorf("Endpoint Cardinality of a filtered_cross_join relation can only be many_to_many, which links every pair, got %q", card)
+		return ruleErrorf(RuleCardinalityCrossJoin, map[string]any{"cardinality": card}, "Endpoint Cardinality of a filtered_cross_join relation can only be many_to_many, which links every pair, got %q", card)
 	}
-	if err := checkSubset("relation constraints required", rt.RequiredEnds, relationEnds); err != nil {
+	if err := checkSubset("required", "relation constraints required", rt.RequiredEnds, relationEnds); err != nil {
 		return err
 	}
-	if err := checkSubset("relation constraints characteristics", rt.Characteristics, characteristics); err != nil {
+	if err := checkSubset("characteristics", "relation constraints characteristics", rt.Characteristics, characteristics); err != nil {
 		return err
 	}
 	if len(rt.Characteristics) > 0 && rt.Endpoint.Source != rt.Endpoint.Target {
-		return specErrorf("relation constraints characteristics apply to a relation whose Source and Target are the same object type, got %q and %q",
+		return ruleErrorf(RuleCharacteristicsEndsDiffer, map[string]any{"source": rt.Endpoint.Source, "target": rt.Endpoint.Target}, "relation constraints characteristics apply to a relation whose Source and Target are the same object type, got %q and %q",
 			rt.Endpoint.Source, rt.Endpoint.Target)
 	}
 	if containsString(rt.Characteristics, CharacteristicSymmetric) {
 		if card == CardinalityOneToMany || card == CardinalityManyToOne {
-			return specErrorf("a symmetric relation has the same count both ways, so its Cardinality is one_to_one, many_to_many or empty, got %s", card)
+			return ruleErrorf(RuleSymmetricCardinality, map[string]any{"cardinality": card}, "a symmetric relation has the same count both ways, so its Cardinality is one_to_one, many_to_many or empty, got %s", card)
 		}
 		if rt.ReverseName != "" {
-			return specErrorf("a symmetric relation reads the same both ways, so it has no reverse_name")
+			return ruleErrorf(RuleSymmetricReverseName, nil, "a symmetric relation reads the same both ways, so it has no reverse_name")
 		}
 		if len(rt.RequiredEnds) == 1 {
-			return specErrorf("a symmetric relation has no direction, so required is [source, target] or not written")
+			return ruleErrorf(RuleSymmetricRequired, nil, "a symmetric relation has no direction, so required is [source, target] or not written")
 		}
 	}
 	return nil
 }
 
-// checkSubset checks that a list holds allowed values, each once.
-func checkSubset(where string, items, allowed []string) error {
+// checkSubset checks that a list holds allowed values, each once. field is the stable name
+// of the declaration field, reported as params.field; where is the English locator that
+// only the message carries.
+func checkSubset(field, where string, items, allowed []string) error {
 	seen := map[string]bool{}
 	for _, item := range items {
 		if !containsString(allowed, item) {
-			return specErrorf("%s: %q is not one of %s", where, item, strings.Join(allowed, ", "))
+			return ruleErrorf(RuleListValueInvalid, map[string]any{"field": field, "value": item, "allowed": allowed}, "%s: %q is not one of %s", where, item, strings.Join(allowed, ", "))
 		}
 		if seen[item] {
-			return specErrorf("%s: %q appears twice", where, item)
+			return ruleErrorf(RuleListValueDuplicated, map[string]any{"field": field, "value": item}, "%s: %q appears twice", where, item)
 		}
 		seen[item] = true
 	}
@@ -296,10 +298,10 @@ func checkSubset(where string, items, allowed []string) error {
 // indirect, without characteristics.
 func checkFallbackShape(where string, rt *BknRelationType) error {
 	if rt.Endpoint.Type == RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN {
-		return specErrorf("%s %q is a filtered_cross_join relation; fallback paths are direct or indirect", where, rt.ID)
+		return ruleErrorf(RuleFallbackCrossJoin, map[string]any{"relation_type": rt.ID}, "%s %q is a filtered_cross_join relation; fallback paths are direct or indirect", where, rt.ID)
 	}
 	if len(rt.Characteristics) > 0 {
-		return specErrorf("%s %q declares characteristics; fallback paths do not", where, rt.ID)
+		return ruleErrorf(RuleFallbackCharacteristics, map[string]any{"relation_type": rt.ID}, "%s %q declares characteristics; fallback paths do not", where, rt.ID)
 	}
 	return nil
 }
@@ -313,15 +315,15 @@ func validateRelationProperties(rt *BknRelationType) error {
 	}
 	indirect, ok := rt.MappingRules.(*InDirectMappingRule)
 	if rt.Endpoint.Type != RELATION_MAPPING_TYPE_INDIRECT || !ok {
-		return specErrorf("only indirect relations have relation properties, but Endpoint Type is %s", rt.Endpoint.Type)
+		return ruleErrorf(RuleRelationPropertiesNotIndirect, map[string]any{"endpoint_type": rt.Endpoint.Type}, "only indirect relations have relation properties, but Endpoint Type is %s", rt.Endpoint.Type)
 	}
 	if len(rt.DataProperties) > maxPropertyNum {
-		return specErrorf("relation properties: count %d exceeds max %d", len(rt.DataProperties), maxPropertyNum)
+		return ruleErrorf(RuleRelationPropertiesTooMany, map[string]any{"count": len(rt.DataProperties), "max": maxPropertyNum}, "relation properties: count %d exceeds max %d", len(rt.DataProperties), maxPropertyNum)
 	}
 	rows := &ValidationResult{}
 	validateDataPropertyRows(rows, "", rt.DataProperties)
 	if !rows.OK() {
-		return specErrorf("relation property: %s", rows.Errors[0].Message)
+		return ruleErrorf(RuleRelationPropertyInvalid, map[string]any{"reason": rows.Errors[0].Message}, "relation property: %s", rows.Errors[0].Message)
 	}
 	joins := map[string]bool{}
 	for _, r := range indirect.SourceMappingRules {
@@ -335,11 +337,11 @@ func validateRelationProperties(rt *BknRelationType) error {
 			continue
 		}
 		if joins[p.MappedField] {
-			return specErrorf("relation property %q: Mapped Field %q joins the ends in Source Mapping or Target Mapping; a relation property maps another column",
+			return ruleErrorf(RuleRelationPropertyJoinsEnds, withProperty(p.Name, "mapped_field", p.MappedField), "relation property %q: Mapped Field %q joins the ends in Source Mapping or Target Mapping; a relation property maps another column",
 				p.Name, p.MappedField)
 		}
 		if p.Constraints != nil && p.Constraints.Unique {
-			return specErrorf("relation property %q: unique does not apply, an edge has no primary key", p.Name)
+			return ruleErrorf(RuleRelationPropertyUnique, withProperty(p.Name), "relation property %q: unique does not apply, an edge has no primary key", p.Name)
 		}
 	}
 	return validatePropertyDeclarations(rt.DataProperties)
@@ -439,7 +441,7 @@ func NetworkRelationIssues(doc *BknNetwork) []DeclarationIssue {
 		if !isDeprecated(rt.Lifecycle) {
 			for _, end := range []string{rt.Endpoint.Source, rt.Endpoint.Target} {
 				if o, ok := objects[end]; ok && isDeprecated(o.Lifecycle) {
-					add(specErrorf("relation type %q: endpoint object type %q is deprecated, so the relation is deprecated too", rt.ID, end),
+					add(ruleErrorf(RuleEndpointDeprecated, map[string]any{"object_type": end}, "relation type %q: endpoint object type %q is deprecated, so the relation is deprecated too", rt.ID, end),
 						self, DefinitionRef{kindObjectType, end})
 					break
 				}
@@ -452,20 +454,20 @@ func NetworkRelationIssues(doc *BknNetwork) []DeclarationIssue {
 		primaryRef := DefinitionRef{kindRelationType, rt.FallbackFor}
 		primary, ok := relations[rt.FallbackFor]
 		if !ok {
-			add(specErrorf("%s: no relation type has this id", where), self, primaryRef)
+			add(ruleErrorf(RuleFallbackTargetMissing, map[string]any{"fallback_for": rt.FallbackFor}, "%s: no relation type has this id", where), self, primaryRef)
 			continue
 		}
 		var err error
 		switch {
 		case primary.Importance != "" && primary.Importance != ImportancePrimary:
-			err = specErrorf("%s: the relation it stands in for is secondary; a fallback path stands in for a primary relation", where)
+			err = ruleErrorf(RuleFallbackTargetNotPrimary, map[string]any{"fallback_for": rt.FallbackFor}, "%s: the relation it stands in for is secondary; a fallback path stands in for a primary relation", where)
 		case isDeprecated(primary.Lifecycle):
-			err = specErrorf("%s: the relation it stands in for is deprecated; a fallback path stands in for an active relation", where)
+			err = ruleErrorf(RuleFallbackTargetDeprecated, map[string]any{"fallback_for": rt.FallbackFor}, "%s: the relation it stands in for is deprecated; a fallback path stands in for an active relation", where)
 		case primary.Endpoint.Source != rt.Endpoint.Source || primary.Endpoint.Target != rt.Endpoint.Target:
-			err = specErrorf("%s: the ends differ (%s -> %s and %s -> %s); a fallback path has the Source and Target of its primary relation",
+			err = ruleErrorf(RuleFallbackEndsDiffer, map[string]any{"fallback_for": rt.FallbackFor, "source": rt.Endpoint.Source, "target": rt.Endpoint.Target, "primary_source": primary.Endpoint.Source, "primary_target": primary.Endpoint.Target}, "%s: the ends differ (%s -> %s and %s -> %s); a fallback path has the Source and Target of its primary relation",
 				where, rt.Endpoint.Source, rt.Endpoint.Target, primary.Endpoint.Source, primary.Endpoint.Target)
 		case !containsString(fallbackCardinalities, primary.Endpoint.Cardinality):
-			err = specErrorf("%s: the primary relation declares Cardinality %q; it must be many_to_one or one_to_one, so a Source instance has at most one primary counterpart",
+			err = ruleErrorf(RuleFallbackPrimaryCardinality, map[string]any{"fallback_for": rt.FallbackFor, "cardinality": primary.Endpoint.Cardinality}, "%s: the primary relation declares Cardinality %q; it must be many_to_one or one_to_one, so a Source instance has at most one primary counterpart",
 				where, primary.Endpoint.Cardinality)
 		default:
 			err = checkFallbackShape(where+": primary relation", primary)
@@ -475,7 +477,7 @@ func NetworkRelationIssues(doc *BknNetwork) []DeclarationIssue {
 			continue
 		}
 		if other, taken := fallbackOf[primary.ID]; taken {
-			add(specErrorf("%s: relation type %q is already its fallback path; a primary relation has one", where, other),
+			add(ruleErrorf(RuleFallbackAlreadyTaken, map[string]any{"fallback_for": rt.FallbackFor, "other_fallback": other}, "%s: relation type %q is already its fallback path; a primary relation has one", where, other),
 				self, primaryRef, DefinitionRef{kindRelationType, other})
 			continue
 		}
@@ -493,10 +495,10 @@ func checkReplacedBy(kind, id string, lc *Lifecycle, lookup func(string) (*Lifec
 	label := strings.ReplaceAll(kind, "_", " ")
 	target, ok := lookup(lc.ReplacedBy)
 	if !ok {
-		return specErrorf("%s %q lifecycle replaced_by %q: no %s has this id", label, id, lc.ReplacedBy, label)
+		return ruleErrorf(RuleReplacedByMissing, map[string]any{"replaced_by": lc.ReplacedBy}, "%s %q lifecycle replaced_by %q: no %s has this id", label, id, lc.ReplacedBy, label)
 	}
 	if isDeprecated(target) {
-		return specErrorf("%s %q lifecycle replaced_by %q: that %s is deprecated too; replace with one in use", label, id, lc.ReplacedBy, label)
+		return ruleErrorf(RuleReplacedByDeprecated, map[string]any{"replaced_by": lc.ReplacedBy}, "%s %q lifecycle replaced_by %q: that %s is deprecated too; replace with one in use", label, id, lc.ReplacedBy, label)
 	}
 	return nil
 }

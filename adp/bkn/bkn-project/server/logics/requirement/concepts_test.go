@@ -136,6 +136,9 @@ func Test_BuildConcepts(t *testing.T) {
 					Citations: []agentCitation{cite("pol", "only a signed change does")}},
 				{Question: "One option?", Options: options[:1], Citations: []agentCitation{cite("pol", "only a signed change does")}},
 				{Question: "No quote?", Options: options},
+				// How software stores its data changes nothing in the model: left out, not rejected.
+				{Question: "Store tasks where?", Affects: choiceAffectsImplementation, Options: options,
+					Citations: []agentCitation{cite("pol", "only a signed change does")}},
 			}}
 
 			spec, _ := extractedFrom(out, docs, draft)

@@ -305,14 +305,17 @@ openbkn bkn search <kn_id> "high-value customers" --limit 20
 
 ```bash
 openbkn bkn action-type list <kn_id>
-openbkn bkn action-type query <kn_id> '{"name":"calculate_risk"}'
-openbkn bkn action-type execute <kn_id> <action_id> '{"input":{"customer_id":"C-1001"}}'
+openbkn bkn action-type query <kn_id> <action_id>
+openbkn bkn action-type execute <kn_id> <action_id> \
+  --body '{"_instance_identities":[{"customer_id":"C-1001"}],"dynamic_params":{}}'
 
 openbkn bkn action-log list <kn_id> --limit 20
 openbkn bkn action-log get <kn_id> <log_id>
 openbkn bkn action-log cancel <kn_id> <log_id>
-openbkn bkn action-execution get <kn_id> <execution_id>
+openbkn bkn action-execution <kn_id> <execution_id>
 ```
+
+`--body` is the execution request. Name the target the way the action type's operation needs it; an action never scans its condition for targets. A modify or delete passes `_instance_identities` (as above); a create passes `object_input` with the new instance's referenced property values; a relation create or delete passes one `relation_target` (`source_identity` and `target_identity`); a standalone tool call passes only `dynamic_params`.
 
 ### End-to-End Example
 
@@ -477,13 +480,13 @@ curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/
   -H "Authorization: Bearer $(openbkn token)"
 
 # Execute an action type
-curl -sk -X POST "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/actions/act-risk/execute" \
+curl -sk -X POST "https://<access-address>/api/ontology-query/v1/knowledge-networks/kn-001/action-types/act-risk/execute" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
-  -d '{"input": {"customer_id": "C-1001"}}'
+  -d '{"_instance_identities": [{"customer_id": "C-1001"}], "dynamic_params": {}}'
 
 # Get action execution result
-curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/action-executions/exec-001" \
+curl -sk "https://<access-address>/api/ontology-query/v1/knowledge-networks/kn-001/action-executions/exec-001" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # Build / rebuild network indexes

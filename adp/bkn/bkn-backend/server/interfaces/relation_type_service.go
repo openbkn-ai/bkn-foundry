@@ -31,4 +31,7 @@ type RelationTypeService interface {
 
 	// ValidateRelationTypes validates dependency existence only and does not persist data.
 	ValidateRelationTypes(ctx context.Context, knID string, branch string, relationTypes []*RelationType, strictMode bool, batch *BatchIDIndex, mode string) error
+
+	// CheckOverwriteDeclarations is the first step of an overwrite import and writes nothing: see ObjectTypeService.
+	CheckOverwriteDeclarations(ctx context.Context, knID string, branch string, relationTypes []*RelationType, mode string) error
 }

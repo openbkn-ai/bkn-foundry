@@ -345,6 +345,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
 		InstanceIdentityHash:    instanceHash,
+		// Correlation labels only; a scheduled execution has none (the handler clears them).
+		ConversationID: req.ConversationID,
+		InteractionID:  req.InteractionID,
 	}
 
 	// Save initial execution record (metadata only)
@@ -870,7 +873,7 @@ func (s *actionSchedulerService) buildExecutionParams(actionType *interfaces.Act
 				return nil, fmt.Errorf("missing property %q for parameter %q", propName, param.Name)
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-			value = param.Value
+			value = logics.NormalizeActionConstant(param.Type, param.Value)
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
 			value = logics.ActionDynamicParamGetValue(dynamicParams, param.Name)
 			if value == nil {
