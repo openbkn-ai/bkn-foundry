@@ -9,6 +9,7 @@ package action_scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -143,6 +144,12 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		logger.Errorf("Failed to get action type: %v", err)
 		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
 			return nil, versionErr
+		}
+		var httpErr *httperrors.HTTPError
+		if errors.As(err, &httpErr) &&
+			((httpErr.HTTPCode == http.StatusUnauthorized && httpErr.ErrorCode == httperrors.PublicError_Unauthorized) ||
+				(httpErr.HTTPCode == http.StatusForbidden && httpErr.ErrorCode == httperrors.PublicError_Forbidden)) {
+			return nil, httpErr
 		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
 			WithErrorDetails(err.Error())
