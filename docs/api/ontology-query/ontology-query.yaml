@@ -4797,7 +4797,7 @@ components:
             两个 id 仅是调用方自有的关联标签：服务不创建、不推断、不到 trace core 校验，也不得用于鉴权、防重复或审批。
             省略时取请求头 `bkn-conversation-id` / `bkn-interaction-id`（Context Loader / MCP 路径无需改动）；
             body 与请求头同时带值且不一致返回 400；值须为 1-128 位以字母或数字开头、仅含字母数字及 `.` `_` `:` `-` 的字符串，否则返回 400；
-            只传 `interaction_id` 不传 `conversation_id` 返回 400。定时触发（trigger_type=scheduled）的执行两者恒为空。
+            body 中只传 `interaction_id` 不传 `conversation_id` 返回 400；只带请求头 `bkn-interaction-id`、没有 conversation id 时不报错，两个 id 都不记录（与请求头值不合法时的处理相同）。定时触发（trigger_type=scheduled）的执行两者恒为空。
           type: object
           properties:
             conversation_id:
