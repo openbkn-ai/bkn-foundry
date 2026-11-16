@@ -30,6 +30,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/user_mgmt"
 )
 
 var (
@@ -45,6 +46,8 @@ type service struct {
 	pub interfaces.KNMainPublisher
 	// mp publishes metrics with the network; nil falls back to the installed one, and Community has none.
 	mp interfaces.ObjectMetricVersionPublisher
+	// ums names the accounts on version reads; nil leaves them as ids.
+	ums accountNamer
 
 	// fullHistory reports the Professional edition, which keeps every version.
 	fullHistory func() bool
@@ -59,6 +62,7 @@ func NewKNVersionService(appSetting *common.AppSetting, pub interfaces.KNMainPub
 			bc:  logics.BC,
 			ps:  permission.NewPermissionService(appSetting),
 			pub: pub,
+			ums: user_mgmt.NewUserMgmtService(appSetting),
 			fullHistory: func() bool {
 				return entitlement.AtLeast(licverify.EditionProfessional)
 			},
@@ -83,6 +87,31 @@ func internalError(ctx context.Context, err error) error {
 	otellog.LogError(ctx, "Knowledge network version operation failed", err)
 	return newHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNVersion_InternalError).
 		WithErrorDetails(err.Error())
+}
+
+type accountNamer interface {
+	GetAccountNames(ctx context.Context, accountInfos []*interfaces.AccountInfo) error
+}
+
+// nameAccounts fills in display names. Version history stays readable when the directory is
+// down, so a lookup failure is logged and the accounts keep their ids only.
+func (s *service) nameAccounts(ctx context.Context, accounts []*interfaces.AccountInfo) {
+	if s.ums == nil || len(accounts) == 0 {
+		return
+	}
+	if err := s.ums.GetAccountNames(ctx, accounts); err != nil {
+		otellog.LogError(ctx, "Name the accounts of knowledge network versions failed", err)
+	}
+}
+
+func (s *service) nameVersions(ctx context.Context, versions ...*interfaces.KNVersion) {
+	accounts := make([]*interfaces.AccountInfo, 0, len(versions)*2)
+	for _, v := range versions {
+		if v != nil {
+			accounts = append(accounts, &v.Publisher, &v.StatusBy)
+		}
+	}
+	s.nameAccounts(ctx, accounts)
 }
 
 func (s *service) operator(ctx context.Context) interfaces.AccountInfo {
@@ -531,6 +560,7 @@ func (s *service) ListVersions(ctx context.Context, knID string, query *interfac
 	if err != nil {
 		return nil, 0, internalError(ctx, err)
 	}
+	s.nameVersions(ctx, versions...)
 	return versions, total, nil
 }
 
@@ -545,6 +575,7 @@ func (s *service) GetVersion(ctx context.Context, knID string, version int) (*in
 	if v == nil {
 		return nil, newHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KNVersion_VersionNotFound)
 	}
+	s.nameVersions(ctx, v)
 	return v, nil
 }
 
@@ -556,6 +587,11 @@ func (s *service) ListEvents(ctx context.Context, knID string, offset, limit int
 	if err != nil {
 		return nil, 0, internalError(ctx, err)
 	}
+	accounts := make([]*interfaces.AccountInfo, 0, len(events))
+	for _, e := range events {
+		accounts = append(accounts, &e.Operator)
+	}
+	s.nameAccounts(ctx, accounts)
 	return events, total, nil
 }
 
