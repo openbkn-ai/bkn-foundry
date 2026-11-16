@@ -201,7 +201,10 @@ action and proxy authorization, the scheduler resolves the exact target,
 rejects duplicate submissions, then asks the gate to compare the current
 action plan with the approved plan and atomically claim its permit. A managed
 action without an adapter returns 503; missing, stale or consumed permits
-return 409. The gate must verify the authenticated initiator, resolved target,
+return 409. An EE gate implementing `ActionGovernancePreparer` can issue a
+permit for a ready request when the caller supplies its request ID and plan
+digest but no permit ID. It then claims that permit before execution. The
+gate must verify the authenticated initiator, resolved target,
 parameters, action definition, request, and permit. The caller-provided digest
 is a reference, not proof of approval. A permit is claimed before the
 execution record is saved; if that write fails, the caller needs a new permit.
@@ -212,6 +215,18 @@ client secret. The list defaults to empty. When it is set, the chart requires
 all connection values and the EE executable obtains a client-credentials token
 for each claim. The first rollout supports network-scoped policies; a trusted
 bkn-project binding must be added before using project-scoped policies.
+
+The governance service may also call the read-only internal endpoint
+`POST /api/ontology-query/in/v1/knowledge-networks/{kn_id}/action-types/{at_id}/execute/facts/check`.
+Set `actionGovernance.factsClientID` in the Helm chart (or
+`GOVERNANCE_FACTS_CLIENT_ID` directly) to the OAuth application client ID
+allowed to call it. This endpoint requires that application's bearer token; an unset ID
+rejects every caller. The JSON body contains `definition_digest`,
+`target_identity`, and the action's `dynamic_params`, `object_input` or
+`relation_target`. It returns 204 only when the published action definition,
+single explicit target, target conditions and parameter bindings still pass.
+It returns no source data and never creates an execution. Governance separately
+rechecks the original initiator's action permission before calling it.
 
 ### EE metric result pagination
 

@@ -27,6 +27,7 @@ import (
 type managedActionScopes map[string]struct{}
 
 var planDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var permitIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 func parseManagedActionScopes(raw string) (managedActionScopes, error) {
 	scopes := make(managedActionScopes)
@@ -62,8 +63,13 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 	if err := s.governanceGate.Available(); err != nil {
 		return governanceUnavailable(ctx, err)
 	}
-	if req.GovernanceRequestID == "" || req.GovernancePermitID == "" || !planDigestPattern.MatchString(req.GovernancePlanDigest) {
+	if req.GovernanceRequestID == "" || !planDigestPattern.MatchString(req.GovernancePlanDigest) {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired)
+	}
+	if req.GovernancePermitID == "" {
+		if _, ok := s.governanceGate.(interfaces.ActionGovernancePreparer); !ok {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired)
+		}
 	}
 	if len(req.Instances) != 1 {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired).WithErrorDetails("managed actions require exactly one resolved target")
@@ -86,13 +92,32 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 		TargetIdentity: req.Instances[0].InstanceIdentity, DynamicParams: req.DynamicParams,
 		RelationTarget: req.RelationTarget, ObjectInput: req.ObjectInput, ActionTypeSnapshot: snapshot,
 	}
-	if err := s.governanceGate.ClaimActionPermit(ctx, claim); err != nil {
-		if errors.Is(err, interfaces.ErrActionPermitRejected) {
+	if claim.PermitID == "" {
+		preparer, ok := s.governanceGate.(interfaces.ActionGovernancePreparer)
+		if !ok {
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired)
 		}
-		return governanceUnavailable(ctx, err)
+		permitID, err := preparer.PrepareActionPermit(ctx, claim)
+		if err != nil {
+			return governanceGateError(ctx, err)
+		}
+		if !permitIDPattern.MatchString(permitID) {
+			return governanceUnavailable(ctx, errors.New("governance returned an invalid permit ID"))
+		}
+		claim.PermitID = permitID
+		req.GovernancePermitID = permitID
+	}
+	if err := s.governanceGate.ClaimActionPermit(ctx, claim); err != nil {
+		return governanceGateError(ctx, err)
 	}
 	return nil
+}
+
+func governanceGateError(ctx context.Context, err error) error {
+	if errors.Is(err, interfaces.ErrActionPermitRejected) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired)
+	}
+	return governanceUnavailable(ctx, err)
 }
 
 func governanceUnavailable(ctx context.Context, err error) error {

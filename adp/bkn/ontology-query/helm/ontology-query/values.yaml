@@ -150,6 +150,7 @@ metricResultSnapshot:
 # empty until the EE service, current-fact verifier and executor credentials are ready.
 actionGovernance:
   managedActions: ""
+  factsClientID: ""
   baseURL: ""
   oauthTokenURL: ""
   oauthClientID: ""

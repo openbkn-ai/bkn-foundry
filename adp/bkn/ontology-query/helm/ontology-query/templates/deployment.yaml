@@ -173,6 +173,10 @@ spec:
             value: {{ .Values.bknSafe.url | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- if .Values.actionGovernance.factsClientID }}
+          - name: GOVERNANCE_FACTS_CLIENT_ID
+            value: {{ .Values.actionGovernance.factsClientID | quote }}
+          {{- end }}
           {{- if .Values.actionGovernance.managedActions }}
           - name: GOVERNANCE_MANAGED_ACTIONS
             value: {{ .Values.actionGovernance.managedActions | quote }}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -30,6 +31,39 @@ import (
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
+
+// CheckActionFactsByIn accepts only the configured governance application.
+// The request is read-only and returns no target data.
+func (r *restHandler) CheckActionFactsByIn(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	caller, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+	trustedClient := os.Getenv("GOVERNANCE_FACTS_CLIENT_ID")
+	if trustedClient == "" || caller.Type != hydra.VisitorType_App || caller.ClientID != trustedClient {
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden))
+		return
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: caller.ID, Type: string(caller.Type)})
+	check := interfaces.ActionFactCheck{}
+	if err := common.BindPreciseJSON(c.Request.Body, &check); err != nil {
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter))
+		return
+	}
+	check.KNID = c.Param("kn_id")
+	check.ActionTypeID = c.Param("at_id")
+	if err := r.ass.CheckActionFacts(ctx, &check); err != nil {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
+			rest.ReplyError(c, httpErr)
+		} else {
+			rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_ActionExecution_GovernanceUnavailable))
+		}
+		return
+	}
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
 
 // CheckActionExecutionByIn verifies the current internal caller against the
 // trusted action execution dependencies without reading or executing data.

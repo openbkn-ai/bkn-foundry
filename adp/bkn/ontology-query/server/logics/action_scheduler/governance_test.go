@@ -26,6 +26,27 @@ type actionGateStub struct {
 	availableErr error
 }
 
+type preparingActionGateStub struct {
+	actionGateStub
+	prepares int
+	err      error
+	id       string
+}
+
+func (gate *preparingActionGateStub) PrepareActionPermit(_ context.Context, claim interfaces.ActionGovernanceClaim) (string, error) {
+	gate.prepares++
+	if claim.PermitID != "" || claim.RequestID != "request1" {
+		return "", errors.New("permit preparation received an untrusted plan")
+	}
+	if gate.err != nil {
+		return "", gate.err
+	}
+	if gate.id != "" {
+		return gate.id, nil
+	}
+	return "permit-issued", nil
+}
+
 func (gate *actionGateStub) Available() error { return gate.availableErr }
 
 func (gate *actionGateStub) ClaimActionPermit(_ context.Context, claim interfaces.ActionGovernanceClaim) error {
@@ -84,6 +105,32 @@ func TestManagedActionRequiresGateAndPermit(t *testing.T) {
 	request.Instances = request.Instances[:1]
 	if err := service.claimActionGovernance(context.Background(), request, actor, nil); status(err) != http.StatusServiceUnavailable || gate.calls != 0 {
 		t.Fatalf("missing published snapshot status=%d calls=%d", status(err), gate.calls)
+	}
+}
+
+func TestManagedActionPreparesPermitFromTrustedResolvedPlan(t *testing.T) {
+	managed, _ := parseManagedActionScopes("kn1/pay")
+	gate := &preparingActionGateStub{}
+	service := &actionSchedulerService{managedActions: managed, governanceGate: gate}
+	request := governanceRequest()
+	request.GovernancePermitID = ""
+	snapshot := map[string]any{"id": "pay", "revision": "v2"}
+	actor := interfaces.AccountInfo{ID: "alice", Type: "user"}
+	if err := service.claimActionGovernance(context.Background(), request, actor, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if gate.prepares != 1 || gate.calls != 1 || gate.claim.PermitID != "permit-issued" || request.GovernancePermitID != "permit-issued" {
+		t.Fatalf("issued permit not bound to execution: prepares=%d claims=%d claim=%+v request=%+v", gate.prepares, gate.calls, gate.claim, request)
+	}
+	request.GovernancePermitID = ""
+	gate.err = interfaces.ErrActionPermitRejected
+	if err := service.claimActionGovernance(context.Background(), request, actor, snapshot); status(err) != http.StatusConflict || gate.calls != 1 || request.GovernancePermitID != "" {
+		t.Fatalf("rejected preparation reached claim: %v, claims=%d", err, gate.calls)
+	}
+	gate.err = nil
+	gate.id = "invalid/permit"
+	if err := service.claimActionGovernance(context.Background(), request, actor, snapshot); status(err) != http.StatusServiceUnavailable || gate.calls != 1 || request.GovernancePermitID != "" {
+		t.Fatalf("invalid issued permit reached claim: %v, claims=%d", err, gate.calls)
 	}
 }
 

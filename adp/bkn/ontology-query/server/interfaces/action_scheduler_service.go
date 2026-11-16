@@ -14,6 +14,9 @@ import "context"
 type ActionSchedulerService interface {
 	// CheckActionExecution resolves trusted dependencies and verifies the current subject without executing the action.
 	CheckActionExecution(ctx context.Context, req *ActionExecutionRequest) error
+	// CheckActionFacts verifies the published definition and one explicit target
+	// against current data without creating an execution or claiming a permit.
+	CheckActionFacts(ctx context.Context, req *ActionFactCheck) error
 
 	// ExecuteAction starts async action execution, returns execution_id immediately
 	ExecuteAction(ctx context.Context, req *ActionExecutionRequest) (*ActionExecutionResponse, error)
