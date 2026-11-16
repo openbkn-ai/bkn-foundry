@@ -4785,7 +4785,7 @@ components:
           description: 治理请求 ID；受管控行动必填。
           type: string
         governance_permit_id:
-          description: 单次执行许可 ID；受管控行动必填。
+          description: 单次执行许可 ID；受管控行动可省略。省略时，已安装许可签发适配器的执行器会用自身应用身份为已就绪请求签发并领取许可。
           type: string
         governance_plan_digest:
           description: 审批计划的 SHA-256 小写十六进制摘要；受管控行动必填。

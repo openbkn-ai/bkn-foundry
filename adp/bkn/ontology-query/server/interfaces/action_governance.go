@@ -40,3 +40,10 @@ type ActionGovernanceGate interface {
 	Available() error
 	ClaimActionPermit(context.Context, ActionGovernanceClaim) error
 }
+
+// ActionGovernancePreparer is optional. An executor implementing it can issue
+// a permit for a ready request using its own application identity, then claim
+// that permit before creating the execution record.
+type ActionGovernancePreparer interface {
+	PrepareActionPermit(context.Context, ActionGovernanceClaim) (string, error)
+}
