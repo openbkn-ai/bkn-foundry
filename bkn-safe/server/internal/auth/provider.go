@@ -139,7 +139,7 @@ func (p *Provider) Login(ctx context.Context, challenge, account, password strin
 	if err != nil {
 		return "", nil, err
 	}
-	if u.MustChangePassword {
+	if u.Source == model.SourceLocal && u.MustChangePassword {
 		return "", nil, ErrMustChangePassword
 	}
 	redirectTo, err = p.hydra.AcceptLogin(ctx, challenge, u.ID, remember)
@@ -158,6 +158,9 @@ func (p *Provider) ChangePassword(ctx context.Context, challenge, account, oldPa
 	u, err := p.auth.Verify(ctx, account, oldPassword)
 	if err != nil {
 		return "", nil, err
+	}
+	if u.Source != model.SourceLocal {
+		return "", nil, ErrInvalidCredentials
 	}
 	if err := p.users.SetPassword(ctx, u.ID, newPassword); err != nil {
 		return "", nil, err

@@ -98,7 +98,7 @@ func (s *UserStore) Verify(ctx context.Context, account, password string) (*mode
 	if managed {
 		return nil, ErrManagedLoginDisabled
 	}
-	if u.PasswordHash == "" {
+	if u.Source != model.SourceLocal || u.PasswordHash == "" {
 		// No local password (e.g. an LDAP/app identity) — not a local login.
 		return nil, ErrInvalidCredentials
 	}
@@ -149,6 +149,17 @@ func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password
 func (s *UserStore) UpdateUser(ctx context.Context, id string, fields map[string]any) error {
 	if err := rejectManagedMutation(ctx, s.db, id); err != nil {
 		return err
+	}
+	var current model.User
+	if err := s.db.WithContext(ctx).First(&current, "id = ?", id).Error; err != nil {
+		return err
+	}
+	if current.Source != model.SourceLocal {
+		for _, key := range []string{"name", "email", "telephone", "account_type"} {
+			if _, present := fields[key]; present {
+				return identity.ErrExternalIdentity
+			}
+		}
 	}
 	res := s.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields)
 	if res.Error != nil {
@@ -227,12 +238,19 @@ func (s *UserStore) ResetPassword(ctx context.Context, userID, password string) 
 	if err := rejectManagedMutation(ctx, s.db, userID); err != nil {
 		return err
 	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	if user.Source != model.SourceLocal {
+		return identity.ErrExternalIdentity
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Model(&model.User{}).
-		Where("id = ?", userID).
+		Where("id = ? AND source = ?", userID, model.SourceLocal).
 		Updates(map[string]any{"password_hash": string(hash), "must_change_password": true}).Error
 }
 
@@ -242,12 +260,19 @@ func (s *UserStore) SetPassword(ctx context.Context, userID, password string) er
 	if err := rejectManagedMutation(ctx, s.db, userID); err != nil {
 		return err
 	}
+	var user model.User
+	if err := s.db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	if user.Source != model.SourceLocal {
+		return identity.ErrExternalIdentity
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Model(&model.User{}).
-		Where("id = ?", userID).
+		Where("id = ? AND source = ?", userID, model.SourceLocal).
 		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error
 }
 

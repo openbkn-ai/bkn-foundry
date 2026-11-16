@@ -6,6 +6,7 @@ package directory
 
 import (
 	"context"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -18,6 +19,7 @@ const (
 // DepartmentListItem is the admin list view of a department (snake_case JSON).
 type DepartmentListItem struct {
 	ID                 string `json:"id"`
+	Source             string `json:"source"`
 	Name               string `json:"name"`
 	ParentID           string `json:"parent_id"`
 	Type               string `json:"type"`
@@ -179,9 +181,17 @@ func (s *Service) ListAllDepartments(ctx context.Context, search string, offset,
 	if err != nil {
 		return nil, 0, err
 	}
+	sources, err := identity.DepartmentSources(s.db.WithContext(ctx), ids)
+	if err != nil {
+		return nil, 0, err
+	}
 	out := make([]DepartmentListItem, len(deps))
 	for i, d := range deps {
 		out[i] = departmentListItem(d, counts[d.ID], subtreeCounts[d.ID], managerNames[d.ManagerID])
+		out[i].Source = sources[d.ID]
+		if out[i].Source == "" {
+			out[i].Source = "local"
+		}
 	}
 	return out, total, nil
 }
@@ -212,9 +222,17 @@ func (s *Service) ListDepartmentsWithCounts(ctx context.Context, parentID string
 	if err != nil {
 		return nil, err
 	}
+	sources, err := identity.DepartmentSources(s.db.WithContext(ctx), ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]DepartmentListItem, len(deps))
 	for i, d := range deps {
 		out[i] = departmentListItem(d, counts[d.ID], subtreeCounts[d.ID], managerNames[d.ManagerID])
+		out[i].Source = sources[d.ID]
+		if out[i].Source == "" {
+			out[i].Source = "local"
+		}
 	}
 	return out, nil
 }

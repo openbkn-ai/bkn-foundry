@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -289,6 +290,10 @@ func registerMeProfile(g *gin.RouterGroup, users *auth.UserStore) {
 		}
 		setAuditOperation(c, "update_profile", sub, targetName)
 		err = users.UpdateUser(c.Request.Context(), sub, fields)
+		if errors.Is(err, identity.ErrExternalIdentity) {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			replyPublicError(c, http.StatusNotFound)
 			return

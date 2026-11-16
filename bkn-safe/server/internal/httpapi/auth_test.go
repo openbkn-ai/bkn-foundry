@@ -144,7 +144,7 @@ func TestChangePasswordExpiredChallengeShowsTerminalSuccessPage(t *testing.T) {
 	t.Cleanup(hydra.Close)
 
 	store := &passwordRecorder{}
-	provider := auth.NewProvider(fixedAuthenticator{user: &model.User{ID: "u-1", Account: "alice", Enabled: true}}, auth.NewHydraAdmin(hydra.URL), store)
+	provider := auth.NewProvider(fixedAuthenticator{user: &model.User{ID: "u-1", Account: "alice", Enabled: true, Source: model.SourceLocal}}, auth.NewHydraAdmin(hydra.URL), store)
 	router := gin.New()
 	router.Use(sharedrest.LanguageMiddleware())
 	router.POST("/change-password", func(c *gin.Context) { doChangePassword(c, provider, nil) })

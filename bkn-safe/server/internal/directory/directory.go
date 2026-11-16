@@ -59,6 +59,7 @@ type UserDetail struct {
 	Telephone   string    `json:"telephone"`
 	Enabled     bool      `json:"enabled"`
 	AccountType string    `json:"account_type"`
+	Source      string    `json:"source"`
 	Roles       []string  `json:"roles"`
 	Departments []string  `json:"departments"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -74,7 +75,7 @@ func (s *Service) GetUser(ctx context.Context, id string) (*UserDetail, error) {
 	d := &UserDetail{
 		ID: u.ID, Account: u.Account, Name: u.Name, Email: u.Email,
 		Telephone: u.Telephone, Enabled: u.Enabled, AccountType: string(u.AccountType),
-		UpdatedAt: u.UpdatedAt,
+		UpdatedAt: u.UpdatedAt, Source: string(u.Source),
 	}
 	// department ids
 	var uds []model.UserDepartment
@@ -400,14 +401,16 @@ func (s *Service) CreateDepartment(ctx context.Context, d *model.Department) err
 func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[string]any) error {
 	db := s.db.WithContext(ctx)
 	if _, hasParent := fields["parent_id"]; !hasParent {
-		res := db.Model(&model.Department{}).Where("id = ?", id).Updates(fields)
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return s.requireDepartment(ctx, id)
-		}
-		return nil
+		return db.Transaction(func(tx *gorm.DB) error {
+			var current model.Department
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ?", id).Error; err != nil {
+				return err
+			}
+			if err := checkExternalDepartmentFields(tx, id, fields); err != nil {
+				return err
+			}
+			return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
+		})
 	}
 	if parentID, ok := fields["parent_id"].(string); ok {
 		// Editors may submit the current parent along with ordinary fields.
@@ -424,6 +427,9 @@ func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[st
 				return nil
 			}
 			unchangedParent = true
+			if err := checkExternalDepartmentFields(tx, id, fields); err != nil {
+				return err
+			}
 			return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
 		})
 		if err != nil || unchangedParent {
@@ -444,6 +450,9 @@ func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[st
 			if err := validateDepartmentParent(parents, id, parentID); err != nil {
 				return err
 			}
+		}
+		if err := checkExternalDepartmentFields(tx, id, fields); err != nil {
+			return err
 		}
 		return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
 	})
@@ -521,4 +530,26 @@ func (s *Service) SearchOrg(ctx context.Context, userIDs, scopeDeptIDs []string)
 		}
 	}
 	return out, nil
+}
+
+// Synced department names and parent links belong to the source; local metadata remains editable.
+func checkExternalDepartmentFields(tx *gorm.DB, id string, fields map[string]any) error {
+	sources, err := identity.DepartmentSources(tx, []string{id})
+	if err != nil {
+		return err
+	}
+	if sources[id] == "" {
+		return nil
+	}
+	var current model.Department
+	if err := tx.First(&current, "id = ?", id).Error; err != nil {
+		return err
+	}
+	if name, ok := fields["name"]; ok && name != current.Name {
+		return identity.ErrExternalIdentity
+	}
+	if parent, ok := fields["parent_id"]; ok && parent != current.ParentID {
+		return identity.ErrExternalIdentity
+	}
+	return nil
 }
