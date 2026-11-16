@@ -71,6 +71,57 @@ func TestCheckActionExecutionReportsModelOutage(t *testing.T) {
 	}
 }
 
+func TestExecuteActionMapsActionDefinitionReadErrors(t *testing.T) {
+	ctx := context.Background()
+	forbidden := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+	unauthorized := httperrors.NewHTTPError(ctx, http.StatusUnauthorized, httperrors.PublicError_Unauthorized)
+	versionRefusal := httperrors.NewHTTPError(ctx, http.StatusGone, oerrors.BknBackend_KNVersion_VersionPurged)
+	unknownForbidden := httperrors.NewHTTPError(ctx, http.StatusForbidden, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed)
+
+	tests := []struct {
+		name         string
+		readErr      error
+		exists       bool
+		wantStatus   int
+		wantCode     string
+		wantOriginal *httperrors.HTTPError
+	}{
+		{"wrapped permission denial", fmt.Errorf("get action type failed: %w", forbidden), false,
+			http.StatusForbidden, httperrors.PublicError_Forbidden, forbidden},
+		{"wrapped authentication denial", fmt.Errorf("get action type failed: %w", unauthorized), false,
+			http.StatusUnauthorized, httperrors.PublicError_Unauthorized, unauthorized},
+		{"version refusal", fmt.Errorf("get action type failed: %w", versionRefusal), false,
+			http.StatusGone, oerrors.BknBackend_KNVersion_VersionPurged, versionRefusal},
+		{"missing action definition", nil, false,
+			http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound, nil},
+		{"unrecognized forbidden error", unknownForbidden, false,
+			http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed, nil},
+		{"dependency failure", errors.New("model service unavailable"), false,
+			http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
+			models.EXPECT().GetActionType(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "at-1").
+				Return(interfaces.ActionType{}, nil, tt.exists, tt.readErr)
+			service := &actionSchedulerService{omAccess: models}
+			result, err := service.ExecuteAction(ctx, &interfaces.ActionExecutionRequest{
+				KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ActionTypeID: "at-1",
+			})
+			if result != nil {
+				t.Fatalf("ExecuteAction() result = %v, want nil", result)
+			}
+			var httpErr *httperrors.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.HTTPCode != tt.wantStatus || httpErr.ErrorCode != tt.wantCode {
+				t.Fatalf("ExecuteAction() error = %v, want HTTP %d %s", err, tt.wantStatus, tt.wantCode)
+			}
+			if tt.wantOriginal != nil && httpErr != tt.wantOriginal {
+				t.Fatalf("ExecuteAction() error = %p, want original %p", httpErr, tt.wantOriginal)
+			}
+		})
+	}
+}
+
 type actionPermissionStub struct {
 	requirements []interfaces.PermissionRequirement
 	err          error
