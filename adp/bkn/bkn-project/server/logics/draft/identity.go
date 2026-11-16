@@ -97,7 +97,8 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 	}
 
 	// Drafting left out an object type of a table only for want of an identity: choosing one takes it in.
-	waiting := objectType.NeedsIdentity && !objectType.Adopted && objectType.Document == nil
+	waiting := objectType.NeedsIdentity && !objectType.Adopted && objectType.Document == nil &&
+		!keptOut(&draft.Items, objectType.ID)
 	before := s.setIdentity(ctx, draft, objectType, properties, caller)
 	decisions := []*interfaces.DraftDecision{{
 		Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: itemID, Action: interfaces.DRAFT_DECISION_IDENTITY,
@@ -241,4 +242,23 @@ func (s *draftService) adoptWithIdentity(ctx context.Context, projectID string, 
 	decisions = append(decisions, edited...)
 	decisions = append(decisions, regateRelationsAfter(s.setting, &draft.Items, objectType.ID, true)...)
 	return append(decisions, followEvidence(&draft.Items)...)
+}
+
+// keptOut tells an object type a person decided to leave out: the last decision adopting it or not
+// left it out, after it was in or with a reason. Leaving it out as drafting had it, without a
+// reason, as accepting the suggestions does, is not keeping it out.
+func keptOut(items *interfaces.DraftItems, id string) bool {
+	out := false
+	for _, d := range items.Decisions {
+		if d.Kind != interfaces.DRAFT_KIND_OBJECT_TYPES || d.ItemID != id {
+			continue
+		}
+		switch d.Action {
+		case interfaces.DRAFT_DECISION_ADOPT:
+			out = false
+		case interfaces.DRAFT_DECISION_UNADOPT:
+			out = !keptOutWhileWaiting(d)
+		}
+	}
+	return out
 }

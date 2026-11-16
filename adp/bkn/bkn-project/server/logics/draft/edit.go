@@ -313,9 +313,15 @@ func regateRelations(setting common.DraftSetting, items *interfaces.DraftItems, 
 	return regateRelationsAfter(setting, items, id, false)
 }
 
+// keptOutWhileWaiting tells a decision that left an item out while drafting had it out, without a
+// reason, as accepting what drafting suggested records it: no one said why it should stay out.
+func keptOutWhileWaiting(d *interfaces.DraftDecision) bool {
+	return d.Action == interfaces.DRAFT_DECISION_UNADOPT && d.Before == false && d.Reason == ""
+}
+
 // regateRelationsAfter is regateRelations; keptOutWaits tells that leaving a relation out while it
-// was out anyway, as accepting what drafting suggested does while an end waits for its identity,
-// did not decide it: such a relation is adopted with its end like one nobody decided on.
+// was out anyway and without a reason, as accepting what drafting suggested does while an end
+// waits for its identity, did not decide it: such a relation is adopted with its end like one nobody decided on.
 func regateRelationsAfter(setting common.DraftSetting, items *interfaces.DraftItems, id string,
 	keptOutWaits bool) []*interfaces.DraftDecision {
 	// As undecidedItems counts them: only adopting or not is a decision on the relation itself.
@@ -325,7 +331,7 @@ func regateRelationsAfter(setting common.DraftSetting, items *interfaces.DraftIt
 			(d.Action != interfaces.DRAFT_DECISION_ADOPT && d.Action != interfaces.DRAFT_DECISION_UNADOPT) {
 			continue
 		}
-		if keptOutWaits && d.Action == interfaces.DRAFT_DECISION_UNADOPT && d.Before == false && !decided[d.ItemID] {
+		if keptOutWaits && keptOutWhileWaiting(d) && !decided[d.ItemID] {
 			continue
 		}
 		decided[d.ItemID] = true

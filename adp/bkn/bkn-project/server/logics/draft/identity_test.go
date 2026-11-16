@@ -320,6 +320,12 @@ func Test_ChooseIdentity(t *testing.T) {
 					Mapping:         []interfaces.DraftFieldMapping{{SourceProperty: "customer_id", TargetProperty: "id"}},
 					Evidence:        interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
 					ProposedBecause: proposedEndNotAdopted},
+				// One a person left out with a reason stays out.
+				{ID: "reasoned", Name: "reasoned", Source: "order_lines", Target: "customers",
+					Origin:          interfaces.DRAFT_ORIGIN_NAME_MATCH,
+					Mapping:         []interfaces.DraftFieldMapping{{SourceProperty: "line_no", TargetProperty: "id"}},
+					Evidence:        interfaces.DraftJoinEvidence{Computed: true, Rows: 50, Hits: 50, HitRate: 1, SourceDistinct: 20},
+					ProposedBecause: proposedEndNotAdopted},
 				// One a person left out with its end adopted stays out.
 				{ID: "decided", Name: "decided", Source: "order_lines", Target: "customers",
 					Origin:          interfaces.DRAFT_ORIGIN_NAME_MATCH,
@@ -329,6 +335,9 @@ func Test_ChooseIdentity(t *testing.T) {
 			}
 			d.Items.Decisions = []*interfaces.DraftDecision{
 				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "order_lines_to_customers", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: false, After: false},
+				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "reasoned", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: false, After: false, Reason: "not needed"},
+				// Accepting the suggestions left the line itself out too.
+				{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "order_lines", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: false, After: false},
 				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_ADOPT, Before: false, After: true},
 				{Kind: interfaces.DRAFT_KIND_RELATION_TYPES, ItemID: "decided", Action: interfaces.DRAFT_DECISION_UNADOPT, Before: true, After: false},
 			}
@@ -350,14 +359,29 @@ func Test_ChooseIdentity(t *testing.T) {
 			So(got.Items.RelationTypes[0].Adopted, ShouldBeTrue)
 			So(got.Items.RelationTypes[0].ProposedBecause, ShouldBeEmpty)
 			So(got.Items.RelationTypes[1].Adopted, ShouldBeFalse)
+			So(got.Items.RelationTypes[2].Adopted, ShouldBeFalse)
 			actions := []string{}
-			for _, decision := range got.Items.Decisions[3:] {
+			for _, decision := range got.Items.Decisions[5:] {
 				actions = append(actions, decision.ItemID+":"+decision.Action)
 			}
 			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_IDENTITY)
 			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_RENAME)
 			So(actions, ShouldContain, "order_lines:"+interfaces.DRAFT_DECISION_ADOPT)
 			So(actions, ShouldContain, "order_lines_to_customers:"+interfaces.DRAFT_DECISION_ADOPT)
+		})
+
+		Convey("An object type a person left out with a reason stays out with its identity\n", func() {
+			d := identityDraft()
+			d.Items.Decisions = []*interfaces.DraftDecision{{Kind: interfaces.DRAFT_KIND_OBJECT_TYPES, ItemID: "order_lines",
+				Action: interfaces.DRAFT_DECISION_UNADOPT, Before: false, After: false, Reason: "only a staging table"}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(d, true, nil)
+			expectWrite()
+
+			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no", "line_no"), caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.ObjectTypes[0].NeedsIdentity, ShouldBeFalse)
+			So(got.Items.ObjectTypes[0].Adopted, ShouldBeFalse)
 		})
 
 		Convey("Choosing the identity an object type already has changes nothing\n", func() {
