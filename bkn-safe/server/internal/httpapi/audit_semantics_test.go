@@ -279,6 +279,7 @@ func TestPermissionRequestAuditNameKeepsBusinessSnapshot(t *testing.T) {
 func TestAuditedManagementOperationExcludesPostQueries(t *testing.T) {
 	for _, path := range []string{
 		"/api/safe/v1/authz/explain",
+		"/api/safe/v1/admin/permission-projection",
 		"/api/safe/v1/admin/object-grants/preview",
 		"/api/safe/v1/admin/row-filter-policies/explain",
 	} {

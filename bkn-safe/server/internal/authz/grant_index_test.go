@@ -13,7 +13,39 @@ import (
 	"time"
 
 	"github.com/casbin/casbin/v2"
+	"gorm.io/gorm"
 )
+
+func TestExplanationLoadsOnlyResourceCandidatesOncePerRequest(t *testing.T) {
+	e := newTestEnforcer(t)
+	mustNoErr(t, e.GrantObjectPermission("reader", "resource", "target", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission("reader", "resource", "target", "delete"))
+	for i := 0; i < 20; i++ {
+		mustNoErr(t, e.GrantObjectPermission("reader", "resource", fmt.Sprintf("other-%d", i), "view_detail"))
+	}
+	idx, err := e.grantIndex("reader")
+	mustNoErr(t, err)
+	queries, rows := 0, int64(0)
+	const callback = "test:explanation-resource-query"
+	mustNoErr(t, e.db.Callback().Query().After("gorm:query").Register(callback, func(db *gorm.DB) {
+		if db.Statement.Table == "authorization_grant" {
+			queries++
+			rows += db.RowsAffected
+		}
+	}))
+	t.Cleanup(func() { mustNoErr(t, e.db.Callback().Query().Remove(callback)) })
+	resource := ResourceRef{Type: "resource", ID: "target"}
+	for _, op := range []string{"view_detail", "delete"} {
+		grants, err := e.explanationGrants(context.Background(), idx, resource, op)
+		mustNoErr(t, err)
+		if len(grants) != 1 {
+			t.Fatalf("%s grants = %+v", op, grants)
+		}
+	}
+	if queries != 1 || rows != 2 {
+		t.Fatalf("source lookup loaded %d rows in %d queries; want 2 rows in one query", rows, queries)
+	}
+}
 
 // holdSharedLock stands in for another decision in flight: it holds the enforcer's read lock until
 // the returned release is called.

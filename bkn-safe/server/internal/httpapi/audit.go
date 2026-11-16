@@ -268,6 +268,7 @@ func isAuditedManagementOperation(method, fullPath string) bool {
 	}
 	switch fullPath {
 	case "/api/safe/v1/authz/explain",
+		"/api/safe/v1/admin/permission-projection",
 		"/api/safe/v1/admin/object-grants/preview",
 		"/api/safe/v1/admin/row-filter-policies/explain":
 		return false

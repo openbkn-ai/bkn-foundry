@@ -754,6 +754,22 @@ func (en *Enforcer) PolicyRecords(filter PolicyFilter) ([]PolicyRecord, error) {
 		return nil, err
 	}
 	edition := entitlement.Current()
+	return policyRecordsFromRows(rows, edition), nil
+}
+
+// Fetch exact-resource sources plus wildcard candidates in one query. Exact
+// policies belonging to other resources must never be materialized for explain.
+func (en *Enforcer) explanationPolicyRecords(ctx context.Context, subjects []string, object string) ([]PolicyRecord, error) {
+	var rows []safemodel.AuthorizationGrant
+	err := en.db.WithContext(ctx).Where("accessor_id IN ?", subjects).
+		Where("object = ? OR object LIKE ?", object, "%*%").Order("created_at, grant_id").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return policyRecordsFromRows(rows, entitlement.Current()), nil
+}
+
+func policyRecordsFromRows(rows []safemodel.AuthorizationGrant, edition licverify.Edition) []PolicyRecord {
 	out := make([]PolicyRecord, 0, len(rows))
 	for _, row := range rows {
 		source := PolicySource(row.PolicySource)
@@ -764,7 +780,7 @@ func (en *Enforcer) PolicyRecords(filter PolicyFilter) ([]PolicyRecord, error) {
 			Active: policySourceActive(source, edition),
 		})
 	}
-	return out, nil
+	return out
 }
 
 // RevokePolicy removes exactly one stable policy identity. It is the only

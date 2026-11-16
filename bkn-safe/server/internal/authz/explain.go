@@ -72,6 +72,35 @@ func (en *Enforcer) ExplainOperation(ctx context.Context, accessorID, resourceTy
 	if err != nil {
 		return OperationExplanation{}, err
 	}
+	return en.explainOperationWithIndex(ctx, idx, accessorID, resourceType, resourceID, operation, final)
+}
+
+// ExplainResourceOperations shares a single authorization index and batch
+// decision pass across an on-demand resource detail request.
+func (en *Enforcer) ExplainResourceOperations(ctx context.Context, accessorID string, resource ResourceRef, operations []string) ([]OperationExplanation, error) {
+	results, err := en.CheckResourceOpsScoped(ctx, accessorID, []ResourceOperationCheck{{Resource: resource, Operations: operations}}, ScopeEffective)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := en.grantIndex(accessorID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OperationExplanation, 0, len(operations))
+	for _, result := range results {
+		for _, decision := range result.Decisions {
+			final := Evaluation{Scope: ScopeEffective, Decision: decision.Decision, Basis: decision.Basis, Requirements: decision.Requirements, DeniedRequirement: decision.DeniedRequirement, RequirementBasis: decision.RequirementBasis}
+			explanation, err := en.explainOperationWithIndex(ctx, idx, accessorID, resource.Type, resource.ID, decision.Operation, final)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, explanation)
+		}
+	}
+	return out, nil
+}
+
+func (en *Enforcer) explainOperationWithIndex(ctx context.Context, idx *grantIndex, accessorID, resourceType, resourceID, operation string, final Evaluation) (OperationExplanation, error) {
 	steps, err := en.explainBaseWalk(ctx, idx, accessorID, ResourceRef{Type: resourceType, ID: resourceID}, operation)
 	if err != nil {
 		return OperationExplanation{}, err
@@ -124,7 +153,7 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 			return nil, err
 		}
 		decision := local[currentOperation]
-		grants, err := en.explanationGrants(idx, current, currentOperation)
+		grants, err := en.explanationGrants(ctx, idx, current, currentOperation)
 		if err != nil {
 			return nil, err
 		}
@@ -165,9 +194,8 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 	return steps, nil
 }
 
-func (en *Enforcer) explanationGrants(idx *grantIndex, resource ResourceRef, operation string) ([]ExplanationGrant, error) {
+func (en *Enforcer) explanationGrants(ctx context.Context, idx *grantIndex, resource ResourceRef, operation string) ([]ExplanationGrant, error) {
 	subjects := make(map[string]string, len(idx.subjects))
-	records := make([]PolicyRecord, 0)
 	for position, subject := range idx.subjects {
 		kind := "role"
 		switch subject {
@@ -179,13 +207,20 @@ func (en *Enforcer) explanationGrants(idx *grantIndex, resource ResourceRef, ope
 			}
 		}
 		subjects[subject] = kind
-		subjectRecords, err := en.PolicyRecords(PolicyFilter{AccessorID: subject})
+	}
+	object := obj(resource.Type, resource.ID)
+	if idx.explanationRecords == nil {
+		idx.explanationRecords = make(map[string][]PolicyRecord)
+	}
+	records, loaded := idx.explanationRecords[object]
+	if !loaded {
+		var err error
+		records, err = en.explanationPolicyRecords(ctx, idx.subjects, object)
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, subjectRecords...)
+		idx.explanationRecords[object] = records
 	}
-	object := obj(resource.Type, resource.ID)
 	out := make([]ExplanationGrant, 0)
 	for _, record := range records {
 		kind, subjectMatch := subjects[record.AccessorID]
