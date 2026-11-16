@@ -41,6 +41,17 @@ func Test_DiscardDrift(t *testing.T) {
 			So(svc.DiscardDrift(ctx, reviewToken, "p1", reviewOwner), ShouldEqual, refused)
 		})
 
+		Convey("Syncing keeping the project keeps the project's side through the lineage\n", func() {
+			author := interfaces.GitAuthor{Name: reviewOwner.ID}
+			synced := &interfaces.SyncBranchResult{Result: interfaces.SYNC_RESULT_MERGED}
+			ls.EXPECT().SyncBranchKeepingBranch(gomock.Any(), "supply", "project/p1", author).Return(synced, nil)
+
+			result, err := svc.SyncBranchKeepingProject(ctx, reviewToken, "p1", reviewOwner, author)
+
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, synced)
+		})
+
 		Convey("Someone other than the owner is refused\n", func() {
 			_, code, _ := errorOf(svc.DiscardDrift(ctx, reviewToken, "p1", interfaces.AccountInfo{ID: "u2", Type: "user"}))
 			So(code, ShouldEqual, perrors.BknProject_Release_NotOwner)

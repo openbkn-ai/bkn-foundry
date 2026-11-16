@@ -199,6 +199,28 @@ func Test_LineageService_SyncBranch(t *testing.T) {
 			So(string(files["object_types/part.bkn"]), ShouldContainSubstring, "A part, edited on the branch.")
 		})
 
+		Convey("Keeping the branch, a conflict takes the branch's side and brings main in\n", func() {
+			_, err := realGS.CommitFiles(ctx, id, branch, definitions("Branch wording.", "A supplier."), "branch edit", author)
+			So(err, ShouldBeNil)
+			mainHead, err := realGS.CommitFiles(ctx, id, "main", definitions("Live wording.", "A supplier, edited live."), "drift", author)
+			So(err, ShouldBeNil)
+
+			result, err := svc.SyncBranchKeepingBranch(ctx, id, branch, author)
+
+			So(err, ShouldBeNil)
+			So(result.Result, ShouldEqual, interfaces.SYNC_RESULT_MERGED)
+			files, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(err, ShouldBeNil)
+			// The conflicting part keeps the branch's wording; main's other edit still comes in.
+			So(string(files["object_types/part.bkn"]), ShouldContainSubstring, "Branch wording.")
+			So(string(files["object_types/supplier.bkn"]), ShouldContainSubstring, "A supplier, edited live.")
+			// main is in the branch now: a release is no longer behind it.
+			head, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			base, err := realGS.MergeBase(ctx, id, mainHead, head)
+			So(err, ShouldBeNil)
+			So(base, ShouldEqual, mainHead)
+		})
+
 		Convey("A conflict replies 409 with the conflicts and commits nothing\n", func() {
 			branchHead, err := realGS.CommitFiles(ctx, id, branch, definitions("Branch wording.", "A supplier."), "branch edit", author)
 			So(err, ShouldBeNil)

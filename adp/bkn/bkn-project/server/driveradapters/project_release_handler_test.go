@@ -112,6 +112,16 @@ func Test_ProjectReleaseRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"result":"merged"`)
 		})
 
+		Convey("branch:sync keeping the project syncs keeping the project's side\n", func() {
+			prs.EXPECT().SyncBranchKeepingProject(gomock.Any(), "Bearer t", "p1", caller, author).
+				Return(&interfaces.SyncBranchResult{Result: interfaces.SYNC_RESULT_MERGED, Commit: "b3"}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/branch:sync", []byte(`{"keep_project":true}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(w.Body.String(), ShouldContainSubstring, `"commit":"b3"`)
+		})
+
 		Convey("drift:commit commits the live network's drift and syncs the branch\n", func() {
 			prs.EXPECT().CommitDrift(gomock.Any(), "Bearer t", "p1", caller, author).Return(&interfaces.ProjectDriftCommit{
 				Sync: &interfaces.SyncBranchResult{Result: interfaces.SYNC_RESULT_FAST_FORWARD},

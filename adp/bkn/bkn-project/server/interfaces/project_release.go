@@ -262,6 +262,12 @@ type ProjectCopyVersion struct {
 // accepted to publish.
 const RELEASE_NOTES_ACCEPTED = "Accepted: "
 
+// ProjectSync is the optional body of branch:sync: KeepProject keeps the project's side where main
+// and the project changed the same thing differently, instead of refusing.
+type ProjectSync struct {
+	KeepProject bool `json:"keep_project"`
+}
+
 // ProjectDriftCommit is what committing the drift of the live network did: the drift committed to
 // main, and how the project branch was then brought up to it.
 type ProjectDriftCommit struct {
@@ -287,6 +293,9 @@ type ProjectReleaseService interface {
 		caller AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 	// SyncBranch brings the live version into the project's branch, for the owner.
 	SyncBranch(ctx context.Context, token string, projectID string, caller AccountInfo,
+		author GitAuthor) (*SyncBranchResult, error)
+	// SyncBranchKeepingProject is SyncBranch keeping the project's side where the two conflict.
+	SyncBranchKeepingProject(ctx context.Context, token string, projectID string, caller AccountInfo,
 		author GitAuthor) (*SyncBranchResult, error)
 	// CommitDrift commits the live network's drift to main and syncs the project's branch, for the
 	// owner.

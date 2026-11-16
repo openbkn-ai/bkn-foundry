@@ -113,7 +113,7 @@ func (r *restHandler) PublishProject(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusCreated, result)
 }
 
-// SyncProjectBranch serves POST /projects/{id}/branch:sync.
+// SyncProjectBranch serves POST /projects/{id}/branch:sync with an optional {"keep_project"}.
 func (r *restHandler) SyncProjectBranch(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -122,7 +122,16 @@ func (r *restHandler) SyncProjectBranch(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("project_id")
 	span.SetAttributes(attr.Key("project_id").String(id))
 
-	result, err := r.prs.SyncBranch(ctx, visitor.TokenID, id, visitorAccount(visitor), gitAuthor(visitor))
+	var req interfaces.ProjectSync
+	if err := bindOptionalJSON(c, &req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidRequestBody))
+		return
+	}
+	sync := r.prs.SyncBranch
+	if req.KeepProject {
+		sync = r.prs.SyncBranchKeepingProject
+	}
+	result, err := sync(ctx, visitor.TokenID, id, visitorAccount(visitor), gitAuthor(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return
