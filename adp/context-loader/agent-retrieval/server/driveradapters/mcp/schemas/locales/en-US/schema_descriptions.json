@@ -295,7 +295,7 @@
     "input_schema.properties.kn_id.description": "Knowledge network id, from list_knowledge_networks or get_kn_detail; never guessed from a name.",
     "input_schema.properties.action_type_id.description": "Filter by action type id (optional).",
     "input_schema.properties.status.description": "Filter by execution status (optional): pending/running/completed/failed/cancelled.",
-    "input_schema.properties.trigger_type.description": "Filter by trigger type (optional): manual/scheduled.",
+    "input_schema.properties.trigger_type.description": "Filter by trigger type (optional): manual, scheduled, or agent (started by an Agent through the Context Loader).",
     "input_schema.properties.start_time_from.description": "Lower bound of start time (Unix milliseconds, optional).",
     "input_schema.properties.start_time_to.description": "Upper bound of start time (Unix milliseconds, optional).",
     "input_schema.properties.offset.description": "Pagination offset (optional). Mutually exclusive with search_after: do not send both.",
