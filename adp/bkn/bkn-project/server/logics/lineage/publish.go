@@ -290,7 +290,9 @@ func (s *lineageService) discardDraft(ctx context.Context, gs interfaces.GitStor
 	if err != nil {
 		return err
 	}
-	pkg, err := buildPackage(stored, lineageID)
+	// Written as main has it, an object type bound again since (a sample reinstalled) would read a
+	// table that is gone: keep the tables the network reads now, as preparing does.
+	pkg, err := buildPackage(logics.WithNetworkTables(stored, stored, s.networkTables(ctx, token, lineageID)), lineageID)
 	if err != nil {
 		return err
 	}

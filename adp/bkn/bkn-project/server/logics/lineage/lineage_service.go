@@ -466,7 +466,9 @@ func syncBranch(ctx context.Context, gs interfaces.GitStore, lineageID string, b
 	if err != nil {
 		return nil, fmt.Errorf("merge main into %s: %w", branch, err)
 	}
-	if merged.HasConflicts() && !keepBranch {
+	if merged.HasConflicts() && (!keepBranch || brokenReferences(merged.Conflicts)) {
+		// Keeping the branch's side settles conflicting edits, not a definition that refers to
+		// something the merge leaves out: committed, main would stay a parent of it for good.
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_MergeConflict).
 			WithErrorDetails(map[string]any{"conflicts": merged.Conflicts, "summary": merged.Summary})
 	}
@@ -476,6 +478,16 @@ func syncBranch(ctx context.Context, gs interfaces.GitStore, lineageID string, b
 		return nil, err
 	}
 	return &interfaces.SyncBranchResult{Result: interfaces.SYNC_RESULT_MERGED, Commit: head, Summary: &merged.Summary}, nil
+}
+
+// brokenReferences reports whether a merge left a definition referring to one that is not there.
+func brokenReferences(conflicts []interfaces.MergeConflict) bool {
+	for _, c := range conflicts {
+		if c.Reason == interfaces.MERGE_CONFLICT_BROKEN_REFERENCE {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *lineageService) CheckDrift(ctx context.Context, token string, lineageID string, knID string, commit bool,

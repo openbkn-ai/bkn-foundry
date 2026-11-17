@@ -1077,6 +1077,25 @@ func Test_LineageService_DiscardDraft(t *testing.T) {
 			So(string(restored["object_types/supplier.bkn"]), ShouldEqual, string(live["object_types/supplier.bkn"]))
 		})
 
+		Convey("before a first publish, keeps the tables the network reads now\n", func() {
+			bba := pmock.NewMockBknBackendAccess(mockCtrl)
+			svc.bba = bba
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, id).Return([]*interfaces.KNObjectTypeSource{
+				{ID: "part", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "view_part_new"}},
+			}, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(0, 2, true), nil)
+			var restored map[string][]byte
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 2, Overwrite: true}).
+				DoAndReturn(func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
+					restored = files
+					return &interfaces.BKNImportResult{KNID: id}, 3, nil
+				})
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldBeNil)
+			So(string(restored["object_types/part.bkn"]), ShouldContainSubstring, "view_part_new")
+			So(string(restored["object_types/supplier.bkn"]), ShouldContainSubstring, "view_supplier")
+		})
+
 		Convey("replies a refusal of the network as an error\n", func() {
 			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(3, 12, true), nil)
 			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 3, int64(12), true).Return(versionRefusal("DraftChanged"))

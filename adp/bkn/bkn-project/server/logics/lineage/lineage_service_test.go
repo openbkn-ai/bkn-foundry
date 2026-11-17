@@ -221,6 +221,46 @@ func Test_LineageService_SyncBranch(t *testing.T) {
 			So(base, ShouldEqual, mainHead)
 		})
 
+		Convey("Keeping the branch still refuses a relation main adds to an object type the branch deleted\n", func() {
+			branchFiles := definitions("A part.", "A supplier.")
+			delete(branchFiles, "object_types/supplier.bkn")
+			branchHead, err := realGS.CommitFiles(ctx, id, branch, branchFiles, "drop supplier", author)
+			So(err, ShouldBeNil)
+			mainFiles := definitions("A part.", "A supplier.")
+			mainFiles["relation_types/supplier_supplies_part.bkn"] = []byte(`---
+type: relation_type
+id: supplier_supplies_part
+name: Supplier supplies part
+---
+
+## RelationType: Supplier supplies part
+
+A supplier delivers a part.
+
+### Endpoint
+
+| Source | Target | Type |
+|--------|--------|------|
+| supplier | part | direct |
+
+### Mapping Rules
+
+| Source Property | Target Property |
+|-----------------|-----------------|
+| id | id |
+`)
+			_, err = realGS.CommitFiles(ctx, id, "main", mainFiles, "relation added live", author)
+			So(err, ShouldBeNil)
+
+			_, err = svc.SyncBranchKeepingBranch(ctx, id, branch, author)
+
+			code, errorCode := httpCode(err)
+			So(code, ShouldEqual, http.StatusConflict)
+			So(errorCode, ShouldEqual, perrors.BknProject_Lineage_MergeConflict)
+			head, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(head, ShouldEqual, branchHead)
+		})
+
 		Convey("A conflict replies 409 with the conflicts and commits nothing\n", func() {
 			branchHead, err := realGS.CommitFiles(ctx, id, branch, definitions("Branch wording.", "A supplier."), "branch edit", author)
 			So(err, ShouldBeNil)
