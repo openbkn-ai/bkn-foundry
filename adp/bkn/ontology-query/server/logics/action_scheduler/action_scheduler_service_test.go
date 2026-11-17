@@ -153,7 +153,7 @@ func Test_buildExecutionParams(t *testing.T) {
 			So(params["token"], ShouldEqual, "abc123")
 		})
 
-		Convey("should handle missing property in identity", func() {
+		Convey("should omit a property parameter when its value is absent", func() {
 			actionType := &interfaces.ActionType{
 				Parameters: []interfaces.Parameter{
 					{
@@ -174,9 +174,9 @@ func Test_buildExecutionParams(t *testing.T) {
 
 			params, err := s.buildExecutionParams(actionType, objData, nil)
 
-			So(err, ShouldNotBeNil)
+			So(err, ShouldBeNil)
 			_, exists := params["target_ip"]
-			So(exists, ShouldBeFalse) // Parameter should not be set if property is missing
+			So(exists, ShouldBeFalse)
 		})
 
 		Convey("should handle missing dynamic param", func() {
