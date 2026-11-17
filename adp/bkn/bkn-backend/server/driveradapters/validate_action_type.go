@@ -514,7 +514,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		// These operators are already covered by NotRequiredValueOperationMap.
 
 	case cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex:
-		// like, not_like, prefix, not_prefix, and regex require a single string value.
+		// Search conditions require a single nonempty constant string.
 		_, ok := cfg.Value.([]any)
 		if ok {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionSingleStringValueRequired", map[string]any{"operation": cfg.Operation})
@@ -524,7 +524,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
-		_, ok = cfg.Value.(string)
+		value, ok := cfg.Value.(string)
 		if !ok {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionStringValueRequired", map[string]any{"operation": cfg.Operation})
 			if renderErr != nil {
@@ -533,9 +533,13 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
+		if (cfg.ValueFrom == "" || cfg.ValueFrom == cond.ValueFrom_Const) && value == "" {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("%s: condition %s requires a nonempty string value", path, cfg.Operation))
+		}
 		if (cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike) &&
 			(cfg.ValueFrom == "" || cfg.ValueFrom == cond.ValueFrom_Const) {
-			if err := cond.ValidateLikePattern(cfg.Operation, cfg.Value.(string)); err != nil {
+			if err := cond.ValidateLikePattern(cfg.Operation, value); err != nil {
 				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 					WithErrorDetails(err.Error())
 			}

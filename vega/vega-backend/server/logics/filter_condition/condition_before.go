@@ -23,31 +23,6 @@ type BeforeCond struct {
 	Value  []any
 }
 
-// NormalizeBeforeInterval 校验正整数间隔，并保留 JSON 整数的精度。
-func NormalizeBeforeInterval(values []any) error {
-	if len(values) == 0 {
-		return nil
-	}
-	if number, isJSON := values[0].(json.Number); isJSON {
-		// 先排除非正数及极端指数，再精确判断整数性，避免浮点舍入改变输入。
-		approximate, ok := common.NumberAsFloat64(number)
-		if !ok || approximate <= 0 {
-			return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
-		}
-		exact, valid := new(big.Rat).SetString(string(number))
-		if !valid || !exact.IsInt() || !exact.Num().IsInt64() {
-			return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
-		}
-		values[0] = exact.Num().Int64()
-		return nil
-	}
-	interval, ok := common.NumberAsInt64(values[0])
-	if !ok || interval <= 0 {
-		return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
-	}
-	return nil
-}
-
 func (c *BeforeCond) GetOperation() string { return OperationBefore }
 
 func (c *BeforeCond) SupportSubCond() bool       { return false }
@@ -105,4 +80,29 @@ func (c *BeforeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		Lfield: field,
 		Value:  val,
 	}, nil
+}
+
+// NormalizeBeforeInterval 校验正整数间隔，并保留 JSON 整数的精度。
+func NormalizeBeforeInterval(values []any) error {
+	if len(values) == 0 {
+		return nil
+	}
+	if number, isJSON := values[0].(json.Number); isJSON {
+		// 先排除非正数及极端指数，再精确判断整数性，避免浮点舍入改变输入。
+		approximate, ok := common.NumberAsFloat64(number)
+		if !ok || approximate <= 0 {
+			return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
+		}
+		exact, valid := new(big.Rat).SetString(string(number))
+		if !valid || !exact.IsInt() || !exact.Num().IsInt64() {
+			return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
+		}
+		values[0] = exact.Num().Int64()
+		return nil
+	}
+	interval, ok := common.NumberAsInt64(values[0])
+	if !ok || interval <= 0 {
+		return fmt.Errorf("condition [before]'s interval must be a positive integer within int64 range")
+	}
+	return nil
 }

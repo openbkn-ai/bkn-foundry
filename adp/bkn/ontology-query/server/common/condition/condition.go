@@ -9,6 +9,7 @@ package condition
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -76,6 +77,9 @@ func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 }
 
 func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*DataProperty) (cond Condition, err error) {
+	if err := validateNonEmptySearchValue(cfg); err != nil {
+		return nil, err
+	}
 	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {
 		// Validate fields other than *.
@@ -164,6 +168,19 @@ func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsM
 	}
 
 	return cond, nil
+}
+
+func validateNonEmptySearchValue(cfg *CondCfg) error {
+	value, isString := cfg.Value.(string)
+	if !isString || value != "" {
+		return nil
+	}
+	switch cfg.Operation {
+	case OperationLike, OperationNotLike, OperationRegex, OperationPrefix, OperationNotPrefix,
+		OperationMatch, OperationMatchPhrase, OperationMultiMatch:
+		return fmt.Errorf("condition [%s] right value must be a non-empty string", cfg.Operation)
+	}
+	return nil
 }
 
 func getFilterFieldName(name string, fieldsMap map[string]*DataProperty, isFullTextQuery bool) string {
@@ -271,6 +288,9 @@ func PromoteLegacyLeafWithSubConds(cfg *CondCfg) *CondCfg {
 
 func rewriteCondWithOpr(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty,
 	vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (viewCfg *CondCfg, err error) {
+	if err := validateNonEmptySearchValue(cfg); err != nil {
+		return nil, err
+	}
 
 	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {

@@ -265,8 +265,15 @@ func TestMariaDBDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 }
 func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 	for _, operation := range []string{"like", "not_like"} {
-		for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
+		for _, pattern := range []string{"", "   ", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
 			t.Run(operation+"/"+pattern, func(t *testing.T) {
+				if pattern == "" {
+					condition, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "name", Operation: operation, Value: pattern}, testFieldsMap())
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, condition)
+					return
+				}
 				condition := mustNewCond(t, "name", operation, pattern)
 				text, args := toSQL(t, &MariaDBConnector{}, condition)
 				keyword := "LIKE"

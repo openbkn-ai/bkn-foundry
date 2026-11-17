@@ -945,6 +945,9 @@ func TestLikePushdownKeepsCypherTextSeparateFromStoredPatterns(t *testing.T) {
 		{"literal backslash", PlanStringMatch{Column: "name", Operator: Contains, Value: `a\b`}, "like", `%a\\b%`},
 		{"quotes and index metacharacters", PlanStringMatch{Column: "name", Operator: Contains, Value: `it's *?[ok]`}, "like", `%it's *?[ok]%`},
 		{"empty contains", PlanStringMatch{Column: "name", Operator: Contains, Value: ""}, "like", "%%"},
+		{"empty starts with", PlanStringMatch{Column: "name", Operator: StartsWith, Value: ""}, "like", "%"},
+		{"negated empty starts with", PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: StartsWith, Value: ""}}, "not_like", "%"},
+		{"negated empty contains", PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: Contains, Value: ""}}, "not_like", "%%"},
 		{"negated contains", PlanNegation{Operand: PlanStringMatch{Column: "name", Operator: Contains, Value: "苹果"}}, "not_like", "%苹果%"},
 		{"stored exact pattern", PlanStringMatch{Column: "name", Operator: LikePattern, Value: "苹果"}, "like", "苹果"},
 		{"stored containment pattern", PlanStringMatch{Column: "name", Operator: LikePattern, Value: "%苹果%"}, "like", "%苹果%"},
@@ -957,6 +960,36 @@ func TestLikePushdownKeepsCypherTextSeparateFromStoredPatterns(t *testing.T) {
 			}
 		})
 	}
+	t.Run("empty string predicates preserve local and pushed null semantics", func(t *testing.T) {
+		for _, operator := range []StringMatchOperator{Contains, StartsWith, EndsWith} {
+			for _, negated := range []bool{false, true} {
+				var predicate PlanPredicate = PlanStringMatch{Column: "name", Operator: operator, Value: ""}
+				if negated {
+					predicate = PlanNegation{Operand: predicate}
+				}
+				pushed, ok := pushFilter(predicate)
+				if ok != (operator != EndsWith) {
+					t.Fatalf("%s changed its existing pushdown capability", operator)
+				}
+				for _, row := range []map[string]any{{"name": ""}, {"name": "foo"}, {"name": nil}, {}} {
+					got, err := evaluatePredicate(predicate, scope{row: binding{row}})
+					want := truthUnknown
+					if value, exists := row["name"]; exists && value != nil {
+						want = truthOf(!negated)
+					}
+					if err != nil || got != want {
+						t.Fatalf("%s row=%v negated=%v: got=%v, error=%v, want=%v", operator, row, negated, got, err, want)
+					}
+					if ok {
+						holds, err := fakeFilter(pushed.condition, row)
+						if err != nil || holds != (want == truthTrue) {
+							t.Fatalf("%s pushed row=%v negated=%v: got=%v, error=%v", operator, row, negated, holds, err)
+						}
+					}
+				}
+			}
+		}
+	})
 }
 
 func TestStoredLikePatternLocalEvaluationAndNullNegation(t *testing.T) {

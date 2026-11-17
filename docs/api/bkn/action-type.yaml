@@ -1721,8 +1721,9 @@ components:
             - like
           type: string
         value:
-          description: Complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
+          description: Non-empty complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
           type: string
+          minLength: 1
     condition_not_like:
       description: Not-like filter
       required:
@@ -1744,8 +1745,9 @@ components:
             - not_like
           type: string
         value:
-          description: Complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
+          description: Non-empty complete SQL LIKE pattern; % matches zero or more characters, _ matches one, backslash escapes the next character, and a trailing escape is invalid. No wildcards are added automatically.
           type: string
+          minLength: 1
     condition_regex:
       description: Regular expression filter
       required:
@@ -1769,6 +1771,7 @@ components:
         value:
           description: Filter value
           type: string
+          minLength: 1
     condition_multi_match:
       description: Multi-field full-text match
       required:
@@ -1790,6 +1793,7 @@ components:
         value:
           description: Filter value
           type: string
+          minLength: 1
         match_type:
           description: Full-text match type. Defaults to best_fields.
           enum:
@@ -1847,6 +1851,7 @@ components:
         value:
           description: Filter value
           type: string
+          minLength: 1
     condition_match:
       description: "Match filter. Supports a single field or * for all fields."
       required:
@@ -1870,6 +1875,7 @@ components:
         value:
           description: Filter value
           type: string
+          minLength: 1
     condition_knn:
       description: 'KNN filter. Supports a single field or * for _vector.'
       required:
@@ -2297,7 +2303,10 @@ components:
           default: const
         value:
           description: Literal value for const; same-endpoint property name for property; runtime parameter name for
-            input. Applicability does not supply target identities.
+            input. For like, not_like, prefix, not_prefix, and regex, const (including omitted value_from) requires a
+            nonempty string; whitespace is preserved. Property and input values are reference names at save time;
+            an empty string resolved from a reference is rejected at execution time. The error identifies the reference
+            source and name without including the resolved value. Applicability does not supply target identities.
     ActionOperationConfig:
       type: object
       required:
