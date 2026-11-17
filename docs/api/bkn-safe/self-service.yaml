@@ -17,6 +17,67 @@ servers:
 security:
   - BearerAuth: []
 paths:
+  /me/logout:
+    post:
+      tags: [Self service]
+      operationId: logoutStudioSession
+      summary: Revoke the current Studio credentials before browser sign-out
+      security:
+        - BearerAuth: []
+        - {}
+      description: |
+        Supply the Studio access token in Authorization and, when issued, its
+        refresh token and saved ID token in the JSON body. The server introspects
+        access/refresh credentials,
+        rejects active tokens for any client other than openbkn-studio or for
+        different subjects, and verifies the ID token's RS256 signature using
+        Hydra's current JWKS, issuer, Studio audience and subject. Its signed sid
+        selects only Studio consent requests in that browser login session.
+        Revoking those exact consent request IDs also invalidates credentials
+        rotated before sign-out. Other clients, including those in the same
+        browser, and independently authorized devices are unaffected.
+        The presented access/refresh tokens are also explicitly revoked and
+        checked for inactivity. No user-wide or client-wide revocation is used.
+        Token-only callers without an ID token revoke only presented credentials.
+
+        A still-active refresh token can authenticate sign-out when the access
+        token is absent or was revoked by a partially completed attempt. At least
+        one credential is required. A signed ID token also allows retries after
+        access and refresh tokens are already inactive. Expired ID tokens are
+        accepted only for this session-scoped sign-out, never as API access
+        credentials. Already inactive
+        credentials are accepted idempotently and produce no new access log.
+        A logout access fact is emitted only after confirmed revocation with a
+        resolved subject; audit transport failure does not prevent logout.
+
+        A 503 means revocation could not be confirmed and may be partial. Keep
+        credentials for retry and do not report successful sign-out. Refresh
+        tokens must never appear in URLs or logs. The browser must separately
+        complete Hydra's OIDC end-session redirect to clear its login cookies.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  writeOnly: true
+                  description: Current refresh token, when one was issued.
+                id_token:
+                  type: string
+                  writeOnly: true
+                  description: Saved Hydra ID token; required to revoke the browser session's complete token history.
+      responses:
+        '204':
+          description: Presented credentials are inactive; browser end-session is still required.
+        '400':
+          description: Malformed or oversized request body.
+        '401':
+          description: Missing credentials or active credentials with invalid ownership or token use.
+        '503':
+          description: Revocation is unavailable, incomplete, or could not be verified. Retry with the same credentials.
   /me/authorization-registry:
     get:
       tags: [Self service]

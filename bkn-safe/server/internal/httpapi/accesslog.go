@@ -5,6 +5,8 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -15,12 +17,42 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 )
 
-// registerLogout records a voluntary user-initiated logout before Studio
-// navigates to Hydra's browser logout endpoint. Failed or passive token expiry
-// is intentionally not represented as a logout fact.
-func registerLogout(group *gin.RouterGroup, store accesslog.Recorder, directory *directory.Service, users ...*auth.UserStore) {
+// StudioSessionLogout verifies and revokes the presented Studio credentials.
+// An empty subject means the credentials were already inactive.
+type StudioSessionLogout interface {
+	Logout(context.Context, string, string, string) (subject string, err error)
+}
+
+func registerLogout(group *gin.RouterGroup, revoker StudioSessionLogout, store accesslog.Recorder, directory *directory.Service, users ...*auth.UserStore) {
 	group.POST("/logout", func(c *gin.Context) {
-		actorID := c.GetString(ctxAccessorID)
+		if revoker == nil {
+			abortPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		var input struct {
+			RefreshToken string `json:"refresh_token"`
+			IDToken      string `json:"id_token"`
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32<<10)
+		if c.Request.ContentLength != 0 {
+			if err := c.ShouldBindJSON(&input); err != nil {
+				abortPublicError(c, http.StatusBadRequest)
+				return
+			}
+		}
+		actorID, err := revoker.Logout(c.Request.Context(), bearerToken(c), strings.TrimSpace(input.RefreshToken), strings.TrimSpace(input.IDToken))
+		if err != nil {
+			if errors.Is(err, auth.ErrLogoutToken) {
+				abortGate(c, http.StatusUnauthorized, gateAuthn)
+			} else {
+				abortPublicError(c, http.StatusServiceUnavailable)
+			}
+			return
+		}
+		if actorID == "" || store == nil {
+			c.Status(http.StatusNoContent)
+			return
+		}
 		actorName := accessActorName(c, directory, actorID, users...)
 		if err := store.Record(c.Request.Context(), accesslog.Entry{
 			ActorID: actorID, ActorNameSnapshot: actorName,

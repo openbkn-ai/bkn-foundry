@@ -205,6 +205,7 @@ func Boot(opts Options) (*App, error) {
 			DB:                            db,
 			Provider:                      provider,
 			Hydra:                         hydraAdmin,
+			StudioLogout:                  auth.NewStudioLogout(hydraAdmin, cfg.Hydra.PublicURL),
 			TokenHookKey:                  os.Getenv("SAFE_SSO_HOOK_KEY"),
 			HydraBrowserPublicURL:         cfg.Hydra.BrowserPublicURL,
 			Directory:                     dir,

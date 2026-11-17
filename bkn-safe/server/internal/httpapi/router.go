@@ -46,6 +46,7 @@ type Deps struct {
 	// SessionRevoker terminates all OAuth sessions on account disable/enable.
 	// Production defaults to Hydra; tests can inject a recorder.
 	SessionRevoker UserSessionRevoker
+	StudioLogout   StudioSessionLogout
 	// HydraBrowserPublicURL is the canonical external Hydra origin. Redirects
 	// back to it are emitted as relative URLs so alternate ingress hosts work.
 	HydraBrowserPublicURL string
@@ -165,6 +166,10 @@ func New(deps Deps) *gin.Engine {
 	if deps.Users != nil {
 		registerSelfServiceAuth(r, deps.Users)
 	}
+	// The revoker authenticates live access/refresh credentials itself, allowing
+	// retries after the first attempt already invalidated the bearer token.
+	registerLogout(r.Group("/api/safe/v1/me", rest.PrivateNoCacheMiddleware()),
+		deps.StudioLogout, deps.AccessLog, deps.Directory, deps.Users)
 
 	// Admin API under /api/safe/v1/admin — token-gated (RequireAdmin: verify
 	// bearer token + casbin super-admin check) and the ONLY mutating surface
@@ -349,15 +354,6 @@ func New(deps Deps) *gin.Engine {
 		// gated call site (open-core-gating §2.5).
 		caps := r.Group("/api/safe/v1", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier), requireActiveSession(deps.DB))
 		registerCapabilities(caps, deps.License)
-
-		// Voluntary logout only records an access fact before the browser clears
-		// its session. Keep it on the raw verifier so a locally disabled account
-		// can still record that explicit action; it does not mutate authorization
-		// state and must not be blocked by the active-account write gate below.
-		if deps.AccessLog != nil {
-			meLogout := r.Group("/api/safe/v1/me", rest.PrivateNoCacheMiddleware(), RequireUser(verifier))
-			registerLogout(meLogout, deps.AccessLog, deps.Directory, deps.Users)
-		}
 
 		// Mutating /me (profile PUT, AppKey issue/revoke, object-grant delegation)
 		// uses the RAW verifier so a revoked/logged-out token cannot write within
