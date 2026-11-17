@@ -385,18 +385,29 @@ func keptInV3(files map[string][]byte) bool {
 // lock, so main cannot move between the merge and its commit.
 func (s *lineageService) SyncBranch(ctx context.Context, lineageID string, branch string,
 	author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SyncBranch")
+	return s.sync(ctx, "SyncBranch", lineageID, branch, author, false)
+}
+
+// SyncBranchKeepingBranch brings main into a project branch as SyncBranch does, but where the two
+// changed the same thing differently the branch's side is kept instead of refusing.
+func (s *lineageService) SyncBranchKeepingBranch(ctx context.Context, lineageID string, branch string,
+	author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	return s.sync(ctx, "SyncBranchKeepingBranch", lineageID, branch, author, true)
+}
+
+func (s *lineageService) sync(ctx context.Context, name string, lineageID string, branch string,
+	author interfaces.GitAuthor, keepBranch bool) (*interfaces.SyncBranchResult, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, name)
 	defer span.End()
 
 	if err := checkProjectBranch(ctx, branch); err != nil {
 		span.SetStatus(codes.Error, "Invalid branch")
 		return nil, err
 	}
-
 	var result *interfaces.SyncBranchResult
 	err := s.gs.WithLineageLock(ctx, lineageID, func(gs interfaces.GitStore) error {
 		var err error
-		result, err = syncBranch(ctx, gs, lineageID, branch, author)
+		result, err = syncBranch(ctx, gs, lineageID, branch, author, keepBranch)
 		return err
 	})
 	if err != nil {
@@ -408,7 +419,7 @@ func (s *lineageService) SyncBranch(ctx context.Context, lineageID string, branc
 }
 
 func syncBranch(ctx context.Context, gs interfaces.GitStore, lineageID string, branch string,
-	author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	author interfaces.GitAuthor, keepBranch bool) (*interfaces.SyncBranchResult, error) {
 	branchHead, err := gs.ResolveRef(ctx, lineageID, branchRef(branch))
 	if err != nil {
 		return nil, err
@@ -445,12 +456,19 @@ func syncBranch(ctx context.Context, gs interfaces.GitStore, lineageID string, b
 	if err != nil {
 		return nil, err
 	}
-	// Ours is main and theirs is the branch, as conflicts report them.
-	merged, err := merge.Merge(baseFiles, mainFiles, branchFiles)
+	// Ours is main and theirs is the branch, as conflicts report them. A conflict keeps the ours
+	// side, so keeping the branch's merges with the branch as ours.
+	ours, theirs := mainFiles, branchFiles
+	if keepBranch {
+		ours, theirs = branchFiles, mainFiles
+	}
+	merged, err := merge.Merge(baseFiles, ours, theirs)
 	if err != nil {
 		return nil, fmt.Errorf("merge main into %s: %w", branch, err)
 	}
-	if merged.HasConflicts() {
+	if merged.HasConflicts() && (!keepBranch || brokenReferences(merged.Conflicts)) {
+		// Keeping the branch's side settles conflicting edits, not a definition that refers to
+		// something the merge leaves out: committed, main would stay a parent of it for good.
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_MergeConflict).
 			WithErrorDetails(map[string]any{"conflicts": merged.Conflicts, "summary": merged.Summary})
 	}
@@ -460,6 +478,16 @@ func syncBranch(ctx context.Context, gs interfaces.GitStore, lineageID string, b
 		return nil, err
 	}
 	return &interfaces.SyncBranchResult{Result: interfaces.SYNC_RESULT_MERGED, Commit: head, Summary: &merged.Summary}, nil
+}
+
+// brokenReferences reports whether a merge left a definition referring to one that is not there.
+func brokenReferences(conflicts []interfaces.MergeConflict) bool {
+	for _, c := range conflicts {
+		if c.Reason == interfaces.MERGE_CONFLICT_BROKEN_REFERENCE {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *lineageService) CheckDrift(ctx context.Context, token string, lineageID string, knID string, commit bool,

@@ -158,6 +158,8 @@ func (r *restHandler) ProjectDataActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.SyncProjectBranch)
 	case driftActionCommit:
 		r.withExVisitor(c, r.CommitProjectDrift)
+	case driftActionDiscard:
+		r.withExVisitor(c, r.DiscardProjectDrift)
 	case requirementsActionDraft:
 		r.withExVisitor(c, r.GenerateRequirement)
 	case requirementsActionConcepts:

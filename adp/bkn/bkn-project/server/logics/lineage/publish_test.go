@@ -270,8 +270,11 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 				So(release.BranchCommit, ShouldEqual, branchHead)
 			})
 
-			Convey("but a version published in the meantime replies 409\n", func() {
+			Convey("but a version published in the meantime replies 409, and the draft goes back to the running version\n", func() {
 				prepared.Return(false, nil)
+				// Nothing owns what was written: left there, it would read as edits outside the project.
+				read := kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+				kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).After(read).Return(nil)
 
 				_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -406,6 +409,28 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Release_ReviewOutdated)
 		})
 
+		Convey("Before a first publish, a preparing that failed puts back what main records\n", func() {
+			id := newLineageID()
+			live, _ := setUp(id)
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(0, 7, false), nil, nil)
+			written := kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}).
+				Return(&interfaces.BKNImportResult{KNID: id}, int64(8), nil)
+			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).After(written).Return(versionRefusal(interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED))
+			read := kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(0, 8, true), nil)
+			var restored map[string][]byte
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 8, Overwrite: true}).
+				After(read).DoAndReturn(func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
+				restored = files
+				return &interfaces.BKNImportResult{KNID: id}, 9, nil
+			})
+
+			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+
+			So(err, ShouldNotBeNil)
+			// The branch's edit is gone: the draft holds main's definitions again.
+			So(string(restored["object_types/part.bkn"]), ShouldEqual, string(live["object_types/part.bkn"]))
+		})
+
 		Convey("Skipped capabilities fail preparing without recording it\n", func() {
 			id := newLineageID()
 			_, _ = setUp(id)
@@ -413,6 +438,8 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{
 				KNID: id, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, int64(8), nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).Return(nil)
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -428,7 +455,10 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, false), nil, nil)
 			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), gomock.Any()).Return(&interfaces.BKNImportResult{KNID: id}, int64(8), nil)
 			kva.EXPECT().BuildDraftIndex(gomock.Any(), token, id).Return(versionRefusal(interfaces.KN_VERSION_ERROR_CONCEPT_INDEX_FAILED))
-			// No PrepareRelease: the mock expects none.
+			// No PrepareRelease: the mock expects none. The draft goes back to the running version;
+			// a failure to put it back is only logged, the preparing's own error is the reply.
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 8, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(8), true).Return(versionRefusal("DraftChanged"))
 
 			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
@@ -1006,4 +1036,71 @@ func TestPublishKeyChangesWithTheRequest(t *testing.T) {
 	if k := key(&long, req); len(k) > 64 {
 		t.Fatal("a long lineage id must still give a key bkn-backend takes", len(k))
 	}
+}
+
+func Test_LineageService_DiscardDraft(t *testing.T) {
+	Convey("Discarding the draft's unpublished edits\n", t, func() {
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+		kva := pmock.NewMockKNVersionAccess(mockCtrl)
+		svc := &lineageService{gs: realGS, kva: kva}
+		ctx := context.Background()
+		id := newLineageID()
+		live := definitions("A part.", "A supplier.")
+		_, err := realGS.InitLineage(ctx, id, live, "init", author)
+		So(err, ShouldBeNil)
+
+		Convey("puts the draft back to the running version at the revision read\n", func() {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(3, 12, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 3, int64(12), true).Return(nil)
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldBeNil)
+		})
+
+		Convey("leaves a draft without edits alone\n", func() {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(3, 12, false), nil)
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldBeNil)
+		})
+
+		Convey("before a first publish, writes what main records into the draft\n", func() {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(0, 2, true), nil)
+			var restored map[string][]byte
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 2, Overwrite: true}).
+				DoAndReturn(func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
+					restored = files
+					return &interfaces.BKNImportResult{KNID: id}, 3, nil
+				})
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldBeNil)
+			So(string(restored["object_types/part.bkn"]), ShouldEqual, string(live["object_types/part.bkn"]))
+			So(string(restored["object_types/supplier.bkn"]), ShouldEqual, string(live["object_types/supplier.bkn"]))
+		})
+
+		Convey("before a first publish, keeps the tables the network reads now\n", func() {
+			bba := pmock.NewMockBknBackendAccess(mockCtrl)
+			svc.bba = bba
+			bba.EXPECT().ListObjectTypeSources(gomock.Any(), token, id).Return([]*interfaces.KNObjectTypeSource{
+				{ID: "part", DataSource: &interfaces.KNDataSource{Type: interfaces.KN_DATA_SOURCE_RESOURCE, ID: "view_part_new"}},
+			}, nil)
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(0, 2, true), nil)
+			var restored map[string][]byte
+			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 2, Overwrite: true}).
+				DoAndReturn(func(_ context.Context, _ string, files map[string][]byte, _ interfaces.KNReplaceImport) (*interfaces.BKNImportResult, int64, error) {
+					restored = files
+					return &interfaces.BKNImportResult{KNID: id}, 3, nil
+				})
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldBeNil)
+			So(string(restored["object_types/part.bkn"]), ShouldContainSubstring, "view_part_new")
+			So(string(restored["object_types/supplier.bkn"]), ShouldContainSubstring, "view_supplier")
+		})
+
+		Convey("replies a refusal of the network as an error\n", func() {
+			kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(3, 12, true), nil)
+			kva.EXPECT().ResetDraft(gomock.Any(), token, id, 3, int64(12), true).Return(versionRefusal("DraftChanged"))
+
+			So(svc.DiscardDraft(ctx, token, id), ShouldNotBeNil)
+		})
+	})
 }

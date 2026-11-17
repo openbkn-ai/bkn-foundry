@@ -116,6 +116,20 @@ func (mr *MockLineageServiceMockRecorder) CreateLineage(ctx, token, knID, author
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLineage", reflect.TypeOf((*MockLineageService)(nil).CreateLineage), ctx, token, knID, author)
 }
 
+// DiscardDraft mocks base method.
+func (m *MockLineageService) DiscardDraft(ctx context.Context, token, lineageID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiscardDraft", ctx, token, lineageID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DiscardDraft indicates an expected call of DiscardDraft.
+func (mr *MockLineageServiceMockRecorder) DiscardDraft(ctx, token, lineageID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiscardDraft", reflect.TypeOf((*MockLineageService)(nil).DiscardDraft), ctx, token, lineageID)
+}
+
 // PreflightDefinitions mocks base method.
 func (m *MockLineageService) PreflightDefinitions(ctx context.Context, lineageID, branch string, paths, owned []string) (*interfaces.DefinitionsPreflight, error) {
 	m.ctrl.T.Helper()
@@ -189,4 +203,19 @@ func (m *MockLineageService) SyncBranch(ctx context.Context, lineageID, branch s
 func (mr *MockLineageServiceMockRecorder) SyncBranch(ctx, lineageID, branch, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncBranch", reflect.TypeOf((*MockLineageService)(nil).SyncBranch), ctx, lineageID, branch, author)
+}
+
+// SyncBranchKeepingBranch mocks base method.
+func (m *MockLineageService) SyncBranchKeepingBranch(ctx context.Context, lineageID, branch string, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncBranchKeepingBranch", ctx, lineageID, branch, author)
+	ret0, _ := ret[0].(*interfaces.SyncBranchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncBranchKeepingBranch indicates an expected call of SyncBranchKeepingBranch.
+func (mr *MockLineageServiceMockRecorder) SyncBranchKeepingBranch(ctx, lineageID, branch, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncBranchKeepingBranch", reflect.TypeOf((*MockLineageService)(nil).SyncBranchKeepingBranch), ctx, lineageID, branch, author)
 }

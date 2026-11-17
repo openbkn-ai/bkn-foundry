@@ -183,6 +183,19 @@ func (s *projectReleaseService) RunRegression(ctx context.Context, token string,
 // SyncBranch brings main, the live version, into the project's branch.
 func (s *projectReleaseService) SyncBranch(ctx context.Context, token string, projectID string,
 	caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	return s.syncBranch(ctx, token, projectID, caller, author, false)
+}
+
+// SyncBranchKeepingProject brings main into the project's branch, keeping the project's side where
+// the two changed the same thing differently, as when main holds only what a preparing that failed
+// left in the network.
+func (s *projectReleaseService) SyncBranchKeepingProject(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	return s.syncBranch(ctx, token, projectID, caller, author, true)
+}
+
+func (s *projectReleaseService) syncBranch(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo, author interfaces.GitAuthor, keepProject bool) (*interfaces.SyncBranchResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SyncProjectBranch")
 	defer span.End()
 
@@ -191,7 +204,11 @@ func (s *projectReleaseService) SyncBranch(ctx context.Context, token string, pr
 		span.SetStatus(codes.Error, "Project not syncable")
 		return nil, err
 	}
-	result, err := s.ls.SyncBranch(ctx, entry.KNID, entry.Branch, author)
+	sync := s.ls.SyncBranch
+	if keepProject {
+		sync = s.ls.SyncBranchKeepingBranch
+	}
+	result, err := sync(ctx, entry.KNID, entry.Branch, author)
 	if err != nil {
 		span.SetStatus(codes.Error, "Sync branch failed")
 		return nil, err
@@ -224,6 +241,26 @@ func (s *projectReleaseService) CommitDrift(ctx context.Context, token string, p
 	}
 	span.SetStatus(codes.Ok, "")
 	return &interfaces.ProjectDriftCommit{Drift: drift, Sync: synced}, nil
+}
+
+// DiscardDrift drops what was edited in the network's draft and not published, such as what a
+// preparing that failed halfway left there, for the owner.
+func (s *projectReleaseService) DiscardDrift(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscardProjectDrift")
+	defer span.End()
+
+	entry, err := s.ownedProject(ctx, token, projectID, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Project not writable")
+		return err
+	}
+	if err = s.ls.DiscardDraft(ctx, token, entry.KNID); err != nil {
+		span.SetStatus(codes.Error, "Discard drift failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 // ownedProject returns the project when the caller owns it and it is not archived.

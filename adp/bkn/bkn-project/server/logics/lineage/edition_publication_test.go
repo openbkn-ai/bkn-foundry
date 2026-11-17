@@ -122,6 +122,16 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 						return &interfaces.BKNImportResult{KNID: id}, 8, nil
 					})
 			}
+			if scenario == "mount_uncertain" {
+				// The preparing failed after writing the draft: it takes what it wrote back out, at the
+				// revision mounting left, so no later review reads it as edits outside the project.
+				kva.EXPECT().GetVersioning(gomock.Any(), token, id).Return(versioningAt(1, 9, true), nil)
+				kva.EXPECT().ResetDraft(gomock.Any(), token, id, 1, int64(9), true).DoAndReturn(
+					func(context.Context, string, string, int, int64, bool) error {
+						events = append(events, "withdraw")
+						return nil
+					})
+			}
 			var prepared *interfaces.Release
 			if successful {
 				// Mounting writes into the draft too, so the revision prepared is read after it.
@@ -166,6 +176,9 @@ func TestKnowledgePublicationFencesDirectReleaseAndMountsBeforeRecording(t *test
 			}
 			if successful {
 				expected = append(expected, "revision", "index", "record")
+			}
+			if scenario == "mount_uncertain" {
+				expected = append(expected, "withdraw")
 			}
 			if !reflect.DeepEqual(events, expected) {
 				t.Fatal("unsafe release ordering", events)

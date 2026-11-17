@@ -174,6 +174,14 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, err
 	}
+	// From here the draft holds this release. A step that fails takes it back out: left there, no
+	// release would own it, and every later review would report it as edits made outside the project.
+	prepared := false
+	defer func() {
+		if !prepared {
+			s.withdrawDraft(ctx, gs, token, lineageID)
+		}
+	}()
 	if imported.Capabilities != nil && len(imported.Capabilities.Skipped) > 0 {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_CapabilitiesSkipped).
 			WithErrorDetails(map[string]any{"network_id": lineageID, "version": req.Version, "skipped": imported.Capabilities.Skipped})
@@ -226,7 +234,72 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_VersionExists).
 			WithErrorDetails(map[string]any{"lineage_id": lineageID, "version": req.Version})
 	}
+	prepared = true
 	return release, nil
+}
+
+// withdrawDraftTimeout bounds taking a failed preparing back out of the draft, which runs even when
+// the request that prepared was cancelled.
+const withdrawDraftTimeout = 30 * time.Second
+
+// withdrawDraft takes what a preparing that failed halfway wrote back out of the draft. A failure
+// is logged; the owner can still discard the draft's edits.
+func (s *lineageService) withdrawDraft(ctx context.Context, gs interfaces.GitStore, token string, lineageID string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), withdrawDraftTimeout)
+	defer cancel()
+	if err := s.discardDraft(ctx, gs, token, lineageID); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Preparing a release of %s failed and its definitions stay in the draft: %v", lineageID, err))
+	}
+}
+
+// DiscardDraft drops the edits in the network's draft nobody published, under the lineage's lock.
+func (s *lineageService) DiscardDraft(ctx context.Context, token string, lineageID string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscardDraft")
+	defer span.End()
+
+	err := s.gs.WithLineageLock(ctx, lineageID, func(gs interfaces.GitStore) error {
+		return s.discardDraft(ctx, gs, token, lineageID)
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, "Discard draft failed")
+		return toHTTPError(ctx, "Discard draft failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+// discardDraft puts the draft back to the running version, at the revision read, so edits made
+// since are not dropped unseen. A network never published has no version to go back to: its draft
+// gets what main records, which is what the drift check compares it with.
+func (s *lineageService) discardDraft(ctx context.Context, gs interfaces.GitStore, token string, lineageID string) error {
+	versioning, err := s.kva.GetVersioning(ctx, token, lineageID)
+	if err != nil {
+		return err
+	}
+	if !versioning.Draft.HasChanges {
+		return nil
+	}
+	if versioning.RunningVersion >= 1 {
+		return s.kva.ResetDraft(ctx, token, lineageID, versioning.RunningVersion, versioning.Draft.Revision, true)
+	}
+	mainHead, err := gs.ResolveRef(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH))
+	if err != nil {
+		return err
+	}
+	stored, err := gs.ReadTree(ctx, lineageID, mainHead)
+	if err != nil {
+		return err
+	}
+	// Written as main has it, an object type bound again since (a sample reinstalled) would read a
+	// table that is gone: keep the tables the network reads now, as preparing does.
+	pkg, err := buildPackage(logics.WithNetworkTables(stored, stored, s.networkTables(ctx, token, lineageID)), lineageID)
+	if err != nil {
+		return err
+	}
+	_, _, err = s.kva.ReplaceDraft(ctx, token, pkg, interfaces.KNReplaceImport{
+		ExpectedDraftRevision: versioning.Draft.Revision, Overwrite: true,
+	})
+	return err
 }
 
 // publication readies what the edition adds to the release, if anything.

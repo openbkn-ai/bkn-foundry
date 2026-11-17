@@ -209,6 +209,11 @@ type LineageService interface {
 		owned []string) (*DefinitionsPreflight, error)
 	// SyncBranch brings main into a project branch: no-op, fast-forward or semantic merge.
 	SyncBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
+	// SyncBranchKeepingBranch is SyncBranch keeping the branch's side where the two conflict.
+	SyncBranchKeepingBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
+	// DiscardDraft drops the edits in the network's draft nobody published: the draft goes back to
+	// the running version, or, before a first publish, to what main records.
+	DiscardDraft(ctx context.Context, token string, lineageID string) error
 	// CheckDrift compares the live network knID with main; with commit it also commits the live set to main.
 	CheckDrift(ctx context.Context, token string, lineageID string, knID string, commit bool, author GitAuthor) (*DriftResult, error)
 	// PrepareRelease writes a project branch, as req.Version, into the draft of the lineage's

@@ -71,6 +71,20 @@ func (mr *MockProjectReleaseServiceMockRecorder) CopyVersion(ctx, token, project
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CopyVersion", reflect.TypeOf((*MockProjectReleaseService)(nil).CopyVersion), ctx, token, projectID, knVersion, req, caller, author)
 }
 
+// DiscardDrift mocks base method.
+func (m *MockProjectReleaseService) DiscardDrift(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DiscardDrift", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DiscardDrift indicates an expected call of DiscardDrift.
+func (mr *MockProjectReleaseServiceMockRecorder) DiscardDrift(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiscardDrift", reflect.TypeOf((*MockProjectReleaseService)(nil).DiscardDrift), ctx, token, projectID, caller)
+}
+
 // GetRegression mocks base method.
 func (m *MockProjectReleaseService) GetRegression(ctx context.Context, token, projectID, version string) (*interfaces.Regression, error) {
 	m.ctrl.T.Helper()
@@ -204,4 +218,19 @@ func (m *MockProjectReleaseService) SyncBranch(ctx context.Context, token, proje
 func (mr *MockProjectReleaseServiceMockRecorder) SyncBranch(ctx, token, projectID, caller, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncBranch", reflect.TypeOf((*MockProjectReleaseService)(nil).SyncBranch), ctx, token, projectID, caller, author)
+}
+
+// SyncBranchKeepingProject mocks base method.
+func (m *MockProjectReleaseService) SyncBranchKeepingProject(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncBranchKeepingProject", ctx, token, projectID, caller, author)
+	ret0, _ := ret[0].(*interfaces.SyncBranchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncBranchKeepingProject indicates an expected call of SyncBranchKeepingProject.
+func (mr *MockProjectReleaseServiceMockRecorder) SyncBranchKeepingProject(ctx, token, projectID, caller, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncBranchKeepingProject", reflect.TypeOf((*MockProjectReleaseService)(nil).SyncBranchKeepingProject), ctx, token, projectID, caller, author)
 }

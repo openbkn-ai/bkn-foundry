@@ -26,6 +26,7 @@ import (
 const (
 	projectActionSync    = "branch:sync"
 	driftActionCommit    = "drift:commit"
+	driftActionDiscard   = "drift:discard"
 	regressionActionRun  = "regression:run"
 	releaseActionPrepare = "prepare"
 )
@@ -112,7 +113,7 @@ func (r *restHandler) PublishProject(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusCreated, result)
 }
 
-// SyncProjectBranch serves POST /projects/{id}/branch:sync.
+// SyncProjectBranch serves POST /projects/{id}/branch:sync with an optional {"keep_project"}.
 func (r *restHandler) SyncProjectBranch(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -121,7 +122,16 @@ func (r *restHandler) SyncProjectBranch(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("project_id")
 	span.SetAttributes(attr.Key("project_id").String(id))
 
-	result, err := r.prs.SyncBranch(ctx, visitor.TokenID, id, visitorAccount(visitor), gitAuthor(visitor))
+	var req interfaces.ProjectSync
+	if err := bindOptionalJSON(c, &req); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidRequestBody))
+		return
+	}
+	sync := r.prs.SyncBranch
+	if req.KeepProject {
+		sync = r.prs.SyncBranchKeepingProject
+	}
+	result, err := sync(ctx, visitor.TokenID, id, visitorAccount(visitor), gitAuthor(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return
@@ -146,6 +156,23 @@ func (r *restHandler) CommitProjectDrift(c *gin.Context, visitor hydra.Visitor) 
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// DiscardProjectDrift serves POST /projects/{id}/drift:discard.
+func (r *restHandler) DiscardProjectDrift(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	if err := r.prs.DiscardDrift(ctx, visitor.TokenID, id, visitorAccount(visitor)); err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
 // GetRegression serves GET /projects/{id}/releases/{version}/regression.
