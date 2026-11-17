@@ -28,6 +28,8 @@ type vegaWorld struct {
 	lists int
 	// failLists makes that many listings fail as a passing vega error would.
 	failLists int
+	// named counts the catalogs looked for by name.
+	named int
 }
 
 func (w *vegaWorld) table(id string) *interfaces.VegaTable {
@@ -55,6 +57,18 @@ func (w *vegaWorld) mock(ctrl *gomock.Controller) *pmock.MockVegaAccess {
 				}
 			}
 			return names, nil
+		}).AnyTimes()
+	va.EXPECT().CatalogsNamed(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ interfaces.VegaAccount, name string) ([]string, error) {
+			w.named++
+			ids := []string{}
+			for id, n := range w.catalogs {
+				if n == name {
+					ids = append(ids, id)
+				}
+			}
+			slices.Sort(ids)
+			return ids, nil
 		}).AnyTimes()
 	va.EXPECT().MissingTables(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ interfaces.VegaAccount, ids []string) ([]string, error) {
@@ -311,6 +325,8 @@ func Test_RebindOnStatus(t *testing.T) {
 		Convey("A deleted catalog the project still lists does not stop the others being looked in\n", func() {
 			project.CatalogIDs = []string{"cat", "c_new", "c_en"}
 			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			// The catalog of its name the project lists already takes its place.
+			ps.EXPECT().SetProjectCatalogs(gomock.Any(), token, "p1", []string{"c_new", "c_en"}, caller).Return(project, nil)
 			store(recordedDraft())
 
 			s, err := svc.GetStatus(ctx, token, "p1", caller)
@@ -318,6 +334,58 @@ func Test_RebindOnStatus(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(writes, ShouldEqual, 1)
 			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+		})
+
+		Convey("A catalog created again under its name takes the place of the gone one, and its tables are bound again\n", func() {
+			project.CatalogIDs = []string{"cat"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			ps.EXPECT().SetProjectCatalogs(gomock.Any(), token, "p1", []string{"c_new"}, caller).DoAndReturn(
+				func(_ context.Context, _, _ string, ids []string, _ interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+					project.CatalogIDs = ids
+					return project, nil
+				})
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+			So(s.DataSources.Reconnected, ShouldEqual, 5)
+			So(s.Blockers, ShouldBeEmpty)
+			So(findObjectType(&stored.Items, "customers").Table.ResourceID, ShouldEqual, "new_customers")
+			So(findObjectType(&stored.Items, "customers").Table.CatalogID, ShouldEqual, "c_new")
+		})
+
+		Convey("Two catalogs of the gone one's name: it stays gone for the owner to choose, and is not looked for on every read\n", func() {
+			project.CatalogIDs = []string{"cat"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			w.catalogs["c_twin"] = "sample"
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(writes, ShouldEqual, 0)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
+			So(w.named, ShouldEqual, 1)
+
+			_, err = svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(w.named, ShouldEqual, 1)
+		})
+
+		Convey("Someone not the owner does not change the project's catalogs\n", func() {
+			project.CatalogIDs = []string{"cat"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", interfaces.AccountInfo{ID: "someone", Type: "user"})
+
+			So(err, ShouldBeNil)
+			So(w.named, ShouldEqual, 0)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
 		})
 
 		Convey("A table another item binds already is not bound a second time\n", func() {

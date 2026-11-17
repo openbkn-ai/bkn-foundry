@@ -110,6 +110,17 @@ func (s *draftService) getStatus(ctx context.Context, token string, projectID st
 		s.withCatalogsHint(ctx, entry, draft, caller, status)
 	}
 	if status.Stage != interfaces.PROJECT_STAGE_DRAFTING {
+		// A catalog deleted and created again under its name, as reinstalling a sample does, is the
+		// project's again, by the owner, before its tables are looked for in it by name.
+		if rebind && !networkMissing && status.Stage != interfaces.PROJECT_STAGE_ARCHIVED && caller.ID == entry.Owner.ID {
+			catalogIDs, err := s.reconnectCatalogs(ctx, token, caller, entry, draft)
+			if err != nil {
+				otellog.LogWarn(ctx, fmt.Sprintf("Find the catalogs of project %s again by name: %v", projectID, err))
+			}
+			if catalogIDs != nil {
+				entry.CatalogIDs = catalogIDs
+			}
+		}
 		var existingGone bool
 		status.DataSources, existingGone = s.dataSources(ctx, entry.Project, draft, networkMissing, caller)
 		// Tables deleted and created again under their names are bound again, by the owner, who

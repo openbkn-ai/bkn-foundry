@@ -427,6 +427,69 @@ func (s *draftService) networkMatches(ctx context.Context, token string, caller 
 	return matches, nil
 }
 
+// recordedCatalogNames are the names the draft recorded of the catalogs its tables were read from,
+// by catalog id.
+func recordedCatalogNames(items *interfaces.DraftItems) map[string]string {
+	names := map[string]string{}
+	for _, ref := range append(draftTableRefs(items), existingTableRefs(items)...) {
+		if t := ref.table; t.CatalogID != "" && t.CatalogName != "" {
+			names[t.CatalogID] = t.CatalogName
+		}
+	}
+	return names
+}
+
+// reconnectCatalogs puts, in place of each of the project's catalogs that is gone, the one catalog
+// the owner can see under the name the draft recorded for it, as reinstalling a sample creates it
+// again; the tables the draft binds are then found in it by name. A gone catalog with no recorded
+// name, or none or more than one catalog of its name, stays gone, for the owner to choose another.
+// It returns the project's catalogs when it changed them, else nil.
+func (s *draftService) reconnectCatalogs(ctx context.Context, token string, caller interfaces.AccountInfo,
+	entry *interfaces.ProjectEntry, draft *interfaces.Draft) ([]string, error) {
+	if draft == nil || entry == nil || entry.Project == nil || len(entry.CatalogIDs) == 0 {
+		return nil, nil
+	}
+	names := recordedCatalogNames(&draft.Items)
+	if len(names) == 0 {
+		return nil, nil
+	}
+	missing, err := s.va.MissingCatalogs(ctx, caller, entry.CatalogIDs)
+	if err != nil || len(missing) == 0 {
+		return nil, err
+	}
+	miss := "catalogs|" + rebindMissKey(entry.ID, missing, nil)
+	if at, ok := s.rebindMisses.Load(miss); ok {
+		if time.Since(at.(time.Time)) < rebindRetryAfter {
+			return nil, nil
+		}
+		s.rebindMisses.Delete(miss)
+	}
+	catalogIDs := []string{}
+	changed := false
+	for _, id := range entry.CatalogIDs {
+		if slices.Contains(missing, id) && names[id] != "" {
+			found, err := s.va.CatalogsNamed(ctx, caller, names[id])
+			if err != nil {
+				return nil, fmt.Errorf("find the catalog named %q: %w", names[id], err)
+			}
+			if len(found) == 1 {
+				id, changed = found[0], true
+			}
+		}
+		if !slices.Contains(catalogIDs, id) {
+			catalogIDs = append(catalogIDs, id)
+		}
+	}
+	if !changed {
+		s.rebindMisses.Store(miss, time.Now())
+		return nil, nil
+	}
+	if _, err := s.ps.SetProjectCatalogs(ctx, token, entry.ID, catalogIDs, caller); err != nil {
+		return nil, fmt.Errorf("set the catalogs found by name: %w", err)
+	}
+	return catalogIDs, nil
+}
+
 // rebindRetryAfter is how long tables looked for in vain are not looked for again.
 const rebindRetryAfter = 5 * time.Minute
 
