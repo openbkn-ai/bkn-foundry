@@ -93,6 +93,15 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 		}
 		data := make(map[string]any, len(req.ObjectInput))
 		mapped := mappedObjectInputProperties(action.Parameters)
+		for _, parameter := range action.Parameters {
+			if parameter.ValueFrom != interfaces.LOGIC_PARAMS_VALUE_FROM_PROP {
+				continue
+			}
+			name := parameter.Value.(string) // Validated against the object type above.
+			if req.ObjectInput[name] == nil {
+				return nil, nil, actionTargetError(ctx, fmt.Sprintf("object_input property %q is required", name))
+			}
+		}
 		for key, value := range req.ObjectInput {
 			known := false
 			propertyType := ""
