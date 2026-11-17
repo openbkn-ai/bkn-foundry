@@ -74,6 +74,9 @@ REQUIREMENTS_V12 = MIGRATIONS / "0.2.2/13-requirements-kinetic-network-layer-v12
 DRAFT_NAMING_V2 = MIGRATIONS / "0.2.2/14-draft-naming-rules-v2.sql"
 ONTOLOGY_ASK_V8 = MIGRATIONS / "0.2.2/15-ontology-ask-naming-rules-v8.sql"
 REQUIREMENTS_V13 = MIGRATIONS / "0.2.2/16-requirements-naming-rules-v13.sql"
+DRAFT_NAMING_V3 = MIGRATIONS / "0.2.2/17-draft-naming-ontology-guidance-v3.sql"
+ONTOLOGY_ASK_V9 = MIGRATIONS / "0.2.2/18-ontology-ask-ontology-guidance-v9.sql"
+REQUIREMENTS_V14 = MIGRATIONS / "0.2.2/19-requirements-ontology-guidance-v14.sql"
 
 
 def statements(path):
@@ -326,6 +329,9 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, DRAFT_NAMING_V2)
         apply(upgraded, ONTOLOGY_ASK_V8)
         apply(upgraded, REQUIREMENTS_V13)
+        apply(upgraded, DRAFT_NAMING_V3)
+        apply(upgraded, ONTOLOGY_ASK_V9)
+        apply(upgraded, REQUIREMENTS_V14)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         # An upgrade keeps the Agents an edition now seeds; the core compares without them.
@@ -555,7 +561,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]],
         ],
         "0.2.2",
         True,
@@ -1354,11 +1360,13 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(REQUIREMENTS_V11) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V12) if "f_localized_content" in s}
                                | {s for s in statements(REQUIREMENTS_V13) if "f_localized_content" in s}
+                               | {s for s in statements(REQUIREMENTS_V14) if "f_localized_content" in s}
                                | {s for s in statements(ANSWER_JUDGE_REASON) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V4) if "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V6) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V7) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V8) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK_V9) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(GRAPH_EXPLORER_V2) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
@@ -1539,7 +1547,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -3156,17 +3164,18 @@ def test_requirements_v8_upgrade_matches_fresh_install_and_keeps_history(start):
         apply(db, REQUIREMENTS_V11)
         apply(db, REQUIREMENTS_V12)
         apply(db, REQUIREMENTS_V13)
+        apply(db, REQUIREMENTS_V14)
         assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
-def test_requirements_v13_fresh_snapshot_seeds_v13_and_its_translations():
+def test_requirements_v14_fresh_snapshot_seeds_v14_and_its_translations():
     init = (MIGRATIONS / "0.2.2/init.sql").read_text()
-    v13 = [s for s in statements(REQUIREMENTS_V13) if s.startswith("insert into t_agent_prompt_version")][0]
-    body = v13[v13.index("select v.f_prompt_id, 13, 'en-US',") + len("select v.f_prompt_id, 13, 'en-US',"):v13.index("v.f_vars_schema,")].strip()
+    v14 = [s for s in statements(REQUIREMENTS_V14) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v14[v14.index("select v.f_prompt_id, 14, 'en-US',") + len("select v.f_prompt_id, 14, 'en-US',"):v14.index("v.f_vars_schema,")].strip()
     seed = init.index("-- bkn-project-requirements:")
-    assert init.index("select 'bkn-project-requirements-prompt', 13, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
+    assert init.index("select 'bkn-project-requirements-prompt', 14, 'en-US',\n    " + body, seed) < init.index(CLAIM_LOCALES.read_text())
     # The fresh snapshot attaches the same translations as the upgrade.
-    text = REQUIREMENTS_V13.read_text()
+    text = REQUIREMENTS_V14.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
     # Apart from the requirements Agent, Ask AI, graph explorer v2, resource semantic understanding
     # v7 and the new analysis writer, the 0.2.2 snapshot is the 0.2.1 one without the Agents an
@@ -3297,6 +3306,7 @@ def test_requirements_v9_upgrade_matches_fresh_install_and_changes_only_pass_kin
         apply(db, REQUIREMENTS_V11)
         apply(db, REQUIREMENTS_V12)
         apply(db, REQUIREMENTS_V13)
+        apply(db, REQUIREMENTS_V14)
         assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
@@ -3414,6 +3424,7 @@ def test_requirements_v10_upgrade_matches_fresh_install_and_adds_only_the_supple
         apply(db, REQUIREMENTS_V11)
         apply(db, REQUIREMENTS_V12)
         apply(db, REQUIREMENTS_V13)
+        apply(db, REQUIREMENTS_V14)
         assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
@@ -3535,6 +3546,7 @@ def test_requirements_v11_upgrade_matches_fresh_install_and_changes_only_the_con
         # 13 then brings it to the fresh install's v12.
         apply(db, REQUIREMENTS_V12)
         apply(db, REQUIREMENTS_V13)
+        apply(db, REQUIREMENTS_V14)
         assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
@@ -3666,8 +3678,9 @@ def test_requirements_v12_upgrade_matches_fresh_install_and_changes_only_kinetic
         before = snapshot(db)
         apply(db, REQUIREMENTS_V12)
         assert snapshot(db) == before
-        # 16 then brings it to the fresh install's v13.
+        # 16 and 19 then bring it to the fresh install's v14.
         apply(db, REQUIREMENTS_V13)
+        apply(db, REQUIREMENTS_V14)
         assert item_from_db(db, RQ) == item_from_db(fresh, RQ)
 
 
@@ -4191,7 +4204,7 @@ def test_ontology_ask_seed_and_translation_are_idempotent_on_an_upgrade():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         before = snapshot(db)
-        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V8):
+        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9, ONTOLOGY_ASK_V9):
             apply(db, path)
         assert snapshot(db) == before
 
@@ -4761,10 +4774,10 @@ def test_ontology_ask_v6_upgrade_from_v5_matches_fresh_and_keeps_history(start):
         ask_v5_state(db, start)
         old = ask_prompt_version(db, 5)
         history = [row for row in snapshot(db)[3] if row[0] == ASK]
-        for path in (REQUIREMENTS_V8, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8):
+        for path in (REQUIREMENTS_V8, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9):
             apply(db, path)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
-        new, official = ask_prompt_version(db, 8), ask_prompt_version(fresh, 8)
+        new, official = ask_prompt_version(db, 9), ask_prompt_version(fresh, 9)
         for field in ("f_content", "f_localized_content", "f_source_language", "f_vars_schema", "f_create_user"):
             assert new[field] == official[field], field
         assert ask_prompt_version(db, 5) == old
@@ -4772,11 +4785,12 @@ def test_ontology_ask_v6_upgrade_from_v5_matches_fresh_and_keeps_history(start):
         for row in history:
             match = next(after for after in updated if after[:2] == row[:2])
             assert row[:7] + row[9:] == match[:7] + match[9:]
-        assert ask_rows(db) == [(8, 1, 1)]
+        assert ask_rows(db) == [(9, 1, 1)]
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_V6)
         apply(db, ONTOLOGY_ASK_V7)
         apply(db, ONTOLOGY_ASK_V8)
+        apply(db, ONTOLOGY_ASK_V9)
         assert snapshot(db) == before
 
 
@@ -4787,10 +4801,11 @@ def test_ontology_ask_v6_upgrade_from_official_v4_matches_fresh():
         apply(db, ONTOLOGY_ASK_V6)
         apply(db, ONTOLOGY_ASK_V7)
         apply(db, ONTOLOGY_ASK_V8)
+        apply(db, ONTOLOGY_ASK_V9)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
-        assert ask_prompt_version(db, 8)["f_localized_content"] == ask_prompt_version(fresh, 8)["f_localized_content"]
+        assert ask_prompt_version(db, 9)["f_localized_content"] == ask_prompt_version(fresh, 9)["f_localized_content"]
         assert db.execute("SELECT COUNT(*) FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=5").fetchone()[0] == 0
-        assert ask_rows(db) == [(8, 1, 1)]
+        assert ask_rows(db) == [(9, 1, 1)]
 
 
 @pytest.mark.parametrize("customized", [False, True])
@@ -4863,14 +4878,14 @@ def test_ontology_ask_v6_upgrade_keeps_custom_settings_and_official_baseline(sta
         assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (6, "custom-model", '{"max_turns":3}')
 
 
-def test_fresh_snapshot_attaches_the_same_v8_translations_as_the_upgrade():
+def test_fresh_snapshot_attaches_the_same_v9_translations_as_the_upgrade():
     init = (MIGRATIONS / "0.2.2/init.sql").read_text()
-    text = ONTOLOGY_ASK_V8.read_text()
+    text = ONTOLOGY_ASK_V9.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
     ask = init.index("-- bkn-project-ontology-ask:")
-    v8 = [s for s in statements(ONTOLOGY_ASK_V8) if s.startswith("insert into t_agent_prompt_version")][0]
-    body = v8[v8.index("select v.f_prompt_id, 8, 'en-US',") + len("select v.f_prompt_id, 8, 'en-US',"):v8.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-ontology-ask-prompt', 8, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
+    v9 = [s for s in statements(ONTOLOGY_ASK_V9) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v9[v9.index("select v.f_prompt_id, 9, 'en-US',") + len("select v.f_prompt_id, 9, 'en-US',"):v9.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 9, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 ASK_V7_SHA = "e8ece87a8af9d03f3eee56aa6061b6a1535c521e6c17683b5b6a6076842ef404"
@@ -4930,8 +4945,9 @@ def test_ontology_ask_v7_upgrade_matches_fresh_and_keeps_history(start):
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_V7)
         assert snapshot(db) == before
-        # 15 then brings it to the fresh install's v8.
+        # 15 and 18 then bring it to the fresh install's v9.
         apply(db, ONTOLOGY_ASK_V8)
+        apply(db, ONTOLOGY_ASK_V9)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
 
 
@@ -5125,7 +5141,7 @@ def test_single_call_never_overwrites_operator_configuration(custom):
 def test_eval_assistant_delta_preserves_existing_defaults():
     fresh, upgrade = selected_migrations("0.2.1")
     assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]]], "0.2.2", True]
     with database() as db:
         apply(db, MIGRATIONS / "0.2.1/init.sql")
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='eval_assistant'").fetchone()[0] == 0
@@ -5154,11 +5170,12 @@ def prompt_version(db, prompt_id, version):
 
 
 def draft_naming_fresh_seed():
-    """11 as the fresh snapshot runs it now: the same seed at v2, with the body and translations 14 writes."""
+    """11 as the fresh snapshot runs it now: the same seed at v3, with the body and translations 17 writes."""
     with database() as db:
         draft_naming_v1_state(db)
         apply(db, DRAFT_NAMING_V2)
-        v1, v2 = prompt_version(db, f"{DN}-prompt", 1), prompt_version(db, f"{DN}-prompt", 2)
+        apply(db, DRAFT_NAMING_V3)
+        v1, v2 = prompt_version(db, f"{DN}-prompt", 1), prompt_version(db, f"{DN}-prompt", 3)
     seed = DRAFT_NAMING.read_text()
     for old, new in ((v1["f_content"], v2["f_content"]),
                      (json.loads(v1["f_localized_content"])["zh-CN"], json.loads(v2["f_localized_content"])["zh-CN"])):
@@ -5166,7 +5183,7 @@ def draft_naming_fresh_seed():
         seed = seed.replace(old.replace("'", "''"), new.replace("'", "''"))
     for old in ("Default Prompt', 1,", "-prompt', 1, 'en-US',", "f_current_version = 1\n", "v.f_version = 1 and"):
         assert old in seed
-        seed = seed.replace(old, old.replace("1", "2"))
+        seed = seed.replace(old, old.replace("1", "3"))
     return seed
 
 
@@ -5182,12 +5199,41 @@ def requirements_v12_state(db):
     apply(db, REQUIREMENTS_V12)
 
 
+def draft_naming_v2_state(db):
+    """Draft naming just before 17: the official v2."""
+    draft_naming_v1_state(db)
+    apply(db, DRAFT_NAMING_V2)
+
+
+def ask_v8_state(db):
+    """Ask AI just before 18: the official v8."""
+    ask_v7_state(db)
+    apply(db, ONTOLOGY_ASK_V8)
+
+
+def requirements_v13_state(db):
+    """The requirements Agent just before 19: the official v13."""
+    requirements_v12_state(db)
+    apply(db, REQUIREMENTS_V13)
+
+
 # 14, 15 and 16 add one Naming paragraph, the same rules in each prompt that names ontology items:
 # (migration, Agent, its prompt, the version it upgrades, the new version, the state before it).
 NAMING_RULES_UPGRADES = {
     "draft-naming": (DRAFT_NAMING_V2, DN, f"{DN}-prompt", 1, 2, draft_naming_v1_state),
     "ontology-ask": (ONTOLOGY_ASK_V8, ASK, f"{ASK}-prompt", 7, 8, ask_v7_state),
     "requirements": (REQUIREMENTS_V13, RQ, f"{RQ}-prompt", 12, 13, requirements_v12_state),
+}
+# 17, 18 and 19 replace that paragraph by one Ontology block, the same in each prompt.
+ONTOLOGY_GUIDANCE_UPGRADES = {
+    "draft-naming": (DRAFT_NAMING_V3, DN, f"{DN}-prompt", 2, 3, draft_naming_v2_state),
+    "ontology-ask": (ONTOLOGY_ASK_V9, ASK, f"{ASK}-prompt", 8, 9, ask_v8_state),
+    "requirements": (REQUIREMENTS_V14, RQ, f"{RQ}-prompt", 13, 14, requirements_v13_state),
+}
+# Every prompt upgrade above, each with the deltas that bring it on to the fresh install's version.
+PROMPT_RULES_UPGRADES = {
+    **{f"naming-{case}": (*NAMING_RULES_UPGRADES[case], (ONTOLOGY_GUIDANCE_UPGRADES[case][0],)) for case in NAMING_RULES_UPGRADES},
+    **{f"ontology-{case}": (*ONTOLOGY_GUIDANCE_UPGRADES[case], ()) for case in ONTOLOGY_GUIDANCE_UPGRADES},
 }
 NAMING_RULES = (
     "Naming. ",
@@ -5247,19 +5293,15 @@ def test_naming_rules_upgrade_adds_only_the_naming_paragraph(case):
         assert "Translate object types, properties and value types faithfully" in content and "add no facts" in content
 
 
-@pytest.mark.parametrize("case", NAMING_RULES_UPGRADES)
-def test_naming_rules_upgrade_matches_fresh_install_and_keeps_history(case):
-    path, agent, prompt, old_version, new_version, state = NAMING_RULES_UPGRADES[case]
+@pytest.mark.parametrize("case", PROMPT_RULES_UPGRADES)
+def test_prompt_rules_upgrade_matches_fresh_install_and_keeps_history(case):
+    path, agent, prompt, old_version, new_version, state, later = PROMPT_RULES_UPGRADES[case]
     with database() as db, database() as fresh:
         apply(fresh, MIGRATIONS / "0.2.2/init.sql")
         state(db)
         old = prompt_version(db, prompt, old_version)
         history = [row for row in snapshot(db)[3] if row[0] == agent]
         apply(db, path)
-        assert item_from_db(db, agent) == item_from_db(fresh, agent)
-        new, official = prompt_version(db, prompt, new_version), prompt_version(fresh, prompt, new_version)
-        for field in ("f_content", "f_localized_content", "f_source_language", "f_vars_schema", "f_create_user"):
-            assert new[field] == official[field], field
         assert prompt_version(db, prompt, old_version) == old
         updated = snapshot(db)[3]
         for row in history:
@@ -5273,12 +5315,20 @@ def test_naming_rules_upgrade_matches_fresh_install_and_keeps_history(case):
         before = snapshot(db)
         apply(db, path)
         assert snapshot(db) == before
+        # The later deltas bring it on to the fresh install's version.
+        for later_path in later:
+            apply(db, later_path)
+        assert item_from_db(db, agent) == item_from_db(fresh, agent)
+        current = fresh.execute("SELECT f_current_version FROM t_agent_prompt WHERE f_prompt_id=?", (prompt,)).fetchone()[0]
+        new, official = prompt_version(db, prompt, current), prompt_version(fresh, prompt, current)
+        for field in ("f_content", "f_localized_content", "f_source_language", "f_vars_schema", "f_create_user"):
+            assert new[field] == official[field], field
 
 
 @pytest.mark.parametrize("customization", ["content", "higher-version", "rollback", "zh-CN", "en-US"])
-@pytest.mark.parametrize("case", NAMING_RULES_UPGRADES)
-def test_naming_rules_upgrade_preserves_operator_prompt_choices(case, customization):
-    path, _, prompt, old_version, new_version, state = NAMING_RULES_UPGRADES[case]
+@pytest.mark.parametrize("case", PROMPT_RULES_UPGRADES)
+def test_prompt_rules_upgrade_preserves_operator_prompt_choices(case, customization):
+    path, _, prompt, old_version, new_version, state, _ = PROMPT_RULES_UPGRADES[case]
     with database() as db:
         state(db)
         if customization == "content":
@@ -5305,9 +5355,9 @@ def test_naming_rules_upgrade_preserves_operator_prompt_choices(case, customizat
 
 @pytest.mark.parametrize("customized", [False, True])
 @pytest.mark.parametrize("limit", range(1, 8))
-@pytest.mark.parametrize("case", NAMING_RULES_UPGRADES)
-def test_naming_rules_upgrade_resumes_between_statements(case, limit, customized):
-    path, agent, _, _, _, state = NAMING_RULES_UPGRADES[case]
+@pytest.mark.parametrize("case", PROMPT_RULES_UPGRADES)
+def test_prompt_rules_upgrade_resumes_between_statements(case, limit, customized):
+    path, agent, _, _, _, state, _ = PROMPT_RULES_UPGRADES[case]
     with database() as db, database() as expected:
         for connection in (db, expected):
             state(connection)
@@ -5319,9 +5369,9 @@ def test_naming_rules_upgrade_resumes_between_statements(case, limit, customized
         assert snapshot(db) == snapshot(expected)
 
 
-@pytest.mark.parametrize("case", NAMING_RULES_UPGRADES)
-def test_naming_rules_upgrade_keeps_custom_settings_and_official_baseline(case):
-    path, agent, _, _, new_version, state = NAMING_RULES_UPGRADES[case]
+@pytest.mark.parametrize("case", PROMPT_RULES_UPGRADES)
+def test_prompt_rules_upgrade_keeps_custom_settings_and_official_baseline(case):
+    path, agent, _, _, new_version, state, _ = PROMPT_RULES_UPGRADES[case]
     with database() as db:
         state(db)
         original = dict(db.execute("SELECT * FROM t_agent_version WHERE f_agent_id=? AND f_version=1", (agent,)).fetchone())
@@ -5333,3 +5383,93 @@ def test_naming_rules_upgrade_keeps_custom_settings_and_official_baseline(case):
         for field in ("f_model", "f_tools", "f_limits"):
             assert baseline[field] == original[field]
         assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (new_version, "custom-model", '{"max_turns":17}')
+
+
+# The Ontology block 17, 18 and 19 write, the same in every prompt, in both translations.
+ONTOLOGY_GUIDANCE = (
+    "Ontology. Model the business, not its tables",
+    "Object types. An object type is a kind of thing the business identifies, tracks and acts on",
+    "Properties. A property is a fact recorded about one object.",
+    "Relation types. A relation type is a stable business link between two object types",
+    "by the role the target plays for the source, read from the source",
+    "Part -parent part-> Part and Part -child part-> Part",
+    "differs from the other relations that start at the same source",
+    "Never put into the name the joining field, words such as by, links, related, matched or corresponds",
+    "Kinetic items. A metric is the object plus the measure",
+    "Scenarios. A business scenario is named by who makes which decision at which moment",
+    "Language. Every name and description is written in business language",
+)
+ONTOLOGY_GUIDANCE_ZH = (
+    "\n\n本体。为业务建模，而不是为表建模",
+    "\n\n对象类。对象类是业务能识别、跟踪并据此行动的一类事物",
+    "\n\n属性。属性是记录在一个对象上的事实。",
+    "\n\n关系类。关系类是问题或决策需要的",
+    "用终点对起点扮演的角色命名",
+    "部件 —父部件→ 部件 和 部件 —子部件→ 部件",
+    "同一起点出发的关系不能重名",
+    "\n\n动力项。指标是",
+    "\n\n场景。业务场景按",
+    "\n\n语言。所有名称和描述",
+)
+# Each prompt keeps its one-sentence lead on where the rules apply.
+ONTOLOGY_GUIDANCE_LEADS = {
+    "draft-naming": ("These rules shape wording only; they never change what an item is.", "这些规则只约束措辞，不改变条目是什么。"),
+    "ontology-ask": ("These rules govern every name and comment of a revision, and every name of a candidate or a proposal.",
+                     "这些规则适用于修订中的每个名称和描述、候选和提议中的每个名称。"),
+    "requirements": ("These rules govern every name and definition of every pass: concepts, kinetic needs, scenarios and the items of proposals.",
+                     "这些规则适用于每个阶段的每个名称和定义：概念、动力需求、场景和修改建议中的条目。"),
+}
+
+
+def ontology_block(text, lead):
+    """The lead paragraph and the Ontology block after it, up to the paragraph after Language."""
+    at = text.index(lead)
+    language = text.index("\n\n" + ("Language. Every name" if text.isascii() else "语言。所有名称"), at)
+    end = text.find("\n\n", language + 2)
+    return text[at:end if end >= 0 else len(text)]
+
+
+@pytest.mark.parametrize("case", ONTOLOGY_GUIDANCE_UPGRADES)
+def test_ontology_guidance_upgrade_replaces_only_the_naming_paragraph(case):
+    path, _, prompt, old_version, new_version, state = ONTOLOGY_GUIDANCE_UPGRADES[case]
+    with database() as db:
+        state(db)
+        old = prompt_version(db, prompt, old_version)
+        apply(db, path)
+        new = prompt_version(db, prompt, new_version)
+    content, locales = new["f_content"], json.loads(new["f_localized_content"])
+    old_locales = json.loads(old["f_localized_content"])
+    assert content.isascii() and locales["en-US"] == content and new["f_source_language"] == "en-US"
+    for rule in ONTOLOGY_GUIDANCE:
+        assert rule in content and rule not in old["f_content"]
+    for rule in ONTOLOGY_GUIDANCE_ZH:
+        assert rule in locales["zh-CN"] and rule not in old_locales["zh-CN"]
+    # The former predicate rule is gone: relation types are named by role.
+    assert "\n\nNaming. " not in content and "predicate phrase" not in content
+    assert "\n\n命名。" not in locales["zh-CN"] and "谓语短语" not in locales["zh-CN"]
+    lead, lead_zh = ONTOLOGY_GUIDANCE_LEADS[case]
+    for after, before, paragraph, first in ((content, old["f_content"], "Naming. ", lead),
+                                           (locales["zh-CN"], old_locales["zh-CN"], "命名。", lead_zh)):
+        block = ontology_block(after, first)
+        rest = after.replace(block, "\u0000")
+        expected = before.replace(before[before.index("\n\n" + paragraph) + 2:].split("\n\n")[0], "\u0000")
+        if case == "draft-naming":
+            # Draft naming points a relation type at the relation type rule instead of the predicate rule.
+            expected = expected.replace("by the predicate rule below", "by the relation type rule below").replace(
+                "relation_type 则按下面的谓语规则", "relation_type 则按下面的关系类规则")
+        assert rest == expected
+    if case == "draft-naming":
+        assert "Name a relation_type instead by the relation type rule below" in content
+        assert "Translate object types, properties and value types faithfully" in content and "add no facts" in content
+
+
+def test_ontology_guidance_is_the_same_block_in_every_prompt():
+    blocks = set()
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.2/init.sql")
+        for case, (_, _, prompt, _, version, _) in ONTOLOGY_GUIDANCE_UPGRADES.items():
+            row = prompt_version(db, prompt, version)
+            lead, lead_zh = ONTOLOGY_GUIDANCE_LEADS[case]
+            zh = json.loads(row["f_localized_content"])["zh-CN"]
+            blocks.add((ontology_block(row["f_content"], lead)[len(lead):], ontology_block(zh, lead_zh)[len(lead_zh):]))
+    assert len(blocks) == 1

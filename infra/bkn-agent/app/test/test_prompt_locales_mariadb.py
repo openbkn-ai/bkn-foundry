@@ -82,9 +82,9 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
         with db.cursor() as cursor:
-            # Both install paths reach the official Ask AI v8.
+            # Both install paths reach the official Ask AI v9.
             cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_current=1")
-            assert cursor.fetchone() == (8,)
+            assert cursor.fetchone() == (9,)
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
@@ -115,7 +115,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
                 # New seeds (the analysis writer, the eval assistant), ontology v6, graph explorer v2, resource
-                # semantic understanding v7 and requirements v13 explicitly set their source language on both
+                # semantic understanding v7 and requirements v14 explicitly set their source language on both
                 # install paths; unchanged historical heads preserve NULL.
                 has_explicit_source = upgrade == "fresh" or agent_id in {
                     "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "eval_assistant",
