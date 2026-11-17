@@ -880,7 +880,7 @@ func (s *actionSchedulerService) buildExecutionParams(actionType *interfaces.Act
 			}
 			value = getNestedValue(instance, propName)
 			if value == nil {
-				return nil, fmt.Errorf("missing property %q for parameter %q", propName, param.Name)
+				continue
 			}
 		case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
 			value = logics.NormalizeActionConstant(param.Type, param.Value)

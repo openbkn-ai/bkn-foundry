@@ -909,7 +909,7 @@ paths:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/Error'
-          description: 请求参数错误。例如行动类存在 value_from 为 input 的参数时，须在请求体 dynamic_params 中传入全部对应取值，否则返回 400（如 OntologyQuery.ActionType.InvalidParameter.DynamicParams）。
+          description: 请求参数错误。例如行动类存在 value_from 为 input 的参数时，须在请求体 dynamic_params 中传入全部对应取值，否则返回 400（如 OntologyQuery.ActionType.InvalidParameter.DynamicParams）。value_from 为 property 的参数引用了不存在的对象属性时返回 400；属性已定义但实例值为 null 时省略该执行参数。
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":

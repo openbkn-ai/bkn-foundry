@@ -31,6 +31,11 @@ func TestActionTargetsRejectUnmigratedAndUnspecified(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
+	tool.Parameters = []interfaces.Parameter{{Name: "id", ValueFrom: "property", Value: "id"}}
+	_, _, err = svc.getInstancesForAction(context.Background(), tool, &interfaces.ActionExecutionRequest{})
+	if err == nil || !strings.Contains(err.Error(), "cannot bind object properties") {
+		t.Fatalf("expected tool property binding error, got %v", err)
+	}
 	relation := &interfaces.ActionType{ObjectTypeID: "orders", OperationConfig: &interfaces.ActionOperationConfig{Type: "relation", RelationTypeID: "supplier", RelationOperation: "create", AnchorRole: "source"}}
 	_, _, err = svc.getInstancesForAction(context.Background(), relation, &interfaces.ActionExecutionRequest{})
 	if err == nil {
@@ -125,11 +130,71 @@ func TestActionRelationResolvesDirectedPairAndReferences(t *testing.T) {
 
 func TestActionParametersFailClosed(t *testing.T) {
 	svc := &actionSchedulerService{}
-	for _, parameter := range []interfaces.Parameter{{Name: "id", ValueFrom: "property", Value: "missing"}, {Name: "id", ValueFrom: "input"}, {Name: "id", ValueFrom: "unknown"}, {Name: "id", ValueFrom: "source_identity"}} {
+	for _, parameter := range []interfaces.Parameter{{Name: "id", ValueFrom: "property", Value: ""}, {Name: "id", ValueFrom: "input"}, {Name: "id", ValueFrom: "unknown"}, {Name: "id", ValueFrom: "source_identity"}} {
 		_, err := svc.buildExecutionParams(&interfaces.ActionType{Parameters: []interfaces.Parameter{parameter}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}, nil, nil)
 		if err == nil {
 			t.Fatal("expected an error")
 		}
+	}
+}
+
+func TestActionNullPropertyIsOmittedFromToolRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	object := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "plans", PrimaryKeys: []string{"plan_id"}, DataProperties: []cond.DataProperty{
+			{Name: "plan_id", Type: "string"}, {Name: "product_code", Type: "string"},
+		},
+	}}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "plans").Return(object, true, nil)
+	objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+		if !reflect.DeepEqual(query.RequiredFullProperties, []string{"plan_id", "product_code"}) {
+			t.Fatalf("full property requirements = %#v", query.RequiredFullProperties)
+		}
+		return interfaces.Objects{Datas: []map[string]any{{"plan_id": "PLAN-ALL", "product_code": nil}}}, nil
+	})
+	action := &interfaces.ActionType{ActionType: "modify", ObjectTypeID: "plans", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}, Parameters: []interfaces.Parameter{
+		{Name: "plan_id", Source: "body", ValueFrom: "property", Value: "plan_id"},
+		{Name: "product_code", Source: "body", ValueFrom: "property", Value: "product_code"},
+	}}
+	svc := &actionSchedulerService{omAccess: models, ots: objects}
+	req := &interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main", InstanceIdentities: []map[string]any{{"plan_id": "PLAN-ALL"}}}
+	instances, data, err := svc.getInstancesForAction(context.Background(), action, req)
+	if err != nil || len(instances) != 1 || len(data) != 1 {
+		t.Fatalf("resolve null-valued target: instances=%#v data=%#v err=%v", instances, data, err)
+	}
+	params, err := svc.buildExecutionParams(action, data[0], nil, instances[0].InstanceIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := buildToolExecutionRequest(action.Parameters, params)
+	if !reflect.DeepEqual(request.Body, map[string]any{"plan_id": "PLAN-ALL"}) {
+		t.Fatalf("tool body = %#v", request.Body)
+	}
+}
+
+func TestActionUnknownPropertyIsRejectedBeforeTargetLookup(t *testing.T) {
+	for _, actionType := range []string{"add", "modify"} {
+		t.Run(actionType, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			models := omock.NewMockOntologyManagerAccess(ctrl)
+			object := actionTargetObject("plans", "plan_id")
+			models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "plans").Return(object, true, nil)
+			action := &interfaces.ActionType{ActionType: actionType, ObjectTypeID: "plans", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"}, Parameters: []interfaces.Parameter{
+				{Name: "product_code", ValueFrom: "property", Value: "product_code"},
+			}}
+			req := &interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main"}
+			if actionType == "add" {
+				req.ObjectInput = map[string]any{"plan_id": "PLAN-ALL"}
+			} else {
+				req.InstanceIdentities = []map[string]any{{"plan_id": "PLAN-ALL"}}
+			}
+			_, _, err := (&actionSchedulerService{omAccess: models}).getInstancesForAction(context.Background(), action, req)
+			if err == nil || !strings.Contains(err.Error(), "unknown object property") || !strings.Contains(err.Error(), "product_code") {
+				t.Fatalf("expected undefined property error, got %v", err)
+			}
+		})
 	}
 }
 
