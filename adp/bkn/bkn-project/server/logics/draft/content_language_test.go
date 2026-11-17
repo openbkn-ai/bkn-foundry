@@ -114,6 +114,33 @@ func Test_NameInLanguage(t *testing.T) {
 			So(textLanguage(r.Name), ShouldEqual, en)
 		})
 
+		Convey("Two fields named alike once translated keep their relations' names apart\n", func() {
+			withInvoices := func() []*interfaces.VegaTable {
+				tables := catalog()
+				invoiceID := col("invoice_id", "string", "")
+				invoiceID.DisplayName = "发票编号"
+				invoiceCustomer := col("customer_id", "string", "")
+				invoiceCustomer.DisplayName = "开票客户"
+				invoices := table("r_invoices", "c1", "发票", 500, []string{"invoice_id"}, invoiceID, invoiceCustomer)
+				invoices.SourceName = "invoices"
+				invoices.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_id", "customers", "customer_id")}
+				return append(tables, invoices)
+			}
+			english["发票"] = [2]string{"Invoice", ""}
+			english["发票编号"] = [2]string{"Invoice ID", ""}
+			english["开票客户"] = [2]string{"Ordering customer", ""}
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(translate).AnyTimes()
+			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(en)
+			items, err := d.draft(context.Background(), withInvoices(), nil)
+			So(err, ShouldBeNil)
+			svc.nameInLanguage(context.Background(), caller, &items, en, withInvoices())
+			customers, orders, invoices := objectType(items, "customers"), objectType(items, "orders"), objectType(items, "invoices")
+			a, b := relation(items, orders.ID, customers.ID), relation(items, invoices.ID, customers.ID)
+			So(a, ShouldNotBeNil)
+			So(b, ShouldNotBeNil)
+			So(a.Name, ShouldNotEqual, b.Name)
+		})
+
 		Convey("A Chinese project on the same catalog keeps its names and asks nothing\n", func() {
 			items := draftIn(zh)
 			before, _ := json.Marshal(items)

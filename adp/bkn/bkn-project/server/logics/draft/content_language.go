@@ -198,7 +198,8 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 			continue
 		}
 		if source := before[rt.Source]; source != nil && len(rt.Mapping) > 0 &&
-			rt.Name == relationNameIn(language, source, endBefore(rt.Target), rt.Mapping[0].SourceProperty, rt.ID) {
+			(rt.Name == relationNameIn(language, source, endBefore(rt.Target), rt.Mapping[0].SourceProperty, rt.ID) ||
+				rt.Name == relationNameFromIn(language, source, endBefore(rt.Target), rt.Mapping[0].SourceProperty, rt.ID)) {
 			fromField[rt.ID] = true
 			if !inOtherLanguage(language, rt.Description) {
 				continue
@@ -247,7 +248,13 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 	for _, rt := range items.RelationTypes {
 		if fromField[rt.ID] {
 			if source := findObjectType(items, rt.Source); source != nil {
-				rt.Name = relationNameIn(language, source, findObjectType(items, rt.Target), rt.Mapping[0].SourceProperty, rt.ID)
+				target, property := findObjectType(items, rt.Target), rt.Mapping[0].SourceProperty
+				// Fields named alike once translated, such as 客户编号 and Customer No., would give
+				// two relations one short name: the second takes its source's name too.
+				rt.Name = relationNameIn(language, source, target, property, rt.ID)
+				if relationNameTaken(items.RelationTypes, rt.ID, rt.Name) {
+					rt.Name = relationNameFromIn(language, source, target, property, rt.ID)
+				}
 			}
 		}
 	}
