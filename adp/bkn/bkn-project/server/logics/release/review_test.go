@@ -569,6 +569,34 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			})
 		})
 
+		Convey("A relation type's name differs only from the relations of its source\n", func() {
+			fromSource := func(id string, name string, source string) []byte {
+				return []byte(strings.Replace(string(relationTypeBKN(id, name)), "| supplier | purchase_order |",
+					"| "+source+" | purchase_order |", 1))
+			}
+			Convey("Same name, same source: blocks\n", func() {
+				branchFiles["relation_types/supplier_orders.bkn"] = fromSource("supplier_orders", "Supplier has purchase order", "supplier")
+				expect()
+				expectIndex()
+
+				r := review()
+
+				c := checkOf(r, interfaces.RELEASE_CHECK_NAMES)
+				So(c.Reason, ShouldEqual, interfaces.RELEASE_REASON_DUPLICATE_NAMES)
+				So(r.Blocked, ShouldBeTrue)
+			})
+			Convey("Same name, another source, or an object type's name: passes\n", func() {
+				branchFiles["relation_types/buyer_orders.bkn"] = fromSource("buyer_orders", "Supplier has purchase order", "buyer")
+				branchFiles["relation_types/supplier_has_purchase_order.bkn"] = relationTypeBKN("supplier_has_purchase_order", "Purchase Order")
+				expect()
+				expectIndex()
+
+				r := review()
+
+				So(checkOf(r, interfaces.RELEASE_CHECK_NAMES).Passed, ShouldBeTrue)
+			})
+		})
+
 		Convey("Drift and a moved live version come from the release's own checks; other refusals block\n", func() {
 			report := &interfaces.DriftReport{LineageID: "supply", KNID: "supply_v1_0_0"}
 			preview.Refusals = []interfaces.ReleaseRefusal{

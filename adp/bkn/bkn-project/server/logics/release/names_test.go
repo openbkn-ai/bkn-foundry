@@ -22,7 +22,7 @@ func Test_CompareNames(t *testing.T) {
 			for _, other := range []string{"order", " Order ", "Ｏｒｄｅｒ"} {
 				added := objectType("order", "Order")
 				same, similar := compareNames([]interfaces.ReleaseItem{added},
-					[]interfaces.ReleaseItem{added, objectType("o2", other)})
+					[]interfaces.ReleaseItem{added, objectType("o2", other)}, nil)
 				So(same, ShouldResemble, []interfaces.SimilarNames{{Added: added, Other: objectType("o2", other)}})
 				So(similar, ShouldBeEmpty)
 			}
@@ -37,7 +37,7 @@ func Test_CompareNames(t *testing.T) {
 				{"Purchase Order", "Purchase-Orders"},
 			} {
 				added, other := objectType("a", pair[0]), objectType("b", pair[1])
-				same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, other})
+				same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, other}, nil)
 				So(same, ShouldBeEmpty)
 				So(similar, ShouldResemble, []interfaces.SimilarNames{{Added: added, Other: other}})
 			}
@@ -51,7 +51,7 @@ func Test_CompareNames(t *testing.T) {
 				{"Supplier", "Customer"},
 			} {
 				added, other := objectType("a", pair[0]), objectType("b", pair[1])
-				same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, other})
+				same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, other}, nil)
 				So(same, ShouldBeEmpty)
 				So(similar, ShouldBeEmpty)
 			}
@@ -60,14 +60,44 @@ func Test_CompareNames(t *testing.T) {
 		Convey("Names of different kinds are not compared\n", func() {
 			added := objectType("order", "Order")
 			relation := interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "r", Name: "Order"}
-			same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, relation})
+			same, similar := compareNames([]interfaces.ReleaseItem{added}, []interfaces.ReleaseItem{added, relation}, nil)
 			So(same, ShouldBeEmpty)
 			So(similar, ShouldBeEmpty)
 		})
 
+		Convey("A relation type's name is compared only with the relation types of its source\n", func() {
+			relation := func(id string, name string) interfaces.ReleaseItem {
+				return interfaces.ReleaseItem{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: id, Name: name}
+			}
+			parent, child := relation("bom_parent", "物料"), relation("bom_child", "物料")
+			stock, order := relation("stock_material", "物料"), relation("order_customer", "客户")
+			sources := map[string]string{"bom_parent": "bom", "bom_child": "bom", "stock_material": "stock",
+				"order_customer": "order"}
+			all := []interfaces.ReleaseItem{parent, child, stock, order, objectType("material", "物料")}
+
+			// The same name from the same source blocks.
+			same, similar := compareNames([]interfaces.ReleaseItem{child}, all, sources)
+			So(same, ShouldResemble, []interfaces.SimilarNames{{Added: child, Other: parent}})
+			So(similar, ShouldBeEmpty)
+			// Another source's relation and an object type of that name do not matter.
+			same, similar = compareNames([]interfaces.ReleaseItem{stock}, all, sources)
+			So(same, ShouldBeEmpty)
+			So(similar, ShouldBeEmpty)
+			// A similar name from the same source can be accepted.
+			parts := relation("bom_parts", "物料组件")
+			sources["bom_parts"] = "bom"
+			same, similar = compareNames([]interfaces.ReleaseItem{parts}, append(all, parts, relation("bom_part", "物料组件s")), map[string]string{
+				"bom_parts": "bom", "bom_part": "bom", "bom_parent": "bom", "bom_child": "bom"})
+			So(same, ShouldBeEmpty)
+			So(similar, ShouldHaveLength, 1)
+			// Object types stay unique among object types.
+			same, _ = compareNames([]interfaces.ReleaseItem{objectType("material_2", "物料")}, all, sources)
+			So(same, ShouldResemble, []interfaces.SimilarNames{{Added: objectType("material_2", "物料"), Other: objectType("material", "物料")}})
+		})
+
 		Convey("Two added items alike are listed once, the first by id as the added one\n", func() {
 			a, b := objectType("a", "Sales Order"), objectType("b", "Sales Orders")
-			same, similar := compareNames([]interfaces.ReleaseItem{b, a}, []interfaces.ReleaseItem{a, b})
+			same, similar := compareNames([]interfaces.ReleaseItem{b, a}, []interfaces.ReleaseItem{a, b}, nil)
 			So(same, ShouldBeEmpty)
 			So(similar, ShouldResemble, []interfaces.SimilarNames{{Added: a, Other: b}})
 		})
@@ -75,7 +105,7 @@ func Test_CompareNames(t *testing.T) {
 		Convey("Pairs are listed in the order of the added items' ids, then the others'\n", func() {
 			a, b := objectType("a", "Order"), objectType("b", "Part Number")
 			x, y := objectType("x", "Orders"), objectType("y", "Part Numbers")
-			_, similar := compareNames([]interfaces.ReleaseItem{b, a}, []interfaces.ReleaseItem{y, x, b, a})
+			_, similar := compareNames([]interfaces.ReleaseItem{b, a}, []interfaces.ReleaseItem{y, x, b, a}, nil)
 			So(similar, ShouldResemble, []interfaces.SimilarNames{{Added: a, Other: x}, {Added: b, Other: y}})
 		})
 	})

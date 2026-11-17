@@ -19,12 +19,17 @@ const minSimilarRunes = 4
 // nameSeparators are left out when telling whether two names are alike.
 var nameSeparators = strings.NewReplacer(" ", "", "_", "", "-", "", "·", "", "・", "")
 
-// compareNames compares each added item's name with the names of the other items of its kind:
-// those the same but for case, character width and surrounding space, and those similar, the same
-// but for separators or one character apart. Two added items alike are listed once. Pairs are in the
-// order of the added items' ids, then the others'.
-func compareNames(added []interfaces.ReleaseItem, all []interfaces.ReleaseItem) (same []interfaces.SimilarNames,
-	similar []interfaces.SimilarNames) {
+// compareNames compares each added item's name with the names of the other items it must differ
+// from: an object type with the other object types, a relation type with the other relation types
+// of the same source, as link types are named by the role their target plays for their source. A
+// relation type may share a name with an object type or with a relation type of another source.
+// The same are names alike but for case, character width and surrounding space; similar ones are
+// the same but for separators, or one character apart. Two added items alike are listed once. Pairs
+// are in the order of the added items' ids, then the others'. sources gives each relation type's
+// source object type by its id; a relation type it does not know is compared with every relation
+// type it does not know either.
+func compareNames(added []interfaces.ReleaseItem, all []interfaces.ReleaseItem, sources map[string]string) (
+	same []interfaces.SimilarNames, similar []interfaces.SimilarNames) {
 	isAdded := map[interfaces.ReleaseItem]bool{}
 	for _, a := range added {
 		isAdded[a] = true
@@ -32,7 +37,8 @@ func compareNames(added []interfaces.ReleaseItem, all []interfaces.ReleaseItem) 
 	same, similar = []interfaces.SimilarNames{}, []interfaces.SimilarNames{}
 	for _, a := range added {
 		for _, o := range all {
-			if o.Kind != a.Kind || o.ID == a.ID || (isAdded[o] && o.ID < a.ID) {
+			if o.Kind != a.Kind || o.ID == a.ID || (isAdded[o] && o.ID < a.ID) ||
+				a.Kind == interfaces.RELEASE_ITEM_RELATION_TYPE && sources[a.ID] != sources[o.ID] {
 				continue
 			}
 			pair := interfaces.SimilarNames{Added: a, Other: o}
