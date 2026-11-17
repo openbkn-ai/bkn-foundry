@@ -313,3 +313,24 @@ func Test_RenameTableNameIn(t *testing.T) {
 		})
 	})
 }
+
+// Two tables that name the same target by a field of the same name draft relations whose short
+// names would match: relation type names are unique in a network, so the second names its source.
+func Test_DraftRelationNameTakenNamesTheSource(t *testing.T) {
+	Convey("A relation whose short name another relation has is named by its source as well\n", t, func() {
+		material := &interfaces.DraftObjectType{ID: "material", Name: "物料"}
+		order := &interfaces.DraftObjectType{ID: "work_order", Name: "生产工单",
+			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
+		stock := &interfaces.DraftObjectType{ID: "stock", Name: "实时库存",
+			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
+		first := relationNameIn("zh-CN", order, material, "material_code", "r1")
+		So(first, ShouldEqual, "按物料编码关联物料")
+		taken := []*interfaces.DraftRelationType{{ID: "r1", Name: first}}
+		So(relationNameTaken(taken, "r2", relationNameIn("zh-CN", stock, material, "material_code", "r2")), ShouldBeTrue)
+		So(relationNameTaken(taken, "r1", first), ShouldBeFalse)
+		second := relationNameFromIn("zh-CN", stock, material, "material_code", "r2")
+		So(second, ShouldEqual, "实时库存按物料编码关联物料")
+		So(draftedRelationName("zh-CN", stock, material, "material_code", "r2", second), ShouldBeTrue)
+		So(relationNameFromIn("en-US", stock, material, "material_code", "r2"), ShouldEqual, "实时库存 links 物料 by 物料编码")
+	})
+}

@@ -34,6 +34,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.InvalidIdentity":             "唯一标识不合法 请给出该对象类的一个或多个不重复的属性，类型须为 string、text、integer 或 unsigned integer。",
 		"BknProject.Draft.RelationLinks":               "按{{.field}}关联{{.target}}",
 		"BknProject.Draft.RelationLinksTarget":         "关联{{.target}}",
+		"BknProject.Draft.RelationLinksFrom":           "{{.source}}按{{.field}}关联{{.target}}",
 		"BknProject.Draft.RelationName":                "{{.object_type}}的{{.field}}",
 		"BknProject.Draft.InvalidIncrementalKey":       "更新字段不合法 请给出该对象类的一个属性，记录每次变化时它的值都会增大，类型须为 integer、unsigned integer、string、date、time、datetime 或 timestamp；传空值可清除。",
 		"BknProject.Draft.NotRestorable":               "字段无法恢复 该字段因类型无法映射到 BKN 而被排除。",

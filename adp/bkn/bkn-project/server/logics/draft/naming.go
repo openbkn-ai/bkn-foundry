@@ -142,6 +142,36 @@ func relationNameIn(language string, source *interfaces.DraftObjectType, target 
 	return name
 }
 
+// messageRelationNameFrom names such a relation by its source as well, when another relation has
+// its short name already: relation type names are unique in a network.
+const messageRelationNameFrom = "BknProject.Draft.RelationLinksFrom"
+
+// relationNameFromIn is relationNameIn with the source's name in front, for a relation whose short
+// name another relation has.
+func relationNameFromIn(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
+	property string, id string) string {
+	p := findProperty(source, property)
+	if p == nil || target == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
+		return id
+	}
+	name, err := i18n.Render(i18n.Language(language), messageRelationNameFrom,
+		map[string]any{"source": source.Name, "target": target.Name, "field": p.DisplayName})
+	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
+		return relationNameIn(language, source, target, property, id)
+	}
+	return name
+}
+
+// relationNameTaken reports whether a relation of items other than id is named name.
+func relationNameTaken(items []*interfaces.DraftRelationType, id string, name string) bool {
+	for _, r := range items {
+		if r != nil && r.ID != id && r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // relationNameInWithLimit is the name drafting gave such a relation before it named relations as
 // predicates, under the display-name contract of a particular draft version. It lets edits recognise
 // relation names generated before the contract grew from 40 to 128 characters.
@@ -164,6 +194,7 @@ func relationNameInWithLimit(language string, source *interfaces.DraftObjectType
 func draftedRelationName(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
 	property string, id string, name string) bool {
 	return name == relationNameIn(language, source, target, property, id) ||
+		name == relationNameFromIn(language, source, target, property, id) ||
 		name == relationNameInWithLimit(language, source, property, id, maxDisplayNameRunes) ||
 		name == relationNameInWithLimit(language, source, property, id, legacyRelationNameMaxRunes)
 }
@@ -223,13 +254,19 @@ func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftO
 		if source == nil || !draftedRelationName(language, source, target, property, r.ID, r.Name) {
 			continue
 		}
+		qualified := r.Name != relationNameIn(language, source, target, property, r.ID) &&
+			r.Name == relationNameFromIn(language, source, target, property, r.ID)
 		if r.Source == objectType.ID {
 			source = &renamed
 		}
 		if r.Target == objectType.ID {
 			target = &renamed
 		}
-		if again := relationNameIn(language, source, target, property, r.ID); again != r.Name {
+		again := relationNameIn(language, source, target, property, r.ID)
+		if qualified || relationNameTaken(items.RelationTypes, r.ID, again) {
+			again = relationNameFromIn(language, source, target, property, r.ID)
+		}
+		if again != r.Name {
 			decide(interfaces.DRAFT_KIND_RELATION_TYPES, r.ID, interfaces.DRAFT_DECISION_RENAME, r.Name, again)
 			r.Name = again
 		}
