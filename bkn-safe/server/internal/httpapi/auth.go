@@ -123,11 +123,11 @@ form{width:min(400px,100%);margin:0 auto}
 .identity-providers{width:min(400px,100%);margin:0 auto}
 .identity-divider{display:flex;align-items:center;gap:12px;margin:20px 0 16px;color:#8c99ad;font-size:13px}
 .identity-divider:before,.identity-divider:after{content:"";height:1px;flex:1;background:#e5eaf1}
-.identity-login{width:100%;min-height:48px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:10px 16px;margin-top:10px;border:1px solid #d9dfe8;border-radius:9px;background:#fff;
-  color:#334155;font-size:15px;font-weight:500;text-align:left;text-decoration:none;overflow-wrap:anywhere;
+.identity-login{position:relative;width:100%;min-height:48px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  padding:10px 40px;margin-top:10px;border:1px solid #d9dfe8;border-radius:9px;background:#fff;
+  color:#334155;font-size:15px;font-weight:500;text-align:center;text-decoration:none;overflow-wrap:anywhere;
   transition:border-color .2s,color .2s,background .2s}
-.identity-login:after{content:"›";flex:none;color:#94a3b8;font-size:22px;line-height:1}
+.identity-login:after{content:"›";position:absolute;right:16px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:22px;line-height:1}
 .identity-login:hover{border-color:#2563eb;color:#2563eb;background:#f8faff}
 .identity-login:hover:after{color:#2563eb}
 .identity-login:focus-visible{outline:2px solid rgba(37,99,235,.5);outline-offset:2px}
