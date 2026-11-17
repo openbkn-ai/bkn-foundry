@@ -2303,7 +2303,10 @@ components:
           default: const
         value:
           description: Literal value for const; same-endpoint property name for property; runtime parameter name for
-            input. Applicability does not supply target identities.
+            input. For like, not_like, prefix, not_prefix, and regex, const (including omitted value_from) requires a
+            nonempty string; whitespace is preserved. Property and input values are reference names at save time;
+            an empty string resolved from a reference is rejected at execution time. The error identifies the reference
+            source and name without including the resolved value. Applicability does not supply target identities.
     ActionOperationConfig:
       type: object
       required:
