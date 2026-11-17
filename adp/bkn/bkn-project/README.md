@@ -59,11 +59,15 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   kept as an alias; the catalog itself is not changed. Items still named by their
   physical name, and items the network already has, stay as they are; without the
   Agent, or when it fails, the catalog's names stay. Relation types drafted from a
-  referring field are named as a predicate read from source to target, by the field and the
-  target (zh-CN 「按父项物料编码关联物料」, en-US "Links Material by Parent material code", or
-  「关联客户」 / "Links Customer" when the field reads as the target's name), and named again
-  from the new names when either end is renamed; names drafted earlier as "field of object"
-  are still recognised. A relation type of the new tables
+  referring field are named as link types are: by the role the target plays for the source,
+  the field's business name without a trailing code word (编码, 编号, 代码, 号码, ID, 号; code,
+  number, no., id, key): 父项物料编码 → 「父项物料」, Supplier No. → "Supplier"; the target's name
+  when nothing is left or the field reads as the target's name. Two relations of the same
+  source whose roles read alike are told apart by the field's whole name; relations of
+  different sources may share a name. Renaming an end renames such a relation only when it
+  bears the target's name; names drafted earlier (「按{field}关联{target}」, 「关联{target}」,
+  「{source}按{field}关联{target}」, "field of object" and their English forms) are still
+  recognised and take the role when an end is renamed. A relation type of the new tables
   still named by its id, as one drafted from a field nobody named is, is given a business
   name in the project's naming language by the same Agent, from the physical names of the
   tables and fields it joins (`erp_mds_forecast.material_number -> erp_material.material_code`),

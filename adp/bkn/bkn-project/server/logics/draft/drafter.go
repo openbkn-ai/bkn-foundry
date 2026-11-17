@@ -763,11 +763,9 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 		Mapping:      []interfaces.DraftFieldMapping{{SourceProperty: property, TargetProperty: targetKey}},
 		Verification: "unconfirmed",
 	}
-	relation.Name = d.relationName(source, targetType, property, relation.ID)
-	if relationNameTaken(d.items.RelationTypes, relation.ID, relation.Name) {
-		// Relation type names are unique in a network: the source tells two such relations apart.
-		relation.Name = relationNameFromIn(d.language(), source, targetType, property, relation.ID)
-	}
+	// A relation's name differs from the other relations of its source: the field's whole name
+	// tells two whose roles read alike apart.
+	relation.Name = relationNameAmong(d.language(), d.items.RelationTypes, source, targetType, property, relation.ID)
 	if origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY {
 		relation.Verification = "confirmed"
 	}

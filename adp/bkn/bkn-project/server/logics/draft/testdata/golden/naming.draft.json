@@ -329,7 +329,7 @@
     },
     {
       "id": "ot_d38021_to_ot_033ed5",
-      "name": "按供应商编号关联供应商",
+      "name": "供应商",
       "description": "",
       "source": "ot_d38021",
       "target": "ot_033ed5",
