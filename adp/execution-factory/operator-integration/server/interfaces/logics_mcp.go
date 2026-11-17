@@ -303,8 +303,9 @@ type MCPProxyCallToolRequest struct {
 
 // MCPProxyCallToolResponse MCP tool call response.
 type MCPProxyCallToolResponse struct {
-	Content []mcp.Content `json:"content"`  // Tool call result content.
-	IsError bool          `json:"is_error"` // Is it an error.
+	Content           []mcp.Content `json:"content"`                     // Tool call result content.
+	StructuredContent any           `json:"structuredContent,omitempty"` // Structured tool result, when provided.
+	IsError           bool          `json:"is_error"`                    // Is it an error.
 }
 
 // IMCPManageService MCP management interface.

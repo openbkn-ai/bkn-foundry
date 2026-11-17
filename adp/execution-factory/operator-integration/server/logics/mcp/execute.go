@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -195,10 +196,7 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 		})
 	}()
 
-	resp = &interfaces.MCPProxyCallToolResponse{
-		Content: callToolResult.Content,
-		IsError: callToolResult.IsError,
-	}
+	resp = &callToolResult.MCPProxyCallToolResponse
 	return resp, nil
 }
 
@@ -282,11 +280,20 @@ func (s *mcpServiceImpl) callTool(ctx context.Context, req *CallToolRequest) (*C
 	}
 
 	return &CallToolResponse{
-		MCPProxyCallToolResponse: interfaces.MCPProxyCallToolResponse{
-			Content: result.Content,
-			IsError: result.IsError,
-		},
+		MCPProxyCallToolResponse: proxyCallToolResponse(result),
 	}, nil
+}
+
+func proxyCallToolResponse(result *mcp.CallToolResult) interfaces.MCPProxyCallToolResponse {
+	structured := result.StructuredContent
+	if len(result.RawStructuredContent) > 0 {
+		structured = json.RawMessage(result.RawStructuredContent)
+	}
+	return interfaces.MCPProxyCallToolResponse{
+		Content:           result.Content,
+		StructuredContent: structured,
+		IsError:           result.IsError,
+	}
 }
 
 func (s *mcpServiceImpl) getMCPClient(ctx context.Context, req *ListToolsRequest) (mcpClient interfaces.MCPClient, err error) {
