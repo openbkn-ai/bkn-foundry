@@ -24,9 +24,9 @@ func TestStudioLogoutSignedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"success", "expired_hint", "bad_signature", "wrong_issuer", "wrong_audience", "wrong_party", "missing_sid", "unknown_key", "wrong_algorithm", "wrong_subject", "consent_failure", "consent_no_effect", "jwks_failure"} {
+	for _, scenario := range []string{"success", "expired_hint", "bad_signature", "wrong_issuer", "wrong_audience", "wrong_party", "missing_sid", "unknown_key", "wrong_algorithm", "wrong_subject", "id_only", "inactive_credentials", "consent_failure", "consent_no_effect", "jwks_failure"} {
 		t.Run(scenario, func(t *testing.T) {
-			revoked, lookupCalls := false, 0
+			revoked, lookupCalls, active := false, 0, true
 			ids := []string{}
 			server := httptest.NewUnstartedServer(nil)
 			server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +41,14 @@ func TestStudioLogoutSignedSession(t *testing.T) {
 					}
 					_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]any{{"kty": "RSA", "kid": "test-key", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 				case "/admin/oauth2/introspect":
-					_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "client_id": "openbkn-studio", "sub": "different-user", "token_use": "access_token"})
+					sub := "user-1"
+					if scenario == "wrong_subject" {
+						sub = "different-user"
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"active": active && scenario != "inactive_credentials", "client_id": "openbkn-studio", "sub": sub, "token_use": "access_token"})
+				case "/oauth2/revoke":
+					active = false
+					w.WriteHeader(http.StatusOK)
 				case "/admin/oauth2/auth/sessions/consent":
 					if r.Method == http.MethodDelete {
 						id := r.URL.Query().Get("consent_request_id")
@@ -110,9 +117,9 @@ func TestStudioLogoutSignedSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			revoker := NewStudioLogout(NewHydraAdmin(server.URL), server.URL)
-			access := ""
-			if scenario == "wrong_subject" {
-				access = "different-user-access"
+			access := "access"
+			if scenario == "id_only" {
+				access = ""
 			}
 			subject, err := revoker.Logout(t.Context(), access, "", raw)
 			success := scenario == "success" || scenario == "expired_hint"
@@ -120,7 +127,7 @@ func TestStudioLogoutSignedSession(t *testing.T) {
 				if err != nil || subject != "user-1" || len(ids) != 1 || ids[0] != "current-grant" {
 					t.Fatalf("logout subject=%q err=%v revoked=%v", subject, err, ids)
 				}
-				subject, err = revoker.Logout(t.Context(), "", "", raw)
+				subject, err = revoker.Logout(t.Context(), access, "", raw)
 				if err != nil || subject != "" || len(ids) != 1 {
 					t.Fatalf("repeat logout was not idempotent: %q %v %v", subject, err, ids)
 				}
@@ -128,7 +135,13 @@ func TestStudioLogoutSignedSession(t *testing.T) {
 				if err == nil || subject != "" {
 					t.Fatalf("failed logout = %q %v", subject, err)
 				}
-				if scenario != "consent_failure" && scenario != "consent_no_effect" && scenario != "jwks_failure" {
+				if (scenario == "consent_failure" || scenario == "consent_no_effect") && !active {
+					t.Fatal("failed consent revocation invalidated the retry credential")
+				}
+				if scenario == "inactive_credentials" && (len(ids) != 0 || !errors.Is(err, ErrLogoutToken)) {
+					t.Fatalf("inactive credentials revoked a session: %v, %v", err, ids)
+				}
+				if scenario != "consent_failure" && scenario != "consent_no_effect" && scenario != "jwks_failure" && scenario != "inactive_credentials" {
 					if !errors.Is(err, ErrLogoutToken) || lookupCalls != 0 || len(ids) != 0 {
 						t.Fatalf("untrusted hint caused consent access: %v, calls=%d, revoked=%v", err, lookupCalls, ids)
 					}
