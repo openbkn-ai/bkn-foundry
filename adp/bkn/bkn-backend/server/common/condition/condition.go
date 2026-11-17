@@ -48,6 +48,9 @@ func NewCondition(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 }
 
 func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*ViewField) (cond Condition, err error) {
+	if err := validateNonEmptySearchValue(cfg); err != nil {
+		return nil, err
+	}
 
 	// Validate all operators except multi_match.
 	if cfg.Operation != OperationMultiMatch {
@@ -101,6 +104,18 @@ func NewCondWithOpr(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsM
 	return cond, nil
 }
 
+func validateNonEmptySearchValue(cfg *CondCfg) error {
+	value, isString := cfg.Value.(string)
+	if !isString || value != "" {
+		return nil
+	}
+	switch cfg.Operation {
+	case OperationLike, OperationNotLike, OperationRegex, OperationMatch, OperationMatchPhrase, OperationMultiMatch:
+		return fmt.Errorf("condition [%s] right value must be a non-empty string", cfg.Operation)
+	}
+	return nil
+}
+
 func getFilterFieldName(name string, fieldsMap map[string]*ViewField, isFullTextQuery bool) string {
 	// Full-text search permits the * field.
 	if name == AllField {
@@ -149,6 +164,9 @@ func ConvertCondCfgToFilterCondition(ctx context.Context, cfg *CondCfg, fieldsMa
 	vectorizer func(ctx context.Context, word string) ([]*VectorResp, error)) (map[string]any, error) {
 	if cfg == nil {
 		return nil, nil
+	}
+	if err := validateNonEmptySearchValue(cfg); err != nil {
+		return nil, err
 	}
 
 	switch cfg.Operation {

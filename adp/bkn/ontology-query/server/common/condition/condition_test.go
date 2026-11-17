@@ -8,6 +8,7 @@ package condition
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
@@ -16,6 +17,42 @@ import (
 )
 
 func Test_NewCondition(t *testing.T) {
+	t.Run("search values reject empty strings without trimming", func(t *testing.T) {
+		fields := map[string]*DataProperty{"name": {Name: "name", Type: dtype.DATATYPE_STRING, MappedField: Field{Name: "source_name"}}}
+		for _, operation := range []string{OperationLike, OperationNotLike, OperationRegex, OperationPrefix, OperationNotPrefix, OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				for _, value := range []string{"", "   ", "%", ".*"} {
+					cfg := &CondCfg{Name: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value,
+						RemainCfg: map[string]any{"fields": []any{"name"}}}
+					result, err := NewCondition(t.Context(), cfg, CUSTOM, fields)
+					if value == "" {
+						if err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+							t.Fatalf("empty search value: result=%v, error=%v", result, err)
+						}
+						continue
+					}
+					if err != nil || result == nil || cfg.Value != value {
+						t.Fatalf("value %q: result=%v, error=%v, saved=%v", value, result, err, cfg.Value)
+					}
+				}
+				leaf := &CondCfg{Name: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: ""}
+				cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{{Operation: OperationOr, SubConds: []*CondCfg{leaf}}}}
+				if result, err := NewCondition(t.Context(), cfg, CUSTOM, fields); err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+					t.Fatalf("nested empty search value: result=%v, error=%v", result, err)
+				}
+			})
+		}
+		for _, operation := range []string{OperationEq, OperationNotEq, OperationIn, OperationNotIn, OperationContain, OperationNotContain} {
+			var value any = ""
+			if operation != OperationEq && operation != OperationNotEq {
+				value = []any{""}
+			}
+			cfg := &CondCfg{Name: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value}
+			if result, err := NewCondition(t.Context(), cfg, CUSTOM, fields); err != nil || result == nil {
+				t.Fatalf("empty comparison %s: result=%v, error=%v", operation, result, err)
+			}
+		}
+	})
 	Convey("Test NewCondition", t, func() {
 		ctx := context.Background()
 		fieldsMap := map[string]*DataProperty{
@@ -518,6 +555,32 @@ func Test_wrapKeyWordFieldName(t *testing.T) {
 }
 
 func Test_RewriteCondition(t *testing.T) {
+	t.Run("search values reject empty strings before pushdown", func(t *testing.T) {
+		fields := map[string]*DataProperty{"name": {Name: "name", Type: dtype.DATATYPE_STRING, MappedField: Field{Name: "source_name"}}}
+		for _, operation := range []string{OperationLike, OperationNotLike, OperationRegex, OperationPrefix, OperationNotPrefix, OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				for _, value := range []string{"", "   ", "%", ".*"} {
+					cfg := &CondCfg{Name: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value,
+						RemainCfg: map[string]any{"fields": []any{"name"}}}
+					result, err := RewriteCondition(t.Context(), cfg, fields, nil)
+					if value == "" {
+						if err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+							t.Fatalf("empty pushed search value: result=%v, error=%v", result, err)
+						}
+						continue
+					}
+					if err != nil || result.Value != value || cfg.Value != value {
+						t.Fatalf("value %q: result=%v, error=%v, saved=%v", value, result, err, cfg.Value)
+					}
+				}
+				leaf := &CondCfg{Name: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: ""}
+				cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{{Operation: OperationOr, SubConds: []*CondCfg{leaf}}}}
+				if result, err := RewriteCondition(t.Context(), cfg, fields, nil); err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+					t.Fatalf("nested empty pushed search value: result=%v, error=%v", result, err)
+				}
+			})
+		}
+	})
 	Convey("Test RewriteCondition", t, func() {
 		ctx := context.Background()
 		fieldsMap := map[string]*DataProperty{

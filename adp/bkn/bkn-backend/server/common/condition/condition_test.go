@@ -8,6 +8,7 @@ package condition
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -16,6 +17,42 @@ import (
 )
 
 func TestNewCondition(t *testing.T) {
+	t.Run("search values reject empty strings without trimming", func(t *testing.T) {
+		fields := map[string]*ViewField{"name": {Name: "name", Type: dtype.DATATYPE_TEXT}}
+		for _, operation := range []string{OperationLike, OperationNotLike, OperationRegex, OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				for _, value := range []string{"", "   ", "%", ".*"} {
+					cfg := &CondCfg{Field: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value,
+						RemainCfg: map[string]any{"fields": []any{"name"}}}
+					result, err := NewCondition(t.Context(), cfg, CUSTOM, fields)
+					if value == "" {
+						if err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+							t.Fatalf("empty search value: result=%v, error=%v", result, err)
+						}
+						continue
+					}
+					if err != nil || result == nil || cfg.Value != value {
+						t.Fatalf("value %q: result=%v, error=%v, saved=%v", value, result, err, cfg.Value)
+					}
+				}
+				leaf := &CondCfg{Field: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: ""}
+				cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{{Operation: OperationOr, SubConds: []*CondCfg{leaf}}}}
+				if result, err := NewCondition(t.Context(), cfg, CUSTOM, fields); err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+					t.Fatalf("nested empty search value: result=%v, error=%v", result, err)
+				}
+			})
+		}
+		for _, operation := range []string{OperationEq, OperationNotEq, OperationIn, OperationNotIn} {
+			var value any = ""
+			if operation == OperationIn || operation == OperationNotIn {
+				value = []any{""}
+			}
+			cfg := &CondCfg{Field: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value}
+			if result, err := NewCondition(t.Context(), cfg, CUSTOM, fields); err != nil || result == nil {
+				t.Fatalf("empty comparison %s: result=%v, error=%v", operation, result, err)
+			}
+		}
+	})
 	Convey("Test NewCondition", t, func() {
 		ctx := context.Background()
 		fieldsMap := map[string]*ViewField{
@@ -100,6 +137,33 @@ func TestNewCondition(t *testing.T) {
 			So(cond, ShouldBeNil)
 		})
 	})
+}
+
+func TestConvertCondCfgToFilterCondition(t *testing.T) {
+	fields := map[string]*ViewField{"name": {Name: "name", Type: dtype.DATATYPE_TEXT}}
+	for _, operation := range []string{OperationLike, OperationNotLike, OperationRegex, OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+		t.Run(operation, func(t *testing.T) {
+			for _, value := range []string{"", "   ", "%", ".*"} {
+				cfg := &CondCfg{Field: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: value,
+					RemainCfg: map[string]any{"fields": []any{"name"}}}
+				result, err := ConvertCondCfgToFilterCondition(t.Context(), cfg, fields, nil)
+				if value == "" {
+					if err == nil || result != nil || !strings.Contains(err.Error(), "non-empty") {
+						t.Fatalf("empty pushed search value: result=%v, error=%v", result, err)
+					}
+					continue
+				}
+				if err != nil || result["value"] != value || cfg.Value != value {
+					t.Fatalf("value %q: result=%v, error=%v, saved=%v", value, result, err, cfg.Value)
+				}
+			}
+			leaf := &CondCfg{Field: "name", Operation: operation, ValueFrom: ValueFrom_Const, Value: ""}
+			cfg := &CondCfg{Operation: OperationAnd, SubConds: []*CondCfg{{Operation: OperationOr, SubConds: []*CondCfg{leaf}}}}
+			if result, err := ConvertCondCfgToFilterCondition(t.Context(), cfg, fields, nil); err == nil || result != nil {
+				t.Fatalf("nested empty pushed search value: result=%v, error=%v", result, err)
+			}
+		})
+	}
 }
 
 func TestNewCondWithOpr(t *testing.T) {

@@ -72,6 +72,9 @@ func (c *MatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [match] does not support value_from type '%s'", cfg.ValueFrom)
 	}
+	if value, ok := cfg.Value.(string); ok && value == "" {
+		return nil, interfaces.NewConditionBuildError("condition [match] right value must be a non-empty string")
+	}
 
 	return &MatchCond{
 		Cfg:    cfg,

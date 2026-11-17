@@ -714,6 +714,54 @@ func TestResourceDataServiceQueryWithPagingProjectsAggregateOutput(t *testing.T)
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
+	t.Run("空检索值在所有查询通道调用下游前返回参数错误", func(t *testing.T) {
+		for _, route := range []struct {
+			name     string
+			category string
+			indexed  bool
+		}{
+			{"dataset", interfaces.ResourceCategoryDataset, true},
+			{"managed_table", interfaces.ResourceCategoryTable, true},
+			{"source_table", interfaces.ResourceCategoryTable, false},
+			{"native_index", interfaces.ResourceCategoryIndex, false},
+		} {
+			for _, operation := range []string{"like", "not_like", "regex", "prefix", "not_prefix", "match", "match_phrase", "multi_match"} {
+				// 源表无全文查询通道，仍由既有能力校验拒绝，不属于本次空串校验。
+				if route.name == "source_table" && filter_condition.IsFulltextOperation(operation) {
+					continue
+				}
+				t.Run(route.name+"/"+operation, func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					resources := mock_interfaces.NewMockResourceService(ctrl)
+					connectors := mock_interfaces.NewMockConnectorFactory(ctrl)
+					indexes := mock_interfaces.NewMockLocalIndexManager(ctrl)
+					datasets := mock_interfaces.NewMockDatasetService(ctrl)
+					resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: route.category,
+						Enabled: true, Status: interfaces.ResourceStatusActive,
+						SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_String, Filterable: new(true)}}}
+					if route.indexed {
+						resource.LocalIndexName = "index"
+						resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+						indexes.EXPECT().SchemaForQuery(resource.SchemaDefinition).Return(resource.SchemaDefinition, nil)
+					}
+					cfg := &interfaces.FilterCondCfg{Field: "title", Operation: operation, Value: "",
+						RemainCfg: map[string]any{"fields": []any{"title"}}}
+					params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					result, err := (&resourceDataService{rs: resources, cs: catalogs, cf: connectors, lim: indexes, ds: datasets}).QueryWithPaging(t.Context(), resource, params)
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Contains(t, httpErr.ErrorDetails, "non-empty")
+					assert.Nil(t, result)
+					assert.Nil(t, params.ActualFilterCond)
+					assert.Equal(t, "", cfg.Value)
+				})
+			}
+		}
+	})
 	t.Run("非法逻辑字段向量在模型和索引调用前拒绝", func(t *testing.T) {
 		for _, tc := range []struct {
 			name  string

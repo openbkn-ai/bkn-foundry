@@ -51,6 +51,9 @@ func (c *NotPrefixCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [not_prefix] right value is not a string value: %v", cfg.Value)
 	}
+	if val == "" {
+		return nil, interfaces.NewConditionBuildError("condition [not_prefix] right value must be a non-empty string")
+	}
 
 	return &NotPrefixCond{
 		Cfg:    cfg,

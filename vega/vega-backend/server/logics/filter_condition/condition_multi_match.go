@@ -9,6 +9,7 @@ package filter_condition
 import (
 	"context"
 	"fmt"
+
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -44,10 +45,6 @@ func (c *MultiMatchCond) RequiredValueLen() int      { return -1 }
 // Support all fields *
 func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
-
-	if cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [multi_match] does not support value_from type '%s'", cfg.ValueFrom)
-	}
 
 	// Obtain the fields from the ReaminCfg of the cfg. This is the fields field belonging to multi_match, which is an array of strings.
 	// If you want all fields to match, you can either leave it blank or fill in ["*"]. String * is not supported. An array is required
@@ -85,6 +82,13 @@ func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 			return nil, fmt.Errorf("condition [multi_match] 'match_type' value should be one of [%v], actual is[%v]", MatchTypeMap, mtype)
 		}
 		matchType = mtype
+	}
+
+	if cfg.ValueFrom != interfaces.ValueFrom_Const {
+		return nil, fmt.Errorf("condition [multi_match] does not support value_from type '%s'", cfg.ValueFrom)
+	}
+	if value, ok := cfg.Value.(string); ok && value == "" {
+		return nil, interfaces.NewConditionBuildError("condition [multi_match] right value must be a non-empty string")
 	}
 
 	return &MultiMatchCond{

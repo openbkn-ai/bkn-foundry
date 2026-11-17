@@ -4059,6 +4059,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
     condition_multi_match:
       description: 多字段全文匹配
       required:
@@ -4080,6 +4081,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
         match_type:
           description: 全文匹配类型，默认是 best_fields
           enum:
@@ -4109,6 +4111,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
     condition_match:
       description: "match 过滤，支持单个字段和*, * 表示全部字段"
       required:
@@ -4128,6 +4131,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
     condition_not_eq:
       description: 不等于的过滤条件
       required:
@@ -4185,6 +4189,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
     condition_regex:
       description: regex过滤
       required:
@@ -4204,6 +4209,7 @@ components:
         value:
           description: 过滤值
           type: string
+          minLength: 1
     condition_lt:
       description: 小于过滤条件
       required:
