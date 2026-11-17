@@ -28,6 +28,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_schedule"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
@@ -47,6 +48,7 @@ const buildTaskDispatchBuffer = 1
 type buildTaskService struct {
 	appSetting *common.AppSetting
 	bta        interfaces.BuildTaskAccess
+	bss        interfaces.BuildScheduleService
 	cf         interfaces.ConnectorFactory
 	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // When deleting a task, drop its local index. Test Injection mock
@@ -66,7 +68,7 @@ var activeBuildTaskStatuses = []string{
 // NewBuildTaskService creates a new BuildTaskService.
 func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
 	btServiceOnce.Do(func() {
-		btService = &buildTaskService{
+		taskService := &buildTaskService{
 			appSetting: appSetting,
 			bta:        logics.BTA,
 			cf:         factory.NewConnectorFactory(appSetting),
@@ -78,6 +80,9 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 
 			dispatchCh: make(chan struct{}, buildTaskDispatchBuffer),
 		}
+		// 计划执行依赖任务服务，先创建任务实例再注入，避免循环初始化单例。
+		taskService.bss = build_schedule.NewBuildScheduleService(appSetting, taskService, rs)
+		btService = taskService
 	})
 	return btService
 }
@@ -629,49 +634,65 @@ func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.
 	return bts.bta.MarkCompleted(ctx, tx, id, time.Now().UnixMilli())
 }
 
-// PopulateBuildTaskReferences batch completion task related resources and show directory field. It only queries the current situation
-// The entity referenced by the returned task should be avoided to prevent the task list from being triggered by the front end to load the full resource/directory.
+// populateBuildTaskReferences 补齐任务当前关联的资源、目录和计划名称。
+// 补全错误统一返回，由详情调用方记录；不影响其他关联名称的补全。
 func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, buildTasks []*interfaces.BuildTask) error {
 	if len(buildTasks) == 0 {
 		return nil
 	}
 
-	resourceIDs := make([]string, 0, len(buildTasks))
-	resourceIDSet := make(map[string]struct{}, len(buildTasks))
 	catalogIDs := make([]string, 0, len(buildTasks))
 	catalogIDSet := make(map[string]struct{}, len(buildTasks))
+	resourceIDs := make([]string, 0, len(buildTasks))
+	resourceIDSet := make(map[string]struct{}, len(buildTasks))
+	scheduleIDs := make([]string, 0, len(buildTasks))
+	scheduleIDSet := make(map[string]struct{}, len(buildTasks))
 	for _, buildTask := range buildTasks {
-		if buildTask.ResourceID != "" {
-			if _, exists := resourceIDSet[buildTask.ResourceID]; !exists {
-				resourceIDSet[buildTask.ResourceID] = struct{}{}
-				resourceIDs = append(resourceIDs, buildTask.ResourceID)
-			}
-		}
 		if buildTask.CatalogID != "" {
 			if _, exists := catalogIDSet[buildTask.CatalogID]; !exists {
 				catalogIDSet[buildTask.CatalogID] = struct{}{}
 				catalogIDs = append(catalogIDs, buildTask.CatalogID)
 			}
 		}
+		if buildTask.ResourceID != "" {
+			if _, exists := resourceIDSet[buildTask.ResourceID]; !exists {
+				resourceIDSet[buildTask.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, buildTask.ResourceID)
+			}
+		}
+		if buildTask.TriggerType == interfaces.BuildTaskTriggerScheduled && buildTask.ScheduleID != "" {
+			if _, exists := scheduleIDSet[buildTask.ScheduleID]; !exists {
+				scheduleIDSet[buildTask.ScheduleID] = struct{}{}
+				scheduleIDs = append(scheduleIDs, buildTask.ScheduleID)
+			}
+		}
 	}
 
 	var referenceErrors []error
+	catalogsByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
 	resourcesByID, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
 	}
-
-	catalogsByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	schedulesByID, err := bts.bss.InternalGetByIDs(ctx, scheduleIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
 	}
 
 	for _, buildTask := range buildTasks {
+		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
+			buildTask.CatalogName = catalog.Name
+		}
 		if resource := resourcesByID[buildTask.ResourceID]; resource != nil {
 			buildTask.ResourceName = resource.Name
 		}
-		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
-			buildTask.CatalogName = catalog.Name
+		if buildTask.TriggerType == interfaces.BuildTaskTriggerScheduled && buildTask.ScheduleID != "" {
+			if schedule := schedulesByID[buildTask.ScheduleID]; schedule != nil {
+				buildTask.ScheduleName = schedule.Name
+			}
 		}
 	}
 	return errors.Join(referenceErrors...)

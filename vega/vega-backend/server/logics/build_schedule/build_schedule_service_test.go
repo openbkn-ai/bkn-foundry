@@ -46,6 +46,37 @@ func validRequest() *interfaces.BuildScheduleRequest {
 	return &interfaces.BuildScheduleRequest{Name: "nightly", ResourceID: "resource", CronExpr: "0 * * * *", ExecuteType: interfaces.BuildTaskExecuteTypeIncremental}
 }
 
+func TestBuildScheduleServiceInternalGetByIDs(t *testing.T) {
+	t.Run("returns an empty map without querying for empty IDs", func(t *testing.T) {
+		f := newServiceFixture(t)
+		got, err := f.s.InternalGetByIDs(f.ctx, nil)
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
+	t.Run("returns plans keyed by ID without permission or reference queries", func(t *testing.T) {
+		f := newServiceFixture(t)
+		ids := []string{"plan-1", "missing", "plan-2"}
+		plans := map[string]*interfaces.BuildSchedule{
+			"plan-1": {ID: "plan-1", Name: "Nightly rebuild"},
+			"plan-2": {ID: "plan-2", Name: "Hourly refresh"},
+		}
+		f.sa.EXPECT().GetByIDs(gomock.Any(), ids).Return(plans, nil)
+		got, err := f.s.InternalGetByIDs(f.ctx, ids)
+		require.NoError(t, err)
+		assert.Equal(t, plans, got)
+		assert.NotContains(t, got, "missing")
+	})
+	t.Run("propagates access errors", func(t *testing.T) {
+		f := newServiceFixture(t)
+		outage := errors.New("schedule lookup failed")
+		f.sa.EXPECT().GetByIDs(gomock.Any(), []string{"plan-1"}).Return(nil, outage)
+		got, err := f.s.InternalGetByIDs(f.ctx, []string{"plan-1"})
+		assert.ErrorIs(t, err, outage)
+		assert.Nil(t, got)
+	})
+}
+
 func TestBuildScheduleServiceCreate(t *testing.T) {
 	t.Run("allows incremental schedule before baseline and defaults disabled", func(t *testing.T) {
 		f := newServiceFixture(t)
