@@ -6,6 +6,7 @@ package identity
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -44,5 +45,36 @@ func TestImportRoleKeepsIdentityAndRejectsLocalCollisions(t *testing.T) {
 	}
 	if err := ImportRole(db, "system", "Changed", ""); !errors.Is(err, adminwrite.ErrImmutable) {
 		t.Fatalf("system: %v", err)
+	}
+}
+
+func TestImportRoleUnicodeLimitsAndUniqueIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB()
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&model.Role{}); err != nil {
+		t.Fatal(err)
+	}
+	name, description := strings.Repeat("角", 128), strings.Repeat("描", 1024)
+	if err := ImportRole(db, "first", name, description); err != nil {
+		t.Fatal(err)
+	}
+	if err := ImportRole(db, "long-name", name+"色", ""); !errors.Is(err, adminwrite.ErrInvalid) {
+		t.Fatalf("long name: %v", err)
+	}
+	if err := ImportRole(db, "long-description", "other", description+"述"); !errors.Is(err, adminwrite.ErrInvalid) {
+		t.Fatalf("long description: %v", err)
+	}
+	key := strings.ToLower(name)
+	err = db.Create(&model.Role{ID: "second", Name: name, NameKey: &key, Source: model.RoleSourceCustom}).Error
+	if !errors.Is(roleNameWriteError(err), adminwrite.ErrRoleNameExisted) {
+		t.Fatalf("unique conflict: %v", err)
+	}
+	unrelated := errors.New("database unavailable")
+	if roleNameWriteError(unrelated) != unrelated {
+		t.Fatal("unrelated error changed")
 	}
 }
