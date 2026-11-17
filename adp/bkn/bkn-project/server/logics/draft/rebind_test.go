@@ -30,6 +30,8 @@ type vegaWorld struct {
 	failLists int
 	// named counts the catalogs looked for by name.
 	named int
+	// failNamed makes looking for catalogs by name fail as a refusal would.
+	failNamed bool
 }
 
 func (w *vegaWorld) table(id string) *interfaces.VegaTable {
@@ -61,6 +63,9 @@ func (w *vegaWorld) mock(ctrl *gomock.Controller) *pmock.MockVegaAccess {
 	va.EXPECT().CatalogsNamed(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ interfaces.VegaAccount, name string) ([]string, error) {
 			w.named++
+			if w.failNamed {
+				return nil, errors.New("vega-backend returned HTTP 403")
+			}
 			ids := []string{}
 			for id, n := range w.catalogs {
 				if n == name {
@@ -371,6 +376,37 @@ func Test_RebindOnStatus(t *testing.T) {
 			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
 			So(w.named, ShouldEqual, 1)
 
+			_, err = svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(w.named, ShouldEqual, 1)
+		})
+
+		Convey("A gone catalog with no catalog of its name is left out, so the one found by name still takes its place\n", func() {
+			project.CatalogIDs = []string{"cat", "c_gone"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			ps.EXPECT().SetProjectCatalogs(gomock.Any(), token, "p1", []string{"c_new"}, caller).DoAndReturn(
+				func(_ context.Context, _, _ string, ids []string, _ interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+					project.CatalogIDs = ids
+					return project, nil
+				})
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+			So(s.DataSources.Tables.State, ShouldEqual, interfaces.DATA_SOURCE_OK)
+		})
+
+		Convey("A failure looking for a catalog by name is not tried again on every read\n", func() {
+			project.CatalogIDs = []string{"cat"}
+			defer func() { project.CatalogIDs = []string{"c_new", "c_en"} }()
+			w.failNamed = true
+			store(recordedDraft())
+
+			s, err := svc.GetStatus(ctx, token, "p1", caller)
+			So(err, ShouldBeNil)
+			So(s.DataSources.Catalogs.State, ShouldEqual, interfaces.DATA_SOURCE_MISSING)
 			_, err = svc.GetStatus(ctx, token, "p1", caller)
 			So(err, ShouldBeNil)
 			So(w.named, ShouldEqual, 1)

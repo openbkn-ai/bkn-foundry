@@ -439,49 +439,70 @@ func recordedCatalogNames(items *interfaces.DraftItems) map[string]string {
 	return names
 }
 
-// reconnectCatalogs puts, in place of each of the project's catalogs that is gone, the one catalog
-// the owner can see under the name the draft recorded for it, as reinstalling a sample creates it
-// again; the tables the draft binds are then found in it by name. A gone catalog with no recorded
-// name, or none or more than one catalog of its name, stays gone, for the owner to choose another.
-// It returns the project's catalogs when it changed them, else nil.
+// reconnectCatalogs puts, in place of each catalog of the project, or of the draft's tables, that is
+// gone, the one catalog the owner can see under the name the draft recorded for it, as reinstalling
+// a sample creates it again; the tables the draft binds are then found in it by name. A gone catalog
+// with no recorded name, or none or more than one catalog of its name, is left out of the project's
+// catalogs, as drafting refuses it, and its tables stay gone; it is looked for again while the draft
+// binds them. It returns the project's catalogs when it changed them, else nil.
 func (s *draftService) reconnectCatalogs(ctx context.Context, token string, caller interfaces.AccountInfo,
 	entry *interfaces.ProjectEntry, draft *interfaces.Draft) ([]string, error) {
-	if draft == nil || entry == nil || entry.Project == nil || len(entry.CatalogIDs) == 0 {
+	if draft == nil || entry == nil || entry.Project == nil {
 		return nil, nil
 	}
 	names := recordedCatalogNames(&draft.Items)
 	if len(names) == 0 {
 		return nil, nil
 	}
-	missing, err := s.va.MissingCatalogs(ctx, caller, entry.CatalogIDs)
+	// The project's catalogs, then those of the draft's tables the project does not list.
+	candidates := slices.Clone(entry.CatalogIDs)
+	recorded := make([]string, 0, len(names))
+	for id := range names {
+		recorded = append(recorded, id)
+	}
+	slices.Sort(recorded)
+	for _, id := range recorded {
+		if !slices.Contains(candidates, id) {
+			candidates = append(candidates, id)
+		}
+	}
+	missing, err := s.va.MissingCatalogs(ctx, caller, candidates)
 	if err != nil || len(missing) == 0 {
 		return nil, err
 	}
-	miss := "catalogs|" + rebindMissKey(entry.ID, missing, nil)
+	miss := "catalogs|" + rebindMissKey(entry.ID, missing, entry.CatalogIDs)
 	if at, ok := s.rebindMisses.Load(miss); ok {
 		if time.Since(at.(time.Time)) < rebindRetryAfter {
 			return nil, nil
 		}
 		s.rebindMisses.Delete(miss)
 	}
+	// Whatever the answer, the same catalogs gone are not looked for again on every read.
+	s.rebindMisses.Store(miss, time.Now())
 	catalogIDs := []string{}
-	changed := false
-	for _, id := range entry.CatalogIDs {
-		if slices.Contains(missing, id) && names[id] != "" {
-			found, err := s.va.CatalogsNamed(ctx, caller, names[id])
+	found := false
+	for _, id := range candidates {
+		if slices.Contains(missing, id) {
+			if names[id] == "" {
+				continue
+			}
+			named, err := s.va.CatalogsNamed(ctx, caller, names[id])
 			if err != nil {
 				return nil, fmt.Errorf("find the catalog named %q: %w", names[id], err)
 			}
-			if len(found) == 1 {
-				id, changed = found[0], true
+			if len(named) != 1 {
+				continue
 			}
+			id, found = named[0], true
+		} else if !slices.Contains(entry.CatalogIDs, id) {
+			// A catalog of the draft's tables still there is the owner's to add.
+			continue
 		}
 		if !slices.Contains(catalogIDs, id) {
 			catalogIDs = append(catalogIDs, id)
 		}
 	}
-	if !changed {
-		s.rebindMisses.Store(miss, time.Now())
+	if !found || slices.Equal(catalogIDs, entry.CatalogIDs) {
 		return nil, nil
 	}
 	if _, err := s.ps.SetProjectCatalogs(ctx, token, entry.ID, catalogIDs, caller); err != nil {
