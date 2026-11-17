@@ -175,6 +175,12 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 		}
 	}
 	// A relation type named from its source's referring field is named again from the new names.
+	endBefore := func(id string) *interfaces.DraftObjectType {
+		if ot := before[id]; ot != nil {
+			return ot
+		}
+		return findObjectType(items, id)
+	}
 	fromField := map[string]bool{}
 	var relations []namingItem
 	for _, rt := range items.RelationTypes {
@@ -192,7 +198,7 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 			continue
 		}
 		if source := before[rt.Source]; source != nil && len(rt.Mapping) > 0 &&
-			rt.Name == relationNameIn(language, source, rt.Mapping[0].SourceProperty, rt.ID) {
+			rt.Name == relationNameIn(language, source, endBefore(rt.Target), rt.Mapping[0].SourceProperty, rt.ID) {
 			fromField[rt.ID] = true
 			if !inOtherLanguage(language, rt.Description) {
 				continue
@@ -241,7 +247,7 @@ func (s *draftService) nameInLanguage(ctx context.Context, caller interfaces.Acc
 	for _, rt := range items.RelationTypes {
 		if fromField[rt.ID] {
 			if source := findObjectType(items, rt.Source); source != nil {
-				rt.Name = relationNameIn(language, source, rt.Mapping[0].SourceProperty, rt.ID)
+				rt.Name = relationNameIn(language, source, findObjectType(items, rt.Target), rt.Mapping[0].SourceProperty, rt.ID)
 			}
 		}
 	}

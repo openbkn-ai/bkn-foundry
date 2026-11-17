@@ -248,7 +248,7 @@ func (s *draftService) relationCandidates(ctx context.Context, draft *interfaces
 		id := uniqueName(idFrom(p.source.ID+"_to_"+p.target.ID, idPrefixRelationType), relationIDs)
 		relationIDs[id] = true
 		relation.ID = id
-		found = append(found, relationCandidateOf(relation, p.origin, "", d.relationName(p.source, property, id), evidence))
+		found = append(found, relationCandidateOf(relation, p.origin, "", d.relationName(p.source, p.target, property, id), evidence))
 	}
 	// Counted and found first, by their hit rate; what could not be counted after.
 	slices.SortStableFunc(found, func(a, b interfaces.DraftRelationCandidate) int {

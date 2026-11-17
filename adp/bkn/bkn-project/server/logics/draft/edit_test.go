@@ -357,12 +357,33 @@ func Test_EditDraftItem(t *testing.T) {
 			for _, r := range got.Items.RelationTypes {
 				names = append(names, r.Name)
 			}
-			So(names, ShouldResemble, []string{"采购订单的供应商编号", "采购来源", "orders_to_customers_3",
+			// The relation drafted under the former template is named as a predicate now.
+			So(names, ShouldResemble, []string{"按供应商编号关联Customers", "采购来源", "orders_to_customers_3",
 				"采购单的供应商编号", "采购单的供应商编号"})
 			last := written.Items.Decisions[len(written.Items.Decisions)-1]
 			So([]any{last.Kind, last.ItemID, last.Action, last.Before, last.After}, ShouldResemble, []any{
 				interfaces.DRAFT_KIND_RELATION_TYPES, "orders_to_customers", interfaces.DRAFT_DECISION_RENAME,
-				"采购单的供应商编号", "采购订单的供应商编号"})
+				"采购单的供应商编号", "按供应商编号关联Customers"})
+		})
+
+		Convey("Renaming an object type renames the predicate-named relations that end at it\n", func() {
+			orders := draft.Items.ObjectTypes[1]
+			orders.Properties = []*interfaces.DraftProperty{
+				{Name: "supplier_no", DisplayName: "供应商编号", MappedField: "supplier_no"},
+			}
+			draft.Items.RelationTypes = []*interfaces.DraftRelationType{{
+				ID: "orders_to_customers", Name: "按供应商编号关联Customers", Source: "orders", Target: "customers",
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "supplier_no", TargetProperty: "id"}},
+			}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			expectWrite()
+			e := edit()
+			e.Name = strPtr("供应商")
+
+			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "customers", e, caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.RelationTypes[0].Name, ShouldEqual, "按供应商编号关联供应商")
 		})
 
 		Convey("Renaming recognises a relation drafted under the former 40-character limit\n", func() {
@@ -383,11 +404,11 @@ func Test_EditDraftItem(t *testing.T) {
 			got, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "orders", e, caller)
 
 			So(err, ShouldBeNil)
-			So(got.Items.RelationTypes[0].Name, ShouldEqual, "采购订单的供应商编号")
+			So(got.Items.RelationTypes[0].Name, ShouldEqual, "按供应商编号关联Customers")
 			last := written.Items.Decisions[len(written.Items.Decisions)-1]
 			So([]any{last.Kind, last.ItemID, last.Action, last.Before, last.After}, ShouldResemble, []any{
 				interfaces.DRAFT_KIND_RELATION_TYPES, "orders_to_customers", interfaces.DRAFT_DECISION_RENAME,
-				"供应商编号", "采购订单的供应商编号"})
+				"供应商编号", "按供应商编号关联Customers"})
 		})
 
 		Convey("An object type without an identity cannot be adopted\n", func() {

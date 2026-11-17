@@ -110,7 +110,7 @@ func Test_NameInLanguage(t *testing.T) {
 			// The relation drafted from the referring field is named from the new names.
 			r := relation(items, orders.ID, customers.ID)
 			So(r, ShouldNotBeNil)
-			So(r.Name, ShouldEqual, relationNameIn(en, orders, "customer_id", r.ID))
+			So(r.Name, ShouldEqual, relationNameIn(en, orders, customers, "customer_id", r.ID))
 			So(textLanguage(r.Name), ShouldEqual, en)
 		})
 
