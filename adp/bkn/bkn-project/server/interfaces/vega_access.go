@@ -142,6 +142,9 @@ type VegaAccess interface {
 	// CatalogNames returns the names of the catalogs the account can read, by id; others are left out.
 	CatalogNames(ctx context.Context, account VegaAccount, catalogIDs []string) (map[string]string, error)
 	MissingCatalogs(ctx context.Context, account VegaAccount, catalogIDs []string) ([]string, error)
+	// CatalogsNamed returns the catalogs the account can see named name, as a catalog deleted and
+	// created again under its name is found.
+	CatalogsNamed(ctx context.Context, account VegaAccount, name string) ([]string, error)
 	// MissingTables returns the table resources that no longer exist, in their order. A table the
 	// account may not see is not missing.
 	MissingTables(ctx context.Context, account VegaAccount, ids []string) ([]string, error)

@@ -15,6 +15,8 @@ const (
 	// INDEX_STATE_NOT_CONFIGURED is a table missing fields a build needs; Missing names them.
 	INDEX_STATE_NOT_CONFIGURED = "not_configured"
 	INDEX_STATE_UNREADABLE     = "unreadable"
+	// INDEX_STATE_MISSING is a table that is gone from vega, deleted or with its catalog.
+	INDEX_STATE_MISSING = "missing"
 )
 
 // Fields of a table's index configuration that a build needs.
@@ -31,6 +33,9 @@ type ProjectIndex struct {
 	// TasksVisible is false when the caller may not list a catalog's build tasks: an index being
 	// built then reads as not built.
 	TasksVisible bool `json:"tasks_visible"`
+	// MissingCatalogs are the catalogs of the object types' tables that are gone: their tables are
+	// missing, not unreadable, and their tasks are none to see.
+	MissingCatalogs []string `json:"missing_catalogs,omitempty"`
 }
 
 type ProjectIndexItem struct {

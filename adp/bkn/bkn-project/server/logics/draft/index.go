@@ -46,12 +46,59 @@ func (s *draftService) GetIndex(ctx context.Context, token string, projectID str
 		return nil, internalError(ctx, "Read tables failed", err)
 	}
 	structuredOnly(index, &draft.Items)
+	s.markMissing(ctx, index, caller)
 	if c := draft.Items.Confirmation; c != nil && c.Commit != "" {
 		s.attachBuilds(ctx, index, projectID, c.Commit)
 	}
 	s.attachBuiltTimes(ctx, index, caller)
 	span.SetStatus(codes.Ok, "")
 	return index, nil
+}
+
+// markMissing tells, of the tables the account could not read, those that are gone, and the catalogs
+// gone with them: only vega's 404 tells it, and a table deleted, or a catalog with its tasks, is not
+// one the account lacks permission on. What vega does not answer stays unreadable.
+func (s *draftService) markMissing(ctx context.Context, index *interfaces.ProjectIndex,
+	account interfaces.AccountInfo) {
+	unread := []string{}
+	for _, item := range index.ObjectTypes {
+		if item.State == interfaces.INDEX_STATE_UNREADABLE && !slices.Contains(unread, item.Table.ResourceID) {
+			unread = append(unread, item.Table.ResourceID)
+		}
+	}
+	if len(unread) == 0 {
+		return
+	}
+	missing, err := s.va.MissingTables(ctx, account, unread)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Tell the tables gone among those not read: %v", err))
+		return
+	}
+	if len(missing) == 0 {
+		return
+	}
+	catalogIDs := []string{}
+	for i := range index.ObjectTypes {
+		item := &index.ObjectTypes[i]
+		if item.State != interfaces.INDEX_STATE_UNREADABLE || !slices.Contains(missing, item.Table.ResourceID) {
+			continue
+		}
+		index.Counts[item.State]--
+		if index.Counts[item.State] <= 0 {
+			delete(index.Counts, item.State)
+		}
+		item.State = interfaces.INDEX_STATE_MISSING
+		index.Counts[item.State]++
+		if id := item.Table.CatalogID; id != "" && !slices.Contains(catalogIDs, id) {
+			catalogIDs = append(catalogIDs, id)
+		}
+	}
+	gone, err := s.va.MissingCatalogs(ctx, account, catalogIDs)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Tell the catalogs gone: %v", err))
+		return
+	}
+	index.MissingCatalogs = gone
 }
 
 // structuredOnly leaves in the index only the object types of the catalogs' tables, as the people
@@ -131,6 +178,11 @@ func (s *draftService) readIndex(ctx context.Context, items *interfaces.DraftIte
 		listed, visible, err := s.va.ListActiveBuildTasks(ctx, account, catalogID)
 		if err != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("List build tasks of catalog %s: %v", catalogID, err))
+		}
+		if err == nil && !visible {
+			// A catalog gone hides no task: it has none.
+			gone, err := s.va.MissingCatalogs(ctx, account, []string{catalogID})
+			visible = err == nil && len(gone) == 1
 		}
 		if err != nil || !visible {
 			tasksVisible = false

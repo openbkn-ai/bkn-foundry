@@ -56,6 +56,21 @@ func (mr *MockVegaAccessMockRecorder) CatalogNames(ctx, account, catalogIDs any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CatalogNames", reflect.TypeOf((*MockVegaAccess)(nil).CatalogNames), ctx, account, catalogIDs)
 }
 
+// CatalogsNamed mocks base method.
+func (m *MockVegaAccess) CatalogsNamed(ctx context.Context, account interfaces.VegaAccount, name string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CatalogsNamed", ctx, account, name)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CatalogsNamed indicates an expected call of CatalogsNamed.
+func (mr *MockVegaAccessMockRecorder) CatalogsNamed(ctx, account, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CatalogsNamed", reflect.TypeOf((*MockVegaAccess)(nil).CatalogsNamed), ctx, account, name)
+}
+
 // CreateBuildTask mocks base method.
 func (m *MockVegaAccess) CreateBuildTask(ctx context.Context, account interfaces.VegaAccount, resourceID string) (string, error) {
 	m.ctrl.T.Helper()
