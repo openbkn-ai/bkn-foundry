@@ -248,7 +248,8 @@ func (s *draftService) relationCandidates(ctx context.Context, draft *interfaces
 		id := uniqueName(idFrom(p.source.ID+"_to_"+p.target.ID, idPrefixRelationType), relationIDs)
 		relationIDs[id] = true
 		relation.ID = id
-		found = append(found, relationCandidateOf(relation, p.origin, "", d.relationName(p.source, property, id), evidence))
+		name := candidateName(d.language(), items.RelationTypes, found, p.source, p.target, property, id)
+		found = append(found, relationCandidateOf(relation, p.origin, "", name, evidence))
 	}
 	// Counted and found first, by their hit rate; what could not be counted after.
 	slices.SortStableFunc(found, func(a, b interfaces.DraftRelationCandidate) int {
@@ -324,4 +325,26 @@ func relationCandidateOf(rt *interfaces.DraftRelationType, origin string, relati
 			TargetProperty: interfaces.DraftMappedField{Name: m.TargetProperty}})
 	}
 	return candidate
+}
+
+// candidateName names a candidate drafted from a referring field. Relation type names are unique
+// in a network: when the draft or a candidate found before has its short name, it takes its
+// source's name too, so adopting it brings in no second relation of that name.
+func candidateName(language string, relations []*interfaces.DraftRelationType, found []interfaces.DraftRelationCandidate,
+	source *interfaces.DraftObjectType, target *interfaces.DraftObjectType, property string, id string) string {
+	name := relationNameIn(language, source, target, property, id)
+	if relationNameTaken(relations, id, name) || candidateNameTaken(found, name) {
+		name = relationNameFromIn(language, source, target, property, id)
+	}
+	return name
+}
+
+// candidateNameTaken reports whether a candidate found already is named name.
+func candidateNameTaken(found []interfaces.DraftRelationCandidate, name string) bool {
+	for _, c := range found {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }

@@ -272,3 +272,18 @@ func Test_RelationSuggestions(t *testing.T) {
 		})
 	})
 }
+
+// A candidate whose short name the draft, or a candidate found before it, has already is named by
+// its source as well: adopting it must not bring in a second relation of that name.
+func Test_CandidateNameTaken(t *testing.T) {
+	Convey("A candidate named like a relation of the draft takes its source's name\n", t, func() {
+		material := &interfaces.DraftObjectType{ID: "material", Name: "物料"}
+		stock := &interfaces.DraftObjectType{ID: "stock", Name: "实时库存",
+			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
+		existing := []*interfaces.DraftRelationType{{ID: "work_order_to_material", Name: "按物料编码关联物料"}}
+		So(candidateName("zh-CN", existing, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "实时库存按物料编码关联物料")
+		So(candidateName("zh-CN", nil, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "按物料编码关联物料")
+		found := []interfaces.DraftRelationCandidate{{Name: "按物料编码关联物料"}}
+		So(candidateName("zh-CN", nil, found, stock, material, "material_code", "stock_to_material"), ShouldEqual, "实时库存按物料编码关联物料")
+	})
+}
