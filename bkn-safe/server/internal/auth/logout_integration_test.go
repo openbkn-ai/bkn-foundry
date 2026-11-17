@@ -49,7 +49,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
 			t.Fatalf("Hydra %s %s: %d", method, req.URL.Path, res.StatusCode)
 		}
@@ -117,7 +117,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode != 200 {
 			t.Fatalf("token exchange status %d", res.StatusCode)
 		}
@@ -147,7 +147,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var failure struct {
 		Error string `json:"error"`
 	}
@@ -174,7 +174,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		var rotated struct {
 			Access  string `json:"access_token"`
 			Refresh string `json:"refresh_token"`
