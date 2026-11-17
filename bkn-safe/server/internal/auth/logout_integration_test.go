@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -69,7 +70,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		})
 		defer request("DELETE", admin+"/admin/clients/"+id, nil)
 	}
-	mint := func(clientID string, jar http.CookieJar) map[string]string {
+	mint := func(clientID string, jar http.CookieJar, remember bool) map[string]string {
 		t.Helper()
 		if jar == nil {
 			jar, _ = cookiejar.New(nil)
@@ -89,7 +90,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 				break
 			}
 			if challenge := parsed.Query().Get("login_challenge"); challenge != "" {
-				result := request("PUT", admin+"/admin/oauth2/auth/requests/login/accept?login_challenge="+url.QueryEscape(challenge), map[string]any{"subject": "logout-test-user", "remember": true, "remember_for": 3600})
+				result := request("PUT", admin+"/admin/oauth2/auth/requests/login/accept?login_challenge="+url.QueryEscape(challenge), map[string]any{"subject": "logout-test-user", "remember": remember, "remember_for": 3600})
 				target = result["redirect_to"].(string)
 				continue
 			}
@@ -135,8 +136,14 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		return map[string]string{"access": tokens.Access, "refresh": tokens.Refresh, "id": tokens.IDToken}
 	}
 	browserJar, _ := cookiejar.New(nil)
-	current, device, other := mint("openbkn-studio", browserJar), mint("openbkn-studio", nil), mint("logout-regression-other", browserJar)
+	current, device, other := mint("openbkn-studio", browserJar, true), mint("openbkn-studio", nil, true), mint("logout-regression-other", browserJar, true)
 	revoker := NewStudioLogout(NewHydraAdmin(admin), public)
+	t.Run("production login without remembered session", func(t *testing.T) {
+		tokens := mint("openbkn-studio", nil, false)
+		if subject, err := revoker.Logout(t.Context(), tokens["access"], tokens["refresh"], tokens["id"]); err != nil || subject != "logout-test-user" {
+			t.Fatalf("logout with remember=false: subject=%q err=%v", subject, err)
+		}
+	})
 	if subject, err := revoker.Logout(t.Context(), current["access"], current["refresh"], current["id"]); err != nil || subject != "logout-test-user" {
 		t.Fatalf("logout: subject=%q err=%v", subject, err)
 	}
@@ -167,7 +174,7 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 	if subject, err := revoker.Logout(t.Context(), current["access"], current["refresh"], current["id"]); err != nil || subject != "" {
 		t.Fatalf("repeat logout: %q %v", subject, err)
 	}
-	t.Run("rotation before logout still revokes the current grant", func(t *testing.T) {
+	t.Run("rotation requires a current credential", func(t *testing.T) {
 		res, err := http.PostForm(public+"/oauth2/token", url.Values{
 			"client_id": {"openbkn-studio"}, "grant_type": {"refresh_token"}, "refresh_token": {device["refresh"]},
 		})
@@ -183,9 +190,18 @@ func TestStudioLogoutRealHydra(t *testing.T) {
 		if res.StatusCode != http.StatusOK || json.NewDecoder(res.Body).Decode(&rotated) != nil || rotated.Refresh == "" {
 			t.Fatal("test refresh did not rotate credentials")
 		}
-		// A browser without Web Locks may still hold the pre-refresh snapshot.
-		if _, err := revoker.Logout(t.Context(), device["access"], device["refresh"], device["id"]); err != nil {
-			t.Fatal(err)
+		// A stale snapshot must not authorize revocation based on an ID token alone.
+		if _, err := revoker.Logout(t.Context(), device["access"], device["refresh"], device["id"]); !errors.Is(err, ErrLogoutToken) {
+			t.Fatalf("stale credentials: %v", err)
+		}
+		for use, token := range map[string]string{"access_token": rotated.Access, "refresh_token": rotated.Refresh} {
+			info, err := revoker.inspect(t.Context(), token, use)
+			if err != nil || !info.GetActive() {
+				t.Fatalf("stale credentials revoked current %s: %v", use, err)
+			}
+		}
+		if _, err := revoker.Logout(t.Context(), rotated.Access, rotated.Refresh, device["id"]); err != nil {
+			t.Fatalf("logout with current credentials: %v", err)
 		}
 		for use, token := range map[string]string{"access_token": rotated.Access, "refresh_token": rotated.Refresh} {
 			info, err := revoker.inspect(t.Context(), token, use)

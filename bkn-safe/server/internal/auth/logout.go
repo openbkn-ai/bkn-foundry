@@ -39,9 +39,10 @@ func NewStudioLogout(admin *HydraAdmin, publicURL string) *StudioLogout {
 // Logout accepts an inactive access token so a partially completed revocation
 // can be retried using the still-active refresh token. Ownership is established
 // from live introspection, never from caller-provided subject/client IDs.
-// An already inactive pair is an idempotent success with no new access fact.
+// An inactive pair is idempotent only if no matching session remains; a live
+// session requires an active credential belonging to the ID token subject.
 func (s *StudioLogout) Logout(ctx context.Context, accessToken, refreshToken, idToken string) (string, error) {
-	if accessToken == "" && refreshToken == "" && idToken == "" {
+	if accessToken == "" && refreshToken == "" {
 		return "", ErrLogoutToken
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -86,19 +87,32 @@ func (s *StudioLogout) Logout(ctx context.Context, accessToken, refreshToken, id
 		if errLookup != nil {
 			return "", errLookup
 		}
+		if !hadActive && len(consentIDs) != 0 {
+			return "", ErrLogoutToken
+		}
 		if hadActive && len(consentIDs) == 0 {
 			return "", errors.New("logout session could not be located")
 		}
 	}
 
-	// Revoke refresh first, then explicitly revoke access as well. Attempt both
-	// even on partial failure; never include OAuth responses or tokens in errors.
+	// Confirm consent revocation before touching tokens, so a failed consent
+	// revocation can be retried with a still-active credential.
 	var failed bool
 	for _, id := range consentIDs {
 		if s.revokeLogoutConsent(ctx, id) != nil {
 			failed = true
 		}
 	}
+	if failed {
+		return "", errors.New("logout revocation unavailable")
+	}
+	if sid != "" {
+		remaining, err := s.logoutConsentIDs(ctx, subject, sid)
+		if err != nil || len(remaining) > 0 {
+			return "", errors.New("logout session revocation not confirmed")
+		}
+	}
+	// Revoke refresh first, then access; attempt both even on partial failure.
 	for i := len(tokens) - 1; i >= 0; i-- {
 		if _, err := s.public.OAuth2API.RevokeOAuth2Token(ctx).
 			Token(tokens[i].value).ClientId("openbkn-studio").Execute(); err != nil {
