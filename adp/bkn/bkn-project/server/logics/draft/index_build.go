@@ -78,7 +78,7 @@ func (s *draftService) BuildIndex(ctx context.Context, token string, projectID s
 // and its update field's, or its identity's again without one, when vega-backend takes their types.
 // An update field chosen after the identity's fields stood in for it replaces them, and the index
 // is built again. A table already being built is
-// recorded with its task; ready and unreadable tables start nothing.
+// recorded with its task; ready, unreadable and missing tables start nothing.
 func (s *draftService) buildIndexes(ctx context.Context, projectID string, commit string,
 	items *interfaces.DraftItems, runner interfaces.AccountInfo) error {
 	index, tables, err := s.readIndex(ctx, items, runner)
@@ -94,6 +94,7 @@ func (s *draftService) buildIndexes(ctx context.Context, projectID string, commi
 		case item.State == interfaces.INDEX_STATE_BUILDING && item.Task != nil:
 			build.Outcome, build.TaskID = interfaces.INDEX_BUILD_EXISTING, item.Task.ID
 		case item.FullRebuildOnly && objectType.IncrementalKey != "" && item.State != interfaces.INDEX_STATE_UNREADABLE &&
+			item.State != interfaces.INDEX_STATE_MISSING &&
 			item.State != interfaces.INDEX_STATE_BUILDING:
 			// An update field chosen since takes the place of the identity's fields standing in for it.
 			keys, unknown := indexKeys(objectType, table, []string{interfaces.INDEX_FIELD_INCREMENTAL})

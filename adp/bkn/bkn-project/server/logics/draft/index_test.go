@@ -187,6 +187,8 @@ func Test_GetIndex(t *testing.T) {
 				{ID: "r_orders", Index: configured}, {ID: "r_parts", Index: configured},
 			}, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).Times(2)
+			// lines' table is not read, and vega does not say it is gone.
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r_lines"}).Return(nil, nil)
 			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c0ffee").Return([]*interfaces.IndexBuild{
 				{ResourceID: "r_orders", ObjectTypeID: "orders", TaskID: "t9", Outcome: interfaces.INDEX_BUILD_CREATED, CreateTime: 5},
 				{ResourceID: "r_parts", ObjectTypeID: "parts", Outcome: interfaces.INDEX_BUILD_FAILED, Reason: "vega is down", CreateTime: 6},
@@ -215,6 +217,7 @@ func Test_GetIndex(t *testing.T) {
 				{ID: "r_orders", Index: configured},
 			}, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, gomock.Any()).Return(nil, true, nil).Times(2)
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r_parts", "r_lines"}).Return(nil, nil)
 			iba.EXPECT().ListBuilds(gomock.Any(), "p1", "c0ffee").Return(nil, errors.New("db is down"))
 
 			index, err := svc.GetIndex(ctx, token, "p1", caller)
@@ -233,12 +236,35 @@ func Test_GetIndex(t *testing.T) {
 			// No task_manage on c1: vega-backend would list nothing, which must not read as no task.
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, false, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r_parts", "r_lines"}).Return(nil, nil)
 
 			index, err := svc.GetIndex(ctx, token, "p1", caller)
 
 			So(err, ShouldBeNil)
 			So(index.TasksVisible, ShouldBeFalse)
 			So(index.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_NOT_BUILT: 1, interfaces.INDEX_STATE_UNREADABLE: 2})
+			So(index.MissingCatalogs, ShouldBeEmpty)
+		})
+
+		Convey("A catalog deleted: its tables are missing, not unreadable, and its tasks hide nothing\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return([]*interfaces.VegaTable{
+				{ID: "r_parts", Index: configured},
+			}, nil)
+			// vega answers a catalog gone as one whose tasks the caller may not manage.
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, false, nil)
+			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return([]string{"c1"}, nil).Times(2)
+			va.EXPECT().MissingTables(gomock.Any(), caller, []string{"r_orders", "r_lines"}).Return([]string{"r_orders", "r_lines"}, nil)
+
+			index, err := svc.GetIndex(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(index.TasksVisible, ShouldBeTrue)
+			So(index.MissingCatalogs, ShouldResemble, []string{"c1"})
+			So(index.Counts, ShouldResemble, map[string]int{interfaces.INDEX_STATE_NOT_BUILT: 1, interfaces.INDEX_STATE_MISSING: 2})
 		})
 
 		Convey("A failure listing build tasks leaves building unknown, the rest stands\n", func() {
@@ -247,6 +273,7 @@ func Test_GetIndex(t *testing.T) {
 			va.EXPECT().GetTables(gomock.Any(), caller, gomock.Any()).Return(nil, nil)
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c1").Return(nil, false, errors.New("vega is down"))
 			va.EXPECT().ListActiveBuildTasks(gomock.Any(), caller, "c2").Return(nil, true, nil)
+			va.EXPECT().MissingTables(gomock.Any(), caller, gomock.Any()).Return(nil, errors.New("vega is down"))
 
 			index, err := svc.GetIndex(ctx, token, "p1", caller)
 
