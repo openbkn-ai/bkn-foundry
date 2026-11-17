@@ -842,6 +842,64 @@ components:
           type: object
           description: 可选登录定义，包含 request、response 和 success_rule；模板仅引用 variables。后续执行阶段在业务请求前登录，Cookie 在本次调用内自动传递；当前只做配置校验。
           additionalProperties: true
+          properties:
+            response:
+              $ref: "#/components/schemas/HTTPAPICatalogLoginResponses"
+    HTTPAPICatalogLoginResponses:
+      type: object
+      description: |
+        Catalog 登录响应集合。content_type 在集合层声明预期响应体格式，不自动设置请求 Header；statuses 按 HTTP 状态键声明各响应。
+        仅上提 content_type，不增加公共 headers、继承或旧格式转换；未知集合字段按普通配置解码规则忽略。纯旧结构仍因缺少新结构必填字段而失败。
+        新旧协议不兼容，后端与 Studio 必须配套更新；本次不变更 Resource 响应定义、不迁移数据或部署服务。
+      required: [content_type, statuses]
+      additionalProperties: true
+      properties:
+        content_type:
+          type: string
+          const: application/json
+          description: 所有状态响应的预期媒体类型，当前固定为 application/json。
+        statuses:
+          type: object
+          minProperties: 1
+          propertyNames:
+            pattern: "^(default|[1-5]XX|[1-5][0-9]{2})$"
+          additionalProperties:
+            $ref: "#/components/schemas/HTTPAPICatalogLoginResponse"
+      examples:
+        - content_type: application/json
+          statuses:
+            "200":
+              description: 登录成功
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                required: [token]
+            default:
+              description: 不接受响应体
+              schema: false
+    HTTPAPICatalogLoginResponse:
+      type: object
+      description: |
+        Catalog 单个状态响应。description、schema 必填；有效 content_type 由上层响应集合提供。
+        未知状态字段（包括 content、content_type 及其 null 值）按普通配置解码规则忽略，不转换、继承或双写；headers 保持原有可选语义。
+      required: [description, schema]
+      additionalProperties: true
+      properties:
+        description:
+          type: string
+          minLength: 1
+          pattern: "\\S"
+          description: 非空且不全为空白的响应描述，与 Schema 节点内部的 description 独立。
+        schema:
+          type: [object, boolean]
+          description: Draft 2020-12 JSON Schema 对象或布尔 Schema；false 合法，null 非法。Schema 内部保留既有关键字及扩展，不受当前 UI 基本编辑范围收敛影响。
+          additionalProperties: true
+        headers:
+          type: [object, "null"]
+          description: 可选响应 Header 定义，省略或 null 沿用未配置语义；保持原有动态成员与值语义。
+          additionalProperties: true
     HTTPAPICatalogVariable:
       type: object
       description: |
