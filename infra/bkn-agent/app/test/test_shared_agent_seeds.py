@@ -5389,6 +5389,7 @@ def test_prompt_rules_upgrade_keeps_custom_settings_and_official_baseline(case):
 ONTOLOGY_GUIDANCE = (
     "Ontology. Model the business, not its tables",
     "Object types. An object type is a kind of thing the business identifies, tracks and acts on",
+    "named as the in-text record of its business object (In-text inspection record), never as the text or the file",
     "Properties. A property is a fact recorded about one object.",
     "Relation types. A relation type is a stable business link between two object types",
     "by the role the target plays for the source, read from the source",
@@ -5402,6 +5403,7 @@ ONTOLOGY_GUIDANCE = (
 ONTOLOGY_GUIDANCE_ZH = (
     "\n\n本体。为业务建模，而不是为表建模",
     "\n\n对象类。对象类是业务能识别、跟踪并据此行动的一类事物",
+    "按其业务对象的文本内记录命名（文本内检验记录）",
     "\n\n属性。属性是记录在一个对象上的事实。",
     "\n\n关系类。关系类是问题或决策需要的",
     "用终点对起点扮演的角色命名",
