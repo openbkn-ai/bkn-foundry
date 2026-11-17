@@ -24,6 +24,9 @@ info:
     `schedule_id` 和 `trigger_type` 是服务端写入的只读来源字段。手动任务的
     `schedule_id` 为空，`trigger_type=manual`；由 BuildSchedule 创建的任务为 `scheduled`。
     删除调度不删除已生成任务，也不清除其 schedule_id。手动创建接口不能伪造这些字段。
+    任务详情另返回可选只读 `schedule_name`，为关联计划的当前名称，不是触发时快照；
+    手动任务、计划已删除或读取计划失败时省略该字段，仍保留任务及既有 schedule_id。
+    任务列表不返回 schedule_name。
 
     每个新任务均有服务端分配的只读 `index_name`。Full BuildTask 使用新的
     `vega-build-<uuidv7>` 物理索引；Incremental BuildTask 快照创建时 Resource 的当前
@@ -421,17 +424,18 @@ components:
         schedule_id:
           description: 触发本任务的 BuildSchedule ID；手动任务为空，计划删除后保留
           type: string
-          readOnly: true
         trigger_type:
           description: 服务端确定的任务来源；历史任务按 manual 返回
           type: string
-          readOnly: true
           enum: [manual, scheduled]
+        catalog_name:
+          description: 关联 Catalog 的当前名称；响应时按当前任务集合批量补齐，不落库
+          type: string
         resource_name:
           description: 关联 Resource 的当前名称；响应时按当前任务集合批量补齐，不落库
           type: string
-        catalog_name:
-          description: 关联 Catalog 的当前名称；响应时按当前任务集合批量补齐，不落库
+        schedule_name:
+          description: 仅任务详情返回关联 BuildSchedule 的当前名称，不落库；手动任务、计划已删除或读取失败时省略，schedule_id 不受影响
           type: string
         status:
           description: 状态
@@ -505,11 +509,9 @@ components:
         resource_id: { type: string }
         schedule_id:
           type: string
-          readOnly: true
           description: BuildSchedule ID；手动任务为空，计划删除后保留
         trigger_type:
           type: string
-          readOnly: true
           enum: [manual, scheduled]
         resource_name: { type: string }
         catalog_id: { type: string }

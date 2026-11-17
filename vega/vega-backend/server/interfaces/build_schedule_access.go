@@ -14,6 +14,7 @@ import (
 type BuildScheduleAccess interface {
 	Create(context.Context, *BuildSchedule) error
 	GetByID(context.Context, string) (*BuildSchedule, error)
+	GetByIDs(context.Context, []string) (map[string]*BuildSchedule, error)
 	List(context.Context, BuildScheduleQueryParams) ([]*BuildSchedule, int64, error)
 	Update(context.Context, *BuildSchedule, int64) (int64, error)
 	UpdateEnabled(context.Context, string, bool, *int64, int64, int64, AccountInfo) (int64, error)

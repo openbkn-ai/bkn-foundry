@@ -100,6 +100,21 @@ func (mr *MockBuildScheduleServiceMockRecorder) GetByID(arg0, arg1 any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockBuildScheduleService)(nil).GetByID), arg0, arg1)
 }
 
+// InternalGetByIDs mocks base method.
+func (m *MockBuildScheduleService) InternalGetByIDs(arg0 context.Context, arg1 []string) (map[string]*interfaces.BuildSchedule, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetByIDs", arg0, arg1)
+	ret0, _ := ret[0].(map[string]*interfaces.BuildSchedule)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetByIDs indicates an expected call of InternalGetByIDs.
+func (mr *MockBuildScheduleServiceMockRecorder) InternalGetByIDs(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockBuildScheduleService)(nil).InternalGetByIDs), arg0, arg1)
+}
+
 // InternalUpdateEnabled mocks base method.
 func (m *MockBuildScheduleService) InternalUpdateEnabled(arg0 context.Context, arg1 *interfaces.BuildSchedule, arg2 bool) error {
 	m.ctrl.T.Helper()

@@ -158,6 +158,21 @@ func (mr *MockBuildScheduleAccessMockRecorder) GetByID(arg0, arg1 any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockBuildScheduleAccess)(nil).GetByID), arg0, arg1)
 }
 
+// GetByIDs mocks base method.
+func (m *MockBuildScheduleAccess) GetByIDs(arg0 context.Context, arg1 []string) (map[string]*interfaces.BuildSchedule, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByIDs", arg0, arg1)
+	ret0, _ := ret[0].(map[string]*interfaces.BuildSchedule)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByIDs indicates an expected call of GetByIDs.
+func (mr *MockBuildScheduleAccessMockRecorder) GetByIDs(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockBuildScheduleAccess)(nil).GetByIDs), arg0, arg1)
+}
+
 // InitializeNextRun mocks base method.
 func (m *MockBuildScheduleAccess) InitializeNextRun(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, nextRun int64) (int64, error) {
 	m.ctrl.T.Helper()

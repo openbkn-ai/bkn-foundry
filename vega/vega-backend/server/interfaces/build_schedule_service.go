@@ -18,4 +18,6 @@ type BuildScheduleService interface {
 	ExecuteSchedule(context.Context, *BuildSchedule) (ScheduleRunResult, error)
 
 	InternalUpdateEnabled(context.Context, *BuildSchedule, bool) error
+	// InternalGetByIDs 供已完成权限校验的内部调用方批量读取计划，不加载扩展字段。
+	InternalGetByIDs(context.Context, []string) (map[string]*BuildSchedule, error)
 }

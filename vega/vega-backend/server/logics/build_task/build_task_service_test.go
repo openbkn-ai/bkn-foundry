@@ -9,6 +9,7 @@ package build_task
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -311,7 +312,181 @@ func TestBuildTaskServiceList(t *testing.T) {
 	})
 }
 
+func TestBuildTaskServicePopulateBuildTaskReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		lookupError error
+	}{
+		{name: "populates the schedule with other current references"},
+		{name: "preserves other references when schedule lookup fails", lookupError: errors.New("schedule lookup failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bss := vmock.NewMockBuildScheduleService(ctrl)
+			cs := vmock.NewMockCatalogService(ctrl)
+			rs := vmock.NewMockResourceService(ctrl)
+			service := &buildTaskService{bss: bss, cs: cs, rs: rs}
+			task := &interfaces.BuildTask{
+				ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
+				ScheduleID: "plan-1", TriggerType: interfaces.BuildTaskTriggerScheduled,
+			}
+			rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.ResourceID}).Return(
+				map[string]*interfaces.Resource{task.ResourceID: {Name: "orders"}}, nil)
+			cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.CatalogID}).Return(
+				map[string]*interfaces.Catalog{task.CatalogID: {Name: "warehouse"}}, nil)
+			plans := map[string]*interfaces.BuildSchedule{
+				task.ScheduleID: {ID: task.ScheduleID, Name: "Nightly rebuild"},
+			}
+			if tc.lookupError != nil {
+				plans = nil
+			}
+			bss.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.ScheduleID, "missing-plan"}).Return(plans, tc.lookupError)
+
+			duplicate := *task
+			duplicate.ID = "task-2"
+			missing := *task
+			missing.ID, missing.ScheduleID = "task-3", "missing-plan"
+			manual := *task
+			manual.ID, manual.TriggerType = "task-4", interfaces.BuildTaskTriggerManual
+			emptyID := *task
+			emptyID.ID, emptyID.ScheduleID = "task-5", ""
+			err := service.populateBuildTaskReferences(context.Background(), []*interfaces.BuildTask{task, &duplicate, &missing, &manual, &emptyID})
+
+			assert.Equal(t, "orders", task.ResourceName)
+			assert.Equal(t, "warehouse", task.CatalogName)
+			assert.Equal(t, "plan-1", task.ScheduleID)
+			assert.Equal(t, task.ScheduleName, duplicate.ScheduleName)
+			assert.Empty(t, missing.ScheduleName)
+			assert.Equal(t, "missing-plan", missing.ScheduleID)
+			assert.Empty(t, manual.ScheduleName)
+			assert.Empty(t, emptyID.ScheduleName)
+			if tc.lookupError != nil {
+				assert.ErrorIs(t, err, tc.lookupError)
+				assert.Empty(t, task.ScheduleName)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, "Nightly rebuild", task.ScheduleName)
+			}
+		})
+	}
+}
+
 func TestBuildTaskServiceGetByID(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		triggerType  string
+		scheduleID   string
+		schedule     *interfaces.BuildSchedule
+		lookupError  error
+		expectedName string
+	}{
+		{
+			name:         "populates the current schedule name",
+			triggerType:  interfaces.BuildTaskTriggerScheduled,
+			scheduleID:   "plan-1",
+			schedule:     &interfaces.BuildSchedule{ID: "plan-1", Name: "每日订单全量构建"},
+			expectedName: "每日订单全量构建",
+		},
+		{
+			name:        "keeps the schedule ID after the schedule is deleted",
+			triggerType: interfaces.BuildTaskTriggerScheduled,
+			scheduleID:  "deleted-plan",
+		},
+		{
+			name:        "keeps the task when the schedule lookup fails",
+			triggerType: interfaces.BuildTaskTriggerScheduled,
+			scheduleID:  "plan-1",
+			lookupError: errors.New("schedule lookup failed"),
+		},
+		{
+			name:        "uses no schedule IDs for manual tasks",
+			triggerType: interfaces.BuildTaskTriggerManual,
+		},
+		{
+			name:        "does not infer scheduled origin from an ID alone",
+			triggerType: interfaces.BuildTaskTriggerManual,
+			scheduleID:  "plan-1",
+		},
+		{
+			name:        "uses no schedule IDs when the schedule ID is missing",
+			triggerType: interfaces.BuildTaskTriggerScheduled,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bta := vmock.NewMockBuildTaskAccess(ctrl)
+			bss := vmock.NewMockBuildScheduleService(ctrl)
+			cs := vmock.NewMockCatalogService(ctrl)
+			rs := vmock.NewMockResourceService(ctrl)
+			ums := vmock.NewMockUserMgmtService(ctrl)
+			service := &buildTaskService{bta: bta, bss: bss, cs: cs, rs: rs, ums: ums}
+			task := &interfaces.BuildTask{
+				ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
+				ScheduleID: tc.scheduleID, TriggerType: tc.triggerType,
+			}
+			readTask := bta.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+			permission := cs.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil).After(readTask)
+			scheduleIDs := []string{}
+			if tc.triggerType == interfaces.BuildTaskTriggerScheduled && tc.scheduleID != "" {
+				scheduleIDs = append(scheduleIDs, tc.scheduleID)
+			}
+			plans := map[string]*interfaces.BuildSchedule{}
+			if tc.schedule != nil {
+				plans[tc.scheduleID] = tc.schedule
+			}
+			bss.EXPECT().InternalGetByIDs(gomock.Any(), scheduleIDs).Return(plans, tc.lookupError).After(permission)
+			rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.ResourceID}).Return(map[string]*interfaces.Resource{}, nil)
+			cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.CatalogID}).Return(map[string]*interfaces.Catalog{}, nil)
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+			got, err := service.GetByID(context.Background(), task.ID)
+
+			require.NoError(t, err)
+			require.NotNil(t, got)
+			assert.Equal(t, tc.scheduleID, got.ScheduleID)
+			assert.Equal(t, tc.expectedName, got.ScheduleName)
+			body, err := json.Marshal(got)
+			require.NoError(t, err)
+			var response map[string]any
+			require.NoError(t, json.Unmarshal(body, &response))
+			assert.Equal(t, tc.scheduleID, response["schedule_id"])
+			if tc.expectedName == "" {
+				assert.NotContains(t, response, "schedule_name")
+			} else {
+				assert.Equal(t, tc.expectedName, response["schedule_name"])
+			}
+			assert.NotContains(t, string(body), "schedule lookup failed")
+		})
+	}
+
+	for _, permissionError := range []error{nil, errors.New("permission lookup failed")} {
+		t.Run(fmt.Sprintf("does not read schedule before authorization error=%v", permissionError), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bta := vmock.NewMockBuildTaskAccess(ctrl)
+			bss := vmock.NewMockBuildScheduleService(ctrl)
+			cs := vmock.NewMockCatalogService(ctrl)
+			service := &buildTaskService{bta: bta, bss: bss, cs: cs}
+			task := &interfaces.BuildTask{
+				ID: "task-1", CatalogID: "catalog-1", ScheduleID: "plan-1",
+				TriggerType: interfaces.BuildTaskTriggerScheduled,
+			}
+			bta.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(false, nil, permissionError)
+
+			got, err := service.GetByID(context.Background(), task.ID)
+
+			require.Error(t, err)
+			assert.Nil(t, got)
+			if permissionError != nil {
+				assert.ErrorIs(t, err, permissionError)
+			} else {
+				_ = requireHTTPError(t, err, httperrors.PublicError_Forbidden)
+			}
+		})
+	}
+
 	t.Run("populates referenced resource and catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
@@ -320,12 +495,14 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
 			Return(true, nil, nil)
 		mockUMS := vmock.NewMockUserMgmtService(ctrl)
-		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		mockBSS := vmock.NewMockBuildScheduleService(ctrl)
+		service := &buildTaskService{bta: mockBTA, bss: mockBSS, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return(map[string]*interfaces.Resource{"resource-1": {ID: "resource-1", Name: "orders"}}, nil)
 		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return(map[string]*interfaces.Catalog{"catalog-1": {ID: "catalog-1", Name: "production"}}, nil)
+		mockBSS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.BuildSchedule{}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		got, err := service.GetByID(context.Background(), "task-1")
@@ -342,12 +519,14 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
 			Return(true, nil, nil)
 		mockUMS := vmock.NewMockUserMgmtService(ctrl)
-		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		mockBSS := vmock.NewMockBuildScheduleService(ctrl)
+		service := &buildTaskService{bta: mockBTA, bss: mockBSS, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-2"}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-2").Return(task, nil)
 		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.Resource{}, nil)
 		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.Catalog{}, nil)
+		mockBSS.EXPECT().InternalGetByIDs(gomock.Any(), []string{}).Return(map[string]*interfaces.BuildSchedule{}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user service down"))
 
 		got, err := service.GetByID(context.Background(), "task-2")

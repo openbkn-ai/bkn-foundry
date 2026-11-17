@@ -12,6 +12,9 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -121,6 +124,49 @@ func (a *buildScheduleAccess) GetByID(ctx context.Context, id string) (*interfac
 		return nil, nil //nolint:nilnil // 不存在的记录由服务层映射为404。
 	}
 	return s, err
+}
+
+// GetByIDs 批量读取计划，缺失的 ID 不加入结果。
+func (a *buildScheduleAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.BuildSchedule, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build schedules by IDs")
+	defer span.End()
+
+	schedules := make(map[string]*interfaces.BuildSchedule, len(ids))
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return schedules, nil
+	}
+
+	query, args, err := sq.Select(columns()...).
+		From(tableName).
+		Where(sq.Eq{"f_id": ids}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build query failed")
+		return nil, err
+	}
+
+	rows, err := a.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		schedule, err := scanSchedule(rows)
+		if err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		schedules[schedule.ID] = schedule
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return schedules, nil
 }
 
 func applyFilters(q sq.SelectBuilder, p interfaces.BuildScheduleQueryParams) sq.SelectBuilder {

@@ -116,6 +116,57 @@ func TestBuildScheduleAccessGetByID(t *testing.T) {
 	})
 }
 
+func TestBuildScheduleAccessGetByIDs(t *testing.T) {
+	t.Run("does not query for empty IDs", func(t *testing.T) {
+		a, _ := newAccessFixture(t)
+		got, err := a.GetByIDs(context.Background(), nil)
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
+	t.Run("loads multiple plans in one query and omits missing IDs", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		rows := sqlmock.NewRows(columns())
+		for _, id := range []string{"plan-2", "plan-1"} {
+			rows.AddRow(id, "Nightly "+id, "resource", "catalog", "0 * * * *", "full", int64(0), int64(0), true, int64(100), int64(200), interfaces.ScheduleStatusSuccess, "created", "run", "creator", "user", int64(1), "updater", "user", int64(25))
+		}
+		m.ExpectQuery("SELECT .* FROM t_build_schedule WHERE f_id IN \\(\\?,\\?,\\?\\)").
+			WithArgs("plan-1", "missing", "plan-2").WillReturnRows(rows).RowsWillBeClosed()
+		got, err := a.GetByIDs(context.Background(), []string{"plan-1", "missing", "plan-2"})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		assert.Equal(t, "Nightly plan-1", got["plan-1"].Name)
+		assert.Equal(t, "Nightly plan-2", got["plan-2"].Name)
+		assert.Equal(t, interfaces.ScheduleStatusSuccess, got["plan-1"].LastStatus)
+		assert.NotContains(t, got, "missing")
+	})
+	t.Run("propagates query errors", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		outage := errors.New("database unavailable")
+		m.ExpectQuery("SELECT .* FROM t_build_schedule WHERE f_id IN \\(\\?\\)").WithArgs("plan-1").WillReturnError(outage)
+		got, err := a.GetByIDs(context.Background(), []string{"plan-1"})
+		assert.ErrorIs(t, err, outage)
+		assert.Nil(t, got)
+	})
+	t.Run("propagates scan errors and closes rows", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		rows := sqlmock.NewRows([]string{"f_id"}).AddRow("plan-1")
+		m.ExpectQuery("SELECT .* FROM t_build_schedule WHERE f_id IN \\(\\?\\)").WithArgs("plan-1").WillReturnRows(rows).RowsWillBeClosed()
+		got, err := a.GetByIDs(context.Background(), []string{"plan-1"})
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
+	t.Run("propagates iteration errors and closes rows", func(t *testing.T) {
+		a, m := newAccessFixture(t)
+		outage := errors.New("row iteration failed")
+		rows := sqlmock.NewRows(columns()).AddRow("plan-1", "Nightly", "resource", "catalog", "0 * * * *", "full", int64(0), int64(0), true, int64(100), int64(200), interfaces.ScheduleStatusSuccess, "created", "run", "creator", "user", int64(1), "updater", "user", int64(25)).RowError(0, outage)
+		m.ExpectQuery("SELECT .* FROM t_build_schedule WHERE f_id IN \\(\\?\\)").WithArgs("plan-1").WillReturnRows(rows).RowsWillBeClosed()
+		got, err := a.GetByIDs(context.Background(), []string{"plan-1"})
+		assert.ErrorIs(t, err, outage)
+		assert.Nil(t, got)
+	})
+}
+
 func TestBuildScheduleAccessCreate(t *testing.T) {
 	a, m := newAccessFixture(t)
 	s := &interfaces.BuildSchedule{ID: "schedule", Name: "nightly", ResourceID: "resource", CatalogID: "catalog", CronExpr: "0 * * * *", ExecuteType: "full", NextRun: 200, LastStatus: interfaces.ScheduleStatusNever, Creator: interfaces.AccountInfo{ID: "creator", Type: "user"}, CreateTime: 100, Updater: interfaces.AccountInfo{ID: "creator", Type: "user"}, UpdateTime: 100}
