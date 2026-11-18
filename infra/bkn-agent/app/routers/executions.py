@@ -173,7 +173,10 @@ async def cancel_execution(
             "result stays authoritative. "
             "Successful result is persisted before "
             "result/terminal; terminal.status is succeeded/failed/cancelled. Retries return "
-            "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution.",
+            "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution. "
+            "While a run is quiet, the stream sends an SSE comment line (`: ping`) every "
+            "BKN_AGENT_SSE_HEARTBEAT_S seconds (15 by default), so a proxy does not close it as idle; "
+            "it carries no event and clients ignore it.",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         }
     },
@@ -558,8 +561,52 @@ def _provider_context(req: ExecutionRequest, provider):
         )
 
 
+_HEARTBEAT = b": ping\n\n"
+
+
+class _HeartbeatResponse(StreamingResponse):
+    """An event stream that writes an SSE comment line whenever it has been quiet for
+    `config.SSE_HEARTBEAT_S`. A model thinking or a tool running can send nothing for minutes,
+    and a proxy closes a connection that stays quiet for its read timeout; a closed connection
+    cancels the run. The events are still read in this task, so a cancel, the run's timeout and a
+    disconnect reach the generator as before; the beat only writes between them."""
+
+    async def stream_response(self, send):
+        await send({"type": "http.response.start", "status": self.status_code, "headers": self.raw_headers})
+        loop = asyncio.get_running_loop()
+        interval = config.SSE_HEARTBEAT_S
+        lock = asyncio.Lock()
+        last = loop.time()
+
+        async def write(chunk, more=True):
+            nonlocal last
+            async with lock:
+                await send({"type": "http.response.body", "body": chunk, "more_body": more})
+                last = loop.time()
+
+        async def beat():
+            while True:
+                await asyncio.sleep(max(0.0, last + interval - loop.time()))
+                if loop.time() - last >= interval:
+                    await write(_HEARTBEAT)
+
+        heartbeat = asyncio.create_task(beat()) if interval > 0 else None
+        if heartbeat is not None:
+            # A beat that failed on a closed connection says nothing the stream does not.
+            heartbeat.add_done_callback(lambda task: task.cancelled() or task.exception())
+        try:
+            async for chunk in self.body_iterator:
+                if not isinstance(chunk, bytes | memoryview):
+                    chunk = chunk.encode(self.charset)
+                await write(chunk)
+        finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
+        await write(b"", more=False)
+
+
 def _response(events):
-    return StreamingResponse(
+    return _HeartbeatResponse(
         events,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

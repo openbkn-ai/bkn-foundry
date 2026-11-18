@@ -12,6 +12,7 @@ import (
 )
 
 type User = model.User
+type Role = model.Role
 type Department = model.Department
 type UserDepartment = model.UserDepartment
 type Source = model.Source
@@ -29,6 +30,7 @@ type Cleanup struct {
 	DepartmentSources func(tx *gorm.DB, ids []string) (map[string]string, error)
 	User              func(tx *gorm.DB, id string) error
 	Department        func(tx *gorm.DB, id string) error
+	Role              func(tx *gorm.DB, id string) error
 }
 
 func (c Cleanup) Name() string              { return "identity-companion-cleanup" }
@@ -45,6 +47,13 @@ func CleanupUser(tx *gorm.DB, id string) error {
 func CleanupDepartment(tx *gorm.DB, id string) error {
 	if c, ok := tx.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.Department != nil {
 		return c.Department(tx, id)
+	}
+	return nil
+}
+
+func CleanupRole(tx *gorm.DB, id string) error {
+	if c, ok := tx.Plugins[(Cleanup{}).Name()].(Cleanup); ok && c.Role != nil {
+		return c.Role(tx, id)
 	}
 	return nil
 }

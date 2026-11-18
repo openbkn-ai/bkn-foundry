@@ -202,8 +202,15 @@ func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
 			WithErrorDetails("cursor cannot be combined with focus_object_type_id"))
 		return
 	}
-	result, err := r.kns.ListOverviewGraph(ctx, c.Param("kn_id"), interfaces.OverviewGraphQuery{
-		Branch:            c.DefaultQuery("branch", interfaces.MAIN_BRANCH),
+	// The version kn_version selects, as every definition read: the draft on screen shows its own
+	// object and relation types, not the running version's.
+	knID := c.Param("kn_id")
+	branch, ok := r.readBranch(&ctx, c, knID)
+	if !ok {
+		return
+	}
+	result, err := r.kns.ListOverviewGraph(ctx, knID, interfaces.OverviewGraphQuery{
+		Branch:            branch,
 		NodeLimit:         nodeLimit,
 		EdgeLimit:         edgeLimit,
 		Cursor:            c.Query("cursor"),

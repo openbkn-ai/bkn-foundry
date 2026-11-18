@@ -29,6 +29,8 @@ const (
 const (
 	TriggerTypeManual    = "manual"
 	TriggerTypeScheduled = "scheduled"
+	// TriggerTypeAgent marks an execution an Agent started through the Context Loader.
+	TriggerTypeAgent = "agent"
 )
 
 // Execution mode constants.
@@ -55,7 +57,7 @@ type ActionExecutionRequest struct {
 	KNID                 string                `json:"-"`
 	Branch               string                `json:"-"`
 	ActionTypeID         string                `json:"-"`
-	TriggerType          string                `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
+	TriggerType          string                `json:"trigger_type,omitempty"` // "manual", "scheduled" or "agent", defaults to "manual"
 	InstanceIdentities   []map[string]any      `json:"_instance_identities"`
 	DynamicParams        map[string]any        `json:"dynamic_params,omitempty"`
 	GovernanceRequestID  string                `json:"governance_request_id,omitempty"`
@@ -102,7 +104,7 @@ type ActionExecution struct {
 	ActionSourceType        string                  `json:"action_source_type"` // "tool" | "mcp"
 	ActionSource            ActionSource            `json:"action_source"`
 	ObjectTypeID            string                  `json:"object_type_id"`
-	TriggerType             string                  `json:"trigger_type"`             // "manual" | "scheduled"
+	TriggerType             string                  `json:"trigger_type"`             // "manual" | "scheduled" | "agent"
 	Status                  string                  `json:"status"`                   // "pending" | "running" | "completed" | "failed"
 	ExecutionMode           string                  `json:"execution_mode,omitempty"` // "once" | "per_instance", resolved from the action parameters
 	TargetCount             int                     `json:"target_count,omitempty"`   // matched instances; equals TotalCount under per_instance

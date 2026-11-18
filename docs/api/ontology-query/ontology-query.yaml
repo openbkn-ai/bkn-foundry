@@ -2530,11 +2530,12 @@ paths:
             type: string
           in: query
         - name: trigger_type
-          description: 触发类型（可选）
+          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起
           schema:
             enum:
               - manual
               - scheduled
+              - agent
             type: string
           in: query
         - name: conversation_id
@@ -4862,10 +4863,11 @@ components:
           description: 对象类ID
           type: string
         trigger_type:
-          description: 触发类型
+          description: 触发类型；agent 表示 Agent 经 Context Loader 发起
           enum:
             - manual
             - scheduled
+            - agent
           type: string
         status:
           description: 执行状态。取消被接受后保持 cancelled，执行器随后写入的终态不会覆盖它。
@@ -4999,10 +5001,11 @@ components:
           description: 对象类ID
           type: string
         trigger_type:
-          description: 触发类型
+          description: 触发类型；agent 表示 Agent 经 Context Loader 发起
           enum:
             - manual
             - scheduled
+            - agent
           type: string
         status:
           description: 执行状态
@@ -5129,10 +5132,11 @@ components:
             - cancelled
           type: string
         trigger_type:
-          description: 触发类型（可选）
+          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起
           enum:
             - manual
             - scheduled
+            - agent
           type: string
         keyword:
           description: 按执行 ID 过滤（可选），不区分大小写的字面子串匹配，最长 128 个字符

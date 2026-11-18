@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -183,6 +184,9 @@ func (s *adminWriteServices) DeleteRole(ctx context.Context, id string) error {
 			return err
 		}
 		if err := tx.DB().Delete(&model.Role{}, "id = ?", role.ID).Error; err != nil {
+			return err
+		}
+		if err := identity.CleanupRole(tx.DB(), role.ID); err != nil {
 			return err
 		}
 		if err := tx.RemoveRoleCompletely(role.ID); err != nil {

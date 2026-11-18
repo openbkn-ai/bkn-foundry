@@ -14,7 +14,7 @@ name: Claude Code Review
 # 那条说明多半不含口令，过不了下方 job 的 if，也就不会去取消正在跑的那轮；而推送那轮
 # 的评论是在 job 开头预取的，说明发在它开头之后就永远读不到。#619 第九轮实测：02:28:42
 # 推送触发评审，02:28:56 作者发说明「appSetting 死字段本轮不采纳」，02:31:56 的结论仍把
-# 这条原样列了出来——作者会认为没人在听。debounce 那 15 秒对此完全无效，它只让**合格
+# 这条原样列了出来——作者会认为没人在听。debounce 那 30 秒对此完全无效，它只让**合格
 # 的**评论有机会取消推送轮，不合格的评论按 comment.id 单独分组、根本不参与取消。
 # 因此分片 prompt 要求「写 findings 之前最后再拉一次顶层评论」。注意只堵住了顶层这一半：
 # 作者在 bot 的 inline 评论下回复「不采纳」仍读不到，因为补另一半要 `gh api`，而分片
@@ -190,11 +190,13 @@ jobs:
       # 推送事件先静默一小会儿再往下走。作者（多数时候是 agent）常见动作是
       # `git push` 紧接着 `gh pr comment "/review"`，两条事件各触发一次评审；静默期内
       # 后一条到达时，上面的 concurrency 会把本 run 取消，而此刻还没 checkout、没调
-      # Claude、没贴 tracking comment，取消的代价是零。等满则照常跑，只晚十几秒。
+      # Claude、没贴 tracking comment，取消的代价是零。等满则照常跑，只晚半分钟。
+      # 时长取 30 秒而不是 15 秒：agent 推送后往往还要整理处理说明再回帖，15 秒内常常
+      # 赶不上，推送轮已经开跑、评论轮又来一遍，等于两轮。
       # 只挂 pull_request：评论触发与手动触发都是人明确要一轮，不该让它等。
       - name: Debounce push events
         if: github.event_name == 'pull_request'
-        run: sleep 15
+        run: sleep 30
 
       - name: Resolve PR number
         id: meta
