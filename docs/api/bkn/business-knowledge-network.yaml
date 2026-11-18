@@ -493,11 +493,8 @@ paths:
           description: Business knowledge network ID
           schema:
             type: string
-        - name: branch
-          in: query
-          schema:
-            type: string
-            default: main
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
+        - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
         - name: node_limit
           in: query
           description: Maximum returned nodes per page. Defaults to 60; maximum 500.
