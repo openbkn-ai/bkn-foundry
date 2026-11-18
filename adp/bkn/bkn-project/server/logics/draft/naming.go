@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 )
 
 // nameLanguage is the naming language a name reads in: Chinese when it holds a Han character,
@@ -97,11 +98,6 @@ func givenName(table *interfaces.VegaTable) string {
 	return table.Name
 }
 
-// relationCodeWords are the words that end the name of a field holding another record's code
-// rather than naming a role: 物料编码, 客户ID, Supplier No., CustomerID. Longer words come first, so
-// 编号 is taken before 号.
-var relationCodeWords = []string{"编码", "编号", "代码", "号码", "number", "code", "no.", "key", "id", "号"}
-
 // roleOfField is the role a referring field names, its display name without a trailing code word:
 // 父项物料编码 → 父项物料, 客户ID → 客户, Supplier No. → Supplier, CustomerID → Customer. An English
 // code word ends the role only after a space, underscore or hyphen, a Han character, or a lower-case
@@ -109,7 +105,7 @@ var relationCodeWords = []string{"编码", "编号", "代码", "号码", "number
 // that names a role is left: no letter, or a single Han character, as 父 of 父编码 or 工 of 工号.
 func roleOfField(field string) string {
 	field = strings.TrimSpace(field)
-	for _, word := range relationCodeWords {
+	for _, word := range locale.RelationCodeWords {
 		at := len(field) - len(word)
 		if at < 0 || !utf8.RuneStart(field[at]) || !strings.EqualFold(field[at:], word) {
 			continue
@@ -248,14 +244,19 @@ func draftedRelationName(language string, source *interfaces.DraftObjectType, ta
 }
 
 // relationNameAmong names a relation drafted from a referring field among relations: by its role,
-// or by the field's whole name when another relation of the same source has the role name.
+// or by the field's whole name when another relation of the same source has the role name, or by its
+// id when that one is taken too.
 func relationNameAmong(language string, relations []*interfaces.DraftRelationType, source *interfaces.DraftObjectType,
 	target *interfaces.DraftObjectType, property string, id string) string {
 	name := relationNameIn(language, source, target, property, id)
-	if relationNameTaken(relations, source.ID, id, name) {
-		return relationNameFullIn(source, target, property, id)
+	if !relationNameTaken(relations, source.ID, id, name) {
+		return name
 	}
-	return name
+	if full := relationNameFullIn(source, target, property, id); !relationNameTaken(relations, source.ID, id, full) {
+		return full
+	}
+	// Another field of the source is named like this one's role: the id keeps the two apart.
+	return id
 }
 
 // dropAliasesOfOtherProperties leaves out an alias that is another property's name or display name:
