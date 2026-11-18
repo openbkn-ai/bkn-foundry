@@ -771,8 +771,10 @@ func (j *judge) checked(a agentSuggestion) *interfaces.DiagnosisSuggestion {
 	default:
 		return nil
 	}
-	// Ask AI's wording replaces the server's; the evidence and impact stay the server's.
-	if t := truncate(a.Title, titleMaxLength); t != "" {
+	// Ask AI's wording replaces the server's; the evidence and impact stay the server's. A relation's
+	// title is its source, name and target as applied, so it stays the server's.
+	if t := truncate(a.Title, titleMaxLength); t != "" && s.Kind != interfaces.DIAGNOSIS_KIND_CREATE_RELATION &&
+		s.Kind != interfaces.DIAGNOSIS_KIND_ADOPT_RELATION {
 		s.Title = t
 	}
 	if r := truncate(a.Reason, reasonMaxLength); r != "" {

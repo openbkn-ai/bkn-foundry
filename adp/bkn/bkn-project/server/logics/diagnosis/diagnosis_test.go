@@ -277,8 +277,7 @@ func Test_Judge(t *testing.T) {
 			// Impact is the server's, not Ask AI's.
 			So(root.Impact.Questions, ShouldResemble, []string{"q2"})
 			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT, "x"), ShouldBeNil)
-			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "弱"), ShouldBeNil)
-			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "编"), ShouldBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "—工单→"), ShouldBeNil)
 
 			wb := byKindTitle(list, interfaces.DIAGNOSIS_KIND_WRITEBACK_OBJECT, "监测任务")
 			So(wb, ShouldNotBeNil)
@@ -290,7 +289,9 @@ func Test_Judge(t *testing.T) {
 			So(applyOf[interfaces.DiagnosisConceptDisposition](disposition), ShouldResemble, interfaces.DiagnosisConceptDisposition{
 				ConceptID: "c2", Disposition: interfaces.DIAGNOSIS_DISPOSITION_PROPERTY, OwnerObjectTypeID: "work_order"})
 
-			sub := byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "产品 是一种 物料")
+			// A relation's title is the server's: source, name and target as applied.
+			sub := byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "产品 —对应物料→ 物料")
+			So(sub.Reason, ShouldEqual, "产品是成品物料。")
 			So(applyOf[interfaces.DiagnosisCreateRelation](sub).Cardinality, ShouldEqual, interfaces.DRAFT_CARDINALITY_ONE_TO_ONE)
 			// The server still reports data quality.
 			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_DATA_QUALITY, "586/605"), ShouldNotBeNil)
@@ -307,7 +308,7 @@ func Test_Judge(t *testing.T) {
 			list, _ := j.suggestions(&agentOutput{Suggestions: []agentSuggestion{{Kind: interfaces.DIAGNOSIS_KIND_CREATE_RELATION,
 				Title: "引", Reason: "文档写明。", Reference: index(weak), Name: "根需求工单",
 				Quotes: []interfaces.DiagnosisQuote{{DocumentID: "d1", Text: "根需求单据要能追到预测"}}}}})
-			s := byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "引")
+			s := byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "—根需求工单→")
 			So(s, ShouldNotBeNil)
 			So(s.Evidence.Quotes, ShouldResemble, []interfaces.DiagnosisQuote{{DocumentID: "d1", Text: "根需求单据要能追到预测"}})
 		})
