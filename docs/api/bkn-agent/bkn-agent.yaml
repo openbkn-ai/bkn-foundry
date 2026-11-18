@@ -313,7 +313,10 @@ paths:
             stays authoritative. Successful result is persisted before result/terminal;
             terminal.status is succeeded/failed/cancelled. Retries return meta and
             the existing terminal; an active retry returns 409. Disconnect cancels
-            execution.'
+            execution. While a run is quiet, the stream sends an SSE comment line
+            (`: ping`) every BKN_AGENT_SSE_HEARTBEAT_S seconds (15 by default), so
+            a proxy does not close it as idle; it carries no event and clients ignore
+            it.'
           content:
             text/event-stream:
               schema:

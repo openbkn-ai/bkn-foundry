@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +47,58 @@ func TestFunctionExecuteProxyPreservesLargeIntegerEvent(t *testing.T) {
 	engine.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"large_integer":9007199254740993`) {
 		t.Fatalf("function response: %d %s", response.Code, response.Body.String())
+	}
+}
+
+// A Function without inputs is called with no body at all: a tool proxy call or an action that
+// has nothing to send omits it. The Function then runs with an empty event (#3236).
+func TestFunctionExecuteProxyRunsAnEmptyBodyAsAnEmptyEvent(t *testing.T) {
+	const version = "11111111-1111-4111-8111-111111111111"
+	for name, body := range map[string]io.Reader{
+		"no body": http.NoBody, "empty body": strings.NewReader(""), "blank body": strings.NewReader("  \n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			service, metadata := mocks.NewMockIMetadataService(ctrl), mocks.NewMockIMetadataDB(ctrl)
+			service.EXPECT().CheckMetadataExists(gomock.Any(), interfaces.MetadataTypeFunc, version).Return(true, metadata, nil)
+			metadata.EXPECT().GetScriptType().Return(string(interfaces.ScriptTypePython))
+			metadata.EXPECT().GetCode().Return("def handler(event): return {'marker': 'noop'}")
+			metadata.EXPECT().GetDependencies().Return("")
+			metadata.EXPECT().GetDependenciesURL().Return("")
+			pool := functionTimeoutSessionPool{execute: func(req *interfaces.ExecuteCodeReq) *interfaces.ExecuteCodeResp {
+				if req.Event == nil || len(req.Event) != 0 {
+					t.Fatalf("function event = %#v, want an empty object", req.Event)
+				}
+				return &interfaces.ExecuteCodeResp{Status: "completed", ReturnValue: map[string]any{"marker": "noop"}}
+			}}
+			handler := &unifiedProxyHandler{Logger: logger.DefaultLogger(), MetadataService: service, SessionPool: pool}
+			engine := gin.New()
+			engine.POST("/function/exec/:version", handler.FunctionExecuteProxy)
+			request := httptest.NewRequest(http.MethodPost, "/function/exec/"+version, body)
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"marker":"noop"`) {
+				t.Fatalf("function response: %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+// Only an absent body stands for no input: a body that is there but not a JSON object is refused.
+func TestFunctionExecuteProxyStillRefusesAMalformedBody(t *testing.T) {
+	const version = "11111111-1111-4111-8111-111111111111"
+	for name, body := range map[string]string{"truncated": `{"a":`, "array": `[1]`, "not json": `noop`} {
+		t.Run(name, func(t *testing.T) {
+			handler := &unifiedProxyHandler{Logger: logger.DefaultLogger()}
+			engine := gin.New()
+			engine.POST("/function/exec/:version", handler.FunctionExecuteProxy)
+			request := httptest.NewRequest(http.MethodPost, "/function/exec/"+version, strings.NewReader(body))
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("function response: %d %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

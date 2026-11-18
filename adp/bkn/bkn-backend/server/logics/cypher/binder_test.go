@@ -145,6 +145,10 @@ func TestResolveLabelSelfMatchIsNotAmbiguous(t *testing.T) {
 	}
 }
 
+// connectsAny stands in for the pattern's ends in tests about a name that one
+// relation type carries, which resolves whatever the ends.
+func connectsAny(*interfaces.RelationType) bool { return true }
+
 func TestResolveRelationType(t *testing.T) {
 	src := &fakeSchemaSource{objectTypes: []*interfaces.ObjectType{
 		objectType("ot_order", "Order", resource("res_order", "orders")),
@@ -155,13 +159,13 @@ func TestResolveRelationType(t *testing.T) {
 	}}
 	schema := testSchema(t, src)
 
-	if rt, err := schema.ResolveRelationType("PLACED"); err != nil || rt.RTID != "rt_placed" {
+	if rt, err := schema.ResolveRelationType("PLACED", connectsAny); err != nil || rt.RTID != "rt_placed" {
 		t.Fatalf("ResolveRelationType by name = %v, %v", rt, err)
 	}
-	if _, err := schema.ResolveRelationType("rt_placed"); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+	if _, err := schema.ResolveRelationType("rt_placed", connectsAny); err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("want ambiguity error, got %v", err)
 	}
-	if _, err := schema.ResolveRelationType("SHIPPED"); err == nil ||
+	if _, err := schema.ResolveRelationType("SHIPPED", connectsAny); err == nil ||
 		!strings.Contains(err.Error(), "unknown relationship type") {
 		t.Fatalf("want unknown relationship type error, got %v", err)
 	}

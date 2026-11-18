@@ -62,10 +62,9 @@ info:
     Every published version has an index of its own, written in the same transaction that publishes
     it; the draft's index is updated by every write to the draft, so a search over
     `kn_version=draft` always sees the latest edit. Purging a version, or turning versioning off,
-    deletes its index. Two kinds of endpoint do not read the definitions of a chosen version: the
-    `validation` endpoints check the request body (the version only matters for the existence check
-    of the network), and `overview-graph` reads the branch named by `branch` (main, which holds the
-    running version, by default).
+    deletes its index. The `validation` endpoints do not read the definitions of a chosen version:
+    they check the request body, and the version only matters for the existence check of the
+    network.
 
     ## Writing to the draft
 

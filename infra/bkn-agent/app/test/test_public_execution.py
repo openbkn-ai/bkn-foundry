@@ -954,6 +954,84 @@ def test_http_cancel_stops_active_stream_and_persists_terminal(monkeypatch):
     asyncio.run(run())
 
 
+def without_heartbeats(text):
+    return "".join(
+        f"{block}\n\n"
+        for block in text.split("\n\n")
+        if block and not block.startswith(":")
+    )
+
+
+def test_quiet_stream_sends_heartbeats_and_still_ends_with_the_result(monkeypatch):
+    """#3272: a run quiet for longer than a proxy's read timeout lost its connection and was
+    cancelled; comment lines now keep the stream alive between the events."""
+    from app.config import config
+
+    async def run():
+        async with environment(monkeypatch) as (client, _, _calls):
+
+            async def quiet(session, agent, req, account_id, account_type, *, public):
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+                public.answer.append("Answer")
+                public.prompt_version = 1
+
+                async def events():
+                    # A model thinking, or a tool running, sends nothing for a while.
+                    await asyncio.sleep(0.3)
+                    yield public.event("token", {"content": "Answer"})
+                    yield "event: done\ndata: {}\n\n"
+
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", quiet)
+            monkeypatch.setattr(config, "SSE_HEARTBEAT_S", 0.05)
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            assert response.status_code == 200, response.text
+            blocks = response.text.split("\n\n")
+            beats = [i for i, block in enumerate(blocks) if block == ": ping"]
+            token = next(i for i, block in enumerate(blocks) if block.startswith("event: token"))
+            assert beats and beats[0] < token
+            events = parse_sse(without_heartbeats(response.text))
+            assert [e for e, _ in events] == ["meta", "token", "usage", "result", "terminal"]
+            assert [d["sequence"] for _, d in events] == [1, 2, 3, 4, 5]
+            assert events[-1][1]["status"] == "succeeded"
+
+    asyncio.run(run())
+
+
+def test_cancel_reaches_a_quiet_run_while_heartbeats_are_sent(monkeypatch):
+    from app.config import config
+
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            started = asyncio.Event()
+
+            async def blocking(session, agent, req, account_id, account_type, *, public):
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+
+                async def events():
+                    started.set()
+                    await asyncio.Event().wait()
+                    yield "unused"
+
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", blocking)
+            monkeypatch.setattr(config, "SSE_HEARTBEAT_S", 0.02)
+            pending = asyncio.create_task(client.post(URL, json=BODY, headers=AUTH))
+            await asyncio.wait_for(started.wait(), 2)
+            await asyncio.sleep(0.1)
+            async with factory() as session:
+                run_id = (await session.execute(select(TaskRow))).scalar_one().f_task_id
+            assert (await client.post(f"{URL}/{run_id}/cancel", headers=AUTH)).status_code == 200
+            stream = await asyncio.wait_for(pending, 2)
+            assert ": ping" in stream.text.split("\n\n")
+            assert parse_sse(without_heartbeats(stream.text))[-1][1]["status"] == "cancelled"
+            assert (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()["status"] == "cancelled"
+
+    asyncio.run(run())
+
+
 def test_setup_timeout_is_failed_and_retry_does_not_restart(monkeypatch):
     from app.config import config
 

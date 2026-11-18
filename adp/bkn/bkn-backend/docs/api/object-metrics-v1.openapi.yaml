@@ -198,14 +198,25 @@ paths:
       operationId: checkObjectMetricVersionDeletion
       description: >-
         Checks the same branch-local constraints enforced atomically by DELETE. Blocker details are filtered
-        by view permission; hidden blockers are reported only as a count.
+        by view permission; hidden blockers are reported only as a count. `kn_version` selects the network
+        version checked, as on every metric read (DELETE on a versioned network acts on its draft, so check
+        `kn_version=draft` before it); `version` is the metric's own version.
+      parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
       responses:
         "200":
           description: Permission-filtered deletion eligibility and blockers.
+          headers:
+            X-Kn-Version: { $ref: "#/components/headers/XKnVersion" }
+            X-Kn-Draft-Revision: { $ref: "#/components/headers/XKnDraftRevision" }
+            X-Kn-Running-Version: { $ref: "#/components/headers/XKnRunningVersion" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricVersionDeletionCheck" }
-        "404": { description: The requested metric version does not exist. }
+        "400": { description: "`kn_version` is not `running`, `draft` or a version number, or is combined with `branch` (`BknBackend.KNVersion.InvalidVersion`); a version other than `running` on a network without versioning (`BknBackend.KNVersion.NotVersioned`)." }
+        "404": { description: "The requested metric version does not exist, or the requested network version was never published (`BknBackend.KNVersion.VersionNotFound`)." }
+        "410": { description: "The requested network version was purged (`BknBackend.KNVersion.VersionPurged`)." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
