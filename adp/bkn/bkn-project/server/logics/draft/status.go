@@ -874,9 +874,7 @@ func (s *draftService) withSourceChanges(ctx context.Context, status *interfaces
 		return
 	}
 	read := &sourceTables{tables: map[string]*interfaces.VegaTable{}, missing: map[string]bool{}}
-	for _, t := range tables {
-		read.tables[t.ID] = t
-	}
+	read.add(tables)
 	changes := draftSourceChanges(draft, read, s.setting.PrivacyKeywords)
 	if changes.State != interfaces.SOURCE_CHANGES_CHANGED {
 		return

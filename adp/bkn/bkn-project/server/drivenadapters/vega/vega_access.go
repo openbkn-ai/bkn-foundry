@@ -29,8 +29,9 @@ const (
 	headerAccountID   = "x-account-id"
 	headerAccountType = "x-account-type"
 
-	categoryTable = "table"
-	noLimit       = "-1"
+	categoryTable   = "table"
+	categoryDataset = "dataset"
+	noLimit         = "-1"
 	// operationTaskManage is the catalog permission to see and run its build tasks.
 	operationTaskManage = "task_manage"
 
@@ -799,6 +800,7 @@ func toTable(r *resource) *interfaces.VegaTable {
 		Name:        r.Name,
 		Description: r.Description,
 		Index:       interfaces.VegaTableIndex{LocalStatus: r.LocalStatus, IndexName: r.IndexName},
+		Dataset:     r.Category == categoryDataset,
 	}
 	if r.IndexConfig != nil {
 		table.Index.PrimaryKeyFields = r.IndexConfig.PrimaryKeyFields

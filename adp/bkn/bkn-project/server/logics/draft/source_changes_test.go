@@ -455,6 +455,20 @@ func Test_GetSourceChanges(t *testing.T) {
 			So(changeOf(got, "regions", "email"), ShouldBeNil)
 		})
 
+		Convey("A Dataset is not compared: the platform writes it and its schema follows the object type\n", func() {
+			// Datasets carry no source table structure, so every column would read as removed.
+			customers := &interfaces.VegaTable{ID: "t_customers", Dataset: true}
+			regions := &interfaces.VegaTable{ID: "t_regions", Dataset: true}
+			va.EXPECT().MissingTables(gomock.Any(), caller, ids).Return(nil, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, ids).Return([]*interfaces.VegaTable{customers, ordersTable(), customerTagsTable(), regions}, nil)
+
+			got, err := svc.GetSourceChanges(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(got.State, ShouldEqual, interfaces.SOURCE_CHANGES_IN_STEP)
+			So(got.ObjectTypes, ShouldBeEmpty)
+		})
+
 		Convey("Gone tables come from MissingTables and are not read\n", func() {
 			va.EXPECT().MissingTables(gomock.Any(), caller, ids).Return([]string{"t_regions"}, nil)
 			va.EXPECT().GetTables(gomock.Any(), caller, ids[:3]).Return([]*interfaces.VegaTable{customersTable(), ordersTable(), customerTagsTable()}, nil)

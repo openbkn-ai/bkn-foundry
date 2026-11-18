@@ -63,10 +63,19 @@ func (s *draftService) readSources(ctx context.Context, caller interfaces.Accoun
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range tables {
-		read.tables[t.ID] = t
-	}
+	read.add(tables)
 	return read, nil
+}
+
+// add keeps the source tables read for comparison. A Dataset is not compared: the platform writes
+// it, as for write-back objects and knowledge-base extraction, and its schema follows the object
+// type, so a column missing from its record is no change of the data.
+func (r *sourceTables) add(tables []*interfaces.VegaTable) {
+	for _, t := range tables {
+		if t != nil && !t.Dataset {
+			r.tables[t.ID] = t
+		}
+	}
 }
 
 // draftSourceIDs are the tables of a ready draft's object types and link tables, each once, in the
