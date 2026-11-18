@@ -474,8 +474,11 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
 	// Buildrequest body (real execution, carries dynamic parameters; does not set method-override, so it is a real POST)
+	// Every execution the Context Loader starts is started by an Agent: ontology-query records
+	// it as such, so the execution history and audit tell it from one a person started.
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
+		"trigger_type":         interfaces.ActionTriggerTypeAgent,
 	}
 	if req.RelationTarget != nil {
 		body["relation_target"] = req.RelationTarget

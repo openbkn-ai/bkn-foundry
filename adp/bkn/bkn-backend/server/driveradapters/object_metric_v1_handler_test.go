@@ -16,9 +16,11 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"go.uber.org/mock/gomock"
 
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
@@ -344,5 +346,70 @@ func TestGetObjectMetricProjectsAuthorizedMetricOwnerName(t *testing.T) {
 	if recorder.Code != http.StatusOK || service.record.OwnerObjectTypeName != "" ||
 		!strings.Contains(recorder.Body.String(), `"owner_object_type_name":"销售订单"`) {
 		t.Fatalf("status=%d record=%#v body=%s", recorder.Code, service.record, recorder.Body.String())
+	}
+}
+
+// metricNetworkVersions resolves kn_version as a versioned network running v2 does.
+type metricNetworkVersions struct{ interfaces.KNVersionService }
+
+func (metricNetworkVersions) ResolveBranch(ctx context.Context, _ string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, error) {
+	switch req.KNVersion {
+	case "", "running":
+		return &interfaces.KNResolvedBranch{Branch: "v2", Versioned: true, Version: "2", RunningVersion: 2}, nil
+	case "draft":
+		return &interfaces.KNResolvedBranch{Branch: interfaces.DRAFT_BRANCH, Versioned: true, Version: "draft", RunningVersion: 2}, nil
+	case "1":
+		return &interfaces.KNResolvedBranch{Branch: "v1", Versioned: true, Version: "1", RunningVersion: 2}, nil
+	}
+	return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion)
+}
+
+type objectMetricDeletionCheckStub struct {
+	interfaces.ObjectMetricServiceV1
+	branch string
+	calls  int
+}
+
+func (s *objectMetricDeletionCheckStub) CheckVersionDeletion(_ context.Context, _, branch, metricID string, version int) (*interfaces.ObjectMetricVersionDeletionCheckV1, error) {
+	s.branch = branch
+	s.calls++
+	return &interfaces.ObjectMetricVersionDeletionCheckV1{MetricID: metricID, Version: version, Deletable: true}, nil
+}
+
+// The deletion check reads the network version kn_version selects, as every metric read does,
+// and refuses one that is not a version before checking anything (#3238). version stays the
+// metric's own version.
+func TestCheckObjectMetricVersionDeletionReadsTheSelectedNetworkVersion(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	for query, want := range map[string]string{
+		"version=1":                          "v2",
+		"version=1&kn_version=running":       "v2",
+		"version=1&kn_version=draft":         interfaces.DRAFT_BRANCH,
+		"version=1&kn_version=1":             "v1",
+		"version=1&kn_version=not_a_version": "",
+	} {
+		t.Run(query, func(t *testing.T) {
+			service := &objectMetricDeletionCheckStub{}
+			handler := &restHandler{oms: service, kvs: metricNetworkVersions{}}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet,
+				"/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/m-1/deletion-check?"+query, nil)
+			c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+			handler.checkObjectMetricVersionDeletion(c, hydra.Visitor{})
+
+			if want == "" {
+				if recorder.Code != http.StatusBadRequest || service.calls != 0 ||
+					!strings.Contains(recorder.Body.String(), berrors.BknBackend_KNVersion_InvalidVersion) {
+					t.Fatalf("status=%d calls=%d body=%s", recorder.Code, service.calls, recorder.Body.String())
+				}
+				return
+			}
+			if recorder.Code != http.StatusOK || service.branch != want {
+				t.Fatalf("status=%d branch=%q want %q body=%s", recorder.Code, service.branch, want, recorder.Body.String())
+			}
+		})
 	}
 }

@@ -183,6 +183,9 @@ type KnActionExecuteResponse struct {
 	CreatedAt   int64  `json:"created_at"`
 }
 
+// ActionTriggerTypeAgent is the trigger type of an execution started through the Context Loader.
+const ActionTriggerTypeAgent = "agent"
+
 // ExecuteActionsRequest Action Execution Request to ontology-query
 type ExecuteActionsRequest struct {
 	RelationTarget       *ActionRelationTarget `json:"relation_target,omitempty"`
@@ -220,7 +223,7 @@ type KnListActionExecutionsRequest struct {
 	KnID          string `json:"kn_id" validate:"required"` // Knowledge Network ID
 	ActionTypeID  string `json:"action_type_id,omitempty"`  // Filter by action type (optional)
 	Status        string `json:"status,omitempty"`          // Filter by status: pending/running/completed/failed/cancelled (optional)
-	TriggerType   string `json:"trigger_type,omitempty"`    // Filter by trigger method: manual/scheduled (optional)
+	TriggerType   string `json:"trigger_type,omitempty"`    // Filter by trigger method: manual/scheduled/agent (optional)
 	StartTimeFrom int64  `json:"start_time_from,omitempty"` // Lower bound on start time (Unix milliseconds, optional)
 	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // Upper starting time bound (Unix milliseconds, optional)
 	Offset        int    `json:"offset,omitempty"`          // Offset paging; mutually exclusive with search_after (optional)

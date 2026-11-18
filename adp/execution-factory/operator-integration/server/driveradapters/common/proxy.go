@@ -2,7 +2,9 @@ package common
 
 import (
 	"crypto/sha256"
+	stderrors "errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -388,9 +390,13 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error()))
 		return
 	}
-	// Read request body.
+	// Read request body. No body is no input: a Function without inputs is called without one
+	// (the toolbox proxy sends none when the call has no body), and it runs with an empty event.
 	event := map[string]any{}
-	if err = utils.BindPreciseJSON(c, &event); err != nil {
+	if err = utils.BindPreciseJSON(c, &event); stderrors.Is(err, io.EOF) {
+		event, err = map[string]any{}, nil
+	}
+	if err != nil {
 		err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
 			fmt.Sprintf("invalid request body, err: %v", err))
 		rest.ReplyError(c, err)
