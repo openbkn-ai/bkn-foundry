@@ -88,7 +88,7 @@ func newJudge(setting common.DraftSetting, facts *interfaces.DraftNetworkFacts, 
 			}
 		}
 	}
-	facts.References = sameTargetBranches(facts.References)
+	facts.References = sameTargetBranches(facts.References, j.items.RelationTypes)
 	// The counted first, by rate, so the message keeps the strongest when it cuts.
 	j.refs = slices.Clone(facts.References)
 	slices.SortStableFunc(j.refs, func(a, b interfaces.DraftReference) int {
@@ -139,8 +139,9 @@ func (j *judge) textual(objectTypeID string, property string) bool {
 }
 
 // sameTargetBranches makes one plain reference of a polymorphic field whose every branch reaches the
-// same identity: the type field then tells nothing about where the code points.
-func sameTargetBranches(refs []interfaces.DraftReference) []interfaces.DraftReference {
+// same identity: the type field then tells nothing about where the code points. A relation of the
+// draft that maps the field to that identity is the reference's relation, as for any plain reference.
+func sameTargetBranches(refs []interfaces.DraftReference, relations []*interfaces.DraftRelationType) []interfaces.DraftReference {
 	type field struct{ source, property string }
 	branches := map[field][]int{}
 	for i, r := range refs {
@@ -171,6 +172,14 @@ func sameTargetBranches(refs []interfaces.DraftReference) []interfaces.DraftRefe
 		}
 		if nonEmpty := plain.Rows - plain.Nulls; nonEmpty > 0 {
 			plain.Rate = float64(plain.Hits) / float64(nonEmpty)
+		}
+		mapping := interfaces.DraftFieldMapping{SourceProperty: plain.SourceProperty, TargetProperty: plain.TargetProperty}
+		for _, rt := range relations {
+			if rt != nil && rt.LinkTable == nil && rt.Source == plain.Source && rt.Target == plain.Target &&
+				len(rt.Mapping) == 1 && rt.Mapping[0] == mapping {
+				plain.RelationTypeID = rt.ID
+				break
+			}
 		}
 		out = append(out, plain)
 	}

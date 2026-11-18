@@ -388,6 +388,17 @@ func Test_Judge(t *testing.T) {
 			So(plain.Evidence.Hits, ShouldEqual, 5)
 			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "资源类型 ="), ShouldBeNil)
 			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "—序号→"), ShouldBeNil)
+
+			// Once the draft has that relation, adopted, it is covered and not suggested again.
+			d.Items.RelationTypes = append(d.Items.RelationTypes, &interfaces.DraftRelationType{ID: "stoppage_line",
+				Name: "资源", Source: "stoppage", Target: "line", Adopted: true,
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "resource_code", TargetProperty: "code"}}})
+			facts = sampleFacts(d)
+			facts.References = append(facts.References, branch("产线", 3), branch("工厂", 2))
+			again := newJudge(setting, facts, sampleQuestions(), sampleConcepts())
+			list, _ = again.suggestions(nil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "产线停机 —"), ShouldBeNil)
+			So(again.metrics().References.Covered, ShouldEqual, 3)
 		})
 
 		Convey("A title Ask AI gives as a relation name is not taken as the name\n", func() {
