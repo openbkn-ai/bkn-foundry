@@ -83,6 +83,9 @@ class Config:
     # Default execution limits; agent.limits may override them.
     DEFAULT_MAX_TURNS = int(_env("BKN_AGENT_MAX_TURNS", "25"))
     DEFAULT_TIMEOUT_S = int(_env("BKN_AGENT_TIMEOUT_S", "300"))
+    # An execution stream quiet this long gets an SSE comment line, so a proxy that closes idle
+    # connections (60 or 180 seconds) does not cut a run that is still thinking or calling a tool.
+    SSE_HEARTBEAT_S = float(_env("BKN_AGENT_SSE_HEARTBEAT_S", "15"))
 
     SKILL_CACHE_TTL_S = int(_env("BKN_AGENT_SKILL_TTL", "60"))
 
