@@ -17,6 +17,7 @@ var (
 	PA  interfaces.ProjectAccess
 	DA  interfaces.DraftAccess
 	CA  interfaces.CheckAccess
+	DGA interfaces.DiagnosisAccess
 	IRA interfaces.IDRegistryAccess
 	VA  interfaces.VegaAccess
 	IBA interfaces.IndexBuildAccess
@@ -52,6 +53,10 @@ func SetDraftAccess(da interfaces.DraftAccess) {
 
 func SetCheckAccess(ca interfaces.CheckAccess) {
 	CA = ca
+}
+
+func SetDiagnosisAccess(dga interfaces.DiagnosisAccess) {
+	DGA = dga
 }
 
 func SetIDRegistryAccess(ira interfaces.IDRegistryAccess) {

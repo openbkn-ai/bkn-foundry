@@ -144,4 +144,12 @@ type DraftService interface {
 		caller AccountInfo) (*Draft, error)
 	// FailInterrupted fails the drafts and checks a previous run of the service left going.
 	FailInterrupted(ctx context.Context) error
+	// NetworkFacts computes the facts of a network diagnosis on the ready draft: its components, what
+	// adopting each object type left out brings in, and the references, polymorphic branches, parent
+	// references and subtypes full-table counts find as the caller, within the scan budget.
+	NetworkFacts(ctx context.Context, token string, projectID string, caller AccountInfo) (*DraftNetworkFacts, error)
+	// DismissSuggestion records that the caller dismissed a diagnosis suggestion, as a decision of the
+	// ready draft, so later diagnoses leave it out. It changes no item.
+	DismissSuggestion(ctx context.Context, token string, projectID string, suggestionID string, reason string,
+		caller AccountInfo) (*Draft, error)
 }

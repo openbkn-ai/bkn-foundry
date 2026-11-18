@@ -31,6 +31,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknagent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
 	checkaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/check"
+	diagnosisaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/diagnosis"
 	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
@@ -90,6 +91,7 @@ func Boot() *Application {
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
 	logics.SetDraftAccess(draftaccess.NewDraftAccess(appSetting))
 	logics.SetCheckAccess(checkaccess.NewCheckAccess(appSetting))
+	logics.SetDiagnosisAccess(diagnosisaccess.NewDiagnosisAccess(appSetting))
 	logics.SetIDRegistryAccess(idregistry.NewIDRegistryAccess(appSetting))
 	logics.SetVegaAccess(vega.NewVegaAccess(appSetting))
 	logics.SetIndexBuildAccess(indexbuild.NewIndexBuildAccess(appSetting))

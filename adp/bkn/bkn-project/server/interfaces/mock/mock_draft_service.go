@@ -221,6 +221,21 @@ func (mr *MockDraftServiceMockRecorder) DeleteRelationType(ctx, token, projectID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRelationType", reflect.TypeOf((*MockDraftService)(nil).DeleteRelationType), ctx, token, projectID, itemID, updateTime, caller)
 }
 
+// DismissSuggestion mocks base method.
+func (m *MockDraftService) DismissSuggestion(ctx context.Context, token, projectID, suggestionID, reason string, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DismissSuggestion", ctx, token, projectID, suggestionID, reason, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DismissSuggestion indicates an expected call of DismissSuggestion.
+func (mr *MockDraftServiceMockRecorder) DismissSuggestion(ctx, token, projectID, suggestionID, reason, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DismissSuggestion", reflect.TypeOf((*MockDraftService)(nil).DismissSuggestion), ctx, token, projectID, suggestionID, reason, caller)
+}
+
 // DraftSourceChanges mocks base method.
 func (m *MockDraftService) DraftSourceChanges(ctx context.Context, token, projectID string, req interfaces.SourceChangesDraft, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -488,6 +503,21 @@ func (m *MockDraftService) MergeConcept(ctx context.Context, token, projectID st
 func (mr *MockDraftServiceMockRecorder) MergeConcept(ctx, token, projectID, req, caller any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeConcept", reflect.TypeOf((*MockDraftService)(nil).MergeConcept), ctx, token, projectID, req, caller)
+}
+
+// NetworkFacts mocks base method.
+func (m *MockDraftService) NetworkFacts(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.DraftNetworkFacts, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NetworkFacts", ctx, token, projectID, caller)
+	ret0, _ := ret[0].(*interfaces.DraftNetworkFacts)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NetworkFacts indicates an expected call of NetworkFacts.
+func (mr *MockDraftServiceMockRecorder) NetworkFacts(ctx, token, projectID, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NetworkFacts", reflect.TypeOf((*MockDraftService)(nil).NetworkFacts), ctx, token, projectID, caller)
 }
 
 // RelationSuggestions mocks base method.

@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/diagnosis"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
@@ -57,6 +58,7 @@ type restHandler struct {
 	drs        interfaces.DraftService
 	prs        interfaces.ProjectReleaseService
 	rqs        interfaces.RequirementService
+	dgs        interfaces.DiagnosisService
 	ana        interfaces.AccountNameAccess
 }
 
@@ -72,6 +74,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		drs:        draft.NewDraftService(appSetting),
 		prs:        release.NewProjectReleaseService(appSetting),
 		rqs:        requirement.NewRequirementService(),
+		dgs:        diagnosis.NewDiagnosisService(appSetting),
 		ana:        accountname.NewAccountNameAccess(),
 	}
 }
@@ -174,6 +177,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id/ontology/draft/relation-suggestions", r.RelationSuggestionsByEx)
 	// relation-suggestions:ask; the router reads the colon as a parameter, the handler the action.
 	apiV1.POST("/projects/:project_id/ontology/draft/relation-suggestions:action", r.RelationSuggestionsActionByEx)
+	// The network diagnosis of the draft: diagnosis:run starts it; a suggestion of the latest one is
+	// applied or dismissed by {suggestion_id}:apply and {suggestion_id}:dismiss.
+	apiV1.GET("/projects/:project_id/ontology/diagnosis", r.GetDiagnosisByEx)
+	apiV1.POST("/projects/:project_id/ontology/diagnosis/suggestions/:suggestion", r.SuggestionActionByEx)
 
 	// Requirement documents of a project.
 	apiV1.POST("/projects/:project_id/requirements/documents", r.UploadRequirementDocumentsByEx)

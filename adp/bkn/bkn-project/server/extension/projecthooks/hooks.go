@@ -22,6 +22,9 @@ type Hooks struct {
 	Drafts       Drafts
 	Publications Publications
 	Projects     Projects
+	// WritebackObjects builds the write-back object types a network diagnosis suggests; nil leaves
+	// those suggestions shown but not applicable.
+	WritebackObjects WritebackObjects
 }
 
 var (
@@ -112,4 +115,18 @@ type ProjectPackager interface {
 	// those of this one.
 	ImportParts(ctx context.Context, token, projectID string, parts map[string]map[string][]byte,
 		replace map[string]string, caller interfaces.AccountInfo) error
+}
+
+// WritebackSpec is a write-back object type a network diagnosis suggests: the payload of its
+// writeback_object suggestion.
+type WritebackSpec = interfaces.DiagnosisWriteback
+
+// WritebackObjects is what an edition adds to apply a writeback_object suggestion.
+type WritebackObjects interface {
+	// Create builds a write-back object type in the project draft: a dataset whose schema is the
+	// given properties, bound as the object type's data source, a relation to the tracked object
+	// type, and object-operation action types (add / modify) whose parameters map to properties.
+	// Errors are public.
+	Create(ctx context.Context, token string, projectID string, spec WritebackSpec,
+		caller interfaces.AccountInfo) (objectTypeID string, err error)
 }
