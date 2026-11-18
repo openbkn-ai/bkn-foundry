@@ -216,6 +216,9 @@ func (j *judge) agentInput() agentInput {
 
 // suggestions are Ask AI's, checked, or the server's own when there is no result or none of it
 // holds; the data quality of the references is always the server's. ai tells which.
+// A counted fact is never lost to Ask AI leaving it out: the server's own suggestions that rest on the
+// data alone (relations, identities, adoptions) follow Ask AI's, which win where both make the same one.
+// Leaving an object out is a judgment, so it stays Ask AI's once Ask AI answered.
 func (j *judge) suggestions(out *agentOutput) ([]*interfaces.DiagnosisSuggestion, bool) {
 	list := []*interfaces.DiagnosisSuggestion{}
 	ai := false
@@ -227,8 +230,10 @@ func (j *judge) suggestions(out *agentOutput) ([]*interfaces.DiagnosisSuggestion
 		}
 		ai = len(list) > 0 || len(out.Suggestions) == 0
 	}
-	if !ai {
-		list = j.fallback()
+	for _, s := range j.fallback() {
+		if !ai || s.Kind != interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT {
+			list = append(list, s)
+		}
 	}
 	list = append(list, j.dataQuality()...)
 	return j.ranked(list), ai

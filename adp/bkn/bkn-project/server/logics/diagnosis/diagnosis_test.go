@@ -340,6 +340,28 @@ func Test_Judge(t *testing.T) {
 			So(j.writebackHolds(twoAdds), ShouldBeFalse)
 		})
 
+		Convey("Counted facts Ask AI leaves out are still suggested; leaving objects out stays Ask AI's\n", func() {
+			j := sampleJudge()
+			root := -1
+			for i, r := range j.refs {
+				if r.Source == "mrp_planorder" && r.SourceProperty == "rootdemandbillno" && r.Target == "forecast" {
+					root = i
+				}
+			}
+			list, ai := j.suggestions(&agentOutput{Suggestions: []agentSuggestion{{Kind: interfaces.DIAGNOSIS_KIND_CREATE_RELATION,
+				Title: "MRP 计划订单 —根需求→ 物料需求预测", Reason: "根需求追到预测单。", Reference: index(root), Name: "根需求"}}})
+			So(ai, ShouldBeTrue)
+			// Ask AI's wording wins over the server's for the same suggestion.
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "根需求单据"), ShouldBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "—根需求→"), ShouldNotBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "产品 —对应物料→ 物料"), ShouldNotBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "生产线 —上级生产线→ 生产线"), ShouldNotBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CHOOSE_IDENTITY, "采购申请"), ShouldNotBeNil)
+			for _, s := range list {
+				So(s.Kind, ShouldNotEqual, interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT)
+			}
+		})
+
 		Convey("A result of which nothing holds falls back to the server's own\n", func() {
 			list, ai := sampleJudge().suggestions(&agentOutput{Suggestions: []agentSuggestion{
 				{Kind: interfaces.DIAGNOSIS_KIND_ADOPT_RELATION, Title: "x", Reason: "x", RelationTypeID: "invented"}}})
@@ -631,8 +653,11 @@ func Test_DiagnosisService(t *testing.T) {
 			So(err, ShouldBeNil)
 			saved := dga.rows["p1"]
 			So(saved.AI, ShouldBeTrue)
-			So(saved.Suggestions[0].Title, ShouldEqual, "样本批次不纳入")
-			So(saved.Suggestions[0].Reason, ShouldEqual, "它是样例数据的元信息。")
+			excluded := byKindTitle(saved.Suggestions, interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT, "样本批次不纳入")
+			So(excluded, ShouldNotBeNil)
+			So(excluded.Reason, ShouldEqual, "它是样例数据的元信息。")
+			// The counted references Ask AI left out are still there.
+			So(byKindTitle(saved.Suggestions, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "mrp_planorder"), ShouldNotBeNil)
 		})
 
 		Convey("Applying a suggestion\n", func() {
