@@ -35,6 +35,11 @@
       "name": "UNION works on datasets, part by part",
       "zh": "(?:UNION|数据集)[^。]{0,20}每段各自读取",
       "en": "(?:UNION|datasets)[^.]{0,40}each part read on its own"
+    },
+    {
+      "name": "a shared relation type name resolves by the pattern's ends",
+      "zh": "同名.{0,100}按名称.{0,60}箭头方向.{0,60}歧义",
+      "en": "share a name.{0,200}the way the arrow reads.{0,120}ambiguous"
     }
   ]
 }

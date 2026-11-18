@@ -72,6 +72,7 @@ With `"explain": true` the query is read, authorized and compiled as usual but n
 ## 🧭 Naming things
 
 - A **label** is an object type's id or name, and a **relationship type** is a relation type's id or name, both as `search_schema`, `get_object_types` and `get_relation_types` return them.
+- Object type names are unique in a network; relation type names are not, and relation types may share a name, as Sales Order → Customer and Invoice → Customer may both be called Customer. Written by name, a relationship type resolves to the relation type that connects the two nodes' object types the way the arrow reads; when two of them do, the query is refused as ambiguous, so use the relation type's id. So `(o:SalesOrder)-[:Customer]->(c:Customer)` and `(i:Invoice)-[:Customer]->(c:Customer)` each take their own relation type, while two same-named relation types with the same ends, or an undirected `-[:R]-` with a same-named relation type each way, are refused as ambiguous; the latter can also be settled by writing the arrow's direction. When none connects, the error lists every relation type of that name with its ends.
 - A **property** is a logical property name. Display names and physical column names are not accepted. Logic properties (computed by a function or a metric) cannot be used in Cypher; read them with `get_logic_properties_values`.
 - Quote a name that holds spaces or special characters with backticks: `` (p:`产品BOM`) ``.
 

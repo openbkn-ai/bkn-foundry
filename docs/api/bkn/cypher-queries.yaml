@@ -54,7 +54,10 @@ paths:
         nothing in the network gets 403.
 
         Labels and relationship types accept either the id or the name of the object type or
-        relation type. Properties are addressed by property name; display names and logic
+        relation type. Relation types may share a name: written by name, a relationship type
+        resolves to the one that connects the two nodes' object types the way the arrow reads,
+        and when two of them do, the query is refused as ambiguous, so use the relation type's
+        id. Properties are addressed by property name; display names and logic
         properties are not accepted. A query that does not write its own LIMIT is capped at
         1000 rows, and a LIMIT above 10000 is refused rather than silently reduced.
 

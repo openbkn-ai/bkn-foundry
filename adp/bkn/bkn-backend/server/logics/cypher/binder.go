@@ -32,8 +32,10 @@ type Schema struct {
 	objectTypesByID   map[string]*interfaces.ObjectType
 	objectTypesByName map[string]*interfaces.ObjectType
 
-	relationTypesByID   map[string]*interfaces.RelationType
-	relationTypesByName map[string]*interfaces.RelationType
+	relationTypesByID map[string]*interfaces.RelationType
+	// relationTypesByName lists every relation type of a name: unlike object
+	// types, modelling lets relation types share one.
+	relationTypesByName map[string][]*interfaces.RelationType
 
 	// propertyLevels holds, for each object type whose levels were loaded,
 	// the caller's effective access level for every data property (#1374).
@@ -79,7 +81,7 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, k
 		objectTypesByID:     make(map[string]*interfaces.ObjectType, len(objectTypes)),
 		objectTypesByName:   make(map[string]*interfaces.ObjectType, len(objectTypes)),
 		relationTypesByID:   make(map[string]*interfaces.RelationType, len(relationTypes)),
-		relationTypesByName: make(map[string]*interfaces.RelationType, len(relationTypes)),
+		relationTypesByName: make(map[string][]*interfaces.RelationType, len(relationTypes)),
 		propertyLevels:      map[string]map[string]string{},
 	}
 	for _, ot := range objectTypes {
@@ -88,7 +90,7 @@ func LoadSchema(ctx context.Context, kn KNSchemaSource, visibility Visibility, k
 	}
 	for _, rt := range relationTypes {
 		s.relationTypesByID[rt.RTID] = rt
-		s.relationTypesByName[rt.RTName] = rt
+		s.relationTypesByName[rt.RTName] = append(s.relationTypesByName[rt.RTName], rt)
 	}
 	return s, nil
 }
@@ -182,24 +184,80 @@ func (s *Schema) ResolveLabel(label string) (*interfaces.ObjectType, error) {
 	}
 }
 
-// ResolveRelationType maps a Cypher relationship type to a relation type,
-// following the same id-first rule as ResolveLabel.
-func (s *Schema) ResolveRelationType(name string) (*interfaces.RelationType, error) {
-	byID, hasID := s.relationTypesByID[name]
-	byName, hasName := s.relationTypesByName[name]
+// ResolveRelationType maps a Cypher relationship type to a relation type.
+//
+// The id wins, and a token that is one relation type's id and another's name
+// is reported, as in ResolveLabel. A name, unlike an object type's, need not
+// be unique in a knowledge network: relation types named by the role their
+// target plays for their source, such as an order's and an invoice's Customer,
+// share one with different ends. connects tells whether a relation type joins
+// the pattern's two object types the way the pattern reads them, and a shared
+// name resolves to the one relation type that does. Two that do are reported
+// rather than picked from.
+// A name only one relation type carries resolves to it whatever its ends, so
+// the caller can say why it does not fit.
+func (s *Schema) ResolveRelationType(name string,
+	connects func(*interfaces.RelationType) bool) (*interfaces.RelationType, error) {
 
-	switch {
-	case hasID && hasName && byID.RTID != byName.RTID:
-		return nil, fmt.Errorf(
-			"relationship type %q is ambiguous: it is the id of %q and the name of %q; use the id to disambiguate",
-			name, byID.RTName, byName.RTID)
-	case hasID:
+	byID, hasID := s.relationTypesByID[name]
+	named := s.relationTypesByName[name]
+	if hasID {
+		for _, byName := range named {
+			if byName.RTID != byID.RTID {
+				return nil, fmt.Errorf(
+					"relationship type %q is ambiguous: it is the id of %q and the name of %q; use the id to disambiguate",
+					name, byID.RTName, byName.RTID)
+			}
+		}
 		return byID, nil
-	case hasName:
-		return byName, nil
-	default:
-		return nil, fmt.Errorf("unknown relationship type %q in knowledge network %q", name, s.KNID)
 	}
+	switch len(named) {
+	case 0:
+		return nil, fmt.Errorf("unknown relationship type %q in knowledge network %q", name, s.KNID)
+	case 1:
+		return named[0], nil
+	}
+
+	var fitting []*interfaces.RelationType
+	for _, rt := range named {
+		if connects(rt) {
+			fitting = append(fitting, rt)
+		}
+	}
+	switch len(fitting) {
+	case 0:
+		return nil, fmt.Errorf(
+			"no relation type named %q connects these object types the way this pattern reads it; relation types of that name: %s",
+			name, s.describeRelationTypes(named))
+	case 1:
+		return fitting[0], nil
+	default:
+		return nil, fmt.Errorf(
+			"relationship type %q is ambiguous: relation types %s are all named so and connect these object types; "+
+				"use the id to say which one, or write the direction when they run opposite ways",
+			name, s.describeRelationTypes(fitting))
+	}
+}
+
+// describeRelationTypes lists relation types by id with their ends, in id
+// order, so that an error naming several reads the same on every run.
+func (s *Schema) describeRelationTypes(relationTypes []*interfaces.RelationType) string {
+	sorted := append([]*interfaces.RelationType(nil), relationTypes...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].RTID < sorted[j].RTID })
+	parts := make([]string, 0, len(sorted))
+	for _, rt := range sorted {
+		parts = append(parts, fmt.Sprintf("%q (%s -> %s)", rt.RTID,
+			s.objectTypeName(rt.SourceObjectTypeID), s.objectTypeName(rt.TargetObjectTypeID)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// objectTypeName is an object type's name, or its id when it is not loaded.
+func (s *Schema) objectTypeName(otID string) string {
+	if ot, ok := s.objectTypesByID[otID]; ok && ot.OTName != "" {
+		return ot.OTName
+	}
+	return otID
 }
 
 // SetPropertyLevels records the caller's effective access level for each data
