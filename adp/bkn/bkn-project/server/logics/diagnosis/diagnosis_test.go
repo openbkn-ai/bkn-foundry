@@ -362,6 +362,39 @@ func Test_Judge(t *testing.T) {
 			}
 		})
 
+		Convey("Small tables: whole text codes hold, branches to one target are one relation\n", func() {
+			d := sampleDraft()
+			stoppage := object("stoppage", "产线停机", true, "id", prop("id", "停机事件ID"), prop("resource_code", "资源编码"),
+				prop("resource_kind", "资源类型"), prop("seq", "序号"))
+			stoppage.Properties[3].Type = "integer"
+			d.Items.ObjectTypes = append(d.Items.ObjectTypes, stoppage)
+			facts := sampleFacts(d)
+			branch := func(value string, rows int64) interfaces.DraftReference {
+				return interfaces.DraftReference{Source: "stoppage", SourceProperty: "resource_code", Target: "line",
+					TargetProperty: "code", Condition: &interfaces.DraftReferenceCondition{Property: "resource_kind", Value: value},
+					Counted: true, Rows: rows, Hits: rows, Rate: 1, Name: "资源", FieldRows: 5}
+			}
+			facts.References = append(facts.References, branch("产线", 3), branch("工厂", 2),
+				// Small whole-containing numbers are chance.
+				interfaces.DraftReference{Source: "stoppage", SourceProperty: "seq", Target: "line", TargetProperty: "code",
+					Counted: true, Rows: 5, Hits: 5, Rate: 1, Name: "序号"})
+			facts.Components = append(facts.Components, []string{"stoppage"})
+			list, _ := newJudge(setting, facts, sampleQuestions(), sampleConcepts()).suggestions(nil)
+
+			plain := byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "产线停机 —资源→ 生产线")
+			So(plain, ShouldNotBeNil)
+			So(plain.Evidence.Condition, ShouldBeNil)
+			So(plain.Evidence.Hits, ShouldEqual, 5)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "资源类型 ="), ShouldBeNil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "—序号→"), ShouldBeNil)
+		})
+
+		Convey("A title Ask AI gives as a relation name is not taken as the name\n", func() {
+			So(relationName("产品 —物料→ 物料", "对应物料"), ShouldEqual, "对应物料")
+			So(relationName("a->b", "x"), ShouldEqual, "x")
+			So(relationName(" 根需求 ", "x"), ShouldEqual, "根需求")
+		})
+
 		Convey("A result of which nothing holds falls back to the server's own\n", func() {
 			list, ai := sampleJudge().suggestions(&agentOutput{Suggestions: []agentSuggestion{
 				{Kind: interfaces.DIAGNOSIS_KIND_ADOPT_RELATION, Title: "x", Reason: "x", RelationTypeID: "invented"}}})

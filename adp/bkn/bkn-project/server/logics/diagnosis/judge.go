@@ -33,6 +33,9 @@ const (
 	// hitRateDefault and minRowsDefault are the reference threshold when settings give none.
 	hitRateDefault = 0.6
 	minRowsDefault = 10
+	// wholeCodeMinRows is the rows a text code field needs when every value is a target identity: a
+	// small master or event table is common, and whole containment of codes is no coincidence.
+	wholeCodeMinRows = 3
 	// emptyShare is the share of empty references a data quality suggestion reports from.
 	emptyShare = 0.5
 	// writebackMaxSnapshots bounds the basis snapshot of a write-back object: a few values only.
@@ -84,6 +87,7 @@ func newJudge(setting common.DraftSetting, facts *interfaces.DraftNetworkFacts, 
 			}
 		}
 	}
+	facts.References = sameTargetBranches(facts.References)
 	// The counted first, by rate, so the message keeps the strongest when it cuts.
 	j.refs = slices.Clone(facts.References)
 	slices.SortStableFunc(j.refs, func(a, b interfaces.DraftReference) int {
@@ -111,9 +115,75 @@ func (j *judge) relation(id string) *interfaces.DraftRelationType {
 	return projecthooks.FindRelationType(j.items, id)
 }
 
-// qualifies tells a reference whose counts reach the threshold.
+// qualifies tells a reference whose counts reach the threshold. A text code field every value of
+// which is a target identity needs only a few rows.
 func (j *judge) qualifies(r interfaces.DraftReference) bool {
-	return r.Counted && r.Rate >= j.hitRate && r.Rows-r.Nulls >= j.minRows
+	nonEmpty := r.Rows - r.Nulls
+	if !r.Counted || r.Rate < j.hitRate {
+		return false
+	}
+	return nonEmpty >= j.minRows || nonEmpty >= wholeCodeMinRows && r.Hits == nonEmpty && j.textual(r.Source, r.SourceProperty)
+}
+
+// textual tells a property holding text, not numbers: small numbers fall into any identity by chance.
+func (j *judge) textual(objectTypeID string, property string) bool {
+	if ot := j.object(objectTypeID); ot != nil {
+		for _, p := range ot.Properties {
+			if p.Name == property {
+				return p.Type == "string" || p.Type == "text"
+			}
+		}
+	}
+	return false
+}
+
+// sameTargetBranches makes one plain reference of a polymorphic field whose every branch reaches the
+// same identity: the type field then tells nothing about where the code points.
+func sameTargetBranches(refs []interfaces.DraftReference) []interfaces.DraftReference {
+	type field struct{ source, property string }
+	branches := map[field][]int{}
+	for i, r := range refs {
+		if r.Condition != nil {
+			branches[field{r.Source, r.SourceProperty}] = append(branches[field{r.Source, r.SourceProperty}], i)
+		}
+	}
+	merged := map[int]bool{}
+	out := []interfaces.DraftReference{}
+	for i, r := range refs {
+		if merged[i] {
+			continue
+		}
+		ids := branches[field{r.Source, r.SourceProperty}]
+		if r.Condition == nil || len(ids) < 2 || slices.ContainsFunc(ids, func(k int) bool {
+			return !refs[k].Counted || refs[k].Target != r.Target || refs[k].TargetProperty != r.TargetProperty
+		}) {
+			out = append(out, r)
+			continue
+		}
+		plain := r
+		plain.Condition, plain.Rows, plain.Nulls, plain.Hits = nil, 0, 0, 0
+		for _, k := range ids {
+			merged[k] = true
+			plain.Rows += refs[k].Rows
+			plain.Nulls += refs[k].Nulls
+			plain.Hits += refs[k].Hits
+		}
+		if nonEmpty := plain.Rows - plain.Nulls; nonEmpty > 0 {
+			plain.Rate = float64(plain.Hits) / float64(nonEmpty)
+		}
+		out = append(out, plain)
+	}
+	return out
+}
+
+// relationName is Ask AI's name when it is a name: not empty, not too long, no title with arrows.
+func relationName(name string, fallback string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || utf8.RuneCountInString(name) > interfaces.DRAFT_NAME_MAX_LENGTH || strings.ContainsAny(name, "→—") ||
+		strings.Contains(name, "->") {
+		return fallback
+	}
+	return name
 }
 
 // covered tells a reference an adopted relation of the draft maps.
@@ -429,9 +499,7 @@ func (j *judge) adoptionEdges(p *interfaces.DraftPendingObject) [][2]string {
 func (j *judge) createRelation(r interfaces.DraftReference, name string, description string, cardinality string,
 	quotes []interfaces.DiagnosisQuote) *interfaces.DiagnosisSuggestion {
 	source, target := j.object(r.Source), j.object(r.Target)
-	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(strings.TrimSpace(name)) > interfaces.DRAFT_NAME_MAX_LENGTH {
-		name = r.Name
-	}
+	name = relationName(name, r.Name)
 	if !slices.Contains(cardinalities, cardinality) {
 		cardinality = interfaces.DRAFT_CARDINALITY_MANY_TO_ONE
 	}
@@ -472,9 +540,7 @@ func (j *judge) createRelation(r interfaces.DraftReference, name string, descrip
 
 func (j *judge) subtypeRelation(st interfaces.DraftSubtype, name string, description string) *interfaces.DiagnosisSuggestion {
 	sub, super := j.object(st.Sub), j.object(st.Super)
-	if strings.TrimSpace(name) == "" || utf8.RuneCountInString(strings.TrimSpace(name)) > interfaces.DRAFT_NAME_MAX_LENGTH {
-		name = j.text("subtype_name", super.Name)
-	}
+	name = relationName(name, j.text("subtype_name", super.Name))
 	if strings.TrimSpace(description) == "" {
 		description = j.text("subtype_description", sub.Name, super.Name)
 	}
