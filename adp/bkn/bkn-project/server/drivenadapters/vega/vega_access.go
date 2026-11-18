@@ -209,6 +209,46 @@ func (va *vegaAccess) CatalogNames(ctx context.Context, account interfaces.VegaA
 	return names, nil
 }
 
+// CatalogsNamed calls GET /catalogs?name=&limit=-1 and returns the ids of the catalogs the account
+// can see whose name is name itself: vega matches the name as a part of it.
+func (va *vegaAccess) CatalogsNamed(ctx context.Context, account interfaces.VegaAccount,
+	name string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CatalogsNamed")
+	defer span.End()
+
+	httpUrl := va.baseUrl + "/catalogs"
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+	query := url.Values{"name": {name}, "limit": {noLimit}}
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, query, headers(account))
+	logger.Debugf("CatalogsNamed finished, response code is [%d]", respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list catalogs failed")
+		return nil, fmt.Errorf("list catalogs: %w", err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, vegaError(respCode, respBody)
+	}
+	list := &struct {
+		Entries []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal catalogs failed")
+		return nil, fmt.Errorf("unmarshal catalogs: %w", err)
+	}
+	ids := []string{}
+	for _, entry := range list.Entries {
+		if entry.Name == name {
+			ids = append(ids, entry.ID)
+		}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return ids, nil
+}
+
 func (va *vegaAccess) getCatalogs(ctx context.Context, account interfaces.VegaAccount,
 	catalogIDs []string) (int, []byte, error) {
 	escaped := make([]string, 0, len(catalogIDs))

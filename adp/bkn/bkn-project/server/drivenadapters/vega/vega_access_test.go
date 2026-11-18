@@ -59,6 +59,29 @@ func Test_VegaAccess(t *testing.T) {
 			So(tables[0].ID, ShouldEqual, "r1")
 		})
 
+		Convey("CatalogsNamed keeps only the catalogs of the name itself, as the account sees them\n", func() {
+			respBody = `{"entries":[{"id":"c1","name":"bkn-sample-supply-chain"},
+				{"id":"c2","name":"bkn-sample-supply-chain-en"}],"total_count":2}`
+
+			ids, err := va.CatalogsNamed(ctx, account, "bkn-sample-supply-chain")
+
+			So(err, ShouldBeNil)
+			So(ids, ShouldResemble, []string{"c1"})
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/catalogs")
+			So(got[0].query, ShouldEqual, "limit=-1&name=bkn-sample-supply-chain")
+			So(got[0].accountID, ShouldEqual, "u1")
+		})
+
+		Convey("CatalogsNamed tells a refusal\n", func() {
+			status, respBody = http.StatusForbidden, `{"error_code":"Forbidden"}`
+
+			_, err := va.CatalogsNamed(ctx, account, "sample")
+
+			var vegaErr *interfaces.VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusForbidden)
+		})
+
 		Convey("MissingCatalogs asks once when every catalog is there\n", func() {
 			respBody = `{"entries":[{"id":"c 1"},{"id":"c2"}]}`
 
