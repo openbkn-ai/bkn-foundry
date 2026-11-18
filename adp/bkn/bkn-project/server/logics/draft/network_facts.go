@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 )
 
 // The facts of a network diagnosis are computed, never guessed: the connected components of the
@@ -36,28 +37,6 @@ const (
 	diagnosisPairsDefault   = 600
 	diagnosisTimeoutDefault = 2 * time.Minute
 )
-
-// diagnosisCodeWords end or make up the name of a field that holds a code; Latin words match as a
-// whole word or as the end of a name, others anywhere in it.
-var diagnosisCodeWords = []string{"编码", "编号", "代码", "号码", "号", "id", "code", "no", "number", "num", "key", "sn"}
-
-// diagnosisTypeWords name a field that tells which kind of record a code field refers to.
-var diagnosisTypeWords = []string{"类型", "类别", "种类", "type", "kind", "category"}
-
-// diagnosisParentWords name a field that refers to a record of the same object type above it.
-var diagnosisParentWords = []string{"上级", "父", "parent", "superior", "upper"}
-
-// diagnosisSourceWords name a field that refers to where a record comes from: its source document,
-// its root demand, its parent. Such fields carry the document chain, so they are counted first.
-var diagnosisSourceWords = []string{"源单", "来源", "根", "上级", "父", "source", "root", "parent", "origin", "src"}
-
-// diagnosisSequenceWords name a field that numbers rows within a record or a table: a sequence or a
-// line number, which matches small identities by chance and refers to nothing.
-var diagnosisSequenceWords = []string{"序号", "行号", "行序", "seq", "seqno", "lineno", "index", "idx", "entryid", "rowno"}
-
-// diagnosisDocumentNumberEnds end the name of a field that holds a document's number (预测单号,
-// 订单编号, billno): a reference may point at it although rows of one document share it.
-var diagnosisDocumentNumberEnds = []string{"单号", "单编号", "单据编号", "billno", "billnumber"}
 
 // diagnosisIntegerRate is the rate a reference between integer fields needs when the field's name does
 // not say its target: small integer identities coincide easily.
@@ -311,7 +290,7 @@ func documentNumber(p *interfaces.DraftProperty) bool {
 	}
 	for _, n := range namesOf(p) {
 		key := nameKey(n)
-		for _, end := range diagnosisDocumentNumberEnds {
+		for _, end := range locale.DiagnosisDocumentNumberEnds {
 			if key != "" && strings.HasSuffix(key, end) {
 				return true
 			}
@@ -327,7 +306,7 @@ func sequenceLike(p *interfaces.DraftProperty) bool {
 		if key == "" {
 			continue
 		}
-		for _, w := range diagnosisSequenceWords {
+		for _, w := range locale.DiagnosisSequenceWords {
 			if w[0] >= 0x80 && strings.Contains(key, w) || w[0] < 0x80 && (key == w || strings.HasSuffix(key, w)) {
 				return true
 			}
@@ -343,7 +322,7 @@ func sourceLike(p *interfaces.DraftProperty) bool {
 			return false
 		}
 		lower := strings.ToLower(n)
-		for _, w := range diagnosisSourceWords {
+		for _, w := range locale.DiagnosisSourceWords {
 			if w[0] >= 0x80 && strings.Contains(n, w) || w[0] < 0x80 && (slices.Contains(words(n), w) ||
 				strings.HasPrefix(nameKey(lower), w)) {
 				return true
@@ -695,15 +674,15 @@ func codeLike(p *interfaces.DraftProperty) bool {
 	if typeClass(p.Type) == "" {
 		return false
 	}
-	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, diagnosisCodeWords) })
+	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, locale.DiagnosisCodeWords) })
 }
 
 func typeLike(p *interfaces.DraftProperty) bool {
-	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, diagnosisTypeWords) })
+	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, locale.DiagnosisTypeWords) })
 }
 
 func parentLike(p *interfaces.DraftProperty) bool {
-	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, diagnosisParentWords) })
+	return slices.ContainsFunc(namesOf(p), func(n string) bool { return n != "" && hasWord(n, locale.DiagnosisParentWords) })
 }
 
 // stemOf is a name without the type or code word it ends with.
@@ -721,7 +700,7 @@ func stemOf(name string, list []string) string {
 // the type word and the code word, as 源单类型 and 源单编号, source_type and source_no.
 func sameStem(typeField *interfaces.DraftProperty, code *interfaces.DraftProperty) bool {
 	for _, pair := range [][2]string{{typeField.DisplayName, code.DisplayName}, {typeField.MappedField, code.MappedField}} {
-		a, b := stemOf(pair[0], diagnosisTypeWords), stemOf(pair[1], diagnosisCodeWords)
+		a, b := stemOf(pair[0], locale.DiagnosisTypeWords), stemOf(pair[1], locale.DiagnosisCodeWords)
 		if a != "" && a == b {
 			return true
 		}
@@ -758,7 +737,7 @@ func namePriority(p *interfaces.DraftProperty, target *interfaces.DraftObjectTyp
 				priority = max(priority, 2)
 			}
 		}
-		if stem := stemOf(n, diagnosisCodeWords); stem != "" && stem == stemOf(nameKey(key.MappedField), diagnosisCodeWords) {
+		if stem := stemOf(n, locale.DiagnosisCodeWords); stem != "" && stem == stemOf(nameKey(key.MappedField), locale.DiagnosisCodeWords) {
 			priority = max(priority, 1)
 		}
 	}
@@ -768,7 +747,7 @@ func namePriority(p *interfaces.DraftProperty, target *interfaces.DraftObjectTyp
 // meaningful tells a name long enough to say something when another contains it: not a code word
 // alone, such as id, and at least two Han characters or four letters.
 func meaningful(key string) bool {
-	if slices.Contains(diagnosisCodeWords, key) {
+	if slices.Contains(locale.DiagnosisCodeWords, key) {
 		return false
 	}
 	if key[0] >= 0x80 {
