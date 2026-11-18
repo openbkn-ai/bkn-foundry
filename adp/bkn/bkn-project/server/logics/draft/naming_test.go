@@ -419,5 +419,8 @@ func Test_DraftRelationNameTakenWithinTheSource(t *testing.T) {
 		second := relationNameAmong("zh-CN", taken, order, material, "material_no", "r3")
 		So(second, ShouldEqual, "物料编号")
 		So(draftedRelationName("zh-CN", order, material, "material_no", "r3", second), ShouldBeTrue)
+		// When the field's whole name is taken too, the id keeps the two apart.
+		taken = append(taken, &interfaces.DraftRelationType{ID: "r3", Source: "work_order", Name: second})
+		So(relationNameAmong("zh-CN", taken, order, material, "material_no", "r4"), ShouldEqual, "r4")
 	})
 }
