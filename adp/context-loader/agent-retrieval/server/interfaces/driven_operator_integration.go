@@ -304,12 +304,14 @@ type ListPublishedToolsResponse struct {
 	Tools     []PublishedToolSummary `json:"tools"`
 }
 
-// ExecutePublishedToolRequest invokes one enabled Function tool. Parameters
-// carries only the function's own business input.
+// ExecutePublishedToolRequest invokes one enabled tool. Parameters carries the
+// tool's own business input: plain business JSON by default, or already grouped
+// HTTPRequestParams (header/body/query/path) when ArgumentFormat is "http".
 type ExecutePublishedToolRequest struct {
-	ToolboxID  string         `json:"toolbox_id"`
-	ToolID     string         `json:"tool_id"`
-	Parameters map[string]any `json:"parameters"`
+	ArgumentFormat string         `json:"argument_format,omitempty"`
+	ToolboxID      string         `json:"toolbox_id"`
+	ToolID         string         `json:"tool_id"`
+	Parameters     map[string]any `json:"parameters"`
 }
 
 // KNProxyExecution is derived from an exact BKN binding and mapping. The
