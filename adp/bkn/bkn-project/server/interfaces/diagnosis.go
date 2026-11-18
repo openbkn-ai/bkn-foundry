@@ -107,6 +107,9 @@ type DraftNetworkFacts struct {
 	// Pairs is how many field pairs the scan found, NotCounted how many of them it did not count.
 	Pairs      int `json:"pairs"`
 	NotCounted int `json:"not_counted"`
+	// Uncounted are the object types at an end of a pair the scan did not count: what they refer to,
+	// or what refers to them, is not known.
+	Uncounted []string `json:"uncounted"`
 }
 
 // DraftPendingObject is an object type no one adopted. Relations are the relation types of the draft

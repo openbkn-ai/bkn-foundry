@@ -360,6 +360,73 @@ func Test_Judge(t *testing.T) {
 			So(j.metrics().References.Covered, ShouldEqual, 3)
 		})
 
+		Convey("A field that already reaches a subtype or supertype of the target takes no second relation\n", func() {
+			d := sampleDraft()
+			d.Items.ObjectTypes = append(d.Items.ObjectTypes, object("sales_order", "销售订单", true, "id", prop("id", "销售订单ID"),
+				prop("product_code", "产品编码")))
+			d.Items.RelationTypes = append(d.Items.RelationTypes, &interfaces.DraftRelationType{ID: "sales_product", Name: "产品",
+				Source: "sales_order", Target: "product", Adopted: true,
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "product_code", TargetProperty: "code"}}})
+			facts := sampleFacts(d)
+			facts.Components[1] = []string{"product", "sales_order"}
+			facts.References = append(facts.References,
+				// Through the relation to 产品, which is a kind of 物料.
+				interfaces.DraftReference{Source: "sales_order", SourceProperty: "product_code", Target: "material",
+					TargetProperty: "code", Counted: true, Rows: 800, Hits: 800, Rate: 1, Name: "产品"},
+				// Through the relation to 物料, of which 产品 is a kind.
+				interfaces.DraftReference{Source: "work_order", SourceProperty: "material", Target: "product",
+					TargetProperty: "code", Counted: true, Rows: 605, Hits: 605, Rate: 1, Name: "物料"})
+			j := newJudge(setting, facts, sampleQuestions(), sampleConcepts())
+			list, _ := j.suggestions(nil)
+			subtypes := 0
+			for _, s := range list {
+				if s.Kind != interfaces.DIAGNOSIS_KIND_CREATE_RELATION {
+					continue
+				}
+				a := applyOf[interfaces.DiagnosisCreateRelation](s)
+				So(a.Source == "sales_order" && a.Target == "material", ShouldBeFalse)
+				So(a.Source == "work_order" && a.Target == "product", ShouldBeFalse)
+				if a.Source == "product" && a.Target == "material" {
+					subtypes++
+					So(a.Cardinality, ShouldEqual, interfaces.DRAFT_CARDINALITY_ONE_TO_ONE)
+				}
+			}
+			So(subtypes, ShouldEqual, 1)
+			// Ask AI cannot bring it back either.
+			index := -1
+			for i, r := range j.refs {
+				if r.Source == "sales_order" {
+					index = i
+				}
+			}
+			So(j.checked(agentSuggestion{Kind: interfaces.DIAGNOSIS_KIND_CREATE_RELATION, Title: "x", Reason: "x",
+				Reference: &index, Name: "产品"}), ShouldBeNil)
+
+			// A subtype the draft already joins is not suggested again.
+			d.Items.RelationTypes = append(d.Items.RelationTypes, &interfaces.DraftRelationType{ID: "product_material",
+				Name: "对应物料", Source: "product", Target: "material", Adopted: true,
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "code", TargetProperty: "code"}}})
+			list, _ = newJudge(setting, facts, sampleQuestions(), sampleConcepts()).suggestions(nil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_CREATE_RELATION, "对应物料"), ShouldBeNil)
+		})
+
+		Convey("An object type whose references are not all counted is never offered to leave out\n", func() {
+			facts := sampleFacts(sampleDraft())
+			facts.Uncounted = []string{"sample_batch"}
+			j := newJudge(setting, facts, sampleQuestions(), sampleConcepts())
+			list, _ := j.suggestions(nil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT, "样本批次"), ShouldBeNil)
+			So(j.checked(agentSuggestion{Kind: interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT, Title: "x", Reason: "x",
+				ObjectTypeID: "sample_batch"}), ShouldBeNil)
+
+			// Nor one a reference reaches, counted or only named.
+			facts = sampleFacts(sampleDraft())
+			facts.References = append(facts.References, interfaces.DraftReference{Source: "sample_batch",
+				SourceProperty: "batch_id", Target: "line", TargetProperty: "code", Name: "生产线"})
+			list, _ = newJudge(setting, facts, sampleQuestions(), sampleConcepts()).suggestions(nil)
+			So(byKindTitle(list, interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT, "样本批次"), ShouldBeNil)
+		})
+
 		Convey("The message to Ask AI carries the facts and no row data\n", func() {
 			in := sampleJudge().agentInput()
 			So(in.Kind, ShouldEqual, "diagnose")
@@ -432,6 +499,17 @@ func httpCode(err error) (int, string) {
 		return e.HTTPCode, e.BaseError.ErrorCode
 	}
 	return 0, ""
+}
+
+// The diagnose pass gets the Ontology Assistant's whole limit (timeout_s 180, migration 0.2.2/21),
+// unlike an answer on a page; a run is stale only after the scan and that wait.
+func Test_AgentWait(t *testing.T) {
+	Convey("The server waits for the diagnose pass as long as the Agent may take\n", t, func() {
+		So(agentWait, ShouldBeGreaterThanOrEqualTo, 180*time.Second)
+		s := &diagnosisService{setting: common.DraftSetting{DiagnosisTimeout: 2 * time.Minute}, agentWait: agentWait,
+			now: func() time.Time { return time.UnixMilli(10_000_000) }}
+		So(s.staleBefore(), ShouldEqual, time.UnixMilli(10_000_000).Add(-(2*time.Minute + agentWait + time.Minute)).UnixMilli())
+	})
 }
 
 func Test_DiagnosisService(t *testing.T) {

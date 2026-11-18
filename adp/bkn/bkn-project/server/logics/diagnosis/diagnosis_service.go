@@ -33,9 +33,10 @@ import (
 )
 
 const (
-	// agentWait bounds Ask AI's judgment; the run is in the background, so it may take longer
-	// than an answer on a page.
-	agentWait = 2 * time.Minute
+	// agentWait bounds Ask AI's judgment: the Ontology Assistant's own limit (timeout_s 180, set for
+	// the diagnose pass by migration 0.2.2/21) and a little for the stream to end. The run is in the
+	// background; an answer on a page keeps the draft service's shorter wait.
+	agentWait = 3*time.Minute + 15*time.Second
 	// staleAfter is how long a run may take before another may replace it: the scan, Ask AI and a
 	// minute to record it.
 	staleAfterExtra = time.Minute

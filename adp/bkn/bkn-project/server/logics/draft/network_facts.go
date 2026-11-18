@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
@@ -32,8 +33,8 @@ const (
 	// diagnosisTypeValues bounds the type values a polymorphic reference is counted for.
 	diagnosisTypeValues = 5
 	// diagnosisPairsDefault and diagnosisTimeoutDefault are the scan budget when settings give none.
-	diagnosisPairsDefault   = 300
-	diagnosisTimeoutDefault = 60 * time.Second
+	diagnosisPairsDefault   = 600
+	diagnosisTimeoutDefault = 2 * time.Minute
 )
 
 // diagnosisCodeWords end or make up the name of a field that holds a code; Latin words match as a
@@ -45,6 +46,22 @@ var diagnosisTypeWords = []string{"类型", "类别", "种类", "type", "kind", 
 
 // diagnosisParentWords name a field that refers to a record of the same object type above it.
 var diagnosisParentWords = []string{"上级", "父", "parent", "superior", "upper"}
+
+// diagnosisSourceWords name a field that refers to where a record comes from: its source document,
+// its root demand, its parent. Such fields carry the document chain, so they are counted first.
+var diagnosisSourceWords = []string{"源单", "来源", "根", "上级", "父", "source", "root", "parent", "origin", "src"}
+
+// diagnosisSequenceWords name a field that numbers rows within a record or a table: a sequence or a
+// line number, which matches small identities by chance and refers to nothing.
+var diagnosisSequenceWords = []string{"序号", "行号", "行序", "seq", "seqno", "lineno", "index", "idx", "entryid", "rowno"}
+
+// diagnosisDocumentNumberEnds end the name of a field that holds a document's number (预测单号,
+// 订单编号, billno): a reference may point at it although rows of one document share it.
+var diagnosisDocumentNumberEnds = []string{"单号", "单编号", "单据编号", "billno", "billnumber"}
+
+// diagnosisIntegerRate is the rate a reference between integer fields needs when the field's name does
+// not say its target: small integer identities coincide easily.
+const diagnosisIntegerRate = 0.95
 
 // networkCounter is a counter that also reads the values of a type field with how many records hold
 // each, and counts a join over the records whose type field holds one value.
@@ -102,12 +119,16 @@ func (s *draftService) NetworkFacts(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Draft not readable")
 		return nil, err
 	}
-	budget := scanBudget{pairs: s.setting.DiagnosisMaxPairs, timeout: s.setting.DiagnosisTimeout}
+	budget := scanBudget{pairs: s.setting.DiagnosisMaxPairs, timeout: s.setting.DiagnosisTimeout,
+		enough: s.setting.DiagnosisHitRate}
 	if budget.pairs <= 0 {
 		budget.pairs = diagnosisPairsDefault
 	}
 	if budget.timeout <= 0 {
 		budget.timeout = diagnosisTimeoutDefault
+	}
+	if budget.enough <= 0 {
+		budget.enough = 0.6
 	}
 	timeout := min(s.setting.QueryTimeout, int(budget.timeout.Seconds()))
 	if timeout <= 0 {
@@ -123,6 +144,8 @@ func (s *draftService) NetworkFacts(ctx context.Context, token string, projectID
 type scanBudget struct {
 	pairs   int
 	timeout time.Duration
+	// enough is the rate at which a polymorphic branch's target is taken without counting the others.
+	enough float64
 }
 
 // networkFacts computes the facts of the draft's network, counting with c within budget.
@@ -226,6 +249,8 @@ type scanPair struct {
 	typeField string
 	// known is the count a relation of the draft with this mapping already has.
 	known *interfaces.DraftJoinEvidence
+	// named is a pair whose field's name says its target.
+	named bool
 }
 
 type inclusionScan struct {
@@ -252,35 +277,120 @@ func identityOf(ot *interfaces.DraftObjectType) *interfaces.DraftProperty {
 	return findProperty(ot, ot.PrimaryKeys[0])
 }
 
+// targetKeys are the properties a reference to the object type may point at: its single identity, or,
+// while it waits for one, a single-field candidate drafting counted unique; and the fields holding a
+// document's number, which rows of one document share.
+func targetKeys(ot *interfaces.DraftObjectType) []*interfaces.DraftProperty {
+	if ot.Table.ResourceID == "" {
+		return nil
+	}
+	keys := []*interfaces.DraftProperty{}
+	if key := identityOf(ot); key != nil {
+		keys = append(keys, key)
+	} else if ot.NeedsIdentity {
+		for _, candidate := range ot.Key.Candidates {
+			if p := findProperty(ot, candidate[0]); len(candidate) == 1 && p != nil {
+				keys = append(keys, p)
+				break
+			}
+		}
+	}
+	for _, p := range ot.Properties {
+		if p.MappedField != "" && typeClass(p.Type) == "string" && documentNumber(p) && !slices.Contains(keys, p) {
+			keys = append(keys, p)
+		}
+	}
+	return keys
+}
+
+// documentNumber tells a field holding a document's own number; a source document's number (源单编号)
+// is a reference, not a key.
+func documentNumber(p *interfaces.DraftProperty) bool {
+	if sourceLike(p) {
+		return false
+	}
+	for _, n := range namesOf(p) {
+		key := nameKey(n)
+		for _, end := range diagnosisDocumentNumberEnds {
+			if key != "" && strings.HasSuffix(key, end) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sequenceLike tells a field numbering rows, never a reference.
+func sequenceLike(p *interfaces.DraftProperty) bool {
+	for _, n := range namesOf(p) {
+		key := nameKey(n)
+		if key == "" {
+			continue
+		}
+		for _, w := range diagnosisSequenceWords {
+			if w[0] >= 0x80 && strings.Contains(key, w) || w[0] < 0x80 && (key == w || strings.HasSuffix(key, w)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sourceLike tells a field naming where a record comes from.
+func sourceLike(p *interfaces.DraftProperty) bool {
+	return slices.ContainsFunc(namesOf(p), func(n string) bool {
+		if n == "" {
+			return false
+		}
+		lower := strings.ToLower(n)
+		for _, w := range diagnosisSourceWords {
+			if w[0] >= 0x80 && strings.Contains(n, w) || w[0] < 0x80 && (slices.Contains(words(n), w) ||
+				strings.HasPrefix(nameKey(lower), w)) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func (s *inclusionScan) run(ctx context.Context, facts *interfaces.DraftNetworkFacts) {
-	pairs := []scanPair{}
 	types := []*interfaces.DraftObjectType{}
 	for _, ot := range s.items.ObjectTypes {
 		if ot.Table.ResourceID != "" && ot.Document == nil {
 			types = append(types, ot)
 		}
 	}
+	// The order spends the budget on what matters most: subtypes, few and decisive; then the branches
+	// of polymorphic references; then plain fields, those naming where a record comes from first, then
+	// those whose name says the target, then the rest.
+	subtypes, pairsSeen, notCounted := s.subtypes(ctx, types)
+	facts.Subtypes = subtypes
+	facts.Pairs, facts.NotCounted = pairsSeen, notCounted
+	branches := s.polymorphic(ctx, types)
+
+	pairs := []scanPair{}
 	for _, source := range types {
 		inKey := map[string]bool{}
 		for _, k := range source.PrimaryKeys {
 			inKey[k] = true
 		}
 		for _, p := range source.Properties {
-			if inKey[p.Name] || p.MappedField == "" || !codeLike(p) {
+			if inKey[p.Name] || p.MappedField == "" || !codeLike(p) || sequenceLike(p) {
 				continue
 			}
 			for _, target := range types {
-				if pair, ok := s.pairOf(source, p, target); ok {
-					pairs = append(pairs, pair)
+				for _, key := range targetKeys(target) {
+					if pair, ok := s.pairOf(source, p, target, key); ok {
+						pairs = append(pairs, pair)
+					}
 				}
 			}
 		}
 	}
-	// The likelier first: a known relation needs no count, then fields whose name says the target.
 	slices.SortStableFunc(pairs, func(a, b scanPair) int { return cmp.Compare(b.priority, a.priority) })
 	plain := s.count(ctx, pairs)
-	branches := s.polymorphic(ctx, types)
-	facts.Pairs = len(pairs) + branches.pairs
+	facts.Pairs += len(pairs) + branches.pairs
+	facts.NotCounted += plain.notCounted + branches.notCounted
 	// A branch found replaces the plain count of its field and target: the branch is the reference.
 	branched := map[string]bool{}
 	for _, b := range branches.found {
@@ -292,31 +402,32 @@ func (s *inclusionScan) run(ctx context.Context, facts *interfaces.DraftNetworkF
 		}
 	}
 	facts.References = append(facts.References, branches.found...)
-	facts.NotCounted = plain.notCounted + branches.notCounted
 	for i := range facts.References {
 		r := &facts.References[i]
 		if f, ok := s.fields[r.Source+"|"+r.SourceProperty]; ok {
 			r.FieldRows, r.FieldNulls = f[0], f[1]
 		}
 	}
-	subtypes, pairsSeen, notCounted := s.subtypes(ctx, types)
-	facts.Subtypes = subtypes
-	facts.Pairs += pairsSeen
-	facts.NotCounted += notCounted
+	facts.Uncounted = []string{}
+	for _, id := range append(plain.uncounted, branches.uncounted...) {
+		if !slices.Contains(facts.Uncounted, id) {
+			facts.Uncounted = append(facts.Uncounted, id)
+		}
+	}
 }
 
-// pairOf is a code-like property of source counted against target's identity: of another object type
-// with an identity of a matching type, or of the source itself through a parent field.
+// pairOf is a code-like property of source counted against one of target's keys: of another object
+// type, of a matching type, or of the source itself through a parent field.
 func (s *inclusionScan) pairOf(source *interfaces.DraftObjectType, p *interfaces.DraftProperty,
-	target *interfaces.DraftObjectType) (scanPair, bool) {
-	key := identityOf(target)
+	target *interfaces.DraftObjectType, key *interfaces.DraftProperty) (scanPair, bool) {
 	switch {
 	case key == nil, source.Table.CatalogID != target.Table.CatalogID, typeClass(p.Type) != typeClass(key.Type):
 		return scanPair{}, false
-	case source.ID == target.ID && !parentLike(p):
+	case source.ID == target.ID && !parentLike(p), source.ID == target.ID && key == p:
 		return scanPair{}, false
 	}
-	pair := scanPair{field: p.MappedField, key: key.MappedField, priority: namePriority(p, target, key),
+	priority := namePriority(p, target, key)
+	pair := scanPair{field: p.MappedField, key: key.MappedField, named: priority > 0, priority: priority,
 		ref: interfaces.DraftReference{Source: source.ID, SourceProperty: p.Name, Target: target.ID,
 			TargetProperty: key.Name, Self: source.ID == target.ID, Name: s.nameOf(source, target, p.Name)}}
 	for _, rt := range s.items.RelationTypes {
@@ -330,12 +441,24 @@ func (s *inclusionScan) pairOf(source *interfaces.DraftObjectType, p *interfaces
 			pair.priority = 10
 		}
 	}
+	if sourceLike(p) && pair.priority < 10 {
+		// A source field refers to a document: its number first, then other identities.
+		pair.priority += 4
+		if documentNumber(key) {
+			pair.priority += 2
+		}
+	}
 	return pair, true
 }
 
-// nameOf is the name a relation drafted from the field takes: the role the target plays.
+// nameOf is the name a relation drafted from the field takes: the role the target plays. A role that
+// merely extends the target's name, as 物料计划 from 物料计划编号 for 物料, names no narrower role: the
+// target's name does.
 func (s *inclusionScan) nameOf(source *interfaces.DraftObjectType, target *interfaces.DraftObjectType, property string) string {
 	name := relationNameIn(s.language, source, target, property, target.Name)
+	if target.Name != "" && name != target.Name && strings.HasPrefix(name, target.Name) {
+		name = target.Name
+	}
 	if relationNameTaken(s.items.RelationTypes, source.ID, "", name) {
 		name = relationNameFullIn(source, target, property, target.Name)
 	}
@@ -347,10 +470,12 @@ type scanFound struct {
 	found      []interfaces.DraftReference
 	notCounted int
 	pairs      int
+	// uncounted are the object types at either end of a pair left uncounted.
+	uncounted []string
 }
 
 // count counts pairs in order within the budget. A pair counted without a hit is no reference; one
-// left uncounted is kept when its name suggests its target, so a person can still see it.
+// left uncounted is kept when its field's name says its target, so a person can still see it.
 func (s *inclusionScan) count(ctx context.Context, pairs []scanPair) scanFound {
 	out := scanFound{found: []interfaces.DraftReference{}}
 	for _, pair := range pairs {
@@ -360,7 +485,8 @@ func (s *inclusionScan) count(ctx context.Context, pairs []scanPair) scanFound {
 			r.Counted, r.Rows, r.Nulls, r.Hits, r.Rate = true, pair.known.Rows, pair.known.Nulls, pair.known.Hits, pair.known.HitRate
 		case !s.room(ctx):
 			out.notCounted++
-			if pair.priority > 0 {
+			out.uncounted = append(out.uncounted, r.Source, r.Target)
+			if pair.named {
 				out.found = append(out.found, r)
 			}
 			continue
@@ -378,7 +504,8 @@ func (s *inclusionScan) count(ctx context.Context, pairs []scanPair) scanFound {
 			}
 			if err != nil {
 				out.notCounted++
-				if pair.priority > 0 {
+				out.uncounted = append(out.uncounted, r.Source, r.Target)
+				if pair.named {
 					out.found = append(out.found, r)
 				}
 				continue
@@ -388,6 +515,11 @@ func (s *inclusionScan) count(ctx context.Context, pairs []scanPair) scanFound {
 		}
 		if r.Condition == nil && r.Counted {
 			s.fields[r.Source+"|"+r.SourceProperty] = [2]int64{r.Rows, r.Nulls}
+		}
+		// Integers coincide: between integer fields the name says the target, or nearly all values hit.
+		if r.RelationTypeID == "" && !pair.named && typeClass(findProperty(findObjectType(s.items, r.Source),
+			r.SourceProperty).Type) == "integer" && r.Rate < diagnosisIntegerRate {
+			continue
 		}
 		if r.Hits > 0 || r.RelationTypeID != "" {
 			out.found = append(out.found, r)
@@ -413,6 +545,7 @@ func (s *inclusionScan) polymorphic(ctx context.Context, types []*interfaces.Dra
 					// The branches stay unknown: one pair, not counted.
 					out.pairs++
 					out.notCounted++
+					out.uncounted = append(out.uncounted, source.ID)
 					continue
 				}
 				s.counted++
@@ -427,26 +560,36 @@ func (s *inclusionScan) polymorphic(ctx context.Context, types []*interfaces.Dra
 						if target.ID == source.ID {
 							continue
 						}
-						pair, ok := s.pairOf(source, p, target)
-						if !ok {
-							continue
+						for _, key := range targetKeys(target) {
+							pair, ok := s.pairOf(source, p, target, key)
+							if !ok {
+								continue
+							}
+							pair.known, pair.ref.RelationTypeID = nil, ""
+							pair.typeField = tf.MappedField
+							pair.ref.Condition = &interfaces.DraftReferenceCondition{Property: tf.Name, Value: value}
+							pair.priority += valuePriority(value, target)
+							pair.named = pair.named || valuePriority(value, target) > 0
+							pairs = append(pairs, pair)
 						}
-						pair.known, pair.ref.RelationTypeID = nil, ""
-						pair.typeField = tf.MappedField
-						pair.ref.Condition = &interfaces.DraftReferenceCondition{Property: tf.Name, Value: value}
-						pair.priority += valuePriority(value, target)
-						pairs = append(pairs, pair)
 					}
 					slices.SortStableFunc(pairs, func(a, b scanPair) int { return cmp.Compare(b.priority, a.priority) })
-					out.pairs += len(pairs)
-					counted := s.count(ctx, pairs)
-					out.notCounted += counted.notCounted
-					// The branch is the target the most values of this type hit.
+					// The branch is the first target, in that order, whose count reaches the rate; else the
+					// one the most values hit. Past it the targets are not counted.
 					var best *interfaces.DraftReference
-					for i := range counted.found {
-						r := &counted.found[i]
-						if r.Counted && (best == nil || r.Rate > best.Rate) {
-							best = r
+					for i, pair := range pairs {
+						counted := s.count(ctx, []scanPair{pair})
+						out.pairs++
+						out.notCounted += counted.notCounted
+						out.uncounted = append(out.uncounted, counted.uncounted...)
+						for _, r := range counted.found {
+							if r.Counted && (best == nil || r.Rate > best.Rate) {
+								best = &r
+							}
+						}
+						if best != nil && best.Rate >= s.budget.enough {
+							out.pairs += len(pairs) - i - 1
+							break
 						}
 					}
 					if best != nil {
@@ -586,10 +729,13 @@ func sameStem(typeField *interfaces.DraftProperty, code *interfaces.DraftPropert
 	return false
 }
 
-// sameName tells two identity properties named alike, by display name or field.
+// sameName tells two identity properties named alike: by display name when both have one, as 物料编码
+// and 物料编码, else by field. Generic fields such as id named apart by their display names are not.
 func sameName(a, b *interfaces.DraftProperty) bool {
-	return a.DisplayName != "" && nameKey(a.DisplayName) == nameKey(b.DisplayName) ||
-		nameKey(a.MappedField) == nameKey(b.MappedField)
+	if a.DisplayName != "" && b.DisplayName != "" {
+		return nameKey(a.DisplayName) == nameKey(b.DisplayName)
+	}
+	return nameKey(a.MappedField) == nameKey(b.MappedField)
 }
 
 // namePriority ranks a pair by how far the field's name says its target: it names the target or its
@@ -608,7 +754,7 @@ func namePriority(p *interfaces.DraftProperty, target *interfaces.DraftObjectTyp
 			switch {
 			case n == t:
 				priority = max(priority, 3)
-			case strings.Contains(n, t) || strings.Contains(t, n):
+			case meaningful(t) && strings.Contains(n, t) || meaningful(n) && strings.Contains(t, n):
 				priority = max(priority, 2)
 			}
 		}
@@ -617,6 +763,18 @@ func namePriority(p *interfaces.DraftProperty, target *interfaces.DraftObjectTyp
 		}
 	}
 	return priority
+}
+
+// meaningful tells a name long enough to say something when another contains it: not a code word
+// alone, such as id, and at least two Han characters or four letters.
+func meaningful(key string) bool {
+	if slices.Contains(diagnosisCodeWords, key) {
+		return false
+	}
+	if key[0] >= 0x80 {
+		return utf8.RuneCountInString(key) >= 2
+	}
+	return len(key) >= 4
 }
 
 // valuePriority ranks a branch's target by how far the type value names it, as mrp_planorder names a

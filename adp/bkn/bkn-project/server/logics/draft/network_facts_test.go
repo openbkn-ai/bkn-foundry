@@ -310,3 +310,122 @@ func Test_NetworkCounterSQL(t *testing.T) {
 		So([]int64{rows, nulls, orphans}, ShouldResemble, []int64{19, 0, 1})
 	})
 }
+
+// realShaped is the sample as 8081 has it: a forecast identified by its record id whose bill number
+// rows share; a plan order whose root demand number refers to that bill number; a purchase request
+// and order waiting for their identities, the order's source number referring to the request's bill
+// number; a work order whose source type and number refer to a plan order; a stoppage whose resource
+// kind and code refer to a production line; a BOM whose row sequence matches inventory record ids.
+func realShaped() *interfaces.Draft {
+	integer := func(name, display string) *interfaces.DraftProperty {
+		p := netProp(name, display, "integer")
+		return p
+	}
+	forecast := netObject("erp_mds_forecast", "物料需求预测", true, "id", netProp("id", "预测记录ID", "string"),
+		netProp("billno", "预测单号", "string"), netProp("material_number", "物料编号", "string"))
+	material := netObject("erp_material", "物料", true, "material_code", netProp("material_code", "物料编码", "string"))
+	mrp := netObject("erp_mrp_plan_order", "MRP计划订单", true, "billno", netProp("billno", "计划订单编号", "string"),
+		netProp("materialplanid_number", "物料计划编号", "string"), netProp("rootdemandbillno", "根需求单据编号", "string"))
+	order := netObject("erp_production_work_order", "生产工单", true, "id", integer("id", "工单ID"),
+		netProp("billno", "工单编号", "string"), netProp("sourcebilltype", "源单类型", "text"),
+		netProp("sourcebillnumber", "源单编号", "string"))
+	request := netObject("erp_purchase_request", "采购申请", false, "", integer("id", "采购申请ID"),
+		netProp("billno", "采购申请单号", "string"), integer("entry_id", "明细行ID"), netProp("srcbillnumber", "源单编号", "string"))
+	request.Key.Candidates = [][]string{{"id", "entry_id"}}
+	purchase := netObject("erp_purchase_order", "采购订单", false, "", integer("id", "采购订单ID"),
+		netProp("billno", "订单编号", "string"), integer("entry_id", "分录ID"), netProp("srcbillnumber", "源单编号", "string"))
+	purchase.Key.Candidates = [][]string{{"id", "entry_id"}}
+	line := netObject("production_line", "生产线", true, "line_code", netProp("line_code", "生产线编码", "string"))
+	stoppage := netObject("line_stoppage", "产线停机", true, "stoppage_id", netProp("stoppage_id", "停机事件ID", "string"),
+		netProp("resource_code", "资源编码", "string"), netProp("resource_kind", "资源类型", "text"))
+	bom := netObject("erp_material_bom", "物料清单", false, "", integer("seq_no", "BOM行序号"),
+		netProp("bom_material_code", "BOM物料编码", "string"))
+	inventory := netObject("erp_real_time_inventory", "实时库存", true, "id", integer("id", "库存记录ID"),
+		integer("seq_no", "记录序号"), integer("warehouse_id", "仓库ID"))
+	return &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_READY, UpdateTime: 100,
+		Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{forecast, material, mrp, order, request, purchase,
+			line, stoppage, bom, inventory},
+			Inputs: &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+}
+
+func realCounts() *netCounter {
+	return &netCounter{
+		joinCounts: map[string][3]int64{
+			"r_erp_mrp_plan_order.rootdemandbillno>r_erp_mds_forecast.billno":                        {799, 0, 227},
+			"r_erp_mrp_plan_order.materialplanid_number>r_erp_material.material_code":                {824, 0, 0},
+			"r_erp_production_work_order.sourcebillnumber>r_erp_mrp_plan_order.billno":               {605, 586, 0},
+			"r_erp_production_work_order.sourcebillnumber>r_erp_mrp_plan_order.billno?mrp_planorder": {19, 0, 0},
+			"r_erp_purchase_order.srcbillnumber>r_erp_purchase_request.billno":                       {1865, 0, 80},
+			"r_erp_purchase_request.srcbillnumber>r_erp_mrp_plan_order.billno":                       {19333, 19189, 0},
+			"r_line_stoppage.resource_code>r_production_line.line_code?生产线":                          {40, 0, 0},
+			"r_erp_material_bom.seq_no>r_erp_real_time_inventory.id":                                 {31423, 0, 12115},
+			"r_erp_real_time_inventory.warehouse_id>r_erp_production_work_order.id":                  {500, 0, 150},
+		},
+		types: map[string][]string{"r_erp_production_work_order.sourcebilltype": {"mrp_planorder"},
+			"r_line_stoppage.resource_kind": {"生产线"}},
+	}
+}
+
+func Test_NetworkFactsOrder(t *testing.T) {
+	Convey("The scan counts the document chain first, within a small budget\n", t, func() {
+		c := realCounts()
+		facts := networkFacts(context.Background(), realShaped(), c, scanBudget{pairs: 20, timeout: time.Minute, enough: 0.6})
+
+		root := findReference(facts.References, "erp_mrp_plan_order", "rootdemandbillno", "erp_mds_forecast")
+		So(root, ShouldNotBeNil)
+		So(root.Counted, ShouldBeTrue)
+		// A document number is a key a reference may point at although it is no identity.
+		So(root.TargetProperty, ShouldEqual, "billno")
+		So(root.Hits, ShouldEqual, 572)
+
+		// An object type waiting for its identity is still counted against its document number.
+		src := findReference(facts.References, "erp_purchase_order", "srcbillnumber", "erp_purchase_request")
+		So(src, ShouldNotBeNil)
+		So(src.Counted, ShouldBeTrue)
+		So(src.Hits, ShouldEqual, 1785)
+
+		branch := findReference(facts.References, "erp_production_work_order", "sourcebillnumber", "erp_mrp_plan_order")
+		So(branch.Condition, ShouldResemble, &interfaces.DraftReferenceCondition{Property: "sourcebilltype", Value: "mrp_planorder"})
+		So(branch.Hits, ShouldEqual, 19)
+
+		// A type field of text and a code field are a polymorphic reference; the value names the target.
+		stop := findReference(facts.References, "line_stoppage", "resource_code", "production_line")
+		So(stop, ShouldNotBeNil)
+		So(stop.Condition.Value, ShouldEqual, "生产线")
+		So(c.calls, ShouldContain, "r_line_stoppage.resource_code>r_production_line.line_code?生产线")
+		So(facts.NotCounted, ShouldBeGreaterThan, 0)
+		So(facts.Uncounted, ShouldNotBeEmpty)
+	})
+
+	Convey("Row numbers refer to nothing, and small integers need a name or nearly every value\n", t, func() {
+		c := realCounts()
+		facts := networkFacts(context.Background(), realShaped(), c, scanBudget{pairs: 300, timeout: time.Minute, enough: 0.6})
+		for _, call := range c.calls {
+			So(strings.HasPrefix(call, "r_erp_material_bom.seq_no>"), ShouldBeFalse)
+			So(strings.HasPrefix(call, "r_erp_real_time_inventory.seq_no>"), ShouldBeFalse)
+		}
+		So(findReference(facts.References, "erp_material_bom", "seq_no", "erp_real_time_inventory"), ShouldBeNil)
+		// 350/500 of an integer field whose name says nothing of its target is a coincidence.
+		So(findReference(facts.References, "erp_real_time_inventory", "warehouse_id", "erp_production_work_order"), ShouldBeNil)
+	})
+
+	Convey("A role that merely extends the target's name takes the target's name\n", t, func() {
+		facts := networkFacts(context.Background(), realShaped(), realCounts(), scanBudget{pairs: 300, timeout: time.Minute, enough: 0.6})
+		r := findReference(facts.References, "erp_mrp_plan_order", "materialplanid_number", "erp_material")
+		So(r.Name, ShouldEqual, "物料")
+		So(findReference(facts.References, "erp_mrp_plan_order", "rootdemandbillno", "erp_mds_forecast").Name, ShouldEqual, "根需求单据")
+	})
+
+	Convey("Sequence, source and document number fields are told by their names\n", t, func() {
+		So(sequenceLike(netProp("seq_no", "BOM行序号", "integer")), ShouldBeTrue)
+		So(sequenceLike(netProp("entry_id", "明细行ID", "integer")), ShouldBeTrue)
+		So(sequenceLike(netProp("line_no", "", "integer")), ShouldBeTrue)
+		So(sequenceLike(netProp("line_code", "生产线编码", "string")), ShouldBeFalse)
+		So(sourceLike(netProp("srcbillnumber", "源单编号", "string")), ShouldBeTrue)
+		So(sourceLike(netProp("rootdemandbillno", "根需求单据编号", "string")), ShouldBeTrue)
+		So(sourceLike(netProp("material_number", "物料编号", "string")), ShouldBeFalse)
+		So(documentNumber(netProp("billno", "预测单号", "string")), ShouldBeTrue)
+		So(documentNumber(netProp("billno", "工单编号", "string")), ShouldBeTrue)
+		So(documentNumber(netProp("material_code", "物料编码", "string")), ShouldBeFalse)
+	})
+}

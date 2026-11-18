@@ -161,8 +161,8 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.checkTimeout", 10*time.Minute)
 	vp.SetDefault("draft.diagnosisHitRate", 0.6)
 	vp.SetDefault("draft.diagnosisMinRows", 10)
-	vp.SetDefault("draft.diagnosisMaxPairs", 300)
-	vp.SetDefault("draft.diagnosisTimeout", 60*time.Second)
+	vp.SetDefault("draft.diagnosisMaxPairs", 600)
+	vp.SetDefault("draft.diagnosisTimeout", 2*time.Minute)
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)

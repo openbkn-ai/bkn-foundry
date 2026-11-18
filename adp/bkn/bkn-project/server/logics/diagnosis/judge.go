@@ -553,14 +553,15 @@ func (j *judge) fallback() []*interfaces.DiagnosisSuggestion {
 	list := []*interfaces.DiagnosisSuggestion{}
 	touched := map[string]bool{}
 	for _, r := range j.facts.References {
-		if !j.qualifies(r) || r.RelationTypeID != "" || j.object(r.Source) == nil || j.object(r.Target) == nil {
+		if !j.qualifies(r) || r.RelationTypeID != "" || j.object(r.Source) == nil || j.object(r.Target) == nil ||
+			j.redundant(r) {
 			continue
 		}
 		list = append(list, j.createRelation(r, "", "", "", nil))
 		touched[r.Source], touched[r.Target] = true, true
 	}
 	for _, st := range j.facts.Subtypes {
-		if j.object(st.Sub).Adopted && j.object(st.Super).Adopted {
+		if j.object(st.Sub).Adopted && j.object(st.Super).Adopted && !j.subtypeLinked(st) {
 			list = append(list, j.subtypeRelation(st, "", ""))
 			touched[st.Sub], touched[st.Super] = true, true
 		}
@@ -581,7 +582,8 @@ func (j *judge) fallback() []*interfaces.DiagnosisSuggestion {
 		}
 	}
 	for _, component := range j.facts.Components {
-		if ot := j.object(component[0]); len(component) == 1 && len(j.facts.Components) > 1 && !touched[ot.ID] && !ot.Existing {
+		if ot := j.object(component[0]); len(component) == 1 && len(j.facts.Components) > 1 && !touched[ot.ID] && !ot.Existing &&
+			!j.hasLeads(ot.ID) {
 			list = append(list, j.excludeObject(ot, ""))
 		}
 	}
@@ -619,7 +621,7 @@ func (j *judge) checked(a agentSuggestion) *interfaces.DiagnosisSuggestion {
 	case interfaces.DIAGNOSIS_KIND_CREATE_RELATION:
 		switch {
 		case a.Subtype != nil:
-			if *a.Subtype < 0 || *a.Subtype >= len(j.facts.Subtypes) {
+			if *a.Subtype < 0 || *a.Subtype >= len(j.facts.Subtypes) || j.subtypeLinked(j.facts.Subtypes[*a.Subtype]) {
 				return nil
 			}
 			s = j.subtypeRelation(j.facts.Subtypes[*a.Subtype], a.Name, a.Description)
@@ -628,7 +630,7 @@ func (j *judge) checked(a agentSuggestion) *interfaces.DiagnosisSuggestion {
 				return nil
 			}
 			r := j.refs[*a.Reference]
-			if j.covered(r) || !(j.qualifies(r) || r.Counted && r.Hits > 0 && len(quotes) > 0) {
+			if j.covered(r) || j.redundant(r) || !(j.qualifies(r) || r.Counted && r.Hits > 0 && len(quotes) > 0) {
 				return nil
 			}
 			if rt := j.relation(r.RelationTypeID); rt != nil && r.Condition == nil {
@@ -662,7 +664,7 @@ func (j *judge) checked(a agentSuggestion) *interfaces.DiagnosisSuggestion {
 		s = j.adoptObject(p)
 	case interfaces.DIAGNOSIS_KIND_EXCLUDE_OBJECT:
 		ot := j.object(a.ObjectTypeID)
-		if ot == nil || !ot.Adopted || ot.Existing {
+		if ot == nil || !ot.Adopted || ot.Existing || j.hasLeads(ot.ID) {
 			return nil
 		}
 		s = j.excludeObject(ot, a.Reason)
@@ -709,6 +711,47 @@ func (j *judge) checked(a agentSuggestion) *interfaces.DiagnosisSuggestion {
 		s.Evidence.Quotes = quotes
 	}
 	return s
+}
+
+// kinds tells two object types one of which is a subtype of the other.
+func (j *judge) kinds(a string, b string) bool {
+	return slices.ContainsFunc(j.facts.Subtypes, func(st interfaces.DraftSubtype) bool {
+		return st.Sub == a && st.Super == b || st.Sub == b && st.Super == a
+	})
+}
+
+// redundant tells a reference whose field already reaches a subtype or supertype of its target: through
+// a relation of the draft, or through another reference to a subtype, the more specific. The subtype
+// relation joins the two; a second relation through the same field would only repeat it.
+func (j *judge) redundant(r interfaces.DraftReference) bool {
+	for _, rt := range j.items.RelationTypes {
+		if rt.Source == r.Source && rt.Target != r.Target && len(rt.Mapping) == 1 &&
+			rt.Mapping[0].SourceProperty == r.SourceProperty && j.kinds(rt.Target, r.Target) {
+			return true
+		}
+	}
+	return slices.ContainsFunc(j.facts.References, func(o interfaces.DraftReference) bool {
+		return o.Source == r.Source && o.SourceProperty == r.SourceProperty && o.Target != r.Target &&
+			j.qualifies(o) && slices.ContainsFunc(j.facts.Subtypes, func(st interfaces.DraftSubtype) bool {
+			return st.Sub == o.Target && st.Super == r.Target
+		})
+	})
+}
+
+// subtypeLinked tells a subtype the draft already joins to its supertype by their identities.
+func (j *judge) subtypeLinked(st interfaces.DraftSubtype) bool {
+	return slices.ContainsFunc(j.items.RelationTypes, func(rt *interfaces.DraftRelationType) bool {
+		return rt.Source == st.Sub && rt.Target == st.Super && len(rt.Mapping) == 1 &&
+			rt.Mapping[0] == interfaces.DraftFieldMapping{SourceProperty: st.SubProperty, TargetProperty: st.SuperProperty}
+	})
+}
+
+// hasLeads tells an object type the scan left pairs uncounted for, or that a reference reaches: what
+// it connects to is not settled, so it is never offered to leave out.
+func (j *judge) hasLeads(id string) bool {
+	return slices.Contains(j.facts.Uncounted, id) || slices.ContainsFunc(j.facts.References, func(r interfaces.DraftReference) bool {
+		return r.Source != r.Target && (r.Source == id || r.Target == id)
+	})
 }
 
 func (j *judge) concept(id string) *conceptInput {
