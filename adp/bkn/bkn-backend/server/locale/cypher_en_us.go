@@ -28,5 +28,7 @@ var cypherEnUS = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryTooLong":         "query must not exceed {{.max}} characters.",
 		"BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded":        "LIMIT must not exceed {{.max}}.",
 		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec must be between 1 and {{.max}} seconds; leave it out to use the configured {{.max}} seconds.",
+
+		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceOptionalLink": "The query reads object types stored in a dataset or an index, or in more than one data source. Relation type {{.relation}} links its ends through a link table, which such data takes in MATCH but not in OPTIONAL MATCH: write it as a MATCH, or query the two sides separately.",
 	},
 }

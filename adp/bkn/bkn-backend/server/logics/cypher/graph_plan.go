@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -355,6 +356,42 @@ func (p *planner) resolvePropertyColumn(table int, property string, pos Position
 	return column, nil
 }
 
+// aliasedSnapshots lets object_properties name a returned node by the alias it
+// is returned as (RETURN r AS report names it report), as well as by its
+// variable: whoever writes the request reads the result, whose columns carry
+// the alias (bkn-foundry issue 3283). A key that is a node variable keeps
+// meaning that node. The caller's map is left as it is.
+func (p *planner) aliasedSnapshots(projections []Projection) error {
+	var resolved map[string][]string
+	for key, properties := range p.snapshotProperties {
+		if _, isNode := p.tableOf[key]; isNode {
+			continue
+		}
+		for _, projection := range projections {
+			variable, isVariable := projection.Value.(GraphVariable)
+			if !isVariable || projection.Alias != key {
+				continue
+			}
+			if _, isNode := p.tableOf[variable.Name]; !isNode {
+				continue
+			}
+			if _, both := p.snapshotProperties[variable.Name]; both {
+				return planErrorf(Position{},
+					"object_properties names %q and %q, the alias it is returned as; name the node once", variable.Name, key)
+			}
+			if resolved == nil {
+				resolved = maps.Clone(p.snapshotProperties)
+			}
+			delete(resolved, key)
+			resolved[variable.Name] = properties
+		}
+	}
+	if resolved != nil {
+		p.snapshotProperties = resolved
+	}
+	return nil
+}
+
 // checkGraphReturn applies the limits of this version to a query that returns
 // graph values, and checks object_properties against the pattern.
 func (p *planner) checkGraphReturn(projections []Projection) error {
@@ -362,7 +399,9 @@ func (p *planner) checkGraphReturn(projections []Projection) error {
 	for variable, properties := range p.snapshotProperties {
 		total += len(properties)
 		if _, isNode := p.tableOf[variable]; !isNode {
-			return planErrorf(Position{}, "object_properties names %q, which is not a node of the MATCH pattern", variable)
+			return planErrorf(Position{},
+				"object_properties names %q, which is neither a node of the MATCH pattern nor the alias a returned node has; "+
+					"its keys are node variables such as n in (n:Label), or the alias in RETURN n AS name", variable)
 		}
 		if !p.snapshotUsed[variable] {
 			return planErrorf(Position{}, "object_properties names %q, but the query does not return that node", variable)

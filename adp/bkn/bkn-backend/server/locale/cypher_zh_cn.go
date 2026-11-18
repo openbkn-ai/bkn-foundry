@@ -28,5 +28,7 @@ var cypherZhCN = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.QueryTooLong":         "query 长度不能超过 {{.max}} 个字符。",
 		"BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded":        "LIMIT 不能超过 {{.max}}。",
 		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec 必须在 1 到 {{.max}} 之间（秒），不传则使用服务配置的 {{.max}} 秒。",
+
+		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceOptionalLink": "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中。关系类 {{.relation}} 经关联表连接两端，这类数据上它只能写在 MATCH 里，不能写在 OPTIONAL MATCH 里：请改用 MATCH，或分两次查询后合并。",
 	},
 }

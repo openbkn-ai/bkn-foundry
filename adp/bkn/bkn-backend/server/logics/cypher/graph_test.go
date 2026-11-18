@@ -279,7 +279,7 @@ func TestGraphRefusals(t *testing.T) {
 		{query: "MATCH (o:Order) RETURN {o: collect(o)} AS m", want: "aggregate inside a map"},
 		{query: "MATCH (o:Order) RETURN o", properties: map[string][]string{"o": {"nope"}}, want: "no property"},
 		{query: "MATCH (o:Order) RETURN o.id", properties: map[string][]string{"o": {"region"}}, want: "does not return that node"},
-		{query: "MATCH (o:Order) RETURN o", properties: map[string][]string{"x": {"region"}}, want: "not a node"},
+		{query: "MATCH (o:Order) RETURN o", properties: map[string][]string{"x": {"region"}}, want: "neither a node of the MATCH pattern nor the alias"},
 	} {
 		_, _, err := runGraph(t, bindJoinData(), tc.query, tc.properties)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -342,6 +342,55 @@ func TestGraphCollectAlonePagesItsOneRow(t *testing.T) {
 		}
 		if len(entries) != tc.entries {
 			t.Errorf("%s: %d rows, want %d", tc.query, len(entries), tc.entries)
+		}
+	}
+}
+
+// object_properties may name a returned node by its alias, which is what the
+// result's columns carry (bkn-foundry issue 3283).
+func TestGraphObjectPropertiesNameANodeByItsAlias(t *testing.T) {
+	properties := map[string][]string{"purchase": {"region"}, "c": {"name"}}
+	entries := mustRunGraph(t, "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WHERE o.id = 1 RETURN o AS purchase, c AS customer",
+		properties)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %s", asJSON(t, entries))
+	}
+	if props := entries[0]["purchase"].(interfaces.CypherObjectValue).Properties; props["region"] != "east" {
+		t.Errorf("purchase snapshot = %v, want the region asked of its alias", props)
+	}
+	if props := entries[0]["customer"].(interfaces.CypherObjectValue).Properties; props["name"] != "Alice" {
+		t.Errorf("customer snapshot = %v, want the name asked of its variable", props)
+	}
+	if _, kept := properties["purchase"]; !kept || len(properties) != 2 {
+		t.Errorf("the caller's object_properties changed: %v", properties)
+	}
+
+	for _, tc := range []struct {
+		query      string
+		properties map[string][]string
+		want       string
+	}{
+		{
+			query:      "MATCH (o:Order) RETURN o AS purchase",
+			properties: map[string][]string{"o": {"region"}, "purchase": {"id"}},
+			want:       `names "o" and "purchase"`,
+		},
+		{
+			// An alias of a value that is not a node names nothing.
+			query:      "MATCH (o:Order) RETURN o.region AS region, o",
+			properties: map[string][]string{"region": {"id"}},
+			want:       "neither a node of the MATCH pattern nor the alias",
+		},
+		{
+			// A node counted is not returned, whatever it is called.
+			query:      "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c.name AS name, count(o) AS n",
+			properties: map[string][]string{"o": {"id"}},
+			want:       "does not return that node",
+		},
+	} {
+		_, _, err := runGraph(t, bindJoinData(), tc.query, tc.properties)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s %v: err = %v, want it to mention %q", tc.query, tc.properties, err, tc.want)
 		}
 	}
 }
