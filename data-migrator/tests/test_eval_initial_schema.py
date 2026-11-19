@@ -1,7 +1,7 @@
 # Copyright openbkn.ai
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
-"""Eval tables must be part of the backend fresh-install snapshot."""
+"""Eval tables must be available on fresh installs and upgrades."""
 
 import logging
 import os
@@ -16,6 +16,7 @@ from server.migrate.script_selector import ScriptSelector
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "migrations/bkn-backend/mariadb/0.2.2/init.sql"
+UPGRADE = SNAPSHOT.with_name("06-eval-tables.sql")
 EVAL_TABLES = {
     "t_bkn_eval_suite",
     "t_bkn_eval_suite_version",
@@ -46,6 +47,45 @@ EVAL_TABLES = {
 }
 
 
+@pytest.mark.parametrize("installed_version,last_script", [
+    ("0.2.1", ""),
+    ("0.2.2", "0.2.2/05-kn-event-rule-checks.sql"),
+])
+def test_backend_upgrade_selects_eval_tables(installed_version, last_script):
+    config = AppConfig(
+        rds=RDSConfig("", 3306, "", "", "mariadb", "internal"),
+        repo_path=str(ROOT / "migrations"),
+    )
+    scripts, version, pending = ScriptSelector(config, logging.getLogger(__name__)).select_upgrade_scripts(
+        "bkn-backend", installed_version, last_script,
+    )
+    assert pending
+    assert version == "0.2.2"
+    selected = [Path(path) for _, paths in scripts for path in paths]
+    assert UPGRADE in selected
+    assert SNAPSHOT not in selected
+    if installed_version == "0.2.2":
+        assert selected == [UPGRADE]
+    completed, _, pending = ScriptSelector(config, logging.getLogger(__name__)).select_upgrade_scripts(
+        "bkn-backend", "0.2.2", "0.2.2/06-eval-tables.sql",
+    )
+    assert completed == []
+    assert not pending
+
+
+def test_eval_upgrade_matches_snapshot_and_preserves_existing_tables():
+    pattern = r"CREATE TABLE IF NOT EXISTS t_bkn_eval_\w+\s*\(.*?\) ENGINE[^;]+;"
+    expected = re.findall(pattern, SNAPSHOT.read_text(), re.S)
+    upgrade = UPGRADE.read_text()
+    assert len(expected) == len(EVAL_TABLES)
+    assert re.findall(pattern, upgrade, re.S) == expected
+    # Only additive, retry-safe DDL may run against manually repaired databases.
+    statements = re.sub(r"--[^\n]*", "", upgrade).split(";")
+    assert [statement.strip() for statement in statements if statement.strip()] == [
+        "USE openbkn", *[statement.removesuffix(";") for statement in expected],
+    ]
+
+
 def test_backend_fresh_install_selects_snapshot_with_all_eval_tables():
     config = AppConfig(
         rds=RDSConfig("", 3306, "", "", "mariadb", "internal"),
@@ -68,8 +108,9 @@ def test_eval_initialization_is_schema_only_without_private_initializer_marker()
     assert "description_snapshot VARCHAR(1000) NOT NULL" in snapshot
 
 
-def test_eval_foreign_keys_reference_tables_created_earlier():
-    snapshot = SNAPSHOT.read_text()
+@pytest.mark.parametrize("schema", [SNAPSHOT, UPGRADE])
+def test_eval_foreign_keys_reference_tables_created_earlier(schema):
+    snapshot = schema.read_text()
     created = set()
     for table, body in re.findall(
         r"CREATE TABLE(?: IF NOT EXISTS)? (t_bkn_eval_\w+)\s*\((.*?)\) ENGINE[^;]+;",
