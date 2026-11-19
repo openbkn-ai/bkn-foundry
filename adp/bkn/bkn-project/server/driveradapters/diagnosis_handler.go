@@ -101,7 +101,8 @@ func (r *restHandler) ApplySuggestion(c *gin.Context, visitor hydra.Visitor) {
 	span.SetAttributes(attr.Key("project_id").String(id))
 
 	var req interfaces.DiagnosisApply
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// The body is optional: a concept disposition needs no draft read; the service checks the rest.
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
 		return
 	}

@@ -37,6 +37,11 @@ func quote(field string) string {
 	return "`" + strings.ReplaceAll(field, "`", "``") + "`"
 }
 
+// literal writes a value as a MySQL string literal: backslashes first, then single quotes.
+func literal(value string) string {
+	return "'" + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), "'", "''") + "'"
+}
+
 func ref(table *interfaces.VegaTable) string {
 	return "{{" + table.ID + "}}"
 }

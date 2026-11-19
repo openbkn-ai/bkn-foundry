@@ -91,6 +91,13 @@ func Test_DiagnosisRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, `"status":"applied"`)
 			So(serveBody(handler, http.MethodPost, base+"/diagnosis/suggestions/abc123:apply", []byte(`{`)).Result().StatusCode,
 				ShouldEqual, http.StatusBadRequest)
+
+			// A concept disposition needs no draft read: the body may be left out.
+			dgs.EXPECT().Apply(gomock.Any(), "Bearer t", "p1", "abc123", interfaces.DiagnosisApply{}, caller).
+				Return(&interfaces.DiagnosisApplied{Suggestion: &interfaces.DiagnosisSuggestion{ID: "abc123",
+					Status: interfaces.DIAGNOSIS_STATUS_APPLIED, Apply: []byte("null")}}, nil)
+			So(serve(handler, http.MethodPost, base+"/diagnosis/suggestions/abc123:apply").Result().StatusCode,
+				ShouldEqual, http.StatusOK)
 		})
 
 		Convey(":dismiss takes an optional reason\n", func() {

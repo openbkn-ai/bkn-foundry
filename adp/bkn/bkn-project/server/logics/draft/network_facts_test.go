@@ -308,6 +308,15 @@ func Test_NetworkCounterSQL(t *testing.T) {
 			&interfaces.VegaTable{ID: "r2"}, "billno", "sourcebilltype", "it's")
 		So(err, ShouldBeNil)
 		So([]int64{rows, nulls, orphans}, ShouldResemble, []int64{19, 0, 1})
+
+		va.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any(), 30).DoAndReturn(
+			func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
+				So(sql, ShouldEndWith, `WHERE s.`+"`sourcebilltype`"+` = 'a\\'' OR 1=1 \\'`)
+				return []map[string]any{{"total": 0}}, nil
+			})
+		_, _, _, _, err = c.joinStatsWhere(context.Background(), &interfaces.VegaTable{ID: "r1"}, "sourcebillno",
+			&interfaces.VegaTable{ID: "r2"}, "billno", "sourcebilltype", `a\' OR 1=1 \`)
+		So(err, ShouldBeNil)
 	})
 }
 

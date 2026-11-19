@@ -80,8 +80,8 @@ func (c *vegaCounter) joinStatsWhere(ctx context.Context, source *interfaces.Veg
 			"SUM(CASE WHEN s.%s IS NULL THEN 1 ELSE 0 END) AS nulls, "+
 			"SUM(CASE WHEN s.%s IS NOT NULL AND t.%s IS NULL THEN 1 ELSE 0 END) AS orphans, "+
 			"COUNT(DISTINCT s.%s) AS distinct_values "+
-			"FROM %s s LEFT JOIN (SELECT DISTINCT %s FROM %s) t ON s.%s = t.%s WHERE s.%s = '%s'",
-		f, f, k, f, ref(source), k, ref(target), f, k, quote(typeField), strings.ReplaceAll(value, "'", "''")))
+			"FROM %s s LEFT JOIN (SELECT DISTINCT %s FROM %s) t ON s.%s = t.%s WHERE s.%s = %s",
+		f, f, k, f, ref(source), k, ref(target), f, k, quote(typeField), literal(value)))
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
