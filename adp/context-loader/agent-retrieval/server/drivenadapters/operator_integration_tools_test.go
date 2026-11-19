@@ -117,6 +117,43 @@ func TestExecutePublishedToolCarriesCallerAndInteraction(t *testing.T) {
 	})
 }
 
+// argument_format=http marks parameters that already follow the proxy's
+// HTTPRequestParams grouping. Wrapping that object in body again left the proxy
+// without top-level path or query parameters, so it refused the call before the
+// upstream saw it (#3278).
+func TestToolExecutionPayloadKeepsHTTPGroupsAtTopLevel(t *testing.T) {
+	convey.Convey("plain business parameters stay wrapped in body", t, func() {
+		payload, err := toolExecutionPayload(context.Background(), "",
+			map[string]any{"material_code": "M-1"})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(payload, convey.ShouldResemble, map[string]any{
+			"body": map[string]any{"material_code": "M-1"},
+		})
+	})
+
+	convey.Convey("http parameters keep every group at the envelope's top level", t, func() {
+		parameters := map[string]any{
+			"header": map[string]any{"X-Qa": "1"},
+			"path":   map[string]any{"qa_path": "A+B space"},
+			"query":  map[string]any{"qa_probe": 0},
+			"body":   map[string]any{"qa_count": 0},
+		}
+		payload, err := toolExecutionPayload(context.Background(), "http", parameters)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(payload, convey.ShouldResemble, parameters)
+	})
+
+	convey.Convey("unknown or non-object http groups are rejected with a clear error", t, func() {
+		_, err := toolExecutionPayload(context.Background(), "http",
+			map[string]any{"path": map[string]any{"qa_path": "x"}, "page": 2})
+		convey.So(err, convey.ShouldNotBeNil)
+
+		_, err = toolExecutionPayload(context.Background(), "http",
+			map[string]any{"query": "not-an-object"})
+		convey.So(err, convey.ShouldNotBeNil)
+	})
+}
+
 // The catalogue is read as the caller too, so an account only ever discovers
 // what Execution Factory would let it call.
 func TestPublishedCatalogueReadsAsTheCaller(t *testing.T) {

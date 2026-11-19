@@ -245,10 +245,14 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	if parameters == nil {
 		parameters = map[string]any{}
 	}
+	payload, err := toolExecutionPayload(ctx, req.ArgumentFormat, parameters)
+	if err != nil {
+		return nil, err
+	}
 	// The Toolbox proxy expects HTTPRequestParams. The Function's business
 	// parameters belong inside its body field; treating them as envelope fields
 	// would leave the proxied request body empty.
-	code, response, err := o.httpClient.Post(ctx, fullURL, header, map[string]any{"body": parameters})
+	code, response, err := o.httpClient.Post(ctx, fullURL, header, payload)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecutePublishedTool] Request failed, err: %v", err)
 		return nil, skillUpstreamError(ctx, code, "ToolExecutionRequestFailed", err)
@@ -286,9 +290,13 @@ func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Cont
 	if parameters == nil {
 		parameters = map[string]any{}
 	}
+	payload, err := toolExecutionPayload(ctx, req.ArgumentFormat, parameters)
+	if err != nil {
+		return nil, err
+	}
 	fullURL := o.baseURL + fmt.Sprintf(executePublishedToolManagedURI,
 		url.PathEscape(strings.TrimSpace(req.ToolboxID)), url.PathEscape(strings.TrimSpace(req.ToolID)))
-	code, response, err := o.httpClient.Post(ctx, fullURL, header, map[string]any{"body": parameters})
+	code, response, err := o.httpClient.Post(ctx, fullURL, header, payload)
 	if err != nil {
 		return nil, skillUpstreamError(ctx, code, "ToolExecutionRequestFailed", err)
 	}
@@ -301,6 +309,41 @@ func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Cont
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	return result, nil
+}
+
+// toolExecutionPayload builds the Toolbox proxy request body. Plain business
+// JSON stays wrapped in body. argument_format=http marks parameters that are
+// already grouped as the proxy's HTTPRequestParams: header, body, query and
+// path must stay at the envelope's top level, or the proxy cannot resolve path
+// placeholders or query parameters (#3278).
+func toolExecutionPayload(ctx context.Context, format string, parameters map[string]any) (map[string]any, error) {
+	if !strings.EqualFold(strings.TrimSpace(format), "http") {
+		return map[string]any{"body": parameters}, nil
+	}
+	payload := make(map[string]any, len(parameters))
+	for group, value := range parameters {
+		switch group {
+		case "header", "query", "path":
+			fields, ok := value.(map[string]any)
+			if !ok {
+				return nil, toolHTTPArgumentGroupError(ctx, group)
+			}
+			payload[group] = fields
+		case "body":
+			payload[group] = value
+		default:
+			return nil, toolHTTPArgumentGroupError(ctx, group)
+		}
+	}
+	return payload, nil
+}
+
+func toolHTTPArgumentGroupError(ctx context.Context, group string) error {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolHTTPArgumentGroupInvalid", map[string]any{"group": group})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 }
 
 // searchBoundToolsURI ranks a whitelist of tools. It is on internal-v1, unlike the catalogue
