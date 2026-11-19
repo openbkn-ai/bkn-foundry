@@ -31,6 +31,9 @@ type VegaTable struct {
 	ForeignKeys []VegaForeignKey
 	// Index is vega-backend's local index of the table, which full-text and vector search need.
 	Index VegaTableIndex
+	// Dataset tells a Dataset rather than a source table: the platform writes it and its schema
+	// follows the object type stored in it, so it has no table structure that changes by itself.
+	Dataset bool
 }
 
 // States of a table's local index in vega-backend.

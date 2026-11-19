@@ -255,6 +255,17 @@ func Test_VegaAccess(t *testing.T) {
 			})
 		})
 
+		Convey("GetTables tells a Dataset from a source table\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"orders","category":"table","source_metadata":{"name":"orders","columns":[]}},
+				{"id":"r2","name":"monitor tasks","category":"dataset","schema_definition":[{"name":"task_id","type":"string"}]}]}`
+
+			tables, err := va.GetTables(ctx, account, []string{"r1", "r2"})
+
+			So(err, ShouldBeNil)
+			So(tables[0].Dataset, ShouldBeFalse)
+			So(tables[1].Dataset, ShouldBeTrue)
+		})
+
 		Convey("GetTables reads the table's local index: the fields a build needs, and its state\n", func() {
 			respBody = `{"entries":[{"id":"r1","name":"orders","local_status":"stale","index_name":"idx_r1",
 				"index_config":{"primary_key_fields":["id"],"incremental_fields":["updated_at"]}},

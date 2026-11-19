@@ -76,6 +76,8 @@ ONTOLOGY_ASK_V8 = MIGRATIONS / "0.2.2/15-ontology-ask-naming-rules-v8.sql"
 REQUIREMENTS_V13 = MIGRATIONS / "0.2.2/16-requirements-naming-rules-v13.sql"
 DRAFT_NAMING_V3 = MIGRATIONS / "0.2.2/17-draft-naming-ontology-guidance-v3.sql"
 ONTOLOGY_ASK_V9 = MIGRATIONS / "0.2.2/18-ontology-ask-ontology-guidance-v9.sql"
+ONTOLOGY_ASK_V10 = MIGRATIONS / "0.2.2/20-ontology-ask-diagnose-v10.sql"
+ONTOLOGY_ASK_LIMITS = MIGRATIONS / "0.2.2/21-ontology-ask-diagnose-limits.sql"
 REQUIREMENTS_V14 = MIGRATIONS / "0.2.2/19-requirements-ontology-guidance-v14.sql"
 
 
@@ -332,6 +334,8 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, DRAFT_NAMING_V3)
         apply(upgraded, ONTOLOGY_ASK_V9)
         apply(upgraded, REQUIREMENTS_V14)
+        apply(upgraded, ONTOLOGY_ASK_V10)
+        apply(upgraded, ONTOLOGY_ASK_LIMITS)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         # An upgrade keeps the Agents an edition now seeds; the core compares without them.
@@ -561,7 +565,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]],
+            ["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14), str(ONTOLOGY_ASK_V10), str(ONTOLOGY_ASK_LIMITS)]],
         ],
         "0.2.2",
         True,
@@ -1367,6 +1371,7 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
                                | {s for s in statements(ONTOLOGY_ASK_V7) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V8) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(ONTOLOGY_ASK_V9) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
+                               | {s for s in statements(ONTOLOGY_ASK_V10) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | {s for s in statements(GRAPH_EXPLORER_V2) if s.startswith("update t_agent_prompt_version") and "f_localized_content" in s}
                                | set(statements(METRIC_DESIGN_LOCALE)))
     assert not any(
@@ -1547,7 +1552,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14), str(ONTOLOGY_ASK_V10), str(ONTOLOGY_ASK_LIMITS)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -4176,8 +4181,9 @@ def test_ontology_ask_seed_is_a_published_tool_free_chat_agent_with_a_bounded_ou
         assert agent["f_status"] == "published"
         limits = json.loads(agent["f_limits"])
         assert limits["max_turns"] == 1 and limits["max_tool_calls"] == 0
-        # bkn-project waits 45 seconds within the request: the Agent stops first, with a short answer.
-        assert limits["timeout_s"] < 45 and limits["max_output_tokens"] <= 1024
+        # The pass diagnose needs room for its structured result; interactive Ask AI stays bounded by
+        # bkn-project's own 45 second wait.
+        assert limits == json.loads(ASK_LIMITS)
         prompt, localized = ontology_ask_prompt(db)
         assert prompt.isascii()
         # It answers and proposes only; the fields it may revise are the save body's own.
@@ -4204,9 +4210,20 @@ def test_ontology_ask_seed_and_translation_are_idempotent_on_an_upgrade():
     with database() as db:
         apply(db, Path(selected_migrations("0.0.0")[0][0]))
         before = snapshot(db)
-        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9, ONTOLOGY_ASK_V9):
+        for path in (ONTOLOGY_ASK, ONTOLOGY_ASK, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_REVISIONS, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V3, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V4, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V5, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9, ONTOLOGY_ASK_V9, ONTOLOGY_ASK_V10, ONTOLOGY_ASK_V10):
             apply(db, path)
         assert snapshot(db) == before
+
+
+# The official limits before 21 widened them for the pass diagnose.
+ASK_LIMITS_BEFORE_21 = '{"max_turns":1,"max_tool_calls":0,"timeout_s":40,"max_output_tokens":1024}'
+ASK_LIMITS = '{"max_turns":1,"max_tool_calls":0,"timeout_s":180,"max_output_tokens":16384}'
+
+
+def ask_limits_before_21(db):
+    """An install made from the current snapshot, with Ask AI's limits as an earlier snapshot had them."""
+    db.execute("UPDATE t_agent SET f_limits=? WHERE f_agent_id=?", (ASK_LIMITS_BEFORE_21, ASK))
+    db.execute("UPDATE t_agent_version SET f_limits=? WHERE f_agent_id=?", (ASK_LIMITS_BEFORE_21, ASK))
 
 
 def ask_v1_state(db):
@@ -4371,6 +4388,7 @@ def ask_v2_state(db, start):
         ask_v2_state(upgraded, "upgraded")
         v2 = ask_prompt_version(upgraded, 2)
     apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    ask_limits_before_21(db)
     db.execute(
         "UPDATE t_agent_prompt_version SET f_version=2,f_content=?,f_localized_content=? WHERE f_prompt_id='bkn-project-ontology-ask-prompt'",
         (v2["f_content"], v2["f_localized_content"]),
@@ -4520,6 +4538,7 @@ def ask_v3_state(db, start):
         ask_v3_state(upgraded, "upgraded")
         v3 = ask_prompt_version(upgraded, 3)
     apply(db, Path(selected_migrations("0.0.0")[0][0]))
+    ask_limits_before_21(db)
     db.execute(
         "UPDATE t_agent_prompt_version SET f_version=3,f_content=?,f_localized_content=? WHERE f_prompt_id='bkn-project-ontology-ask-prompt'",
         (v3["f_content"], v3["f_localized_content"]),
@@ -4774,10 +4793,10 @@ def test_ontology_ask_v6_upgrade_from_v5_matches_fresh_and_keeps_history(start):
         ask_v5_state(db, start)
         old = ask_prompt_version(db, 5)
         history = [row for row in snapshot(db)[3] if row[0] == ASK]
-        for path in (REQUIREMENTS_V8, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9):
+        for path in (REQUIREMENTS_V8, ONTOLOGY_ASK_V6, ONTOLOGY_ASK_V7, ONTOLOGY_ASK_V8, ONTOLOGY_ASK_V9, ONTOLOGY_ASK_V10, ONTOLOGY_ASK_LIMITS):
             apply(db, path)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
-        new, official = ask_prompt_version(db, 9), ask_prompt_version(fresh, 9)
+        new, official = ask_prompt_version(db, 10), ask_prompt_version(fresh, 10)
         for field in ("f_content", "f_localized_content", "f_source_language", "f_vars_schema", "f_create_user"):
             assert new[field] == official[field], field
         assert ask_prompt_version(db, 5) == old
@@ -4785,12 +4804,15 @@ def test_ontology_ask_v6_upgrade_from_v5_matches_fresh_and_keeps_history(start):
         for row in history:
             match = next(after for after in updated if after[:2] == row[:2])
             assert row[:7] + row[9:] == match[:7] + match[9:]
-        assert ask_rows(db) == [(9, 1, 1)]
+        assert ask_rows(db) == [(10, 1, 1)]
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_V6)
         apply(db, ONTOLOGY_ASK_V7)
         apply(db, ONTOLOGY_ASK_V8)
         apply(db, ONTOLOGY_ASK_V9)
+        apply(db, ONTOLOGY_ASK_V10)
+        # Replaying 20 moves the restore baseline back to the old limits; 21 moves it on again.
+        apply(db, ONTOLOGY_ASK_LIMITS)
         assert snapshot(db) == before
 
 
@@ -4802,10 +4824,12 @@ def test_ontology_ask_v6_upgrade_from_official_v4_matches_fresh():
         apply(db, ONTOLOGY_ASK_V7)
         apply(db, ONTOLOGY_ASK_V8)
         apply(db, ONTOLOGY_ASK_V9)
+        apply(db, ONTOLOGY_ASK_V10)
+        apply(db, ONTOLOGY_ASK_LIMITS)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
-        assert ask_prompt_version(db, 9)["f_localized_content"] == ask_prompt_version(fresh, 9)["f_localized_content"]
+        assert ask_prompt_version(db, 10)["f_localized_content"] == ask_prompt_version(fresh, 10)["f_localized_content"]
         assert db.execute("SELECT COUNT(*) FROM t_agent_prompt_version WHERE f_prompt_id='bkn-project-ontology-ask-prompt' AND f_version=5").fetchone()[0] == 0
-        assert ask_rows(db) == [(9, 1, 1)]
+        assert ask_rows(db) == [(10, 1, 1)]
 
 
 @pytest.mark.parametrize("customized", [False, True])
@@ -4878,14 +4902,14 @@ def test_ontology_ask_v6_upgrade_keeps_custom_settings_and_official_baseline(sta
         assert (current["f_prompt_version"], current["f_model"], current["f_limits"]) == (6, "custom-model", '{"max_turns":3}')
 
 
-def test_fresh_snapshot_attaches_the_same_v9_translations_as_the_upgrade():
+def test_fresh_snapshot_attaches_the_same_v10_translations_as_the_upgrade():
     init = (MIGRATIONS / "0.2.2/init.sql").read_text()
-    text = ONTOLOGY_ASK_V9.read_text()
+    text = ONTOLOGY_ASK_V10.read_text()
     assert text[text.index("-- Attach the zh-CN"):] in init
     ask = init.index("-- bkn-project-ontology-ask:")
-    v9 = [s for s in statements(ONTOLOGY_ASK_V9) if s.startswith("insert into t_agent_prompt_version")][0]
-    body = v9[v9.index("select v.f_prompt_id, 9, 'en-US',") + len("select v.f_prompt_id, 9, 'en-US',"):v9.index("v.f_vars_schema,")].strip()
-    assert init.index("select 'bkn-project-ontology-ask-prompt', 9, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
+    v10 = [s for s in statements(ONTOLOGY_ASK_V10) if s.startswith("insert into t_agent_prompt_version")][0]
+    body = v10[v10.index("select v.f_prompt_id, 10, 'en-US',") + len("select v.f_prompt_id, 10, 'en-US',"):v10.index("v.f_vars_schema,")].strip()
+    assert init.index("select 'bkn-project-ontology-ask-prompt', 10, 'en-US',\n    " + body, ask) < init.index(CLAIM_LOCALES.read_text())
 
 
 ASK_V7_SHA = "e8ece87a8af9d03f3eee56aa6061b6a1535c521e6c17683b5b6a6076842ef404"
@@ -4945,9 +4969,11 @@ def test_ontology_ask_v7_upgrade_matches_fresh_and_keeps_history(start):
         before = snapshot(db)
         apply(db, ONTOLOGY_ASK_V7)
         assert snapshot(db) == before
-        # 15 and 18 then bring it to the fresh install's v9.
+        # 15, 18, 20 and 21 then bring it to the fresh install's v10 and limits.
         apply(db, ONTOLOGY_ASK_V8)
         apply(db, ONTOLOGY_ASK_V9)
+        apply(db, ONTOLOGY_ASK_V10)
+        apply(db, ONTOLOGY_ASK_LIMITS)
         assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
 
 
@@ -5141,7 +5167,7 @@ def test_single_call_never_overwrites_operator_configuration(custom):
 def test_eval_assistant_delta_preserves_existing_defaults():
     fresh, upgrade = selected_migrations("0.2.1")
     assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
-    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(REQUIREMENTS_V8), str(SINGLE_CALL), str(ONTOLOGY_ASK_V6), str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(REQUIREMENTS_V9), str(ONTOLOGY_ASK_V7), str(REQUIREMENTS_V10), str(DRAFT_NAMING), str(REQUIREMENTS_V11), str(REQUIREMENTS_V12), str(DRAFT_NAMING_V2), str(ONTOLOGY_ASK_V8), str(REQUIREMENTS_V13), str(DRAFT_NAMING_V3), str(ONTOLOGY_ASK_V9), str(REQUIREMENTS_V14), str(ONTOLOGY_ASK_V10), str(ONTOLOGY_ASK_LIMITS)]]], "0.2.2", True]
     with database() as db:
         apply(db, MIGRATIONS / "0.2.1/init.sql")
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='eval_assistant'").fetchone()[0] == 0
@@ -5211,6 +5237,12 @@ def ask_v8_state(db):
     apply(db, ONTOLOGY_ASK_V8)
 
 
+def ask_v9_state(db):
+    """Ask AI just before 20: the official v9."""
+    ask_v8_state(db)
+    apply(db, ONTOLOGY_ASK_V9)
+
+
 def requirements_v13_state(db):
     """The requirements Agent just before 19: the official v13."""
     requirements_v12_state(db)
@@ -5230,10 +5262,16 @@ ONTOLOGY_GUIDANCE_UPGRADES = {
     "ontology-ask": (ONTOLOGY_ASK_V9, ASK, f"{ASK}-prompt", 8, 9, ask_v8_state),
     "requirements": (REQUIREMENTS_V14, RQ, f"{RQ}-prompt", 13, 14, requirements_v13_state),
 }
+# 20 adds the pass diagnose to the Ontology Assistant.
+DIAGNOSE_UPGRADE = (ONTOLOGY_ASK_V10, ASK, f"{ASK}-prompt", 9, 10, ask_v9_state)
+# The deltas after the Ontology block that bring each prompt on to the fresh install's version.
+LATER_UPGRADES = {"draft-naming": (), "ontology-ask": (ONTOLOGY_ASK_V10, ONTOLOGY_ASK_LIMITS), "requirements": ()}
 # Every prompt upgrade above, each with the deltas that bring it on to the fresh install's version.
 PROMPT_RULES_UPGRADES = {
-    **{f"naming-{case}": (*NAMING_RULES_UPGRADES[case], (ONTOLOGY_GUIDANCE_UPGRADES[case][0],)) for case in NAMING_RULES_UPGRADES},
-    **{f"ontology-{case}": (*ONTOLOGY_GUIDANCE_UPGRADES[case], ()) for case in ONTOLOGY_GUIDANCE_UPGRADES},
+    **{f"naming-{case}": (*NAMING_RULES_UPGRADES[case], (ONTOLOGY_GUIDANCE_UPGRADES[case][0], *LATER_UPGRADES[case]))
+       for case in NAMING_RULES_UPGRADES},
+    **{f"ontology-{case}": (*ONTOLOGY_GUIDANCE_UPGRADES[case], LATER_UPGRADES[case]) for case in ONTOLOGY_GUIDANCE_UPGRADES},
+    "diagnose-ontology-ask": (*DIAGNOSE_UPGRADE, (ONTOLOGY_ASK_LIMITS,)),
 }
 NAMING_RULES = (
     "Naming. ",
@@ -5469,9 +5507,186 @@ def test_ontology_guidance_is_the_same_block_in_every_prompt():
     blocks = set()
     with database() as db:
         apply(db, MIGRATIONS / "0.2.2/init.sql")
-        for case, (_, _, prompt, _, version, _) in ONTOLOGY_GUIDANCE_UPGRADES.items():
-            row = prompt_version(db, prompt, version)
+        for case, (_, _, prompt, _, _, _) in ONTOLOGY_GUIDANCE_UPGRADES.items():
+            current = db.execute("SELECT f_current_version FROM t_agent_prompt WHERE f_prompt_id=?", (prompt,)).fetchone()[0]
+            row = prompt_version(db, prompt, current)
             lead, lead_zh = ONTOLOGY_GUIDANCE_LEADS[case]
             zh = json.loads(row["f_localized_content"])["zh-CN"]
             blocks.add((ontology_block(row["f_content"], lead)[len(lead):], ontology_block(zh, lead_zh)[len(lead_zh):]))
     assert len(blocks) == 1
+
+
+# What 20 adds to the Ontology Assistant: the pass diagnose, before the Ontology block's lead.
+DIAGNOSE_RULES = (
+    "When kind is diagnose, the engineer asks for a diagnosis of the whole network the draft makes.",
+    "references, field pairs counted over the full table",
+    "when it is one branch of a polymorphic reference (a type field beside a code field)",
+    "unreachable_questions, the scenario questions no adopted path answers",
+    "After your reply the server asks, in a separate step, for suggestions: at most 15, at most 2 of them writeback_object",
+    "reason, one sentence when possible and never more than two",
+    "- adopt_relation: relation_type_id",
+    "- create_relation: reference, the index of a reference, or subtype, the index of a subtype",
+    "A polymorphic reference becomes one plain relation per type value, never one relation for all of them.",
+    "A self reference is a hierarchy (Part -parent part-> Part).",
+    "as a one-to-one relation from sub to super named by the role super plays",
+    "is suggested only with quotes that state the link, and only when its rate is above 0.",
+    "- adopt_object: object_type_id",
+    "- choose_identity: object_type_id",
+    "- exclude_object: object_type_id",
+    "never only because it is unconnected",
+    "- writeback_object: concept_id",
+    "Follow the decision-tracking pattern: one id, its own identity; one tracked, the identity of the tracked object;",
+    "Never copy the attributes of the tracked object; a state that follows from these facts",
+    "- concept_disposition: concept_id and disposition: property",
+    "- quotes, of any kind:",
+    "Diagnose by five rules. Connectivity:",
+    "Reference completeness: a field whose values are contained in the identity of another object type is a relation, whatever the names of the fields",
+    "Participants: an event or document object links to its who, its what, where it comes from",
+    "Reachability: prefer what makes unreachable questions answerable.",
+    "Object judgment: an object type passes the object gate below",
+    "never invent one. Never propose a relation only to connect the network, never turn a computed result into an object, and do not rank",
+)
+DIAGNOSE_RULES_ZH = (
+    "当 kind 为 diagnose 时，工程师要求诊断草稿构成的整个网络。",
+    "属于多态引用（类型字段加编号字段）的一个分支时带 condition",
+    "多态引用按类型取值各建一条普通关系，不建一条覆盖全部取值的关系。",
+    "自引用是层级关系（部件 —父部件→ 部件）。",
+    "最多 15 条，其中 writeback_object 最多 2 条",
+    "按决策跟踪对象的模式",
+    "不要复制被跟踪对象的属性",
+    "按五条规则诊断。连通性：",
+    "证据是取值包含，而不是名称",
+    "不要只为了连通而建议关系，不要把计算结果建成对象，也不要排序",
+)
+# The pass names no sample domain: its examples are neutral.
+DIAGNOSE_SAMPLE_WORDS = ("material", "MRP", "forecast", "work order", "purchase", "BOM", "supplier", "inventory",
+                         "物料", "预测", "工单", "采购", "供应商", "库存", "物料清单")
+
+
+def test_diagnose_upgrade_adds_only_the_diagnose_pass():
+    path, _, prompt, old_version, new_version, state = DIAGNOSE_UPGRADE
+    with database() as db:
+        state(db)
+        old = prompt_version(db, prompt, old_version)
+        apply(db, path)
+        new = prompt_version(db, prompt, new_version)
+    content, locales = new["f_content"], json.loads(new["f_localized_content"])
+    old_locales = json.loads(old["f_localized_content"])
+    assert content.isascii() and locales["en-US"] == content and new["f_source_language"] == "en-US"
+    for rule in DIAGNOSE_RULES:
+        assert rule in content and rule not in old["f_content"], rule
+    for rule in DIAGNOSE_RULES_ZH:
+        assert rule in locales["zh-CN"] and rule not in old_locales["zh-CN"], rule
+    lead, lead_zh = ONTOLOGY_GUIDANCE_LEADS["ontology-ask"]
+    for after, before, first, start in ((content, old["f_content"], lead, "When kind is diagnose"),
+                                        (locales["zh-CN"], old_locales["zh-CN"], lead_zh, "当 kind 为 diagnose")):
+        # One block, ending right before the Ontology block's lead, is added; the rest stays.
+        added = after[after.index(start):after.index(first)]
+        assert added.endswith("\n\n") and after.replace(added, "", 1) == before
+        assert not any(word in added for word in DIAGNOSE_SAMPLE_WORDS)
+
+
+
+def ask_v10_state(db):
+    """Ask AI just before 21: the official v10 with the old official limits."""
+    ask_v9_state(db)
+    apply(db, ONTOLOGY_ASK_V10)
+
+
+def ask_versions(db):
+    return [dict(row) for row in db.execute(
+        "SELECT * FROM t_agent_version WHERE f_agent_id=? ORDER BY f_version", (ASK,)
+    )]
+
+
+def customize_ask(db, **changes):
+    """An operator saves Ask AI's configuration: the Agent row and a new current version, as the API writes them."""
+    current = next(v for v in ask_versions(db) if v["f_current"])
+    values = {"model": current["f_model"], "tools": current["f_tools"], "limits": current["f_limits"], **changes}
+    db.execute("UPDATE t_agent SET f_model=?,f_tools=?,f_limits=?,f_update_user='operator' WHERE f_agent_id=?",
+               (values["model"], values["tools"], values["limits"], ASK))
+    db.execute("UPDATE t_agent_version SET f_current=0 WHERE f_agent_id=?", (ASK,))
+    db.execute(
+        "INSERT INTO t_agent_version (f_agent_id,f_version,f_model,f_tools,f_limits,f_prompt_version,f_changes,"
+        "f_initial,f_current,f_deleted,f_create_user,f_create_time) VALUES (?,?,?,?,?,?,?,0,1,0,'operator',2)",
+        (ASK, max(v["f_version"] for v in ask_versions(db)) + 1, values["model"], values["tools"], values["limits"],
+         current["f_prompt_version"], json.dumps(sorted(changes))),
+    )
+
+
+def test_ontology_ask_limits_upgrade_matches_fresh_install_and_keeps_history():
+    with database() as db, database() as fresh:
+        apply(fresh, MIGRATIONS / "0.2.2/init.sql")
+        ask_v10_state(db)
+        history = ask_versions(db)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        assert item_from_db(db, ASK) == item_from_db(fresh, ASK)
+        assert json.loads(db.execute("SELECT f_limits FROM t_agent WHERE f_agent_id=?", (ASK,)).fetchone()[0]) == json.loads(ASK_LIMITS)
+        versions = ask_versions(db)
+        # Every earlier version stays as it was, but for the current and initial markers.
+        for old, new in zip(history, versions):
+            assert {k: v for k, v in old.items() if k not in ("f_initial", "f_current")} == \
+                   {k: v for k, v in new.items() if k not in ("f_initial", "f_current")}
+        added = versions[len(history):]
+        assert len(added) == 1
+        added = added[0]
+        assert json.loads(added["f_limits"]) == json.loads(ASK_LIMITS) and json.loads(added["f_changes"]) == ["limits"]
+        assert (added["f_prompt_version"], added["f_initial"], added["f_current"]) == (10, 1, 1)
+        assert added["f_model"] == history[0]["f_model"] and added["f_tools"] == history[0]["f_tools"]
+        assert ask_rows(db) == [(10, 1, 1)]
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        assert snapshot(db) == before
+
+
+def test_ontology_ask_limits_leave_a_fresh_install_as_it_is():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.2/init.sql")
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        assert snapshot(db) == before
+        assert [json.loads(v["f_limits"]) for v in ask_versions(db) if v["f_initial"]] == [json.loads(ASK_LIMITS)]
+
+
+@pytest.mark.parametrize("changes", [
+    {"limits": '{"max_turns":1,"max_tool_calls":0,"timeout_s":60,"max_output_tokens":2048}'},
+    {"model": "custom-model"},
+])
+def test_ontology_ask_limits_upgrade_keeps_custom_configuration_and_advances_the_baseline(changes):
+    with database() as db:
+        ask_v10_state(db)
+        customize_ask(db, **changes)
+        agent = dict(db.execute("SELECT * FROM t_agent WHERE f_agent_id=?", (ASK,)).fetchone())
+        history = ask_versions(db)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        # The customized Agent and its current version stay.
+        assert dict(db.execute("SELECT * FROM t_agent WHERE f_agent_id=?", (ASK,)).fetchone()) == agent
+        versions = ask_versions(db)
+        current = [v for v in versions if v["f_current"]]
+        assert current == [{**history[-1]}]
+        # Restoring defaults selects an appended inactive official snapshot with the new limits.
+        added = versions[len(history):]
+        assert len(added) == 1
+        baseline = added[0]
+        assert baseline["f_initial"] == 1 and baseline["f_current"] == 0
+        assert json.loads(baseline["f_limits"]) == json.loads(ASK_LIMITS) and baseline["f_prompt_version"] == 10
+        assert (baseline["f_model"], baseline["f_tools"]) == (history[0]["f_model"], history[0]["f_tools"])
+        assert baseline["f_create_user"] == "266c6a42-6131-4d62-8f39-853e7093701c"
+        assert [v["f_version"] for v in versions if v["f_initial"]] == [baseline["f_version"]]
+        before = snapshot(db)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 7))
+def test_ontology_ask_limits_upgrade_resumes_between_statements(limit, customized):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            ask_v10_state(connection)
+            if customized:
+                customize_ask(connection, limits='{"max_turns":2}')
+        apply(expected, ONTOLOGY_ASK_LIMITS)
+        apply(db, ONTOLOGY_ASK_LIMITS, limit=limit)
+        apply(db, ONTOLOGY_ASK_LIMITS)
+        assert snapshot(db) == snapshot(expected)

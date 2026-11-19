@@ -98,6 +98,23 @@ const (
 	BknProject_Understand_NoCatalogs = "BknProject.Understand.NoCatalogs"
 )
 
+// The network diagnosis of a draft.
+const (
+	// 400
+	BknProject_Diagnosis_NotApplicable = "BknProject.Diagnosis.NotApplicable"
+
+	// 403
+	BknProject_Diagnosis_NotOwner = "BknProject.Diagnosis.NotOwner"
+
+	// 404
+	BknProject_Diagnosis_NotFound           = "BknProject.Diagnosis.NotFound"
+	BknProject_Diagnosis_SuggestionNotFound = "BknProject.Diagnosis.SuggestionNotFound"
+
+	// 409
+	BknProject_Diagnosis_Running         = "BknProject.Diagnosis.Running"
+	BknProject_Diagnosis_SuggestionStale = "BknProject.Diagnosis.SuggestionStale"
+)
+
 var (
 	DraftErrCodeList = []string{
 		BknProject_Draft_DocumentRelationNeedsRepair,
@@ -153,5 +170,11 @@ var (
 		BknProject_Understand_InvalidApplyMode,
 		BknProject_Understand_NotOwner,
 		BknProject_Understand_NoCatalogs,
+		BknProject_Diagnosis_NotApplicable,
+		BknProject_Diagnosis_NotOwner,
+		BknProject_Diagnosis_NotFound,
+		BknProject_Diagnosis_SuggestionNotFound,
+		BknProject_Diagnosis_Running,
+		BknProject_Diagnosis_SuggestionStale,
 	}
 )

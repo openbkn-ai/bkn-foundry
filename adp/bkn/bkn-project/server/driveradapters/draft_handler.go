@@ -140,6 +140,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.RunCheck)
 	case indexActionBuild:
 		r.withExVisitor(c, r.BuildIndex)
+	case diagnosisActionRun:
+		r.withExVisitor(c, r.RunDiagnosis)
 	default:
 		replyNotFound(c)
 	}

@@ -104,6 +104,7 @@ func TestServicesHaveEveryDependency(t *testing.T) {
 	logics.SetProjectAccess(pmock.NewMockProjectAccess(ctrl))
 	logics.SetDraftAccess(pmock.NewMockDraftAccess(ctrl))
 	logics.SetCheckAccess(pmock.NewMockCheckAccess(ctrl))
+	logics.SetDiagnosisAccess(pmock.NewMockDiagnosisAccess(ctrl))
 	logics.SetIDRegistryAccess(pmock.NewMockIDRegistryAccess(ctrl))
 	logics.SetVegaAccess(pmock.NewMockVegaAccess(ctrl))
 	logics.SetIndexBuildAccess(pmock.NewMockIndexBuildAccess(ctrl))

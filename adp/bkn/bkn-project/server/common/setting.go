@@ -61,6 +61,13 @@ type DraftSetting struct {
 	Timeout      time.Duration `mapstructure:"timeout"`
 	// CheckTimeout bounds each attempt of the check after a confirmation.
 	CheckTimeout time.Duration `mapstructure:"checkTimeout"`
+	// A network diagnosis suggests a reference whose full-table hit rate reaches DiagnosisHitRate
+	// over at least DiagnosisMinRows non-empty rows; below, only with a requirement-document quote.
+	// Its scan counts at most DiagnosisMaxPairs field pairs within DiagnosisTimeout.
+	DiagnosisHitRate  float64       `mapstructure:"diagnosisHitRate"`
+	DiagnosisMinRows  int64         `mapstructure:"diagnosisMinRows"`
+	DiagnosisMaxPairs int           `mapstructure:"diagnosisMaxPairs"`
+	DiagnosisTimeout  time.Duration `mapstructure:"diagnosisTimeout"`
 }
 
 type GitStoreSetting struct {
@@ -152,6 +159,10 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.queryTimeout", 60)
 	vp.SetDefault("draft.timeout", 10*time.Minute)
 	vp.SetDefault("draft.checkTimeout", 10*time.Minute)
+	vp.SetDefault("draft.diagnosisHitRate", 0.6)
+	vp.SetDefault("draft.diagnosisMinRows", 10)
+	vp.SetDefault("draft.diagnosisMaxPairs", 600)
+	vp.SetDefault("draft.diagnosisTimeout", 2*time.Minute)
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)
