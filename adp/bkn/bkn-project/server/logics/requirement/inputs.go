@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -217,11 +218,12 @@ func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []
 }
 
 // objectTypeOfProperty is the adopted object type an input naming no concept reads property from:
-// the only one that has it; of several, the one the question names for the input, read in its
-// template as the name nearest before the input's slot (采购申请单 in "采购申请单 {单据编号} 的申请
-// 数量"), else as the longest name its text holds; else the only one whose key it is; nil
-// otherwise. A number field many tables share is read from the record the question asks about,
-// not from the one table it happens to be the key of.
+// the only one that has it; of several, the one whose name stands right before the input's slot in
+// the template (采购申请单 in "采购申请单 {单据编号} 的申请数量"), else the only one whose key it is,
+// else the one with the longest name the text holds; nil otherwise. A number field many tables share
+// is read from the record the question numbers, not from the one table it is the key of; a name
+// elsewhere in the template may be another record the question is about, so it does not outrank the
+// key.
 func objectTypeOfProperty(draft *interfaces.Draft, property, template, slot, text string) *interfaces.DraftObjectType {
 	if draft == nil || strings.TrimSpace(property) == "" {
 		return nil
@@ -232,43 +234,45 @@ func objectTypeOfProperty(draft *interfaces.Draft, property, template, slot, tex
 			having = append(having, ot)
 		}
 	}
-	if len(having) > 1 {
-		if named := namedForSlot(having, template, slot, text); named != nil {
-			return named
+	if len(having) <= 1 {
+		if len(having) == 1 {
+			return having[0]
 		}
-		having = slices.DeleteFunc(having, func(ot *interfaces.DraftObjectType) bool {
-			return len(ot.PrimaryKeys) != 1 || ot.PrimaryKeys[0] != property
-		})
-	}
-	if len(having) != 1 {
 		return nil
 	}
-	return having[0]
+	if named := namedBeforeSlot(having, template, slot); named != nil {
+		return named
+	}
+	keyed := slices.DeleteFunc(slices.Clone(having), func(ot *interfaces.DraftObjectType) bool {
+		return len(ot.PrimaryKeys) != 1 || ot.PrimaryKeys[0] != property
+	})
+	if len(keyed) == 1 {
+		return keyed[0]
+	}
+	return longestNamed(having, text)
 }
 
-// namedForSlot is the object type of candidates the question names for a slot: in the template,
-// the one whose name ends nearest before the slot, the longer of two ending alike; without one
-// there, the one with the longest name the text holds; nil when the question names none.
-func namedForSlot(candidates []*interfaces.DraftObjectType, template, slot, text string) *interfaces.DraftObjectType {
-	var nearest *interfaces.DraftObjectType
-	nearestEnd := -1
-	if at := strings.Index(template, "{"+slot+"}"); slot != "" && at >= 0 {
-		before := template[:at]
-		for _, ot := range candidates {
-			name := strings.TrimSpace(ot.Name)
-			i := strings.LastIndex(before, name)
-			if name == "" || i < 0 {
-				continue
-			}
-			end := i + len(name)
-			if end > nearestEnd || end == nearestEnd && len(name) > len(strings.TrimSpace(nearest.Name)) {
-				nearest, nearestEnd = ot, end
-			}
+// namedBeforeSlot is the object type of candidates whose name the template puts right before the
+// slot, nothing but space between; the longer of two that both end there. Nil when none does.
+func namedBeforeSlot(candidates []*interfaces.DraftObjectType, template, slot string) *interfaces.DraftObjectType {
+	at := strings.Index(template, "{"+slot+"}")
+	if slot == "" || at < 0 {
+		return nil
+	}
+	before := strings.TrimRightFunc(template[:at], unicode.IsSpace)
+	var named *interfaces.DraftObjectType
+	for _, ot := range candidates {
+		name := strings.TrimSpace(ot.Name)
+		if name != "" && strings.HasSuffix(before, name) && (named == nil || len(name) > len(strings.TrimSpace(named.Name))) {
+			named = ot
 		}
 	}
-	if nearest != nil {
-		return nearest
-	}
+	return named
+}
+
+// longestNamed is the object type of candidates with the longest name the text holds; nil when it
+// holds none.
+func longestNamed(candidates []*interfaces.DraftObjectType, text string) *interfaces.DraftObjectType {
 	var longest *interfaces.DraftObjectType
 	for _, ot := range candidates {
 		name := strings.TrimSpace(ot.Name)

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -150,7 +151,9 @@ func Test_NetworkFacts(t *testing.T) {
 		})
 
 		Convey("Where a document fact was read joins no business objects: a line tied only to its source document stands apart\n", func() {
-			evidence := &interfaces.DraftDocumentModel{Role: "evidence_document", Layer: interfaces.DRAFT_DOCUMENT_LAYER_EVIDENCE}
+			// The edition tells evidence; this one by its evidence_ role.
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: conceptHooks{}})()
+			evidence := &interfaces.DraftDocumentModel{Role: "evidence_document"}
 			items := &interfaces.DraftItems{
 				ObjectTypes: []*interfaces.DraftObjectType{
 					{ID: "invoice", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "file"}},

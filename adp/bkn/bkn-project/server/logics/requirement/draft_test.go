@@ -153,11 +153,14 @@ func Test_BuildSpecInputsReadTheRecordTheQuestionNames(t *testing.T) {
 			question("q2", "某张采购订单来自哪张采购申请单？", "采购订单 {单号} 来自哪张采购申请单？", "单号"),
 			// None named: the one it is the key of.
 			question("q3", "某个计划订单投放了吗？", "计划订单 {编号} 投放了吗？", "编号"),
+			// A short name before the slot and another object named earlier: the earlier one is another
+			// record, so the key decides.
+			question("q4", "采购申请单转成的计划订单投放了吗？", "采购申请单转成的计划订单 {编号} 投放了吗？", "编号"),
 		}}
 		spec := emptySpec()
 		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
 
-		So(spec.Questions, ShouldHaveLength, 3)
+		So(spec.Questions, ShouldHaveLength, 4)
 		objectOf := func(i int) string {
 			id := (*spec.Questions[i].Inputs)[0].ConceptID
 			for _, c := range spec.Concepts {
@@ -170,6 +173,7 @@ func Test_BuildSpecInputsReadTheRecordTheQuestionNames(t *testing.T) {
 		So(objectOf(0), ShouldEqual, "request")
 		So(objectOf(1), ShouldEqual, "order")
 		So(objectOf(2), ShouldEqual, "plan_order")
+		So(objectOf(3), ShouldEqual, "plan_order")
 	})
 }
 

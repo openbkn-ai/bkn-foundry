@@ -102,6 +102,22 @@ func Test_RecordTests(t *testing.T) {
 			So(tests, ShouldBeEmpty)
 		})
 
+		Convey("Out of the run's time, the questions left are asked as written: no record is read for them\n", func() {
+			req.Spec.Questions[0].Needs = []interfaces.RequirementItemRef{customerRef}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			calls := 0
+			late := &requirementService{ra: ra, da: da, va: va, now: func() int64 {
+				calls++
+				if calls == 1 {
+					return 0
+				}
+				return recordTestsTimeout.Milliseconds()
+			}}
+			tests, err := late.RecordTests(ctx, caller, "p1", []string{"q1", "q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldBeEmpty)
+		})
+
 		Convey("A question with no template is asked of a record of the first object type it needs, said after it\n", func() {
 			req.Spec.Questions[0].Needs = []interfaces.RequirementItemRef{customerRef}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)

@@ -155,7 +155,7 @@ func NetworkComponents(items *interfaces.DraftItems) [][]string {
 	}
 	order := []string{}
 	for _, ot := range items.ObjectTypes {
-		if ot.Adopted && (ot.Document == nil || ot.Document.Layer != interfaces.DRAFT_DOCUMENT_LAYER_EVIDENCE) {
+		if ot.Adopted && !isEvidence(ot.Document) {
 			parent[ot.ID] = ot.ID
 			order = append(order, ot.ID)
 		}

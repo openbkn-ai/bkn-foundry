@@ -4,11 +4,6 @@
 
 package interfaces
 
-// DRAFT_DOCUMENT_LAYER_EVIDENCE marks the objects and relations that only say where a fact was
-// read, such as the source document and its blocks: they join every document object, but no
-// business question is answered through them.
-const DRAFT_DOCUMENT_LAYER_EVIDENCE = "evidence"
-
 // DraftDocumentModel is proposal/process metadata, not extracted instance data.
 // Layer, selection identity and adoption are checked/set by core, never trusted
 // from an Agent. An absent Document retains the existing table workflow.

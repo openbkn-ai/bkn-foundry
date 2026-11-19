@@ -60,14 +60,21 @@ func (s *requirementService) RecordTests(ctx context.Context, caller interfaces.
 	}
 	unmapped := unmappedConcepts(&req.Spec)
 	deadline := s.now() + recordTestsTimeout.Milliseconds()
+	// Reads of records the server or the edition makes stop with the run's budget, not their own.
+	bounded, cancel := context.WithTimeout(ctx, recordTestsTimeout)
+	defer cancel()
 	for _, q := range req.Spec.Questions {
 		if q == nil || !slices.Contains(questionIDs, q.ID) {
 			continue
 		}
+		if s.now() >= deadline {
+			// Out of time: the rest are asked as they are written.
+			break
+		}
 		written := serverTests(q, unmapped)
 		if len(written) == 0 {
 			// No template: asked of a record of the first object type it needs.
-			if askable, filled := s.exampleTest(ctx, caller, draft, q); askable {
+			if askable, filled := s.exampleTest(bounded, caller, draft, q); askable {
 				tests[q.ID] = filled
 			}
 			continue
@@ -76,7 +83,7 @@ func (s *requirementService) RecordTests(ctx context.Context, caller interfaces.
 		template := written[0]
 		template.ID = recordTestID
 		// Records a knowledge-base build wrote are read by the edition, not by the data's SQL.
-		if document, filled, err := documentTemplate(ctx, caller, &req.Spec, draft, template); document {
+		if document, filled, err := documentTemplate(bounded, caller, &req.Spec, draft, template); document {
 			if err != nil {
 				logger.Warnf("Read records for question %s failed: %v", q.ID, err)
 				continue
