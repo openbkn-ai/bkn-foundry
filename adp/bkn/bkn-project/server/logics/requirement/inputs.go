@@ -5,11 +5,14 @@
 package requirement
 
 import (
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 )
 
 // Why an input of a question cannot stand, recorded as the reason of a rejected input.
@@ -211,4 +214,59 @@ func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []
 		tests = append(tests, asked(order, interfaces.TEST_KIND_NOT_EXIST, interfaces.TEST_EXPECT_NOT_EXISTS))
 	}
 	return tests
+}
+
+// objectTypeOfProperty is the adopted object type an input naming no concept reads property from:
+// the only one that has it, or of several the only one whose key it is; nil otherwise.
+func objectTypeOfProperty(draft *interfaces.Draft, property string) *interfaces.DraftObjectType {
+	if draft == nil || strings.TrimSpace(property) == "" {
+		return nil
+	}
+	having := []*interfaces.DraftObjectType{}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot.Adopted && slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool { return p.Name == property }) {
+			having = append(having, ot)
+		}
+	}
+	if len(having) > 1 {
+		having = slices.DeleteFunc(having, func(ot *interfaces.DraftObjectType) bool {
+			return len(ot.PrimaryKeys) != 1 || ot.PrimaryKeys[0] != property
+		})
+	}
+	if len(having) != 1 {
+		return nil
+	}
+	return having[0]
+}
+
+// hasConceptOf tells whether the specification has a concept of the object type.
+func hasConceptOf(spec *interfaces.RequirementSpec, ot *interfaces.DraftObjectType) bool {
+	ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
+	return slices.ContainsFunc(spec.Concepts, func(c *interfaces.RequirementConcept) bool {
+		return c.MapsTo != nil && *c.MapsTo == ref
+	})
+}
+
+// conceptOfObjectType is the specification's concept of the object type, added when it has none:
+// a question's input names a concept, and a project with no requirement documents, such as one over
+// a knowledge base alone, has none to name.
+func conceptOfObjectType(spec *interfaces.RequirementSpec, draft *interfaces.Draft,
+	ot *interfaces.DraftObjectType) *interfaces.RequirementConcept {
+	ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
+	if i := slices.IndexFunc(spec.Concepts, func(c *interfaces.RequirementConcept) bool {
+		return c.MapsTo != nil && *c.MapsTo == ref
+	}); i >= 0 {
+		return spec.Concepts[i]
+	}
+	reason, ok := locale.InputConceptTexts[projecthooks.DraftLanguage(draft)]
+	if !ok {
+		reason = locale.InputConceptTexts[interfaces.NAMING_LANGUAGE_EN_US]
+	}
+	concept := &interfaces.RequirementConcept{
+		ID: nextID(spec, "c", spec.Concepts, conceptID), Term: ot.Name, Category: interfaces.CONCEPT_VERDICT_OBJECT,
+		Definition: ot.Description, Citations: []interfaces.RequirementCitation{}, MapsTo: &ref,
+		SupplementReason: fmt.Sprintf(reason, ot.Name), Source: interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS,
+	}
+	spec.Concepts = append(spec.Concepts, concept)
+	return concept
 }

@@ -185,6 +185,27 @@ func Test_AddLogicNeeds(t *testing.T) {
 			So(rejected, ShouldResemble, []string{fmt.Sprintf("logic_need api %d %s", maxRunLogicNeeds-1, rejectedTooMany)})
 		})
 
+		Convey("A metric of the same name measured another way is not merged into it, and is listed for a person to decide\n", func() {
+			rejected = nil
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{{ID: "n1", Kind: interfaces.LOGIC_NEED_METRIC, Name: "场所设备数量",
+				Definition: "全部设备按设备编号去重，可按场所分组", SuggestedMetricType: "atomic", Source: interfaces.LOGIC_NEED_FROM_PERSON, Edited: true}}
+			proposed := []agentLogicNeed{
+				{Kind: interfaces.LOGIC_NEED_METRIC, Name: "场所设备数量", Definition: "固定场所 ST03 的设备数量",
+					SuggestedMetricType: "derived", SupplementReason: "r"},
+				// Measured the same way, it is the same need.
+				{Kind: interfaces.LOGIC_NEED_METRIC, Name: "场所设备数量", Definition: "各场所的设备数",
+					SuggestedMetricType: "atomic", SupplementReason: "r"},
+			}
+
+			addLogicNeeds(spec, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS, docs, draft, concepts, reject)
+
+			So(spec.LogicNeeds, ShouldHaveLength, 1)
+			So(spec.LogicNeeds[0].Definition, ShouldEqual, "全部设备按设备编号去重，可按场所分组")
+			So(spec.LogicNeeds[0].SuggestedMetricType, ShouldEqual, "atomic")
+			So(rejected, ShouldResemble, []string{"logic_need 场所设备数量: 固定场所 ST03 的设备数量 " + rejectedSameNameMeasuredOtherwise})
+		})
+
 		Convey("Given again, a stated need without object types is placed on the model; one a person changed stays\n", func() {
 			spec := emptySpec()
 			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
@@ -460,8 +481,11 @@ func Test_AnalyseKineticOnNetwork(t *testing.T) {
 				So(msg.NetworkItemsOmitted, ShouldEqual, 0)
 				So(msg.Knowledge, ShouldResemble, &messageKnowledge{Concepts: []messageKnowledgeItem{},
 					Rules: []messageKnowledgeItem{{Name: "Partial invoicing", Definition: "Invoice each delivered batch"}}})
-				So(msg.Documents[len(msg.Documents)-1].ID, ShouldEqual, interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID)
-				So(msg.Documents[len(msg.Documents)-1].Blocks[0].Text, ShouldContainSubstring, "kit availability")
+				// The network's background, then the knowledge as a document its rules are cited from.
+				So(msg.Documents[len(msg.Documents)-2].ID, ShouldEqual, interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID)
+				So(msg.Documents[len(msg.Documents)-2].Blocks[0].Text, ShouldContainSubstring, "kit availability")
+				So(msg.Documents[len(msg.Documents)-1].ID, ShouldEqual, interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID)
+				So(msg.Documents[len(msg.Documents)-1].Blocks[0].Text+msg.Documents[len(msg.Documents)-1].Blocks[1].Text, ShouldContainSubstring, "Partial invoicing: Invoice each delivered batch")
 				return &interfaces.BknAgentTask{TaskID: "t1", Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: output}, nil
 			})
 

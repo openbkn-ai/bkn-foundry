@@ -159,6 +159,41 @@ func goodWriteback() *interfaces.DiagnosisWriteback {
 }
 
 func Test_Judge(t *testing.T) {
+	Convey("Test the names of the relations a network diagnosis suggests\n", t, func() {
+		// Both branches of the work order's source number are named by the field's role; the second
+		// would repeat the first from the same source, so it is named after its target. One named like
+		// a relation the source already has is named after its target too.
+		facts := sampleFacts(sampleDraft())
+		facts.References = append(facts.References,
+			interfaces.DraftReference{Source: "work_order", SourceProperty: "sourcebillno", Target: "forecast", TargetProperty: "billno",
+				Condition: &interfaces.DraftReferenceCondition{Property: "sourcebilltype", Value: "mds_forecast"},
+				Counted:   true, Rows: 79, Hits: 79, Rate: 1, Name: "源单", FieldRows: 605, FieldNulls: 526},
+			interfaces.DraftReference{Source: "work_order", SourceProperty: "billno", Target: "product", TargetProperty: "code",
+				Counted: true, Rows: 605, Hits: 605, Rate: 1, Name: "物料", FieldRows: 605})
+		list, _ := newJudge(setting, facts, sampleQuestions(), sampleConcepts()).suggestions(nil)
+		names := map[string]string{}
+		for _, s := range list {
+			if s.Kind != interfaces.DIAGNOSIS_KIND_CREATE_RELATION {
+				continue
+			}
+			a := applyOf[interfaces.DiagnosisCreateRelation](s)
+			if a.Source == "work_order" {
+				names[a.Target] = a.Name
+			}
+		}
+		So(names, ShouldResemble, map[string]string{"mrp_planorder": "源单", "forecast": "物料需求预测", "product": "产品"})
+
+		// The Agent's suggestion of a subtype and the counts' one share a name: a later relation of
+		// the subtype is not renamed for the copy.
+		j := newJudge(setting, sampleFacts(sampleDraft()), sampleQuestions(), sampleConcepts())
+		st := j.facts.Subtypes[0]
+		first, again := j.subtypeRelation(st, "", ""), j.subtypeRelation(st, "", "")
+		So(applyOf[interfaces.DiagnosisCreateRelation](again).Name, ShouldEqual, applyOf[interfaces.DiagnosisCreateRelation](first).Name)
+		later := j.createRelation(interfaces.DraftReference{Source: "product", SourceProperty: "code", Target: "material",
+			TargetProperty: "code", Rows: 30, Hits: 30, Rate: 1, Name: "物料"}, "", "", "", nil)
+		So(applyOf[interfaces.DiagnosisCreateRelation](later).Name, ShouldEqual, "物料")
+	})
+
 	Convey("Test the suggestions of a network diagnosis\n", t, func() {
 		Convey("Without Ask AI the suggestions come from the counts\n", func() {
 			list, ai := sampleJudge().suggestions(nil)

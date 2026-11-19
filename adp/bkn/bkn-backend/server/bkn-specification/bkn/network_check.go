@@ -28,8 +28,9 @@ type MisplacedParameter struct {
 	Conflict  bool
 }
 
-// InvalidParameter is a stored parameter whose ValueFrom is not property, input or const and whose
-// Source does not hold one either, so there is no rewrite to suggest. Execution drops it, and a 3.0
+// InvalidParameter is a stored parameter whose ValueFrom is not property, input or const (nor, for an
+// action, source_identity or target_identity) and whose Source does not hold one either, so there is
+// no rewrite to suggest. Execution drops it, and a 3.0
 // package refuses it.
 type InvalidParameter struct {
 	ActionTypeID  string
@@ -59,7 +60,7 @@ func FindMisplacedParameters(doc *BknNetwork) []MisplacedParameter {
 func FindInvalidParameters(doc *BknNetwork) []InvalidParameter {
 	var found []InvalidParameter
 	eachParameter(doc, func(at, ot, lp string, p Parameter) {
-		if hasValueSource(p.ValueFrom) || hasValueSource(p.Source) {
+		if hasValueSource(p.ValueFrom) || hasValueSource(p.Source) || (at != "" && isRelationEndIdentity(p.ValueFrom)) {
 			return
 		}
 		found = append(found, InvalidParameter{ActionTypeID: at, ObjectTypeID: ot, LogicProperty: lp, Parameter: p.Name, Current: p})

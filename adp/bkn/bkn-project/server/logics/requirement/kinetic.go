@@ -140,6 +140,14 @@ func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) {
 // need stated in the documents quotes
 // them; one the analysis adds may say why instead. Numbers in a definition must be in its quotes, a
 // Skill must be one the documents name, and object types and properties must be adopted ones.
+// measuredOtherwise tells a metric the Agent gave that is atomic where the kept one is derived, or
+// the other way round.
+func measuredOtherwise(kept *interfaces.RequirementLogicNeed, p agentLogicNeed) bool {
+	given := strings.TrimSpace(p.SuggestedMetricType)
+	return kept.Kind == interfaces.LOGIC_NEED_METRIC && kept.SuggestedMetricType != "" && given != "" &&
+		given != kept.SuggestedMetricType
+}
+
 func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, source string,
 	docs map[string]*interfaces.RequirementDocument, draft *interfaces.Draft, concepts map[string]string,
 	reject func(kind, text, reason string)) {
@@ -182,6 +190,16 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			return p.ID == keptPrefix+n.ID || n.Kind == p.Kind && sameText(n.Name, name)
 		}); i >= 0 {
 			kept := spec.LogicNeeds[i]
+			// A metric of the same name measured otherwise, atomic against derived, is another
+			// measure: listed for a person to decide, never merged into theirs.
+			if p.ID != keptPrefix+kept.ID && measuredOtherwise(kept, p) {
+				text := name
+				if definition := strings.TrimSpace(p.Definition); definition != "" {
+					text += ": " + definition
+				}
+				reject(rejectedLogicNeed, text, rejectedSameNameMeasuredOtherwise)
+				continue
+			}
 			if p.ID != "" {
 				ids[p.ID] = kept
 			}
@@ -320,8 +338,10 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	// drafting reads them; the supplement note as it is now.
 	cited := s.withBackground(ctx, token, entry, docs)
 	supplement := s.supplementOf(ctx, projectID)
-	// The concepts and rules of the knowledge base, as the person judged them now.
+	// The concepts and rules of the knowledge base, as the person judged them now; written as a
+	// document too, so a need resting on a rule cites it and its numbers are checked there.
 	knowledge := knowledgeOf(ctx, draft)
+	cited = withKnowledgeDocument(cited, projectID, project.NamingLanguage, knowledge)
 	byID := documentsByID(cited)
 	concepts := map[string]string{}
 	for _, c := range spec.Concepts {

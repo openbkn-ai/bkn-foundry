@@ -205,39 +205,23 @@ func Test_LineageService_PrepareRelease(t *testing.T) {
 			So(network.Name, ShouldEqual, "Supply chain")
 		})
 
-		Convey("Edits someone made to the draft are refused as DraftHasChanges unless the owner overwrites them\n", func() {
+		Convey("Edits someone made to the draft and committed to the project are not asked about again\n", func() {
 			id := newLineageID()
 			live, _ := setUp(id)
-			expectDraftEdited := func() {
-				expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
-				// The draft's revision is not one a release of the lineage wrote.
-				ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{
-					{ID: "other", LineageID: id, Version: "0.9.0", State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 5},
-				}, nil)
-				// Its definitions match main, so it is no drift.
-				kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).Return(live, nil)
-			}
-			expectDraftEdited()
-			kva.EXPECT().ReplaceDraft(gomock.Any(), token, gomock.Any(), interfaces.KNReplaceImport{ExpectedDraftRevision: 7}).
-				Return(nil, int64(0), versionRefusal(interfaces.KN_VERSION_ERROR_DRAFT_HAS_CHANGES))
+			expectChecks(kva, ra, id, "1.0.0", versioningAt(1, 7, true), nil, nil)
+			// The draft's revision is not one a release of the lineage wrote.
+			ra.EXPECT().ListReleases(gomock.Any(), draftWritersQuery(id)).Return([]*interfaces.Release{
+				{ID: "other", LineageID: id, Version: "0.9.0", State: interfaces.RELEASE_STATE_PREPARED, DraftRevision: 5},
+			}, nil)
+			// Its definitions match main: the edits were committed, replacing the draft loses none. The
+			// revision read still guards an edit made after the review.
+			kva.EXPECT().ExportVersion(gomock.Any(), token, id, interfaces.KN_VERSION_DRAFT).Return(live, nil)
+			_, recorded := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
 
-			_, err := svc.PrepareRelease(ctx, token, id, request, publisher)
+			release, err := svc.PrepareRelease(ctx, token, id, request, publisher)
 
-			status, code := httpCode(err)
-			So(status, ShouldEqual, http.StatusConflict)
-			So(code, ShouldEqual, perrors.BknProject_Release_DraftHasChanges)
-
-			Convey("and once the owner confirms, the draft is overwritten\n", func() {
-				expectDraftEdited()
-				_, recorded := expectWrite(id, interfaces.KNReplaceImport{ExpectedDraftRevision: 7, Overwrite: true}, 8)
-
-				req := request
-				req.OverwriteDraftChanges = true
-				release, err := svc.PrepareRelease(ctx, token, id, req, publisher)
-
-				So(err, ShouldBeNil)
-				So(release, ShouldEqual, *recorded)
-			})
+			So(err, ShouldBeNil)
+			So(release, ShouldEqual, *recorded)
 		})
 
 		Convey("A re-prepare of the same version overwrites its own draft and keeps the release\n", func() {

@@ -39,6 +39,11 @@ const (
 // uploaded documents; runs read it beside them so their citations can name it.
 const REQUIREMENT_NETWORK_DOCUMENT_ID = "network"
 
+// REQUIREMENT_KNOWLEDGE_DOCUMENT_ID is the id of the knowledge base's rules and concepts as a
+// document, read only: what the edition reads from the draft, written as text so a kinetic need
+// resting on a rule can cite it. It is not stored with the uploaded documents.
+const REQUIREMENT_KNOWLEDGE_DOCUMENT_ID = "knowledge"
+
 // IsRequirementDocType tells whether docType is a requirement document type.
 func IsRequirementDocType(docType string) bool {
 	switch docType {

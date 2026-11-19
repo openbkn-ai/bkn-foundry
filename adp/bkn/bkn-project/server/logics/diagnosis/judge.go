@@ -67,6 +67,12 @@ type judge struct {
 	unreachable map[string]interfaces.ScenarioQuestion
 	// refs are the references the Agent reads, by index.
 	refs []interfaces.DraftReference
+	// named are the relation names each source has, in the draft and in the suggestions made so far:
+	// a relation's name is unique among those of its source.
+	named map[string]map[string]bool
+	// given are the names given to the references suggested so far: the Agent's suggestion and the
+	// counts' one for the same reference share it.
+	given map[string]string
 }
 
 func newJudge(setting common.DraftSetting, facts *interfaces.DraftNetworkFacts, questions *interfaces.ScenarioQuestions,
@@ -74,7 +80,10 @@ func newJudge(setting common.DraftSetting, facts *interfaces.DraftNetworkFacts, 
 	j := &judge{hitRate: setting.DiagnosisHitRate, minRows: setting.DiagnosisMinRows, facts: facts,
 		items: &facts.Draft.Items, language: projecthooks.DraftLanguage(facts.Draft), questions: questions,
 		concepts: concepts, dismissed: dismissedIDs(&facts.Draft.Items),
-		unreachable: map[string]interfaces.ScenarioQuestion{}}
+		unreachable: map[string]interfaces.ScenarioQuestion{}, named: map[string]map[string]bool{}, given: map[string]string{}}
+	for _, rt := range j.items.RelationTypes {
+		j.name(rt.Source, rt.Name)
+	}
 	if j.hitRate <= 0 {
 		j.hitRate = hitRateDefault
 	}
@@ -506,10 +515,37 @@ func (j *judge) adoptionEdges(p *interfaces.DraftPendingObject) [][2]string {
 
 // The suggestions, kind by kind, from the facts; text is the server's when Ask AI gave none.
 
+// name records a relation name of source.
+func (j *judge) name(source string, name string) {
+	if j.named[source] == nil {
+		j.named[source] = map[string]bool{}
+	}
+	j.named[source][strings.TrimSpace(name)] = true
+}
+
+// freeNameOf is name, or, when source already has a relation of that name, the target's name,
+// then both together: two relations of one source never share a name, so the network can be
+// released. The name is recorded as taken; a suggestion given again under key keeps its name.
+func (j *judge) freeNameOf(key string, source string, name string, targetName string) string {
+	if given, ok := j.given[key]; ok && key != "" {
+		return given
+	}
+	for _, candidate := range []string{name, targetName, j.text("name_with_target", name, targetName)} {
+		if candidate = strings.TrimSpace(candidate); candidate != "" && !j.named[source][candidate] {
+			j.name(source, candidate)
+			if key != "" {
+				j.given[key] = candidate
+			}
+			return candidate
+		}
+	}
+	return name
+}
+
 func (j *judge) createRelation(r interfaces.DraftReference, name string, description string, cardinality string,
 	quotes []interfaces.DiagnosisQuote) *interfaces.DiagnosisSuggestion {
 	source, target := j.object(r.Source), j.object(r.Target)
-	name = relationName(name, r.Name)
+	name = j.freeNameOf(j.referenceSuggestionID(r), r.Source, relationName(name, r.Name), target.Name)
 	if !slices.Contains(cardinalities, cardinality) {
 		cardinality = interfaces.DRAFT_CARDINALITY_MANY_TO_ONE
 	}
@@ -550,7 +586,8 @@ func (j *judge) createRelation(r interfaces.DraftReference, name string, descrip
 
 func (j *judge) subtypeRelation(st interfaces.DraftSubtype, name string, description string) *interfaces.DiagnosisSuggestion {
 	sub, super := j.object(st.Sub), j.object(st.Super)
-	name = relationName(name, j.text("subtype_name", super.Name))
+	id := suggestionID(interfaces.DIAGNOSIS_KIND_CREATE_RELATION, st.Sub, st.SubProperty, st.Super, st.SuperProperty, "subtype")
+	name = j.freeNameOf(id, st.Sub, relationName(name, j.text("subtype_name", super.Name)), super.Name)
 	if strings.TrimSpace(description) == "" {
 		description = j.text("subtype_description", sub.Name, super.Name)
 	}
@@ -559,7 +596,7 @@ func (j *judge) subtypeRelation(st interfaces.DraftSubtype, name string, descrip
 		Name:    strings.TrimSpace(name), Description: truncate(description, interfaces.DRAFT_DESCRIPTION_MAX_LENGTH),
 		Cardinality: interfaces.DRAFT_CARDINALITY_ONE_TO_ONE}
 	s := newSuggestion(interfaces.DIAGNOSIS_KIND_CREATE_RELATION,
-		suggestionID(interfaces.DIAGNOSIS_KIND_CREATE_RELATION, st.Sub, st.SubProperty, st.Super, st.SuperProperty, "subtype"),
+		id,
 		sub.Name+" —"+apply.Name+"→ "+super.Name, j.text("subtype_reason", sub.Name, st.Hits, super.Name), apply)
 	s.Evidence = interfaces.DiagnosisEvidence{Rows: st.Rows, Hits: st.Hits, Rate: 1,
 		SourceField: mappedField(sub, st.SubProperty), TargetField: mappedField(super, st.SuperProperty)}
