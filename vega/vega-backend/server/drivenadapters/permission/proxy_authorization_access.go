@@ -13,8 +13,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -61,7 +59,7 @@ func (a *proxyAuthorizationAccess) GetManagedProxy(ctx context.Context, proxyID 
 		return nil, fmt.Errorf("bkn-safe managed proxy response is too large")
 	}
 	var account interfaces.ManagedProxyAccount
-	if err := sonic.Unmarshal(data, &account); err != nil {
+	if err := common.UnmarshalJSON(data, &account); err != nil {
 		return nil, err
 	}
 	return &account, nil

@@ -519,7 +519,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	}
 
 	resultObject := map[string]sonic.NoCopyRawMessage{}
-	if err := sonic.Unmarshal(result, &resultObject); err != nil {
+	if err := common.UnmarshalJSON(result, &resultObject); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal agent task result failed: %w", err)
 	}
 
@@ -528,7 +528,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	if !ok {
 		return "", 0, "", fmt.Errorf("agent task result missing confidence")
 	}
-	if err := sonic.Unmarshal(confidenceRaw, &confidence); err != nil {
+	if err := common.UnmarshalJSON(confidenceRaw, &confidence); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal agent task confidence failed: %w", err)
 	}
 	if confidence < 0 || confidence > 1 {
@@ -564,7 +564,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 func reconcileResourceSemanticSampleWarnings(ctx context.Context,
 	resultJSON, confidenceDetailJSON, inputJSON string) (string, string, error) {
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := sonic.Unmarshal([]byte(inputJSON), &input); err != nil {
+	if err := common.UnmarshalJSON([]byte(inputJSON), &input); err != nil {
 		return resultJSON, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not alter completed results.
 	}
 	if input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusAvailable &&
@@ -605,13 +605,13 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 	fields []interfaces.SemanticUnderstandingResourceAgentInputProperty,
 	allFieldsOmittedByPolicy bool) (string, error) {
 	object := map[string]sonic.NoCopyRawMessage{}
-	if err := sonic.Unmarshal([]byte(payload), &object); err != nil {
+	if err := common.UnmarshalJSON([]byte(payload), &object); err != nil {
 		return "", err
 	}
 
 	warnings := []string{}
 	if rawWarnings, ok := object["warnings"]; ok {
-		if err := sonic.Unmarshal(rawWarnings, &warnings); err != nil {
+		if err := common.UnmarshalJSON(rawWarnings, &warnings); err != nil {
 			return "", fmt.Errorf("unmarshal warnings: %w", err)
 		}
 	}
@@ -632,7 +632,7 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 
 	warningDetails := []sonic.NoCopyRawMessage{}
 	if rawDetails, ok := object["warning_details"]; ok {
-		if err := sonic.Unmarshal(rawDetails, &warningDetails); err != nil {
+		if err := common.UnmarshalJSON(rawDetails, &warningDetails); err != nil {
 			return "", fmt.Errorf("unmarshal warning details: %w", err)
 		}
 	}
@@ -673,7 +673,7 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 func semanticUnderstandingWarningDetailExists(rawDetails []sonic.NoCopyRawMessage, expected interfaces.SemanticUnderstandingWarningDetail) bool {
 	for _, rawDetail := range rawDetails {
 		var detail interfaces.SemanticUnderstandingWarningDetail
-		if err := sonic.Unmarshal(rawDetail, &detail); err == nil &&
+		if err := common.UnmarshalJSON(rawDetail, &detail); err == nil &&
 			detail.Code == expected.Code && detail.Params == expected.Params {
 			return true
 		}
@@ -822,14 +822,14 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return resultJSON, confidence, confidenceDetailJSON, nil
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if unmarshalErr := sonic.Unmarshal([]byte(inputJSON), &input); unmarshalErr != nil {
+	if unmarshalErr := common.UnmarshalJSON([]byte(inputJSON), &input); unmarshalErr != nil {
 		// Input is an audit snapshot, not an agent response. A malformed legacy
 		// snapshot must not turn an otherwise successful agent task into failure.
 		return resultJSON, confidence, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not fail completed tasks.
 	}
 
 	var result interfaces.SemanticUnderstandingResourceResult
-	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
+	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
 	}
 
@@ -878,13 +878,13 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 
 func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUnderstandingResourceQuality, warning string) (string, error) {
 	object := map[string]sonic.NoCopyRawMessage{}
-	if err := sonic.Unmarshal([]byte(payload), &object); err != nil {
+	if err := common.UnmarshalJSON([]byte(payload), &object); err != nil {
 		return "", fmt.Errorf("unmarshal resource semantic understanding quality payload failed: %w", err)
 	}
 
 	warnings := []string{}
 	if rawWarnings, ok := object["warnings"]; ok {
-		if err := sonic.Unmarshal(rawWarnings, &warnings); err != nil {
+		if err := common.UnmarshalJSON(rawWarnings, &warnings); err != nil {
 			return "", fmt.Errorf("unmarshal resource semantic understanding warnings failed: %w", err)
 		}
 	}

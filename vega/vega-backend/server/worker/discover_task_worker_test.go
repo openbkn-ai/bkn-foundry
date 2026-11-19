@@ -733,7 +733,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							data, err := json.Marshal(resource.SourceMetadata)
 							require.NoError(t, err)
 							table = &interfaces.TableMeta{}
-							require.NoError(t, common.UnmarshalPreciseJSON(data, table))
+							require.NoError(t, common.UnmarshalJSON(data, table))
 						}
 						if entry == "resource" {
 							if !countWithoutRefresh {
@@ -768,7 +768,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							data, err := json.Marshal(resource.SourceMetadata)
 							require.NoError(t, err)
 							index = &interfaces.IndexMeta{}
-							require.NoError(t, common.UnmarshalPreciseJSON(data, index))
+							require.NoError(t, common.UnmarshalJSON(data, index))
 							c.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{index}, nil)
 						} else {
 							c.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryIndex)

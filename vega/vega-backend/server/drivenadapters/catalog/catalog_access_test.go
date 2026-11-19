@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
@@ -24,7 +25,7 @@ import (
 
 func TestCatalogAccessCreate(t *testing.T) {
 	for _, tc := range []struct{ name, kind, category, connector, config string }{
-		{"API category independent of connector name", interfaces.CatalogTypePhysical, interfaces.ConnectorCategoryAPI, "vendor-service", `{"host":"127.0.0.1"}`},
+		{"API category and exact configuration round trip", interfaces.CatalogTypePhysical, interfaces.ConnectorCategoryAPI, "vendor-service", `{"variables":{"numbers":{"value":[9007199254740993,1234567890123456.78]}}}`},
 		{"logical category remains empty", interfaces.CatalogTypeLogical, "", "", `null`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -34,13 +35,21 @@ func TestCatalogAccessCreate(t *testing.T) {
 			catalog.Type = tc.kind
 			catalog.Category = tc.category
 			catalog.ConnectorType = tc.connector
-			if tc.kind == interfaces.CatalogTypeLogical {
-				catalog.ConnectorCfg = nil
-			}
+			catalog.ConnectorCfg = nil
+			require.NoError(t, common.UnmarshalJSON([]byte(tc.config), &catalog.ConnectorCfg))
 			mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog (f_id,f_name,f_tags,f_description,f_type,f_enabled,f_builtin,f_connector_type,f_category,f_connector_config,f_metadata,f_health_check_status,f_last_check_time,f_health_check_result,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 				WithArgs(catalog.ID, catalog.Name, `"tag-a","tag-b"`, catalog.Description, tc.kind, catalog.Enabled, catalog.Builtin, tc.connector, tc.category, tc.config, `{}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Creator.ID, catalog.Creator.Type, catalog.CreateTime, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 			require.NoError(t, access.Create(context.Background(), nil, catalog))
+			values := catalogRowValues(catalog)
+			values[9] = tc.config
+			mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
+				WithArgs(catalog.ID).
+				WillReturnRows(catalogRows().AddRow(values...))
+			stored, err := access.GetByID(t.Context(), catalog.ID)
+			require.NoError(t, err)
+			require.NotNil(t, stored)
+			assert.Equal(t, catalog.ConnectorCfg, stored.ConnectorCfg)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -232,15 +241,18 @@ func TestCatalogAccessGetByID(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
+		values := catalogRowValues(sampleCatalog())
+		values[9] = `{"host":"127.0.0.1","port":5432}`
 		mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
 			WithArgs("catalog-1").
-			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
+			WillReturnRows(catalogRows().AddRow(values...))
 
 		got, err := access.GetByID(context.Background(), "catalog-1")
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "catalog-1", got.ID)
+		assert.Equal(t, json.Number("5432"), got.ConnectorCfg["port"])
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

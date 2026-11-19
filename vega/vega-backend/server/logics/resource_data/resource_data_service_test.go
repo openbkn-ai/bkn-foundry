@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
@@ -26,6 +27,7 @@ import (
 	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/rate"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
@@ -137,6 +139,7 @@ func TestMapQueryError(t *testing.T) {
 			}
 		})
 	}
+
 }
 
 func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
@@ -632,6 +635,179 @@ func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 	require.ErrorAs(t, err, &httpErr)
 	assert.NotContains(t, httpErr.ErrorDetails, resource.StatusMessage)
 	assert.NotContains(t, httpErr.ErrorDetails, "syntax error at or near LATERAL")
+}
+
+func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
+	for _, scenario := range []string{"single", "requested total", "trusted proxy", "denied resource", "cursor mode", "cursor token", "extension failure", "unavailable", "cancelled context"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := mock_interfaces.NewMockResourceService(ctrl)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			service := &resourceDataService{rs: rs, cs: cs, cf: cf}
+			previous := resourcelogic.GetAPIResourceService()
+			resourcelogic.SetAPIResourceService(nil)
+			t.Cleanup(func() { resourcelogic.SetAPIResourceService(previous) })
+			candidate := &interfaces.Resource{ID: "api", CatalogID: "catalog", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive,
+				SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}},
+				APIDefinition:    &interfaces.APIDefinition{Variables: map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:stored-fixture", Sensitive: true}}}, LogicDefinitionStr: "stored-definition"}
+			params := &interfaces.ResourceDataQueryParams{NeedTotal: scenario == "requested total", BinaryMode: new(interfaces.BinaryModeMetadata)}
+			ctx, cancel := context.WithDeadline(t.Context(), time.Date(2100, time.January, 1, 0, 0, 0, 0, time.UTC))
+			defer cancel()
+			if scenario == "cancelled context" {
+				cancel()
+			}
+			var expectedErr error
+			if scenario == "denied resource" {
+				expectedErr = httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+			}
+			if scenario == "trusted proxy" {
+				ctx = interfaces.WithTrustedProxyRead(ctx)
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			} else {
+				rs.EXPECT().CheckResourcePermission(gomock.Any(), candidate.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(expectedErr)
+			}
+			if scenario == "cursor mode" {
+				params.Paging.Mode = interfaces.PagingModeCursor
+			}
+			if scenario == "cursor token" {
+				params.Paging.Cursor = "opaque"
+			}
+			cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			if scenario != "unavailable" {
+				extension := mock_interfaces.NewMockAPIResourceService(ctrl)
+				resourcelogic.SetAPIResourceService(extension)
+				if scenario == "denied resource" || scenario == "cursor mode" || scenario == "cursor token" {
+					extension.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				} else {
+					if scenario == "extension failure" {
+						expectedErr = httperrors.NewHTTPError(ctx, http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).WithMetadata(map[string]any{"stage": "response", "upstream_status": 401})
+					}
+					if scenario == "cancelled context" {
+						expectedErr = httperrors.NewHTTPError(ctx, http.StatusGatewayTimeout, verrors.VegaBackend_Query_ExecuteFailed)
+					}
+					extension.EXPECT().Query(gomock.Any(), candidate, params).DoAndReturn(func(received context.Context, resource *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						assert.Same(t, candidate, resource)
+						assert.Same(t, params, query)
+						expectedDeadline, expectedOK := ctx.Deadline()
+						deadline, ok := received.Deadline()
+						assert.Equal(t, expectedOK, ok)
+						assert.Equal(t, expectedDeadline, deadline)
+						assert.Equal(t, ctx.Done(), received.Done())
+						assert.Equal(t, "ENC:stored-fixture", resource.APIDefinition.Variables["credential"].Value)
+						assert.Zero(t, query.Paging.Limit, "Resource-specific defaults belong to the extension")
+						if expectedErr != nil {
+							return nil, expectedErr
+						}
+						return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}}, TotalCount: 8}, nil
+					})
+				}
+			}
+			result, err := service.QueryWithPaging(ctx, candidate, params)
+			switch scenario {
+			case "single", "requested total", "trusted proxy":
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
+				assert.Equal(t, interfaces.ResourceQuerySourceSource, result.QuerySource)
+				assert.False(t, result.IsApproximate)
+				assert.Equal(t, scenario == "requested total", result.NeedTotal)
+				assert.Equal(t, int64(8), result.TotalCount)
+				assert.Equal(t, &interfaces.PagingResponse{}, result.Paging)
+			case "denied resource", "extension failure", "cancelled context":
+				assert.Nil(t, result)
+				assert.Same(t, expectedErr, err)
+			default:
+				assert.Nil(t, result)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				status := http.StatusBadRequest
+				if scenario == "unavailable" {
+					status = http.StatusNotImplemented
+				}
+				assert.Equal(t, status, failure.HTTPCode)
+			}
+			assert.Equal(t, "stored-definition", candidate.LogicDefinitionStr)
+			assert.Equal(t, "ENC:stored-fixture", candidate.APIDefinition.Variables["credential"].Value)
+		})
+	}
+}
+
+func TestResourceDataServiceQueryWithPagingSharedConcurrency(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		apiErr error
+	}{
+		{name: "successful API query"},
+		{name: "failed API query", apiErr: httperrors.NewHTTPError(context.Background(), http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+			datasets := mock_interfaces.NewMockDatasetService(ctrl)
+			extension := mock_interfaces.NewMockAPIResourceService(ctrl)
+			previous := resourcelogic.GetAPIResourceService()
+			resourcelogic.SetAPIResourceService(extension)
+			t.Cleanup(func() { resourcelogic.SetAPIResourceService(previous) })
+
+			limiter := rate.NewConcurrencyLimiter(rate.ConcurrencyConfig{
+				Enabled: true,
+				Global:  rate.GlobalConcurrencyConfig{MaxConcurrentQueries: 1},
+			})
+			service := &resourceDataService{
+				cs: catalogs, ds: datasets, lim: newResourceDataLocalIndexManagerMock(ctrl), cl: limiter,
+			}
+			ctx := interfaces.WithTrustedProxyRead(t.Context())
+			schema := []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}
+			api := &interfaces.Resource{ID: "api", CatalogID: "api-catalog", Category: interfaces.ResourceCategoryAPI, Enabled: true, SchemaDefinition: schema}
+			dataset := &interfaces.Resource{ID: "dataset", CatalogID: "dataset-catalog", Category: interfaces.ResourceCategoryDataset, Enabled: true, SchemaDefinition: schema}
+			rows := []map[string]any{{"id": 1}}
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), dataset.CatalogID, true).
+				Return(&interfaces.Catalog{Enabled: true, ConnectorCfg: interfaces.ConnectorConfig{"concurrent": int64(1)}}, nil).Times(2)
+
+			// 数据集占用额度时，API 调用必须在委托扩展前返回。
+			datasets.EXPECT().ListDocuments(gomock.Any(), dataset, gomock.Any()).DoAndReturn(
+				func(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+					page, err := service.QueryWithPaging(ctx, api, &interfaces.ResourceDataQueryParams{})
+					assert.Nil(t, page)
+					var failure *httperrors.HTTPError
+					require.ErrorAs(t, err, &failure)
+					assert.Equal(t, http.StatusTooManyRequests, failure.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_Query_ConcurrencyLimitExceeded, failure.ErrorCode)
+					return &interfaces.ResourceDataQueryResult{Entries: rows}, nil
+				},
+			)
+			page, err := service.QueryWithPaging(ctx, dataset, &interfaces.ResourceDataQueryParams{})
+			require.NoError(t, err)
+			assert.Equal(t, rows, page.Entries)
+
+			extension.EXPECT().Query(gomock.Any(), api, gomock.Any()).DoAndReturn(
+				func(context.Context, *interfaces.Resource, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+					page, err := service.QueryWithPaging(ctx, dataset, &interfaces.ResourceDataQueryParams{})
+					assert.Nil(t, page)
+					var failure *httperrors.HTTPError
+					require.ErrorAs(t, err, &failure)
+					assert.Equal(t, http.StatusTooManyRequests, failure.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_Query_ConcurrencyLimitExceeded, failure.ErrorCode)
+					if tc.apiErr != nil {
+						return nil, tc.apiErr
+					}
+					return &interfaces.ResourceDataQueryResult{Entries: rows}, nil
+				},
+			)
+			page, err = service.QueryWithPaging(ctx, api, &interfaces.ResourceDataQueryParams{})
+			if tc.apiErr != nil {
+				require.ErrorIs(t, err, tc.apiErr)
+				assert.Nil(t, page)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, rows, page.Entries)
+			}
+			release, err := limiter.Acquire(rate.AcquireParams{})
+			require.NoError(t, err)
+			release()
+		})
+	}
 }
 
 func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {
@@ -2106,7 +2282,7 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 
 // TestQueryClassifiesUnsupportedOperations 覆盖两个之前被抹平的分型点。
 //
-// 之前的形态是：QueryData 里判出的 400 被 query() 无条件重包成 500，而 fileset
+// 之前的形态是：executeSourceQuery 里判出的 400 被 query() 无条件重包成 500，而 fileset
 // 分支根本没做判断——两处加起来，anyshare / mariadb 那几个连接器返回
 // UnsupportedOperationError 的改动一点行为变化都没有，调用方拿到的仍是
 // 「数据资源内部错误」，ontology-query 继续判成依赖故障。
@@ -2881,6 +3057,46 @@ func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
 			body, marshalErr := json.Marshal(httpErr.BaseError)
 			require.NoError(t, marshalErr)
 			assert.Contains(t, string(body), `"metadata":{"field":"status","limit":256}`)
+		})
+	}
+}
+
+func TestResourceDataServiceExecuteSourceQuery(t *testing.T) {
+	for _, available := range []bool{false, true} {
+		t.Run(fmt.Sprintf("API extension available=%t", available), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			factory := mock_interfaces.NewMockConnectorFactory(ctrl)
+			factory.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			previous := resourcelogic.GetAPIResourceService()
+			resourcelogic.SetAPIResourceService(nil)
+			t.Cleanup(func() { resourcelogic.SetAPIResourceService(previous) })
+			resource := &interfaces.Resource{ID: "api", CatalogID: "catalog", Category: interfaces.ResourceCategoryAPI}
+			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 2}}
+			want := &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}}}
+			if available {
+				extension := mock_interfaces.NewMockAPIResourceService(ctrl)
+				resourcelogic.SetAPIResourceService(extension)
+				extension.EXPECT().Query(gomock.Any(), resource, params).Return(want, nil).Times(1)
+			}
+			limiter := rate.NewConcurrencyLimiter(rate.ConcurrencyConfig{
+				Enabled: true,
+				Global:  rate.GlobalConcurrencyConfig{MaxConcurrentQueries: 1},
+			})
+			// The page runner owns the permit for this source query.
+			release, err := limiter.Acquire(rate.AcquireParams{})
+			require.NoError(t, err)
+			defer release()
+			service := &resourceDataService{cf: factory, cl: limiter}
+			result, err := service.executeSourceQuery(t.Context(), &interfaces.Catalog{ID: "catalog", ConnectorType: "http"}, resource, params)
+			if available {
+				require.NoError(t, err)
+				assert.Same(t, want, result)
+			} else {
+				assert.Nil(t, result)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, http.StatusNotImplemented, failure.HTTPCode)
+			}
 		})
 	}
 }

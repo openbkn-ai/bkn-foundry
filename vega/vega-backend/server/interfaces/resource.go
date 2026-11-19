@@ -119,6 +119,9 @@ type Resource struct {
 	LogicalType           string `json:"logical_type,omitempty"`            // Logical types: derived(derived), composite(composite)
 	LogicalViewDefinition any    `json:"logical_view_definition,omitempty"` // Definition shape depends on logical_type
 
+	APIEffectType string         `json:"api_effect_type,omitempty"`
+	APIDefinition *APIDefinition `json:"api_definition,omitempty"`
+
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
 	Updater    AccountInfo `json:"updater"`
@@ -152,8 +155,9 @@ type ResourceSummary struct {
 	LocalIndexName   string `json:"index_name,omitempty"`
 	SyncMark         string `json:"-"`
 
-	LogicType   string `json:"-"` // Raw database value, mapped by the service.
-	LogicalType string `json:"logical_type,omitempty"`
+	LogicType     string `json:"-"` // Raw database value, mapped by the service.
+	LogicalType   string `json:"logical_type,omitempty"`
+	APIEffectType string `json:"api_effect_type,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -239,6 +243,9 @@ type ResourceRequest struct {
 
 	LogicalType           string `json:"logical_type,omitempty"`            // Required for logical views; selects the definition shape
 	LogicalViewDefinition any    `json:"logical_view_definition,omitempty"` // Definition shape depends on logical_type
+
+	APIEffectType string         `json:"api_effect_type,omitempty"`
+	APIDefinition *APIDefinition `json:"api_definition,omitempty"`
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }

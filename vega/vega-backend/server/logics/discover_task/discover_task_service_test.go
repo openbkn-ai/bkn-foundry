@@ -164,6 +164,7 @@ func TestDiscoverTaskServiceCreate(t *testing.T) {
 			allowed    bool
 		}{
 			{name: "unsupported arbitrary connector", catalog: &interfaces.Catalog{ConnectorType: "custom"}, allowed: true},
+			{name: "HTTP API connector", catalog: &interfaces.Catalog{ConnectorType: "http"}, allowed: true},
 			{name: "discoverable API connector", catalog: &interfaces.Catalog{ConnectorType: "custom-api"}, supported: true, allowed: true},
 			{name: "logical catalog retains existing task support", catalog: &interfaces.Catalog{Type: interfaces.CatalogTypeLogical}, supported: true, allowed: true},
 			{name: "unknown connector", catalog: &interfaces.Catalog{ConnectorType: "unknown"}, factoryErr: unknown, allowed: true},

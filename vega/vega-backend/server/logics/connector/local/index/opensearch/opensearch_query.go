@@ -76,7 +76,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	}
 	// Parse the DSL to ensure it's valid JSON
 	var dslMap map[string]any
-	if err := common.UnmarshalPreciseJSON([]byte(dsl), &dslMap); err != nil {
+	if err := common.UnmarshalJSON([]byte(dsl), &dslMap); err != nil {
 		return nil, fmt.Errorf("invalid DSL JSON: %w", err)
 	}
 
@@ -103,7 +103,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	if err != nil {
 		return nil, fmt.Errorf("read search response: %w", err)
 	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -220,7 +220,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 	if err != nil {
 		return nil, fmt.Errorf("read raw query response: %w", err)
 	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &searchResp); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &searchResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	totalCount := searchResp.Hits.Total.Value
@@ -320,7 +320,7 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 			Properties map[string]Property `json:"properties"`
 		} `json:"mappings"`
 	}
-	if err := sonic.Unmarshal(bodyBytes, &dataMapping); err != nil {
+	if err := common.UnmarshalJSON(bodyBytes, &dataMapping); err != nil {
 		return fmt.Errorf("failed to unmarshal mappings: %w", err)
 	}
 
@@ -570,7 +570,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		// Parsing response
 		var result map[string]any
-		if err := common.UnmarshalPreciseJSON(bodyBytes, &result); err != nil {
+		if err := common.UnmarshalJSON(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
 		if err := validateCompleteAggregationResponse(result); err != nil {
@@ -747,7 +747,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	if err != nil {
 		return nil, fmt.Errorf("read search response: %w", err)
 	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 

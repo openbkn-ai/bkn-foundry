@@ -108,7 +108,7 @@ func (suts *semanticUnderstandingTaskService) Apply(ctx context.Context, id stri
 			return nil, false, semanticApplyInternalError(ctx, err)
 		}
 		var details map[string]any
-		if err := common.UnmarshalPreciseJSON([]byte(result.DetailJSON), &details); err != nil {
+		if err := common.UnmarshalJSON([]byte(result.DetailJSON), &details); err != nil {
 			return nil, false, semanticApplyInternalError(ctx, err)
 		}
 		details["apply_mode"] = req.ApplyMode
@@ -174,7 +174,7 @@ func validateSemanticTaskSchema(task *interfaces.SemanticUnderstandingTask, reso
 	if err := validateSemanticJSON(task.Input); err != nil {
 		return err
 	}
-	if err := common.UnmarshalPreciseJSON([]byte(task.Input), &snapshot); err != nil {
+	if err := common.UnmarshalJSON([]byte(task.Input), &snapshot); err != nil {
 		return err
 	}
 	if snapshot.Resource.ID != task.ResourceID || resourceInfo.ID != task.ResourceID || resourceInfo.CatalogID != task.CatalogID ||
@@ -225,7 +225,7 @@ func semanticSchemaFingerprint(fields []semanticSchemaField) (string, error) {
 
 func validateSemanticResultFields(resultJSON string, resourceInfo *interfaces.Resource) error {
 	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(resultJSON), &envelope); err != nil {
+	if err := common.UnmarshalJSON([]byte(resultJSON), &envelope); err != nil {
 		return err
 	}
 	resourceJSON := strings.TrimSpace(string(envelope["resource"]))
@@ -236,7 +236,7 @@ func validateSemanticResultFields(resultJSON string, resourceInfo *interfaces.Re
 	if err := validateSemanticJSON(resultJSON); err != nil {
 		return err
 	}
-	if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
+	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
 		return err
 	}
 	if strings.TrimSpace(resultJSON) == "null" {

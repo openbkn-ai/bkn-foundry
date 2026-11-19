@@ -129,17 +129,10 @@ func (r *restHandler) queryProxyResourceData(c *gin.Context, ctx context.Context
 
 func bindResourceDataQuery(c *gin.Context, ctx context.Context, span trace.Span) (*interfaces.ResourceDataQueryParams, bool) {
 	var params interfaces.ResourceDataQueryParams
-	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
+	if err := common.BindJSON(c.Request.Body, &params); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid resource data query request body")
 		otellog.LogError(ctx, "Bind resource data query request failed", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return nil, false
-	}
-	if err := ValidateResourceDataQueryParams(ctx, &params); err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		otellog.LogError(ctx, "Validate resource data query params failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return nil, false
@@ -160,6 +153,11 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 	if warning != "" {
 		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
 	}
+	if err := ValidateResourceDataQueryParams(ctx, params, resource.Category); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	if err := validateResourceDataQueryGroupByFields(ctx, params, resource.SchemaDefinition); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		otellog.LogError(ctx, "Validate resource data group by fields failed", httpErr)
@@ -171,8 +169,9 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 	result, err := r.rds.QueryWithPaging(ctx, resource, params)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		otellog.LogError(ctx, "Query resource data failed", httpErr)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		telemetryErr := resourceErrorForTelemetry(resource.Category, httpErr)
+		otellog.LogError(ctx, "Query resource data failed", telemetryErr)
+		oteltrace.AddHttpAttrs4HttpError(span, telemetryErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -208,7 +207,7 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 	}
 
 	var document map[string]any
-	if err := common.BindPreciseJSON(c.Request.Body, &document); err != nil {
+	if err := common.BindJSON(c.Request.Body, &document); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -240,7 +239,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 
 	var params interfaces.ResourceDataQueryParams
-	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
+	if err := common.BindJSON(c.Request.Body, &params); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -331,7 +330,7 @@ func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, int
 	}
 	data, err := io.ReadAll(c.Request.Body)
 	if err == nil {
-		err = common.UnmarshalPreciseJSON(data, &request)
+		err = common.UnmarshalJSON(data, &request)
 	}
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
@@ -484,7 +483,7 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	}
 
 	var doc map[string]any
-	if err := common.BindPreciseJSON(c.Request.Body, &doc); err != nil {
+	if err := common.BindJSON(c.Request.Body, &doc); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

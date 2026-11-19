@@ -123,7 +123,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		return nil, err
 	}
 	if indexConfigJSON != "" {
-		if err := sonic.UnmarshalString(indexConfigJSON, &buildTask.IndexConfig); err != nil {
+		if err := common.UnmarshalJSON([]byte(indexConfigJSON), &buildTask.IndexConfig); err != nil {
 			return nil, err
 		}
 	}

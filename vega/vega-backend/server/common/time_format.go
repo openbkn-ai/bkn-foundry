@@ -15,6 +15,8 @@ const (
 	TimeFixedNanosLayout = time.TimeOnly + ".000000000"
 	// DatetimeLayout 表示无时区日期时间，保留最多 9 位小数秒。
 	DatetimeLayout = time.DateTime + ".999999999"
+	// ISO8601DatetimeLayout 表示 T 分隔的无时区日期时间，保留最多 9 位小数秒。
+	ISO8601DatetimeLayout = "2006-01-02T15:04:05.999999999"
 	// Time100nsLayout 用于 SQL Server/HANA 的 100ns 精度时间绑定或输出。
 	Time100nsLayout = time.TimeOnly + ".9999999"
 	// ISO8601Datetime100nsLayout 用于 SQL Server 无时区列的 ISO 8601 文本绑定。

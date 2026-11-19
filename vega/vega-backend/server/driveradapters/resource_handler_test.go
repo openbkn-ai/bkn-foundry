@@ -26,6 +26,68 @@ import (
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
+func TestRestHandlerAPIResourceSaveErrorDetails(t *testing.T) {
+	const body = `{"catalog_id":"catalog-1","name":"orders","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":false}],"expected_update_time":1}`
+	const upstreamBody = `{"message":"upstream fixture details"}`
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			engine, _, rs := setupResourceHandlerTest(t)
+			publicErr := httperrors.NewHTTPError(t.Context(), http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails(upstreamBody).
+				WithMetadata(map[string]any{"stage": "response", "upstream_status": 503})
+			url := "/api/vega-backend/in/v1/resources"
+			if method == http.MethodPost {
+				rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, publicErr)
+			} else {
+				url += "/res-1"
+				rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(publicErr)
+			}
+			_, traced := captureResourceFailureTelemetry(t)
+			request := httptest.NewRequest(method, url, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusBadGateway, recorder.Code, recorder.Body.String())
+			var response httperrors.BaseError
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, upstreamBody, response.ErrorDetails)
+			require.Len(t, *traced, 1)
+			assert.Equal(t, http.StatusBadGateway, (*traced)[0].HTTPCode)
+			assert.Equal(t, "response", (*traced)[0].Metadata["stage"])
+			assert.NotContains(t, (*traced)[0].ErrorDetails, "upstream fixture details")
+		})
+	}
+}
+
+func TestRestHandlerAPIResourceInvalidBody(t *testing.T) {
+	const fixtureValue = "fixture-only"
+	const body = `{"category":"api","api_definition":{"variables":{"key":{"sensitive":true,"value":"` + fixtureValue + `" ?}}}}`
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			engine, _, _ := setupResourceHandlerTest(t)
+			_, traced := captureResourceFailureTelemetry(t)
+			url := "/api/vega-backend/in/v1/resources"
+			if method == http.MethodPut {
+				url += "/res-1"
+			}
+			request := httptest.NewRequest(method, url, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			var response httperrors.BaseError
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, verrors.VegaBackend_InvalidParameter_RequestBody, response.ErrorCode)
+			assert.NotContains(t, recorder.Body.String(), fixtureValue)
+			assert.Equal(t, "invalid resource request body", response.ErrorDetails)
+			require.Len(t, *traced, 1)
+			assert.Equal(t, "invalid resource request body", (*traced)[0].ErrorDetails)
+		})
+	}
+}
+
 func setupResourceHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockCatalogService, *vmock.MockResourceService) {
 	t.Helper()
 
@@ -213,6 +275,30 @@ func Test_ResourceRestHandler_SetResourceEnabled(t *testing.T) {
 }
 
 func Test_ResourceRestHandler_CreateResource(t *testing.T) {
+	t.Run("creates a read-only POST API resource", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+			assert.Equal(t, interfaces.ResourceCategoryAPI, req.Category)
+			assert.Equal(t, interfaces.APIEffectRead, req.APIEffectType)
+			require.NotNil(t, req.APIDefinition)
+			assert.Equal(t, "POST", req.APIDefinition.Request.Method)
+			assert.Equal(t, "application/json", req.APIDefinition.Response.ContentType)
+			assert.Equal(t, false, req.APIDefinition.Response.Statuses["default"].Schema)
+			require.NotNil(t, req.APIDefinition.Response.Statuses["200"].ResultRows)
+			assert.Equal(t, json.Number("9007199254740993"), req.APIDefinition.Request.Parameters[0]["value"])
+			value, exists := req.APIDefinition.SuccessRule.BodyFilterCondition["value"]
+			assert.True(t, exists)
+			assert.Nil(t, value)
+			return &interfaces.Resource{ID: "api-resource"}, nil
+		})
+		body := `{"catalog_id":"catalog-1","name":"orders","category":"api","api_effect_type":"read","schema_definition":[{"name":"id","original_name":"id","type":"integer"}],"api_definition":{"request":{"method":"POST","path":"orders","parameters":[{"name":"id","value":9007199254740993}]},"response":{"content_type":"application/json","statuses":{"200":{"description":"orders","schema":{"type":"array","items":{"type":"object"}},"result_rows":""},"default":{"description":"rejected","schema":false}}},"success_rule":{"http_status":[200],"body_filter_condition":{"field":"data","operation":"eq","value":null}}}}`
+		request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		assert.Equal(t, http.StatusCreated, response.Code)
+	})
+
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
@@ -223,11 +309,10 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
-				definition := req.LogicalViewDefinition.(map[string]any)
-				assert.Equal(t, json.Number("9007199254740993"), definition["value"])
+				assert.Equal(t, json.Number("9007199254740993"), req.SchemaDefinition[0].Attributes["value"])
 				return &interfaces.Resource{ID: "res-1", Name: req.Name}, nil
 			})
-		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"logical_view_definition":{"value":9007199254740993}}`
+		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset","category":"dataset","schema_definition":[{"name":"title","type":"string","attributes":{"value":9007199254740993}}]}`
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(preciseBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -435,11 +520,10 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, req *interfaces.ResourceRequest) error {
-				definition := req.LogicalViewDefinition.(map[string]any)
-				assert.Equal(t, json.Number("9007199254740993"), definition["value"])
+				assert.Equal(t, json.Number("9007199254740993"), req.SchemaDefinition[0].Attributes["value"])
 				return nil
 			})
-		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1,"logical_view_definition":{"value":9007199254740993}}`
+		preciseBody := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string","attributes":{"value":9007199254740993}}],"expected_update_time":1}`
 		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(preciseBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -703,6 +787,169 @@ func TestRestHandlerDiscoverResource(t *testing.T) {
 			} else {
 				assert.JSONEq(t, `{"id":"task"}`, w.Body.String())
 			}
+		})
+	}
+}
+
+func TestResourceRequestHTTPContract(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		for _, fields := range []string{
+			`"name":false`, `"api_effect_type":123`, `"schema_definition":{}`,
+			`"logical_type":"derived"`, `"logical_view_definition":{"sql":"SELECT 1"}`,
+			`"api_definition":{"input_schema":{}}`,
+			`"api_definition":{"request":{"method":"GET","path":"read"},"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":{"type":"array"},"result":{"rows":""}}}},"success_rule":{"http_status":[200]}}`,
+			`"api_definition":{"request":{"method":"GET","path":"read"},"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":{"type":"array"},"result":{"rows":"","columns":{"value":[{"name":"id","type":"integer"}]}}}}},"success_rule":{"http_status":[200]}}`,
+			`"api_definition":{"request":{"method":"GET","path":"items","url":"https://override.example.invalid"}}`,
+		} {
+			t.Run(method+"/invalid/"+fields, func(t *testing.T) {
+				engine, _, rs := setupResourceHandlerTest(t)
+				rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+				rs.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+				url := "/api/vega-backend/in/v1/resources"
+				if method == http.MethodPut {
+					url += "/res-1"
+				}
+				body := `{"catalog_id":"catalog-1","name":"resource","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":false}],"expected_update_time":1,` + fields + `}`
+				request := httptest.NewRequest(method, url, strings.NewReader(body))
+				request.Header.Set("Content-Type", "application/json")
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+			})
+		}
+		for _, fields := range []string{
+			`"unknown":null`, `"logic_type":"ignored"`, `"logic_definition":{"ignored":true}`, `"condition_constraints":{}`,
+			`"schema_definition":[{"name":"id","type":"integer","filterable":false,"condition_constraints":{"operations":["eq"]}}]`,
+			`"schema_definition":[{"name":"id","type":"integer","filterable":false,"foreign_property":0}]`,
+		} {
+			t.Run(method+"/unknown is ignored/"+fields, func(t *testing.T) {
+				engine, _, rs := setupResourceHandlerTest(t)
+				check := func(req *interfaces.ResourceRequest) {
+					assert.Equal(t, "resource", req.Name)
+					assert.Equal(t, "catalog-1", req.CatalogID)
+					assert.Equal(t, interfaces.ResourceCategoryAPI, req.Category)
+					assert.Equal(t, interfaces.APIEffectRead, req.APIEffectType)
+					assert.Equal(t, &interfaces.APIDefinition{}, req.APIDefinition)
+					require.Len(t, req.SchemaDefinition, 1)
+					assert.Equal(t, "id", req.SchemaDefinition[0].Name)
+					assert.Equal(t, interfaces.DataType_Integer, req.SchemaDefinition[0].Type)
+					assert.Empty(t, req.LogicalType)
+					assert.Nil(t, req.LogicalViewDefinition)
+				}
+				url := "/api/vega-backend/in/v1/resources"
+				status := http.StatusCreated
+				if method == http.MethodPost {
+					rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+						check(req)
+						return &interfaces.Resource{ID: "res-1"}, nil
+					})
+				} else {
+					url += "/res-1"
+					status = http.StatusNoContent
+					rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+						check(req)
+						assert.Equal(t, "res-1", req.ID)
+						return nil
+					})
+				}
+				body := `{"catalog_id":"catalog-1","name":"resource","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":false}],"expected_update_time":1,` + fields + `}`
+				request := httptest.NewRequest(method, url, strings.NewReader(body))
+				request.Header.Set("Content-Type", "application/json")
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				require.Equal(t, status, recorder.Code, recorder.Body.String())
+			})
+		}
+	}
+	t.Run("API update null definition mapping and effect are omitted for service preservation", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, request *interfaces.ResourceRequest) error {
+			assert.Equal(t, "res-1", request.ID)
+			assert.Equal(t, "renamed", request.Name)
+			assert.Equal(t, interfaces.ResourceCategoryAPI, request.Category)
+			assert.Nil(t, request.APIDefinition)
+			assert.Nil(t, request.SchemaDefinition)
+			assert.Empty(t, request.APIEffectType)
+			return nil
+		})
+		body := `{"name":"renamed","category":"api","api_definition":null,"schema_definition":null,"api_effect_type":null,"logical_type":null,"logical_view_definition":null,"expected_update_time":1}`
+		request := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+	})
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		for _, test := range []struct {
+			name, fields string
+			valid        bool
+		}{
+			{"foreign null and empty values", `"api_definition":null,"api_effect_type":"","logical_view_definition":null,"logical_type":""`, true},
+			{"foreign API effect", `"api_effect_type":"read"`, false},
+			{"foreign API definition", `"api_definition":{}`, false},
+			{"foreign logical type", `"logical_type":"derived"`, false},
+			{"foreign logical definition", `"logical_view_definition":{"sql":"SELECT 1"}`, false},
+		} {
+			t.Run(method+"/dataset/"+test.name, func(t *testing.T) {
+				engine, _, rs := setupResourceHandlerTest(t)
+				url := "/api/vega-backend/in/v1/resources"
+				if method == http.MethodPut {
+					url += "/res-1"
+				}
+				if test.valid {
+					if method == http.MethodPost {
+						rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+							assert.Nil(t, req.APIDefinition)
+							assert.Empty(t, req.APIEffectType)
+							assert.Nil(t, req.LogicalViewDefinition)
+							assert.Empty(t, req.LogicalType)
+							return &interfaces.Resource{ID: "res-1"}, nil
+						})
+					} else {
+						rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+							assert.Nil(t, req.APIDefinition)
+							assert.Empty(t, req.APIEffectType)
+							assert.Nil(t, req.LogicalViewDefinition)
+							assert.Empty(t, req.LogicalType)
+							return nil
+						})
+					}
+				} else {
+					rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+					rs.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+				}
+				body := `{"name":"dataset","category":"dataset","schema_definition":[{"name":"id","type":"integer"}],"expected_update_time":1,` + test.fields + `}`
+				request := httptest.NewRequest(method, url, strings.NewReader(body))
+				request.Header.Set("Content-Type", "application/json")
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				status := http.StatusBadRequest
+				if test.valid {
+					status = http.StatusCreated
+					if method == http.MethodPut {
+						status = http.StatusNoContent
+					}
+				}
+				require.Equal(t, status, recorder.Code, recorder.Body.String())
+			})
+		}
+	}
+	for _, fields := range []string{
+		`"api_effect_type":null,"api_definition":null,"schema_definition":null`,
+		`"api_effect_type":"read","api_definition":null,"schema_definition":[{"name":"id","type":"integer"}]`,
+		`"api_effect_type":"read","api_definition":{},"schema_definition":null`,
+		`"api_effect_type":null,"api_definition":{},"schema_definition":[{"name":"id","type":"integer"}]`,
+	} {
+		t.Run("API creation requires meaningful values/"+fields, func(t *testing.T) {
+			engine, _, rs := setupResourceHandlerTest(t)
+			rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+			request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources", strings.NewReader(`{"name":"resource","category":"api",`+fields+`}`))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
 		})
 	}
 }

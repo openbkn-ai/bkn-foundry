@@ -122,12 +122,11 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	params.Paging = interfaces.PagingRequest{
 		Mode:   interfaces.PagingModeSingle,
 		Offset: session.PageOffset,
-		Limit:  session.PageLimit + 1,
+		Limit:  session.PageLimit,
 	}
-	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		// OpenSearch uses search_after and must not request limit+1: size plus
-		// the first-page offset can otherwise exceed max_result_window.
-		params.Paging.Limit = session.PageLimit
+	// OpenSearch search_after uses the requested page size without lookahead.
+	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+		params.Paging.Limit++
 	}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
 	page, err := execute.ExecutePage(ctx, params)

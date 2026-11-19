@@ -975,7 +975,7 @@ func (c *PostgresqlConnector) DecodeTableMeta(metadata map[string]any) (*interfa
 		return nil, fmt.Errorf("failed to serialize table metadata: %w", err)
 	}
 	table := &interfaces.TableMeta{}
-	if err := common.UnmarshalPreciseJSON(data, table); err != nil {
+	if err := common.UnmarshalJSON(data, table); err != nil {
 		return nil, fmt.Errorf("failed to decode table metadata: %w", err)
 	}
 	if _, ok := metadata["description"]; !ok {

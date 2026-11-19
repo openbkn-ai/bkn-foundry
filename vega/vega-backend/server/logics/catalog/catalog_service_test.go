@@ -643,7 +643,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 				}
 				return "cipher", nil
 			}, decryptFunc: func(string) (string, error) { t.Fatal("plaintext update must not decrypt"); return "", nil }}}
-			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 			ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil).AnyTimes()
 			_, err := cs.Create(context.Background(), req, allowUnhealthy)
 			var httpErr *httperrors.HTTPError
@@ -677,7 +677,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 				got["variables"].(map[string]any)["nested"].(map[string]any)["value"] = true
 				return connector, nil
 			})
-			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error { sourceChecked = true; return nil })
 			connector.EXPECT().Close(gomock.Any()).Return(nil)
 			ca.EXPECT().GetByName(gomock.Any(), "API").Return(nil, nil)
@@ -726,15 +726,22 @@ func TestCatalogServiceCreate(t *testing.T) {
 		connector := vmock.NewMockConnector(ctrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
-		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
-		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(flowCtx context.Context, _ string, _ interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(probeCtx context.Context) error {
+				assert.Same(t, flowCtx, probeCtx)
+				require.ErrorIs(t, probeCtx.Err(), context.Canceled)
+				return probeCtx.Err()
+			})
+			connector.EXPECT().Close(gomock.Any()).DoAndReturn(func(closeCtx context.Context) error {
+				assert.Same(t, flowCtx, closeCtx)
+				assert.ErrorIs(t, closeCtx.Err(), context.Canceled)
+				return nil
+			})
+			return connector, nil
+		})
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(probeCtx context.Context) error {
-			require.ErrorIs(t, probeCtx.Err(), context.Canceled)
-			return probeCtx.Err()
-		})
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		cs := &catalogService{ps: ps, cf: cf, appSetting: &common.AppSetting{}}
 		_, err := cs.Create(ctx, &interfaces.CatalogRequest{ConnectorType: "http", Name: "API"}, false)
 		var httpErr *httperrors.HTTPError
@@ -749,7 +756,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
-			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 			connector.EXPECT().TestConnection(gomock.Any()).Return(context.DeadlineExceeded)
 			connector.EXPECT().Close(gomock.Any()).Return(nil)
 			cs := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
@@ -1159,12 +1166,81 @@ func TestCatalogServiceCreate(t *testing.T) {
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
+	t.Run("public permission denial precedes catalog reads and connector creation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		refusal := httperrors.NewHTTPError(t.Context(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "api-catalog"}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(refusal)
+		ca.EXPECT().GetByID(gomock.Any(), gomock.Any()).Times(0)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		service := &catalogService{ps: ps, ca: ca, cf: cf}
+		result, err := service.TestConnection(t.Context(), "api-catalog")
+		assert.Nil(t, result)
+		require.ErrorIs(t, err, refusal)
+	})
+	t.Run("saved API configuration is privately decrypted and publishes generic health", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockAPIConnector(ctrl)
+		config := interfaces.ConnectorConfig{"variables": map[string]any{"credential": "ENC:x"}, "sensitive_variables": []string{"credential"}}
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "api-catalog").Return(&interfaces.Catalog{ID: "api-catalog", Type: interfaces.CatalogTypePhysical, Category: interfaces.ResourceCategoryAPI, ConnectorType: "http", Enabled: true, ConnectorCfg: config}, nil)
+		cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return([]string{"credential"}, nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, received interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			variables := received["variables"].(map[string]any)
+			assert.Equal(t, "fixture-plaintext", variables["credential"])
+			variables["credential"] = "modified private copy"
+			return connector, nil
+		})
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "api-catalog", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, health interfaces.CatalogHealthCheckStatus) error {
+			assert.Equal(t, interfaces.CatalogHealthStatusHealthy, health.HealthCheckStatus)
+			assert.Equal(t, connectionTestSucceededResult, health.HealthCheckResult)
+			assert.Positive(t, health.LastCheckTime)
+			return nil
+		})
+		service := &catalogService{appSetting: &common.AppSetting{}, ps: ps, ca: ca, cf: cf, cipher: &mockCipher{decryptFunc: func(value string) (string, error) { assert.Equal(t, "x", value); return "fixture-plaintext", nil }}}
+		result, err := service.TestConnection(t.Context(), "api-catalog")
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.CatalogHealthStatusHealthy, result.HealthCheckStatus)
+		assert.Equal(t, "ENC:x", config["variables"].(map[string]any)["credential"])
+	})
+	t.Run("API cancellation returns unhealthy and cleanup receives the original cancellation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := vmock.NewMockPermissionService(ctrl)
+		cf := vmock.NewMockConnectorFactory(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		connector := vmock.NewMockAPIConnector(ctrl)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_CREATE}).Return(nil)
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
+		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(received context.Context) error {
+			cancel()
+			assert.ErrorIs(t, received.Err(), context.Canceled)
+			return received.Err()
+		})
+		connector.EXPECT().Close(gomock.Any()).DoAndReturn(func(received context.Context) error { assert.ErrorIs(t, received.Err(), context.Canceled); return nil })
+		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		service := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
+		result, err := service.TestConnectionConfig(ctx, &interfaces.CatalogConnectionTestRequest{ConnectorType: "http", ConnectorCfg: interfaces.ConnectorConfig{}})
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+	})
 	t.Run("temporary plaintext config never calls storage cipher", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ps := vmock.NewMockPermissionService(ctrl)
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
-		cfg := interfaces.ConnectorConfig{"token": "fixture", "variables": map[string]any{"nested": []any{map[string]any{"value": false}}}}
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
+		cfg := interfaces.ConnectorConfig{"token": "fixture", "variables": map[string]any{"large": json.Number("9007199254740993"), "amount": json.Number("12345678901234567890.123456789"), "nested": []any{map[string]any{"value": false}}}}
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
 			assert.Equal(t, cfg, got)
@@ -1188,6 +1264,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 				ca := vmock.NewMockCatalogAccess(ctrl)
 				ps := vmock.NewMockPermissionService(ctrl)
 				connector := vmock.NewMockConnector(ctrl)
+				connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 				var logged []string
 				patches := gomonkey.ApplyFunc(otellog.LogError, func(_ context.Context, _ string, err error, _ ...attribute.KeyValue) {
 					logged = append(logged, err.Error())
@@ -1251,39 +1328,58 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		}
 	}
 
+	loginFailure := interfaces.NewAPIResourceError("response", "upstream login failed", http.StatusServiceUnavailable)
+	loginFailure.ResponseDetails = "upstream login failed; upstream response body: fixture login details"
 	for _, tc := range []struct {
 		name   string
 		cause  error
 		status string
 	}{
-		{"TCP TLS success", nil, interfaces.CatalogHealthStatusHealthy},
-		{"TCP TLS failure", errors.New("TCP dial failed"), interfaces.CatalogHealthStatusUnhealthy},
+		{"configured validation success", nil, interfaces.CatalogHealthStatusHealthy},
+		{"configured validation failure", errors.New("configured validation failed"), interfaces.CatalogHealthStatusUnhealthy},
+		{"upstream login response", loginFailure, interfaces.CatalogHealthStatusUnhealthy},
 		{"caller cancelled", context.Canceled, interfaces.CatalogHealthStatusUnhealthy},
 	} {
 		t.Run("API worker health "+tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ca, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockConnectorFactory(ctrl)
 			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 			config := interfaces.ConnectorConfig{"base_url": "https://api.example.com/", "token": "fixture-secret"}
 			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Enabled: true, ConnectorType: "http", ConnectorCfg: config}, nil)
 			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return([]string{"token"}, nil)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", config).Return(connector, nil)
 			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
-				deadline, ok := ctx.Deadline()
-				require.True(t, ok)
-				assert.LessOrEqual(t, time.Until(deadline), 2*time.Second)
+				_, ok := ctx.Deadline()
+				assert.False(t, ok, "Catalog must not add a connection-test deadline")
 				return tc.cause
 			})
 			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			if errors.Is(tc.cause, loginFailure) {
+				var logged []string
+				patches := gomonkey.ApplyFunc(otellog.LogError, func(_ context.Context, _ string, err error, _ ...attribute.KeyValue) {
+					logged = append(logged, err.Error())
+				})
+				t.Cleanup(func() {
+					patches.Reset()
+					assert.Equal(t, []string{"upstream login failed"}, logged)
+				})
+			}
 			ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "api-1", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, result interfaces.CatalogHealthCheckStatus) error {
 				assert.Equal(t, tc.status, result.HealthCheckStatus)
 				assert.NotContains(t, result.HealthCheckResult, "fixture-secret")
 				if tc.cause == nil {
 					assert.Equal(t, "Connection test succeeded.", result.HealthCheckResult)
 				}
+				if errors.Is(tc.cause, loginFailure) {
+					assert.Contains(t, result.HealthCheckResult, "upstream login failed")
+					assert.Contains(t, result.HealthCheckResult, "response")
+					assert.Contains(t, result.HealthCheckResult, "503")
+					assert.NotContains(t, result.HealthCheckResult, "fixture login details")
+				}
 				return nil
 			})
-			cs := &catalogService{ca: ca, cf: cf, appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
+			cs := &catalogService{ca: ca, cf: cf, appSetting: &common.AppSetting{}}
 			result, err := cs.InternalTestConnection(context.Background(), "api-1")
 			require.NoError(t, err)
 			assert.Equal(t, tc.status, result.HealthCheckStatus)
@@ -1291,10 +1387,11 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	}
 	for _, saved := range []bool{false, true} {
 		for _, cause := range []error{nil, errors.New("fixture dial failed")} {
-			t.Run(fmt.Sprintf("API transport test saved=%t failure=%t", saved, cause != nil), func(t *testing.T) {
+			t.Run(fmt.Sprintf("API configured test saved=%t failure=%t", saved, cause != nil), func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
 				connector := vmock.NewMockConnector(ctrl)
+				connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryAPI).AnyTimes()
 				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 				if saved {
 					cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
@@ -1329,6 +1426,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
@@ -1369,6 +1467,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
@@ -1499,6 +1598,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		ca := vmock.NewMockCatalogAccess(ctrl)
 		ps := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		sensitiveError := "update t_catalog health status failed at db.internal"
 
@@ -1633,38 +1733,64 @@ func TestConnectionErrorResult(t *testing.T) {
 	})
 }
 
-func TestCatalogServiceTestConnectorConnection(t *testing.T) {
-	t.Run("passes configured timeout to connector", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockConnector(ctrl)
-
-		cs := &catalogService{appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
-
-		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
-			deadline, ok := ctx.Deadline()
-			require.True(t, ok)
-			assert.WithinDuration(t, time.Now().Add(2*time.Second), deadline, 100*time.Millisecond)
-			return nil
-		})
-
-		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
-	})
-
-	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		connector := vmock.NewMockConnector(ctrl)
-
-		cs := &catalogService{appSetting: &common.AppSetting{}}
-
-		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
-			deadline, ok := ctx.Deadline()
-			require.True(t, ok)
-			assert.WithinDuration(t, time.Now().Add(defaultConnectionTestTimeout), deadline, 100*time.Millisecond)
-			return nil
-		})
-
-		require.NoError(t, cs.testConnectorConnection(context.Background(), connector))
-	})
+func TestCatalogServiceProbeConnection(t *testing.T) {
+	for _, category := range []string{interfaces.ConnectorCategoryAPI, interfaces.ConnectorCategoryTable} {
+		for _, scenario := range []string{"no deadline", "parent deadline", "parent cancellation", "connector failure"} {
+			t.Run(category+" "+scenario, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				connector := vmock.NewMockConnector(ctrl)
+				factory := vmock.NewMockConnectorFactory(ctrl)
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				if scenario == "parent deadline" {
+					var cancelDeadline context.CancelFunc
+					ctx, cancelDeadline = context.WithDeadline(ctx, time.Date(2100, time.January, 1, 0, 0, 0, 0, time.UTC))
+					defer cancelDeadline()
+				}
+				if scenario == "parent cancellation" {
+					cancel()
+				}
+				config := interfaces.ConnectorConfig{}
+				factory.EXPECT().CreateConnectorInstance(gomock.Any(), category, config).DoAndReturn(func(received context.Context, _ string, _ interfaces.ConnectorConfig) (interfaces.Connector, error) {
+					assert.Same(t, ctx, received)
+					return connector, nil
+				})
+				connectionErr := errors.New("connection failed")
+				connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(received context.Context) error {
+					assert.Same(t, ctx, received)
+					deadline, hasDeadline := received.Deadline()
+					expected, expectedHasDeadline := ctx.Deadline()
+					assert.Equal(t, expectedHasDeadline, hasDeadline)
+					assert.Equal(t, expected, deadline)
+					if scenario == "parent cancellation" {
+						return received.Err()
+					}
+					if scenario == "connector failure" {
+						return connectionErr
+					}
+					return nil
+				})
+				connector.EXPECT().Close(gomock.Any()).DoAndReturn(func(received context.Context) error {
+					assert.Same(t, ctx, received)
+					return nil
+				})
+				service := &catalogService{cf: factory}
+				result, err := service.probeConnection(ctx, category, config)
+				require.NoError(t, err)
+				if scenario == "parent cancellation" || scenario == "connector failure" {
+					assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+					if scenario == "parent cancellation" {
+						assert.Equal(t, context.Canceled.Error(), result.HealthCheckResult)
+					} else {
+						assert.Equal(t, connectionErr.Error(), result.HealthCheckResult)
+					}
+				} else {
+					assert.Equal(t, interfaces.CatalogHealthStatusHealthy, result.HealthCheckStatus)
+					assert.NoError(t, ctx.Err(), "the Catalog flow must not cancel the parent context")
+				}
+			})
+		}
+	}
 }
 
 func TestCatalogServiceUpdate(t *testing.T) {
@@ -1704,6 +1830,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		ps := vmock.NewMockPermissionService(ctrl)
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1712,14 +1839,23 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ca.EXPECT().GetByID(gomock.Any(), "one").Return(&interfaces.Catalog{ID: "one", Name: "API", ConnectorType: "http", Category: interfaces.ConnectorCategoryAPI, ConnectorCfg: interfaces.ConnectorConfig{"token": "ENC:previous"}}, nil)
 		cf.EXPECT().GetSensitiveFields("http", cfg).Return([]string{"token", "fixture_option"}, nil)
-		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(_ context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
+		checked := false
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).DoAndReturn(func(flowCtx context.Context, _ string, got interfaces.ConnectorConfig) (interfaces.Connector, error) {
 			assert.Equal(t, cfg, got)
 			got["variables"].(map[string]any)["rows"].([]any)[0].(map[string]any)["flag"] = true
+			connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(testCtx context.Context) error {
+				assert.Same(t, flowCtx, testCtx)
+				_, deadline := testCtx.Deadline()
+				assert.False(t, deadline)
+				checked = true
+				return nil
+			})
+			connector.EXPECT().Close(gomock.Any()).DoAndReturn(func(closeCtx context.Context) error {
+				assert.Same(t, flowCtx, closeCtx)
+				return nil
+			})
 			return connector, nil
 		})
-		checked := false
-		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(context.Context) error { checked = true; return nil })
-		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		ca.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), int64(9), true).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64, _ bool) (int64, error) {
@@ -1747,6 +1883,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ps := vmock.NewMockPermissionService(ctrl)
 			cf := vmock.NewMockConnectorFactory(ctrl)
 			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 			cfg := interfaces.ConnectorConfig{"token": "first-fixture", "variables": map[string]any{"fixture_option": "failed-fixture", "rows": []any{map[string]any{"flag": false}}}}
 			before, _ := json.Marshal(cfg)
 			req := &interfaces.CatalogRequest{Name: "API", ConnectorType: "http", ConnectorCfg: cfg}
@@ -1818,11 +1955,16 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ps, cf, ca := vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl), vmock.NewMockCatalogAccess(ctrl)
 			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cf.EXPECT().GetSensitiveFields("http", gomock.Any()).Return(nil, nil)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "http", gomock.Any()).Return(connector, nil)
 			connector.EXPECT().TestConnection(gomock.Any()).Return(context.DeadlineExceeded)
-			connector.EXPECT().Close(gomock.Any()).Return(nil)
+			connector.EXPECT().Close(gomock.Any()).DoAndReturn(func(closeCtx context.Context) error {
+				assert.NotNil(t, closeCtx.Done(), "cleanup must retain the caller cancellation signal")
+				assert.NoError(t, closeCtx.Err(), "the test timeout must not cancel the caller context")
+				return nil
+			})
 			cs := &catalogService{ps: ps, cf: cf, ca: ca, appSetting: &common.AppSetting{}}
 			req := &interfaces.CatalogRequest{ID: "api-1", Name: "API", ConnectorType: "http", ConnectorCfg: map[string]any{"auth_type": "none"}, ExpectedUpdateTime: 9}
 			ca.EXPECT().GetByID(gomock.Any(), "api-1").Return(&interfaces.Catalog{ID: "api-1", Name: "API", ConnectorType: "http"}, nil)
@@ -1839,7 +1981,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 					return 1, nil
 				})
 			}
-			err := cs.Update(context.Background(), req, allow)
+			err := cs.Update(t.Context(), req, allow)
 			if allow {
 				require.NoError(t, err)
 			} else {
@@ -1878,6 +2020,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ca, ps, cf := vmock.NewMockCatalogAccess(ctrl), vmock.NewMockPermissionService(ctrl), vmock.NewMockConnectorFactory(ctrl)
 			connector := vmock.NewMockConnector(ctrl)
+			connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 			db, sqlMock, err := sqlmock.New()
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = db.Close() })
@@ -2110,6 +2253,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		sensitiveError := "dial tcp db.internal:3306 failed"
 
@@ -2149,6 +2293,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()
@@ -2206,6 +2351,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS := vmock.NewMockPermissionService(ctrl)
 		connector := vmock.NewMockConnector(ctrl)
+		connector.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable).AnyTimes()
 
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()

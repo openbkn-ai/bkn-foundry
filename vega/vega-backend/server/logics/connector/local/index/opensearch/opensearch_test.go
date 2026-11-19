@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -23,6 +24,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -1035,6 +1037,35 @@ func TestOpenSearchConnectorValidateFilterability(t *testing.T) {
 }
 
 func TestOpenSearchConnectorPing(t *testing.T) {
+	t.Run("Info request owns its deadline and releases only its local context", func(t *testing.T) {
+		parent := t.Context()
+		var done <-chan struct{}
+		client, err := opensearch.NewClient(opensearch.Config{Transport: datasetTransport(func(request *http.Request) (*http.Response, error) {
+			assert.NotSame(t, parent, request.Context())
+			deadline, ok := request.Context().Deadline()
+			require.True(t, ok)
+			assert.Positive(t, time.Until(deadline))
+			assert.LessOrEqual(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
+			done = request.Context().Done()
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+		})})
+		require.NoError(t, err)
+		require.NoError(t, (&OpenSearchConnector{client: client}).Ping(parent))
+		select {
+		case <-done:
+		default:
+			t.Fatal("Info request context must be canceled after response cleanup")
+		}
+		assert.NoError(t, parent.Err())
+	})
+	t.Run("canceled parent remains identifiable", func(t *testing.T) {
+		parent, cancel := context.WithCancel(t.Context())
+		cancel()
+		client, err := opensearch.NewClient(opensearch.Config{Transport: datasetTransport(func(request *http.Request) (*http.Response, error) { return nil, request.Context().Err() })})
+		require.NoError(t, err)
+		err = (&OpenSearchConnector{client: client}).Ping(parent)
+		require.ErrorIs(t, err, context.Canceled)
+	})
 	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{"http://example.invalid"}, Transport: datasetTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 401, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("private-response-fixture"))}, nil
 	})})

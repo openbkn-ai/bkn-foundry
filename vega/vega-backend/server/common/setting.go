@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -80,7 +81,7 @@ type QueryConfig struct {
 type CatalogHealthCheckConfig struct {
 	// WorkerEnabled only controls periodic checks; it does not disable create/update/manual connection tests.
 	WorkerEnabled bool `mapstructure:"workerEnabled"`
-	// Timeout applies to every connector TestConnection invocation. Durations use Go duration strings.
+	// Timeout limits individual health-check requests issued by Ping or TestConnection.
 	Timeout time.Duration `mapstructure:"timeout"`
 	// CronExpr is the platform default Cron used by inherit-mode Schedules.
 	CronExpr string `mapstructure:"cronExpr"`
@@ -151,13 +152,16 @@ const (
 	bknAgentServiceName            string = "bkn-agent"
 
 	DATA_BASE_NAME string = "openbkn"
+
+	defaultCatalogHealthCheckTimeout = 30 * time.Second
 )
 
 var (
 	appSetting *AppSetting
 	vp         *viper.Viper
 
-	settingOnce sync.Once
+	settingOnce               sync.Once
+	catalogHealthCheckTimeout atomic.Int64
 
 	// Current system time zone
 	APP_LOCATION *time.Location
@@ -165,6 +169,14 @@ var (
 	errBknSafeURLRequired = errors.New("BKN_SAFE_URL is required when authentication is enabled")
 	errBknSafeURLInvalid  = errors.New("BKN_SAFE_URL must be an absolute HTTP or HTTPS URL with a host and without credentials, query, or fragment")
 )
+
+// CatalogHealthCheckTimeout returns the timeout for connector health checks, or 30 seconds by default.
+func CatalogHealthCheckTimeout() time.Duration {
+	if timeout := time.Duration(catalogHealthCheckTimeout.Load()); timeout > 0 {
+		return timeout
+	}
+	return defaultCatalogHealthCheckTimeout
+}
 
 // NewSetting reads the service configuration
 func NewSetting() *AppSetting {
@@ -202,6 +214,7 @@ func loadSetting(vp *viper.Viper) {
 		logger.Fatalf("err:%s\n", err)
 	}
 
+	vp.SetDefault("catalogHealthCheck.timeout", defaultCatalogHealthCheckTimeout)
 	if err := vp.Unmarshal(appSetting); err != nil {
 		logger.Fatalf("err:%s\n", err)
 	}
@@ -259,6 +272,7 @@ func loadSetting(vp *viper.Viper) {
 
 	appSetting.OtelSetting.ServiceName = version.ServerName
 	appSetting.OtelSetting.ServiceVersion = version.ServerVersion
+	catalogHealthCheckTimeout.Store(int64(appSetting.CatalogHealthCheck.Timeout))
 	logger.Infof("ServerName: %s, ServerVersion: %s, Language: %s, GoVersion: %s, GoArch: %s",
 		version.ServerName, version.ServerVersion, version.LanguageGo,
 		version.GoVersion, version.GoArch)

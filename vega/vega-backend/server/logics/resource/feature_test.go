@@ -368,7 +368,7 @@ func TestValidateMutableSchemaUpdateNumericRepresentations(t *testing.T) {
 	const schema = `[{"name":"title","type":"text","attributes":{"limit":256},"features":[{"name":"raw","feature_type":"keyword","config":{"ignore_above":256}}]}]`
 	var current, requested []*interfaces.Property
 	require.NoError(t, sonic.Unmarshal([]byte(schema), &current))
-	require.NoError(t, common.DecodePreciseJSON(strings.NewReader(schema), &requested))
+	require.NoError(t, common.DecodeJSON(strings.NewReader(schema), &requested))
 
 	t.Run("unchanged numeric values do not reject an ordinary edit or rebuild the index", func(t *testing.T) {
 		changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, false)

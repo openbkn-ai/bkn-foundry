@@ -20,6 +20,34 @@ import (
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
+// ValidateCreateResourceRequest 统一校验创建请求及当前允许手动创建的资源类别。
+func ValidateCreateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
+	if err := ValidateResourceRequest(ctx, req); err != nil {
+		return err
+	}
+	if err := validateCreateResourceCategory(ctx, req.Category); err != nil {
+		return err
+	}
+	if req.Category == interfaces.ResourceCategoryAPI && (req.APIEffectType != interfaces.APIEffectRead || req.APIDefinition == nil || len(req.SchemaDefinition) == 0) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("API resource creation requires api_effect_type=read, api_definition and non-empty schema_definition")
+	}
+	return nil
+}
+
+// ValidateUpdateResourceRequest 统一校验路径标识、请求字段及乐观更新版本。
+func ValidateUpdateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest, pathID string) error {
+	if req.ID != "" && req.ID != pathID {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", pathID, req.ID))
+	}
+	req.ID = pathID
+	if err := ValidateResourceRequest(ctx, req); err != nil {
+		return err
+	}
+	return validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime)
+}
+
 func ValidateResourceRequest(ctx context.Context, req *interfaces.ResourceRequest) error {
 	if err := validateResourceRequestBase(ctx, req); err != nil {
 		return err
@@ -44,7 +72,21 @@ func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRe
 }
 
 func validateResourceRequestSchema(ctx context.Context, req *interfaces.ResourceRequest) error {
+	if req.Category != interfaces.ResourceCategoryLogicalView && (req.LogicalType != "" || req.LogicalViewDefinition != nil) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("logical view definition fields are only accepted for logical view resources")
+	}
+	if req.Category != interfaces.ResourceCategoryAPI && (req.APIEffectType != "" || req.APIDefinition != nil) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("API definition fields are only accepted for API resources")
+	}
 	switch req.Category {
+	case interfaces.ResourceCategoryAPI:
+		if req.APIEffectType != "" && req.APIEffectType != interfaces.APIEffectRead || req.IndexConfig != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails("API resource effect, category fields or local-index configuration are invalid")
+		}
+		return validateSchemaProperties(ctx, req.SchemaDefinition, false)
 	case interfaces.ResourceCategoryLogicalView:
 		return resourcelogic.ValidateLogicalViewRequest(ctx, req)
 	case interfaces.ResourceCategoryDataset:
@@ -256,15 +298,17 @@ func ValidateResourceListQueryParams(ctx context.Context, params interfaces.Reso
 }
 
 // validateCreateResourceCategory enforces the business boundary that only
-// 'dataset' and 'logical_view' resources can be created via the REST API.
+// dataset、logical_view 和兼容 Catalog 下的 api 可经 REST API 手动创建。
 // Other categories must be produced by a discover task.
 func validateCreateResourceCategory(ctx context.Context, category string) error {
 	switch category {
-	case interfaces.ResourceCategoryDataset, interfaces.ResourceCategoryLogicalView:
+	case interfaces.ResourceCategoryDataset,
+		interfaces.ResourceCategoryLogicalView,
+		interfaces.ResourceCategoryAPI:
 		return nil
 	default:
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_CategoryNotCreatable).
-			WithErrorDetails(fmt.Sprintf("category %q cannot be created via API; only 'dataset' and 'logical_view' are allowed, other categories must be created via discover task", category))
+			WithErrorDetails(fmt.Sprintf("category %q cannot be created via API; only 'dataset', 'logical_view' and 'api' are allowed, other categories must be created via discover task", category))
 	}
 }
 

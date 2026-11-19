@@ -148,7 +148,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 			encoded, err := json.Marshal(document)
 			require.NoError(t, err)
 			var stored map[string]any
-			require.NoError(t, common.UnmarshalPreciseJSON(encoded, &stored))
+			require.NoError(t, common.UnmarshalJSON(encoded, &stored))
 			assert.Contains(t, stored, "payload")
 			preview, err := common.JSONQueryValueText(stored["payload"])
 			require.NoError(t, err)

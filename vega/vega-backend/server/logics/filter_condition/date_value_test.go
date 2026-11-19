@@ -63,6 +63,8 @@ func TestParseTemporalValue(t *testing.T) {
 		{"local datetime", "datetime", "Asia/Shanghai", "2026-10-19 00:00:00", midnight},
 		{"UTC datetime", "datetime", "UTC", "2026-10-19 00:00:00", midnight.Add(8 * time.Hour)},
 		{"fractional seconds", "datetime", "Asia/Shanghai", "2026-10-19 00:00:00.123", midnight.Add(123 * time.Millisecond)},
+		{"T local datetime", "datetime", "Asia/Shanghai", "2026-10-19T00:00:00", midnight},
+		{"T local nanoseconds", "datetime", "Asia/Shanghai", "2026-10-19T00:00:00.123456789", midnight.Add(123456789 * time.Nanosecond)},
 		{"explicit offset", "datetime", "UTC", "2026-10-19T00:00:00+08:00", midnight},
 		{"UTC offset", "datetime", "Asia/Shanghai", "2026-10-18T16:00:00Z", midnight},
 		{"milliseconds", "datetime", "UTC", midnight.UnixMilli(), midnight},
@@ -80,7 +82,7 @@ func TestParseTemporalValue(t *testing.T) {
 			assert.Equal(t, tc.want.Nanosecond(), got.(time.Time).Nanosecond())
 		})
 	}
-	for _, value := range []any{"2026-10-19T00:00:00+24:00", "2026-10-19T00:00:00+08:60", "2026-10-19T00:00:00.1234567891Z", json.Number("9007199254740993.0"), "9223372036854775808", "2026-10-19", "2026-02-30 00:00:00", "2026-10-19T00:00:00", "", nil, true, 1.5, math.Inf(1), math.NaN(), uint64(math.MaxUint64), []any{1}, json.Number("9223372036854775808")} {
+	for _, value := range []any{"2026-10-19T00:00:00+24:00", "2026-10-19T00:00:00+08:60", "2026-10-19T00:00:00.1234567891Z", json.Number("9007199254740993.0"), "9223372036854775808", "2026-10-19", "2026-02-30 00:00:00", "2026-02-30T00:00:00", "2026-10-19T00:00:00.1234567891", "", nil, true, 1.5, math.Inf(1), math.NaN(), uint64(math.MaxUint64), []any{1}, json.Number("9223372036854775808")} {
 		got, err := ParseTemporalValue(interfaces.DataType_Datetime, value, "UTC")
 		require.Error(t, err, "value: %v", value)
 		if got != nil {

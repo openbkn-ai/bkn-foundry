@@ -19,6 +19,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -55,7 +56,7 @@ func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	// It is used to store the metadata information after parsing
 	var info map[string]any
 	// Decode the JSON data in the response body into the info variable
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if err := common.DecodeJSON(resp.Body, &info); err != nil {
 		return nil, err
 	}
 
@@ -95,7 +96,7 @@ func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []stri
 		StoreSize    string `json:"store.size"`
 		CreationDate string `json:"creation.date"`
 	}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&catIndices); err != nil {
+	if err := common.DecodeJSON(resp.Body, &catIndices); err != nil {
 		return nil, err
 	}
 
@@ -190,7 +191,7 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 			Properties map[string]Property `json:"properties"`
 		} `json:"mappings"`
 	}
-	err = sonic.Unmarshal(bodyBytes, &dataMapping)
+	err = common.UnmarshalJSON(bodyBytes, &dataMapping)
 	if err != nil {
 		return fmt.Errorf("failed to parse mappings: %w", err)
 	}
@@ -250,7 +251,7 @@ type Property struct {
 // UnmarshalJSON custom deserialization method
 func (p *Property) UnmarshalJSON(data []byte) error {
 	var raw map[string]any
-	if err := sonic.Unmarshal(data, &raw); err != nil {
+	if err := common.UnmarshalJSON(data, &raw); err != nil {
 		return err
 	}
 
@@ -276,7 +277,7 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 		for propName, propValue := range propsVal {
 			propJSON, _ := sonic.Marshal(propValue)
 			var prop Property
-			if err := sonic.Unmarshal(propJSON, &prop); err == nil {
+			if err := common.UnmarshalJSON(propJSON, &prop); err == nil {
 				p.Properties[propName] = prop
 			}
 		}
@@ -286,7 +287,7 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 		for fieldName, fieldValue := range fieldsVal {
 			fieldJSON, _ := sonic.Marshal(fieldValue)
 			var field Property
-			if err := sonic.Unmarshal(fieldJSON, &field); err == nil {
+			if err := common.UnmarshalJSON(fieldJSON, &field); err == nil {
 				p.Fields[fieldName] = field
 			}
 		}
@@ -393,7 +394,7 @@ func (c *OpenSearchConnector) fetchSettings(ctx context.Context, index *interfac
 	//	}
 	//}
 	//}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&settingsResp); err != nil {
+	if err := common.DecodeJSON(resp.Body, &settingsResp); err != nil {
 		return err
 	}
 	if idxData, ok := settingsResp[index.Name]; ok {
@@ -433,7 +434,7 @@ func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.I
 			Failed *int64 `json:"failed"`
 		} `json:"_shards"`
 	}
-	if err := sonic.ConfigDefault.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := common.DecodeJSON(response.Body, &result); err != nil {
 		return 0, fmt.Errorf("decode index count: %w", err)
 	}
 	if result.Count == nil || *result.Count < 0 {

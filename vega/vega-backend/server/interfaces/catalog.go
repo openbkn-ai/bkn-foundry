@@ -38,7 +38,7 @@ var CATALOG_SORT = map[string]struct{}{
 // Value 为 nil 或缺省均表示未配置，创建和完整替换时拒绝；嵌套业务数据的 nil 不受影响。
 // 普通读取仅省略敏感声明的 value，保留变量名与 sensitive 标记。
 type CatalogVariable struct {
-	Value     any  `json:"value" mapstructure:"value"`
+	Value     any  `json:"value,omitempty" mapstructure:"value"`
 	Sensitive bool `json:"sensitive" mapstructure:"sensitive"`
 }
 

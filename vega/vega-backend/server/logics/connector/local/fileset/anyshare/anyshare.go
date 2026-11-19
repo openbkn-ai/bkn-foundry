@@ -18,8 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/fileset"
@@ -256,22 +254,19 @@ func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conn
 
 // Connect authenticates and marks the connector ready.
 func (c *AnyShareConnector) Connect(ctx context.Context) error {
+	return c.connect(ctx, c.httpClient)
+}
+
+func (c *AnyShareConnector) connect(ctx context.Context, client *http.Client) error {
 	if c.connected {
 		return nil
 	}
-	if err := c.authenticate(ctx); err != nil {
-		return err
-	}
-	c.connected = true
-	return nil
-}
 
-func (c *AnyShareConnector) authenticate(ctx context.Context) error {
 	switch c.config.AuthType {
 	case authTypeToken:
 		c.authHeader = normalizeBearer(c.config.Token)
 	case authTypeAppSecret:
-		token, err := c.fetchOAuthToken(ctx)
+		token, err := c.fetchOAuthToken(ctx, client)
 		if err != nil {
 			return err
 		}
@@ -279,6 +274,7 @@ func (c *AnyShareConnector) authenticate(ctx context.Context) error {
 	default:
 		return fmt.Errorf("unsupported auth_type %d", c.config.AuthType)
 	}
+	c.connected = true
 	return nil
 }
 
@@ -289,20 +285,21 @@ func normalizeBearer(raw string) string {
 	return "Bearer " + raw
 }
 
-func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context) (string, error) {
+func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context, client *http.Client) (string, error) {
 	u := fmt.Sprintf("%s/oauth2/token", c.baseURL)
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("scope", "all")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
+	bodyReader := strings.NewReader(form.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bodyReader)
 	if err != nil {
 		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(c.config.AppID, c.config.AppSecret)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
@@ -313,7 +310,7 @@ func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context) (string, error)
 		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	var tr tokenResponse
-	if err := sonic.Unmarshal(body, &tr); err != nil {
+	if err := common.UnmarshalJSON(body, &tr); err != nil {
 		return "", errors.New("oauth2 token response decode failed")
 	}
 	if tr.Error != "" || tr.AccessToken == "" {
@@ -344,13 +341,18 @@ func (c *AnyShareConnector) Ping(ctx context.Context) error {
 
 // TestConnection verifies credentials against AnyShare.
 func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
-	if err := c.Connect(ctx); err != nil {
+	client := *c.httpClient
+	timeout := common.CatalogHealthCheckTimeout()
+	if client.Timeout <= 0 || timeout < client.Timeout {
+		client.Timeout = timeout
+	}
+	if err := c.connect(ctx, &client); err != nil {
 		return err
 	}
 	// If paths are configured, traverse and check whether each path can obtain the docid
 	if len(c.config.Paths) > 0 {
 		for _, p := range c.config.Paths {
-			docInfo, err := c.getDocIDByPath(ctx, p)
+			docInfo, err := c.getDocIDByPath(ctx, &client, p)
 			if err != nil {
 				return connectionError(ctx, "failed to validate configured path", err)
 			}
@@ -360,7 +362,7 @@ func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
 			}
 
 			// Obtain detailed document information and determine the path type
-			detail, err := c.getDocItemDetail(ctx, docInfo.DocID, "doc_lib")
+			detail, err := c.getDocItemDetail(ctx, &client, docInfo.DocID, "doc_lib")
 			if err != nil {
 				return connectionError(ctx, "failed to get configured path detail", err)
 			}
@@ -373,7 +375,7 @@ func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
 		return nil
 	}
 	// When no paths are configured, it is judged through getEntryDocLib
-	_, err := c.getEntryDocLib(ctx)
+	_, err := c.getEntryDocLib(ctx, &client)
 	return connectionError(ctx, "anyshare connection test failed", err)
 }
 
