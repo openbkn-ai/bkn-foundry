@@ -168,6 +168,36 @@ func Test_RecordTests(t *testing.T) {
 			So(tests, ShouldBeEmpty)
 		})
 
+		Convey("Values of several object types are filled from the one record that names them all\n", func() {
+			// q2 names a line by its order and its customer: the line holds both, by the relations
+			// it is matched to them by; neither the order nor the customer holds the other.
+			draft.Items.ObjectTypes[0].Document = &interfaces.DraftDocumentModel{Role: "entity"}
+			draft.Items.ObjectTypes[0].Properties = []*interfaces.DraftProperty{{Name: "order_no", Type: "string", MappedField: "order_no"}}
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &interfaces.DraftObjectType{ID: "order_line", Adopted: true,
+				Document: &interfaces.DraftDocumentModel{Role: "in_document"}, Properties: []*interfaces.DraftProperty{
+					{Name: "order_ref", Type: "string"}, {Name: "cust_ref", Type: "string"}}})
+			linking := func(id, target, mention, identity string) *interfaces.DraftRelationType {
+				return &interfaces.DraftRelationType{ID: id, Source: "order_line", Target: target, Adopted: true,
+					DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: mention, IdentityProperty: identity}}
+			}
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes, linking("line_order", "sales_order", "order_ref", "order_no"),
+				linking("line_customer", "customer", "cust_ref", "customer_id"))
+			req.Spec.Concepts[0].MapsTo = &orderRef
+			req.Spec.Questions[1].Template = "Line of order {order} for customer {customer}?"
+			req.Spec.Questions[1].Inputs = &[]interfaces.RequirementInput{
+				{Name: "order", ConceptID: "c1", Property: "order_no", Role: interfaces.REQUIREMENT_INPUT_RECORD},
+				{Name: "customer", ConceptID: "c2", Property: "customer_id", Role: interfaces.REQUIREMENT_INPUT_RECORD}}
+			sampler := &recordSampler{rows: []map[string]any{{"order_ref": "SO-1"}, {"order_ref": "SO-2", "cust_ref": "C-7"}}}
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: sampler})()
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+
+			tests, err := svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q2": {ID: recordTestID,
+				Text: "Line of order SO-2 for customer C-7?", Expect: interfaces.TEST_EXPECT_EXISTS}})
+			So(sampler.objects, ShouldResemble, []string{"order_line"})
+		})
+
 		Convey("Scenario questions say which the server can fill\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
@@ -190,4 +220,55 @@ type recordSampler struct {
 func (r *recordSampler) SampleRecords(_ context.Context, _ interfaces.AccountInfo, _ *interfaces.Draft, objectTypeID string, _ int) ([]map[string]any, error) {
 	r.objects = append(r.objects, objectTypeID)
 	return r.rows, r.err
+}
+
+func Test_RecordCarrier(t *testing.T) {
+	Convey("Test which record holds the values of several object types\n", t, func() {
+		order := &interfaces.DraftObjectType{ID: "order", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "entity"},
+			Properties: []*interfaces.DraftProperty{{Name: "no"}, {Name: "customer"}}}
+		customer := &interfaces.DraftObjectType{ID: "customer", Adopted: true, Properties: []*interfaces.DraftProperty{{Name: "id"}}}
+		draft := &interfaces.Draft{Items: interfaces.DraftItems{ObjectTypes: []*interfaces.DraftObjectType{order, customer},
+			RelationTypes: []*interfaces.DraftRelationType{{ID: "order_customer", Source: "customer", Target: "order", Adopted: true,
+				Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "id", TargetProperty: "customer"}}}}}}
+		slots := []*slotField{{objectType: order, field: "no"}, {objectType: customer, field: "id"}}
+
+		Convey("A record holds its own value and, by a join either way, the value it refers to\n", func() {
+			carrier, held := recordCarrier(draft, slots)
+			So(carrier, ShouldEqual, order)
+			So(held, ShouldResemble, []string{"no", "customer"})
+		})
+		Convey("A relation not adopted names nothing\n", func() {
+			draft.Items.RelationTypes[0].Adopted = false
+			carrier, _ := recordCarrier(draft, slots)
+			So(carrier, ShouldBeNil)
+		})
+		Convey("Two object types that could hold them both: none is chosen\n", func() {
+			other := &interfaces.DraftObjectType{ID: "return", Adopted: true, Properties: []*interfaces.DraftProperty{{Name: "order"}, {Name: "cust"}}}
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, other)
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes,
+				&interfaces.DraftRelationType{ID: "r1", Source: "return", Target: "order", Adopted: true,
+					DocumentMapping: &interfaces.DraftDocumentMapping{Mode: "linking", MentionProperty: "order", IdentityProperty: "no"}},
+				&interfaces.DraftRelationType{ID: "r2", Source: "return", Target: "customer", Adopted: true,
+					Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "cust", TargetProperty: "id"}}})
+			carrier, _ := recordCarrier(draft, slots)
+			So(carrier, ShouldBeNil)
+		})
+		Convey("Two relations to one object type that match it from different fields: which is meant is not said\n", func() {
+			order.Properties = append(order.Properties, &interfaces.DraftProperty{Name: "payer"})
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes, &interfaces.DraftRelationType{ID: "order_payer",
+				Source: "order", Target: "customer", Adopted: true, Mapping: []interfaces.DraftFieldMapping{{SourceProperty: "payer", TargetProperty: "id"}}})
+			carrier, _ := recordCarrier(draft, slots)
+			So(carrier, ShouldBeNil)
+		})
+		Convey("Slots only of tables are left to the data's SQL\n", func() {
+			order.Document = nil
+			carrier, _ := recordCarrier(draft, slots)
+			So(carrier, ShouldBeNil)
+		})
+		Convey("Slots of one object type are its own record\n", func() {
+			carrier, held := recordCarrier(draft, []*slotField{{objectType: customer, field: "id"}})
+			So(carrier, ShouldEqual, customer)
+			So(held, ShouldResemble, []string{"id"})
+		})
+	})
 }

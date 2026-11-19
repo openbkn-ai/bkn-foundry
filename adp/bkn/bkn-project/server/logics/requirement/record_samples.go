@@ -32,24 +32,24 @@ func documentSampler() projecthooks.DocumentRecordSampler {
 	return sampler
 }
 
-// documentTemplate fills a template test whose slots all read one document object type with the
-// values of one record its knowledge base holds: the data's SQL cannot read those. It reports
-// whether the template is of a document object type at all; filled is nil when no record has
-// every value, and err says the records could not be read.
+// documentTemplate fills a template test that reads a document object type with the values of one
+// record its knowledge base holds: the data's SQL cannot read those. The record is of the one object
+// type every slot reads, or else of the one document object type whose records name each slot's
+// value (recordCarrier). It reports whether the template is of a document object type at all;
+// filled is nil when no record has every value, and err says the records could not be read.
 func documentTemplate(ctx context.Context, caller interfaces.AccountInfo, spec *interfaces.RequirementSpec,
 	draft *interfaces.Draft, template *interfaces.QuestionTest) (document bool, filled *interfaces.ScenarioTest, err error) {
-	var object *interfaces.DraftObjectType
-	properties := []string{}
+	fields := []*slotField{}
 	for _, slot := range template.Slots {
 		f, reason := resolveSlot(spec, draft, slot)
-		if reason != "" || f.objectType.Document == nil || object != nil && f.objectType != object {
+		if reason != "" {
 			return false, nil, nil
 		}
-		object = f.objectType
-		properties = append(properties, slot.Property)
+		fields = append(fields, &slotField{objectType: f.objectType, field: slot.Property})
 	}
+	object, properties := recordCarrier(draft, fields)
 	sampler := documentSampler()
-	if object == nil || sampler == nil {
+	if object == nil || object.Document == nil || sampler == nil {
 		return false, nil, nil
 	}
 	rows, err := sampler.SampleRecords(ctx, caller, draft, object.ID, documentSamples)
@@ -71,6 +71,95 @@ func documentTemplate(ctx context.Context, caller interfaces.AccountInfo, spec *
 		}
 	}
 	return true, nil, nil
+}
+
+// recordCarrier is the object type whose one record holds the values of all the slots, each slot
+// given as the object type and property it reads, and the carrier's property for each slot. It is
+// the object type every slot reads; else, where the slots read several and one is a document object
+// type, the one adopted object type whose records hold each value: its own property for a slot that
+// reads it, or the property an adopted relation from it matches to the slot's property, as a line
+// holds the number of the record it belongs to. Nil when there is none, or more than one: which
+// record the values name together is then not the model's to say.
+func recordCarrier(draft *interfaces.Draft, slots []*slotField) (*interfaces.DraftObjectType, []string) {
+	if len(slots) == 0 {
+		return nil, nil
+	}
+	same, document := true, false
+	for _, f := range slots {
+		same = same && f.objectType == slots[0].objectType
+		document = document || f.objectType.Document != nil
+	}
+	properties := []string{}
+	for _, f := range slots {
+		properties = append(properties, f.field)
+	}
+	if same {
+		return slots[0].objectType, properties
+	}
+	if !document {
+		return nil, nil
+	}
+	var carrier *interfaces.DraftObjectType
+	var held []string
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot == nil || !ot.Adopted {
+			continue
+		}
+		own := []string{}
+		for _, f := range slots {
+			p := heldProperty(draft, ot, f)
+			if p == "" {
+				break
+			}
+			own = append(own, p)
+		}
+		if len(own) != len(slots) {
+			continue
+		}
+		if carrier != nil {
+			return nil, nil
+		}
+		carrier, held = ot, own
+	}
+	return carrier, held
+}
+
+// heldProperty is the property of ot that holds a slot's value: the slot's own property when the
+// slot reads ot, else the property of ot that one adopted relation from ot matches, field to field,
+// to the slot's property: a document's mention of an identity, or a table's join. Empty when ot
+// holds none, or the relations from it to the slot's object type match it from several.
+func heldProperty(draft *interfaces.Draft, ot *interfaces.DraftObjectType, f *slotField) string {
+	if ot == f.objectType {
+		return f.field
+	}
+	held := ""
+	for _, rt := range draft.Items.RelationTypes {
+		if rt == nil || !rt.Adopted || rt.Source == rt.Target {
+			continue
+		}
+		pairs := [][2]string{}
+		if m := rt.DocumentMapping; m != nil && m.Mode == "linking" && rt.Source == ot.ID && rt.Target == f.objectType.ID {
+			pairs = append(pairs, [2]string{m.MentionProperty, m.IdentityProperty})
+		}
+		if rt.LinkTable == nil && len(rt.Mapping) == 1 {
+			switch {
+			case rt.Source == ot.ID && rt.Target == f.objectType.ID:
+				pairs = append(pairs, [2]string{rt.Mapping[0].SourceProperty, rt.Mapping[0].TargetProperty})
+			case rt.Target == ot.ID && rt.Source == f.objectType.ID:
+				pairs = append(pairs, [2]string{rt.Mapping[0].TargetProperty, rt.Mapping[0].SourceProperty})
+			}
+		}
+		for _, pair := range pairs {
+			if pair[1] != f.field || pair[0] == "" || projecthooks.FindProperty(ot, pair[0]) == nil || pair[0] == held {
+				continue
+			}
+			if held != "" {
+				return ""
+			}
+			held = pair[0]
+		}
+	}
+	return held
 }
 
 // exampleObject is the object type a question with no template is about: the first adopted one it
