@@ -53,7 +53,8 @@ type IntervalUnit string
 type CastType string
 
 // Column 是字段引用；Qualifier 是来源别名，Name 是单个列名。
-// 物理表字段按输入名称保留；View 字段映射由 View 展开逻辑处理。
+// SQL 用户输入按 SchemaDefinition.Name 精确绑定，物理执行列由公共 binding 映射。
+// View 保留公开列，由 EE 展开投影及固定过滤并维持字段隔离。
 type Column struct {
 	Qualifier string
 	Name      string

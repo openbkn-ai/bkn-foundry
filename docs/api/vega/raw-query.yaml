@@ -29,6 +29,13 @@ info:
     JOIN（含括号连接组）、UNION / UNION ALL、DISTINCT、分组、排序和 LIMIT/OFFSET，
     并由 Resource/Catalog 对应的目标连接器生成源端 SQL 及绑定参数。
 
+    Table 和 View 统一以 `Resource.schema_definition[].name` 为唯一公开字段名称，字段、来源别名和输出别名
+    精确区分大小写；不接受隐藏物理名称或源端大小写兼容。未知字段和大小写不符在访问连接器前返回安全 400。
+    投影 `*` / `alias.*` 按公开 Schema 顺序展开，`COUNT(*)` 保持函数语义；空或缺失 Schema 不回退源端解析，
+    但常量投影及 `COUNT(*)` 不需要字段。Table 的公开名称匹配后映射到物理列，结果仍保留公开名称。
+    SELECT、WHERE、JOIN ON 只解析来源列；GROUP BY 来源列优先，再输出别名；HAVING 和 ORDER BY 输出别名优先，
+    再来源列，聚合函数内部参数始终解析来源列。子查询只公开其投影，UNION 只公开首分支结果名称。
+
     UNION 分支须属于同一物理 Catalog，按列位置组合；结果列名取首分支，类型兼容性遵循源端规则。
     UNION（包括显式 UNION DISTINCT）去重，UNION ALL 保留重复行；混合链按左结合处理，括号保留分组。
     整体 ORDER BY 引用组合结果的字段或位置，不引用分支表别名；分支自己的 ORDER BY/LIMIT 须放在括号内。
@@ -238,9 +245,14 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Query.InvalidParameter`：`query_format` 或 paging 参数非法，
-          SQL 引用不存在字段、函数参数或分组用法非法，或 SQL 违反只读策略。字段不存在时
+          SQL 引用不存在或大小写不符的公开字段、歧义字段、重复来源别名、越界位置引用，函数参数或分组用法非法，
+          或 SQL 违反只读策略。公开字段绑定识别到未知字段，或连接器依据驱动错误码明确识别字段不存在时，
           `error_details` 固定为 `query references an unknown column`，其他连接器明确归类的
           参数错误固定为 `invalid source query parameter`，均不包含数据库驱动原文；
+          Doris 查询执行阶段的 MySQL 错误码 `1105` 临时按通用参数错误返回 400，
+          `error_details` 固定为 `invalid source query parameter`，即使源端原因是字段不存在也不解析文案细分；
+          已识别的内存分配失败和内存超限保持原分类并优先处理。该临时策略可能将 Doris 内部故障也报告为 400，
+          不改变连接建立和非查询元数据错误的分类；
           违反只读策略时固定为 `raw query rejected by read-only policy`
         - `VegaBackend.Query.InvalidParameter.QueryTimeout`：`query_timeout_sec` 超出 [1, 3600]
       content:
