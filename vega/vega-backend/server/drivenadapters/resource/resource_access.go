@@ -149,15 +149,15 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = common.UnmarshalPreciseJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = common.UnmarshalJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		if err := common.UnmarshalPreciseJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
+		if err := common.UnmarshalJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
 			return nil, err
 		}
 	}
 	if indexConfig.Valid && indexConfig.String != "" {
-		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
+		_ = common.UnmarshalJSON([]byte(indexConfig.String), &resource.IndexConfig)
 	}
 	resource.LogicDefinitionStr = logicDefinition.String
 	return resource, nil
@@ -676,9 +676,9 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 	return rowsAffected, nil
 }
 
-// UpdateEnabled updates only a Resource's enabled state and audit fields.
-func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64,
-	updater interfaces.AccountInfo) error {
+// UpdateEnabled updates a Resource's enabled state and audit fields if its version matches.
+func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool,
+	expectedUpdateTime, updateTime int64, updater interfaces.AccountInfo) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource enabled")
 	defer span.End()
 
@@ -689,18 +689,25 @@ func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled 
 		Set("f_updater_type", updater.Type).
 		Set("f_update_time", updateTime).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return 0, err
 	}
-	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+	result, err := ra.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
-		return err
+		return 0, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }
 
 // UpdateLocalIndexName updates only the local index name so asynchronous build

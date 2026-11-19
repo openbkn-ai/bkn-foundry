@@ -8,12 +8,14 @@ package postgresql
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/lib/pq"
 	"github.com/lib/pq/pqerror"
 	"github.com/stretchr/testify/assert"
@@ -58,6 +60,15 @@ func TestDetectPostgresqlCompatibility(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 			require.NoError(t, err)
+			parent := t.Context()
+			patches := gomonkey.NewPatches()
+			patches.ApplyMethod(db, "QueryRowContext", func(database *sql.DB, ctx context.Context, query string, args ...any) *sql.Row {
+				assert.Same(t, parent, ctx)
+				var row *sql.Row
+				patches.Origin(func() { row = database.QueryRowContext(ctx, query, args...) })
+				return row
+			})
+			defer patches.Reset()
 			t.Cleanup(func() {
 				mock.ExpectClose()
 				require.NoError(t, db.Close())
@@ -89,7 +100,8 @@ func TestDetectPostgresqlCompatibility(t *testing.T) {
 					query.WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(probe.value))
 				}
 			}
-			compatibility, err := detectPostgresqlCompatibility(t.Context(), db)
+			compatibility, err := detectPostgresqlCompatibility(parent, db)
+			assert.NoError(t, parent.Err())
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Equal(t, postgresqlCompatibility{}, compatibility)

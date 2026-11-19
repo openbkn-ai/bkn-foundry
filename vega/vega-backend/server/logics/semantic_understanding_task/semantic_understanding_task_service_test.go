@@ -164,6 +164,40 @@ func TestMarshalSemanticUnderstandingInput(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		for _, includeSamples := range []bool{false, true} {
+			t.Run(fmt.Sprintf("API resource allowed=%t include_samples=%t", allowed, includeSamples), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				resourceService := vmock.NewMockResourceService(ctrl)
+				catalogService := vmock.NewMockCatalogService(ctrl)
+				service := &semanticUnderstandingTaskService{
+					rs: resourceService, cs: catalogService,
+					suta:   vmock.NewMockSemanticUnderstandingTaskAccess(ctrl),
+					rds:    vmock.NewMockResourceDataService(ctrl),
+					wakeCh: make(chan struct{}, semanticTaskWakeupBuffer),
+				}
+				resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "api-resource").
+					Return(&interfaces.Resource{ID: "api-resource", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryAPI}, nil)
+				catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1",
+					[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(allowed, nil, nil)
+
+				task, err := service.CreateResourceTask(t.Context(), "api-resource", &interfaces.CreateSemanticUnderstandingTaskRequest{IncludeSampleRows: includeSamples})
+
+				require.Nil(t, task)
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				if allowed {
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Format, httpErr.ErrorCode)
+					assert.Contains(t, httpErr.Error(), "API resources do not support semantic understanding")
+				} else {
+					assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+				}
+				assert.Empty(t, service.wakeCh)
+			})
+		}
+	}
+
 	for _, tc := range []struct {
 		name, language  string
 		contextLanguage i18n.Language
@@ -331,7 +365,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 
 				var input interfaces.SemanticUnderstandingResourceAgentInput
-				require.NoError(t, common.UnmarshalPreciseJSON([]byte(task.Input), &input))
+				require.NoError(t, common.UnmarshalJSON([]byte(task.Input), &input))
 				require.Len(t, input.Resource.SchemaDefinition, 1)
 				assert.Equal(t, resource.SchemaDefinition[0].Attributes, input.Resource.SchemaDefinition[0].Attributes)
 				assert.Equal(t, []map[string]any{{"order_id": "o-1"}}, input.SampleRows)
@@ -1231,7 +1265,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{ApplyMode: "dry_run"})
 		require.NoError(t, err)
 		var snapshot interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, common.UnmarshalPreciseJSON([]byte(task.Input), &snapshot))
+		require.NoError(t, common.UnmarshalJSON([]byte(task.Input), &snapshot))
 		require.Len(t, snapshot.Resource.SchemaDefinition, 1)
 		assert.Equal(t, json.Number("9007199254740993"), snapshot.Resource.SchemaDefinition[0].Attributes["limit"])
 		assert.Equal(t, map[string]any{"nullable": true}, snapshot.Resource.SchemaDefinition[0].Attributes["nested"])

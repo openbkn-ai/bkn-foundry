@@ -249,7 +249,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 					return fmt.Errorf("serialize table metadata: %w", marshalErr)
 				}
 				sourceMetadata := make(map[string]any)
-				if decodeErr := common.UnmarshalPreciseJSON(data, &sourceMetadata); decodeErr != nil {
+				if decodeErr := common.UnmarshalJSON(data, &sourceMetadata); decodeErr != nil {
 					return fmt.Errorf("decode table metadata: %w", decodeErr)
 				}
 				resource.SourceMetadata = sourceMetadata
@@ -336,7 +336,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			return fmt.Errorf("serialize table metadata: %w", err)
 		}
 		sourceMetadata := make(map[string]any)
-		if err := common.UnmarshalPreciseJSON(data, &sourceMetadata); err != nil {
+		if err := common.UnmarshalJSON(data, &sourceMetadata); err != nil {
 			return fmt.Errorf("decode table metadata: %w", err)
 		}
 		resource.SourceMetadata = sourceMetadata

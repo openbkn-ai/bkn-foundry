@@ -224,7 +224,7 @@ func ColumnMetadata(r *interfaces.Resource) (map[string]interfaces.TableColumnMe
 	columns, ok := raw.([]interfaces.TableColumnMeta)
 	if !ok {
 		encoded, err := sonic.Marshal(raw)
-		if err != nil || sonic.Unmarshal(encoded, &columns) != nil {
+		if err != nil || common.UnmarshalJSON(encoded, &columns) != nil {
 			return nil, fmt.Errorf("invalid stored source column metadata")
 		}
 	}

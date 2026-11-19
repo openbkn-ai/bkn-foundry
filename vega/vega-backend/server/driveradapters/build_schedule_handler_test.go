@@ -38,6 +38,17 @@ func buildScheduleHTTPFixture(t *testing.T) (*gin.Engine, *mock.MockBuildSchedul
 }
 
 func TestBuildScheduleRestHandlerCreate(t *testing.T) {
+	t.Run("rejects an unescaped control character before creating a schedule", func(t *testing.T) {
+		engine, _ := buildScheduleHTTPFixture(t)
+		body := "{\"name\":\"night\tly\",\"resource_id\":\"resource\",\"cron_expr\":\"0 * * * *\",\"execute_type\":\"full\"}"
+		request := httptest.NewRequest(http.MethodPost, "/build-schedules", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		assert.Contains(t, response.Body.String(), verrors.VegaBackend_InvalidParameter_RequestBody)
+	})
+
 	engine, service := buildScheduleHTTPFixture(t)
 	service.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.BuildScheduleRequest) (string, error) {
 		assert.Equal(t, "resource", req.ResourceID)

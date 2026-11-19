@@ -18,6 +18,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -30,7 +31,7 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 
 	if len(c.config.Paths) == 0 {
 		// Get the list of document libraries (only the first layer)
-		libs, err := c.getEntryDocLib(ctx)
+		libs, err := c.getEntryDocLib(ctx, c.httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +49,7 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 	for _, p := range c.config.Paths {
 
 		// Obtain the doc_id based on the path
-		docInfo, err := c.getDocIDByPath(ctx, p)
+		docInfo, err := c.getDocIDByPath(ctx, c.httpClient, p)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +60,7 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 		}
 
 		// Get detailed information about the folder
-		detail, err := c.getDocItemDetail(ctx, docInfo.DocID, "all")
+		detail, err := c.getDocItemDetail(ctx, c.httpClient, docInfo.DocID, "all")
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +121,7 @@ func buildFilesetMeta(id, name, displayPath, itemType, createdAt, modifiedAt str
 	return metadata
 }
 
-func (c *AnyShareConnector) getEntryDocLib(ctx context.Context) ([]entryDocLibDTO, error) {
+func (c *AnyShareConnector) getEntryDocLib(ctx context.Context, client *http.Client) ([]entryDocLibDTO, error) {
 	q := url.Values{}
 	q.Set("sort", "doc_lib_name")
 	q.Set("direction", "asc")
@@ -133,13 +134,13 @@ func (c *AnyShareConnector) getEntryDocLib(ctx context.Context) ([]entryDocLibDT
 	}
 	u := fmt.Sprintf("%s/api/document/v1/entry-doc-lib?%s", c.baseURL, q.Encode())
 	var libs []entryDocLibDTO
-	if err := c.getJSON(ctx, u, &libs); err != nil {
+	if err := c.getJSON(ctx, client, u, &libs); err != nil {
 		return nil, err
 	}
 	return libs, nil
 }
 
-func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, namepath string) (pathInfoDTO, error) {
+func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, client *http.Client, namepath string) (pathInfoDTO, error) {
 	u := fmt.Sprintf("%s/api/efast/v1/file/getinfobypath", c.baseURL)
 	body, err := sonic.Marshal(map[string]string{"namepath": namepath})
 
@@ -153,7 +154,7 @@ func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, namepath string)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", c.authHeader)
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return info, err
 	}
@@ -165,7 +166,7 @@ func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, namepath string)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return info, fmt.Errorf("getinfobypath http %d: %s", resp.StatusCode, truncateForLog(raw))
 	}
-	if err := sonic.Unmarshal(raw, &info); err != nil {
+	if err := common.UnmarshalJSON(raw, &info); err != nil {
 		return info, err
 	}
 	if info.DocID == "" {
@@ -174,7 +175,7 @@ func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, namepath string)
 	return info, nil
 }
 
-func (c *AnyShareConnector) getDocItemDetail(ctx context.Context, docID string, field string) (*docItemDetailDTO, error) {
+func (c *AnyShareConnector) getDocItemDetail(ctx context.Context, client *http.Client, docID string, field string) (*docItemDetailDTO, error) {
 	// The docID format is gns://... /... /object_id, object_id needs to be extracted
 	parts := strings.Split(docID, "/")
 	if len(parts) == 0 {
@@ -185,19 +186,19 @@ func (c *AnyShareConnector) getDocItemDetail(ctx context.Context, docID string, 
 	u := fmt.Sprintf("%s/api/efast/v2/items/%s/%s", c.baseURL, objectID, field)
 
 	var detail docItemDetailDTO
-	if err := c.getJSON(ctx, u, &detail); err != nil {
+	if err := c.getJSON(ctx, client, u, &detail); err != nil {
 		return nil, err
 	}
 	return &detail, nil
 }
 
-func (c *AnyShareConnector) getJSON(ctx context.Context, reqURL string, out any) error {
+func (c *AnyShareConnector) getJSON(ctx context.Context, client *http.Client, reqURL string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", c.authHeader)
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -209,7 +210,7 @@ func (c *AnyShareConnector) getJSON(ctx context.Context, reqURL string, out any)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s: http %d %s", reqURL, resp.StatusCode, truncateForLog(raw))
 	}
-	if err := sonic.Unmarshal(raw, out); err != nil {
+	if err := common.UnmarshalJSON(raw, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil

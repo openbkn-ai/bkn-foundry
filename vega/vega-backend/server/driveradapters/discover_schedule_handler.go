@@ -54,9 +54,9 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.DiscoverScheduleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -259,9 +259,9 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	var req interfaces.DiscoverScheduleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

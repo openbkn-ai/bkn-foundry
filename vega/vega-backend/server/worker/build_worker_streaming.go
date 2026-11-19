@@ -308,11 +308,11 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				continue
 			}
 
-			if err := common.UnmarshalPreciseJSON(msg.Key, &keyMap); err != nil {
+			if err := common.UnmarshalJSON(msg.Key, &keyMap); err != nil {
 				logger.Errorf("Failed to unmarshal message key: %v", err)
 				time.Sleep(retryInterval)
 				continue
-			} else if err := common.UnmarshalPreciseJSON(msg.Value, &valueMap); err != nil {
+			} else if err := common.UnmarshalJSON(msg.Value, &valueMap); err != nil {
 				logger.Errorf("Failed to unmarshal message value: %v", err)
 				time.Sleep(retryInterval)
 				continue

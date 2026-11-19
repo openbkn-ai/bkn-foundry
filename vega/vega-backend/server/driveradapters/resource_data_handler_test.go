@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,11 +17,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -183,7 +189,8 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 	})
 
 	t.Run("rejects negative offset before querying", func(t *testing.T) {
-		engine, _, _, _ := setupResourceDataHandlerTest(t)
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"offset":-1,"limit":10}}`))
 		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 		req.Header.Set("Content-Type", "application/json")
@@ -473,6 +480,28 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.NotFound")
+	})
+
+	t.Run("API paging and response contract", func(t *testing.T) {
+		restore := setGinMode()
+		defer restore()
+		engine, rs, _, rds := setupResourceDataHandlerTest(t)
+		resource := &interfaces.Resource{ID: "res-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+			assert.Equal(t, interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 2}, params.Paging)
+			assert.True(t, params.NeedTotal)
+			assert.Equal(t, new(interfaces.BinaryModeMetadata), params.BinaryMode)
+			assert.Equal(t, interfaces.Format_Original, params.Format)
+			return &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: 8, Paging: &interfaces.PagingResponse{}}, nil
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"mode":"single","offset":0,"limit":2},"need_total":true}`))
+		request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		assert.JSONEq(t, `{"query_source":"source","is_approximate":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`, recorder.Body.String())
 	})
 }
 
@@ -1145,4 +1174,307 @@ func TestResourceDataRestHandlerDeleteByQueryProgress(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRestHandlerAPIResourceDataInput(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	cases := []struct {
+		name, body string
+		paging     interfaces.PagingRequest
+		needTotal  bool
+		invalid    bool
+		binaryMode *string
+	}{
+		{name: "default", body: `{}`},
+		{name: "null body", body: `null`},
+		{name: "large API limit", body: `{"paging":{"limit":10001}}`, paging: interfaces.PagingRequest{Limit: 10001}},
+		{name: "cursor ignores caller total", body: `{"paging":{"cursor":"opaque"},"need_total":true}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "empty paging", body: `{"paging":{}}`},
+		{name: "explicit single", body: `{"paging":{"mode":"single"}}`},
+		{name: "empty mode", body: `{"paging":{"mode":""}}`},
+		{name: "empty cursor", body: `{"paging":{"cursor":""}}`},
+		{name: "explicit offset zero", body: `{"paging":{"offset":0}}`},
+		{name: "offset and limit", body: `{"paging":{"offset":2,"limit":2}}`, paging: interfaces.PagingRequest{Offset: 2, Limit: 2}},
+		{name: "limit only", body: `{"paging":{"limit":2}}`, paging: interfaces.PagingRequest{Limit: 2}},
+		{name: "cursor initial default limit", body: `{"paging":{"mode":"cursor"}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}, invalid: true},
+		{name: "cursor initial", body: `{"paging":{"mode":"cursor","limit":2,"keep_alive_sec":60}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, KeepAliveSec: 60}, invalid: true},
+		{name: "cursor default keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}, invalid: true},
+		{name: "single ignores keep alive", body: `{"paging":{"keep_alive_sec":1}}`, paging: interfaces.PagingRequest{KeepAliveSec: 1}},
+		{name: "cursor continuation", body: `{"paging":{"cursor":"opaque-cursor"}}`, paging: interfaces.PagingRequest{Cursor: "opaque-cursor"}, invalid: true},
+		{name: "need total", body: `{"need_total":true}`, needTotal: true},
+		{name: "false need total", body: `{"need_total":false}`},
+		{name: "null need total", body: `{"need_total":null}`},
+		{name: "string need total", body: `{"need_total":"true"}`, invalid: true},
+		{name: "null paging", body: `{"paging":null}`},
+		{name: "null mode", body: `{"paging":{"mode":null}}`},
+		{name: "null cursor", body: `{"paging":{"cursor":null}}`},
+		{name: "null keep alive", body: `{"paging":{"keep_alive_sec":null}}`},
+		{name: "null page", body: `{"paging":{"page":null}}`},
+		{name: "null offset", body: `{"paging":{"offset":null}}`},
+		{name: "null limit", body: `{"paging":{"limit":null}}`},
+		{name: "zero limit", body: `{"paging":{"limit":0}}`},
+		{name: "negative limit", body: `{"paging":{"limit":-1}}`, invalid: true},
+		{name: "unknown page ignored", body: `{"paging":{"page":0}}`},
+		{name: "negative offset", body: `{"paging":{"offset":-1}}`, invalid: true},
+		{name: "fractional offset", body: `{"paging":{"offset":0.5}}`, invalid: true},
+		{name: "fractional limit", body: `{"paging":{"limit":1.5}}`, invalid: true},
+		{name: "fractional keep alive", body: `{"paging":{"keep_alive_sec":60.5}}`, invalid: true},
+		{name: "overflow offset", body: `{"paging":{"offset":999999999999999999999999}}`, invalid: true},
+		{name: "string offset", body: `{"paging":{"offset":"0"}}`, invalid: true},
+		{name: "false limit", body: `{"paging":{"limit":false}}`, invalid: true},
+		{name: "array paging", body: `{"paging":[]}`, invalid: true},
+		{name: "unknown paging field", body: `{"paging":{"unknown":0}}`},
+		{name: "unsupported mode", body: `{"paging":{"mode":"offset"}}`, invalid: true},
+		{name: "cursor short keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":59}}`, invalid: true},
+		{name: "cursor long keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":3601}}`, invalid: true},
+		{name: "cursor with offset zero", body: `{"paging":{"cursor":"opaque","offset":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "cursor with empty mode", body: `{"paging":{"cursor":"opaque","mode":""}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "cursor with keep alive zero", body: `{"paging":{"cursor":"opaque","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "cursor with false need total", body: `{"paging":{"cursor":"opaque"},"need_total":false}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "unknown top field", body: `{"unknown":0}`},
+		{name: "null filter", body: `{"filter_condition":null}`},
+		{name: "empty sort", body: `{"sort":[]}`},
+		{name: "empty output", body: `{"output_fields":[]}`},
+		{name: "null binary mode", body: `{"binary_mode":null}`},
+		{name: "metadata binary mode", body: `{"binary_mode":"metadata"}`, binaryMode: new(interfaces.BinaryModeMetadata)},
+		{name: "content binary mode", body: `{"binary_mode":"content"}`, binaryMode: new(interfaces.BinaryModeContent)},
+		{name: "cursor binary mode", body: `{"paging":{"cursor":"opaque"},"binary_mode":"content","need_total":true}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, binaryMode: new(interfaces.BinaryModeContent), invalid: true},
+		{name: "null aggregation", body: `{"aggregation":null,"group_by":null,"having":null}`},
+		{name: "null sort item", body: `{"sort":[null]}`, invalid: true},
+		{name: "null group item", body: `{"group_by":[null]}`, invalid: true},
+		{name: "invalid binary mode", body: `{"binary_mode":"raw"}`, invalid: true},
+		{name: "invalid sort direction", body: `{"sort":[{"field":"id","direction":"wrong"}]}`, invalid: true},
+		{name: "invalid aggregation", body: `{"aggregation":{"property":"id","aggr":"wrong"}}`, invalid: true},
+		{name: "invalid filter", body: `{"filter_condition":{"field":"id","operation":"wrong","value":1}}`, invalid: true},
+		{name: "safe bind error", body: `{"paging":{"limit":"fixture-private-input"}}`, invalid: true},
+	}
+	for _, proxy := range []bool{false, true} {
+		for _, test := range cases {
+			t.Run(fmt.Sprintf("proxy_%t/%s", proxy, test.name), func(t *testing.T) {
+				var engine *gin.Engine
+				var rs *vmock.MockResourceService
+				var rds *vmock.MockResourceDataService
+				resource := &interfaces.Resource{ID: "resource-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}}
+				url := "/api/vega-backend/in/v1/resources/resource-1/data"
+				if proxy {
+					engine, _, rs, rds, _, _ = setupProxyReadHandlerTest(t, nil)
+					rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "resource-1").Return(resource, nil)
+					url = "/api/vega-backend/in/v1/proxy/resources/resource-1/data"
+				} else {
+					engine, rs, _, rds = setupResourceDataHandlerTest(t)
+					rs.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil).AnyTimes()
+				}
+				if test.invalid {
+					rds.EXPECT().QueryWithPaging(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				} else {
+					rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(ctx context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						expectedPaging := test.paging
+						if expectedPaging.Cursor == "" && expectedPaging.Mode == "" {
+							expectedPaging.Mode = interfaces.PagingModeSingle
+						}
+						assert.Equal(t, expectedPaging, params.Paging)
+						assert.Equal(t, test.needTotal, params.NeedTotal)
+						expectedBinary := test.binaryMode
+						if params.Paging.Cursor == "" {
+							assert.Equal(t, interfaces.Format_Original, params.Format)
+							if expectedBinary == nil {
+								expectedBinary = new(interfaces.BinaryModeMetadata)
+							}
+						}
+						assert.Equal(t, expectedBinary, params.BinaryMode)
+						assert.Equal(t, proxy, interfaces.IsTrustedProxyRead(ctx))
+						return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil
+					})
+				}
+				request := httptest.NewRequest(http.MethodPost, url, strings.NewReader(test.body))
+				request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+				request.Header.Set("Content-Type", "application/json")
+				if proxy {
+					setProxyReadHeaders(request, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeMetric)
+				}
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				status := http.StatusOK
+				if test.invalid {
+					status = http.StatusBadRequest
+				}
+				require.Equal(t, status, recorder.Code, recorder.Body.String())
+				assert.NotContains(t, recorder.Body.String(), "fixture-private-input")
+			})
+		}
+	}
+	t.Run("typed unsupported capabilities reach service without losing precision", func(t *testing.T) {
+		for _, proxy := range []bool{false, true} {
+			for _, body := range []string{
+				`{"filter_condition":{"field":"id","operation":"==","value":9007199254740993}}`,
+				`{"filter_condition":{"field":"id","operation":"==","value":9007199254740993.123456789}}`,
+				`{"sort":[{"field":"id","direction":"asc"}]}`,
+				`{"aggregation":{"property":"id","aggr":"sum"},"group_by":[{"property":"id"}]}`,
+				`{"output_fields":["id"]}`,
+				`{"ignore_local_index":false}`,
+			} {
+				t.Run(fmt.Sprintf("proxy_%t/%s", proxy, body), func(t *testing.T) {
+					resource := &interfaces.Resource{ID: "resource-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}}
+					var engine *gin.Engine
+					var rs *vmock.MockResourceService
+					var rds *vmock.MockResourceDataService
+					url := "/api/vega-backend/in/v1/resources/resource-1/data"
+					if proxy {
+						engine, _, rs, rds, _, _ = setupProxyReadHandlerTest(t, nil)
+						rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), resource.ID).Return(resource, nil)
+						url = "/api/vega-backend/in/v1/proxy/resources/resource-1/data"
+					} else {
+						engine, rs, _, rds = setupResourceDataHandlerTest(t)
+						rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+					}
+					rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+						switch {
+						case strings.Contains(body, "filter_condition"):
+							require.NotNil(t, params.FilterCondition)
+							want := json.Number("9007199254740993")
+							if strings.Contains(body, ".123456789") {
+								want = json.Number("9007199254740993.123456789")
+							}
+							assert.Equal(t, want, params.FilterCondition.(map[string]any)["value"])
+							require.NotNil(t, params.FilterCondCfg)
+							assert.Equal(t, want, params.FilterCondCfg.Value)
+						case strings.Contains(body, "sort"):
+							require.Len(t, params.Sort, 1)
+							assert.Equal(t, "ASC", params.Sort[0].Direction)
+						case strings.Contains(body, "aggregation"):
+							require.NotNil(t, params.Aggregation)
+							assert.Equal(t, "sum", params.Aggregation.Aggr)
+							require.Len(t, params.GroupBy, 1)
+						case strings.Contains(body, "output_fields"):
+							assert.Equal(t, []string{"id"}, params.OutputFields)
+						case strings.Contains(body, "ignore_local_index"):
+							require.NotNil(t, params.IgnoreLocalIndex)
+							assert.False(t, *params.IgnoreLocalIndex)
+						}
+						return nil, httperrors.NewHTTPError(t.Context(), http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).WithErrorDetails("unsupported API query capability")
+					})
+					request := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
+					request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+					request.Header.Set("Content-Type", "application/json")
+					if proxy {
+						setProxyReadHeaders(request, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeMetric)
+					}
+					recorder := httptest.NewRecorder()
+					engine.ServeHTTP(recorder, request)
+					require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+					assert.Contains(t, recorder.Body.String(), "unsupported API query capability")
+				})
+			}
+		}
+	})
+	t.Run("resource permission precedes API field validation", func(t *testing.T) {
+		engine, rs, _, rds := setupResourceDataHandlerTestWithPermission(t, httperrors.NewHTTPError(t.Context(), http.StatusForbidden, httperrors.PublicError_Forbidden))
+		rs.EXPECT().GetByID(gomock.Any(), gomock.Any()).Times(0)
+		rds.EXPECT().QueryWithPaging(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/resource-1/data", strings.NewReader(`{"filter_condition":null}`))
+		request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusForbidden, recorder.Code)
+	})
+}
+
+func TestRestHandlerAPIResourceDataResponse(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, proxy := range []bool{false, true} {
+		for _, test := range []struct {
+			name, body, expected string
+			result               *interfaces.ResourceDataQueryResult
+		}{
+			{
+				name: "single without total", body: `{}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{{"id": json.Number("9007199254740993")}}, TotalCount: 8, Columns: []string{"id"}, Paging: &interfaces.PagingResponse{}},
+				expected: `{"query_source":"source","is_approximate":false,"entries":[{"id":9007199254740993}],"paging":{"next_cursor":null,"expires_at_sec":null}}`,
+			},
+			{
+				name: "requested total single page", body: `{"paging":{"mode":"single","limit":2},"need_total":true}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: 8, Paging: &interfaces.PagingResponse{}},
+				expected: `{"query_source":"source","is_approximate":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`,
+			},
+		} {
+			t.Run(fmt.Sprintf("proxy_%t/%s", proxy, test.name), func(t *testing.T) {
+				var engine *gin.Engine
+				var rs *vmock.MockResourceService
+				var rds *vmock.MockResourceDataService
+				resource := &interfaces.Resource{ID: "resource-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}}
+				url := "/api/vega-backend/in/v1/resources/resource-1/data"
+				if proxy {
+					engine, _, rs, rds, _, _ = setupProxyReadHandlerTest(t, nil)
+					rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "resource-1").Return(resource, nil)
+					url = "/api/vega-backend/in/v1/proxy/resources/resource-1/data"
+				} else {
+					engine, rs, _, rds = setupResourceDataHandlerTest(t)
+					rs.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+				}
+				rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(test.result, nil)
+				request := httptest.NewRequest(http.MethodPost, url, strings.NewReader(test.body))
+				request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+				request.Header.Set("Content-Type", "application/json")
+				if proxy {
+					setProxyReadHeaders(request, interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.ProxyChildTypeMetric)
+				}
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+				assert.JSONEq(t, test.expected, recorder.Body.String())
+			})
+		}
+	}
+}
+
+func TestRestHandlerAPIResourceQueryErrorDetails(t *testing.T) {
+	engine, rs, _, rds := setupResourceDataHandlerTest(t)
+	resource := &interfaces.Resource{
+		ID: "resource-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead,
+		Enabled: true, Status: interfaces.ResourceStatusActive,
+		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}},
+	}
+	rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+
+	const upstreamBody = `{"message":"upstream fixture details"}`
+	publicErr := httperrors.NewHTTPError(t.Context(), http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).
+		WithErrorDetails(upstreamBody).
+		WithMetadata(map[string]any{"stage": "mapping", "upstream_status": 200})
+	rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, publicErr)
+	logged, traced := captureResourceFailureTelemetry(t)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/resource-1/data", strings.NewReader(`{}`))
+	request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusBadGateway, recorder.Code, recorder.Body.String())
+	var response httperrors.BaseError
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.Equal(t, upstreamBody, response.ErrorDetails)
+	assert.Equal(t, float64(200), response.Metadata["upstream_status"])
+	require.Len(t, *logged, 1)
+	assert.NotContains(t, (*logged)[0], "upstream fixture details")
+	assert.Contains(t, (*logged)[0], `"upstream_status":200`)
+	require.Len(t, *traced, 1)
+	assert.Equal(t, http.StatusBadGateway, (*traced)[0].HTTPCode)
+	assert.Equal(t, "mapping", (*traced)[0].Metadata["stage"])
+	assert.NotContains(t, (*traced)[0].ErrorDetails, "upstream fixture details")
+}
+
+func captureResourceFailureTelemetry(t *testing.T) (*[]string, *[]httperrors.HTTPError) {
+	t.Helper()
+	var logged []string
+	var traced []httperrors.HTTPError
+	patches := gomonkey.ApplyFunc(otellog.LogError, func(_ context.Context, _ string, err error, _ ...attribute.KeyValue) {
+		logged = append(logged, err.Error())
+	}).ApplyFunc(oteltrace.AddHttpAttrs4HttpError, func(_ trace.Span, err *httperrors.HTTPError) {
+		traced = append(traced, *err)
+	})
+	t.Cleanup(patches.Reset)
+	return &logged, &traced
 }

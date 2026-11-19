@@ -43,7 +43,6 @@ const (
 	EncryptedPrefix = "ENC:"
 
 	catalogAuthResourcePermissionBatchSize = 10000
-	defaultConnectionTestTimeout           = 30 * time.Second
 	catalogPermissionCleanupTimeout        = 10 * time.Second
 	catalogResourceCleanupTimeout          = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
@@ -217,8 +216,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 		category = connector.GetCategory()
 
-		if err := cs.testConnectorConnection(ctx, connector); err != nil {
-			otellog.LogError(ctx, "Failed to test connection to data source", err)
+		if err := connector.TestConnection(ctx); err != nil {
+			logConnectionTestError(ctx, err)
 			if !allowUnhealthy {
 				return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
@@ -851,8 +850,8 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		defer func() { _ = connector.Close(ctx) }()
 
 		if updateConnection {
-			if err := cs.testConnectorConnection(ctx, connector); err != nil {
-				otellog.LogError(ctx, "Failed to test connection to data source", err)
+			if err := connector.TestConnection(ctx); err != nil {
+				logConnectionTestError(ctx, err)
 				if !allowUnhealthy {
 					return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
@@ -1345,7 +1344,7 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 	return result, nil
 }
 
-// InternalTestConnection checks source health for workers; API probes only TCP/TLS reachability.
+// InternalTestConnection checks source health for workers; API connectors validate login when configured, otherwise TCP/TLS reachability.
 func (cs *catalogService) InternalTestConnection(ctx context.Context, catalogID string) (*interfaces.CatalogHealthCheckStatus, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Test catalog connection internally")
 	defer span.End()
@@ -1438,8 +1437,8 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	result := &interfaces.CatalogHealthCheckStatus{
 		LastCheckTime: time.Now().UnixMilli(),
 	}
-	if err := cs.testConnectorConnection(ctx, connector); err != nil {
-		otellog.LogError(ctx, "Failed to test connection to data source", err)
+	if err := connector.TestConnection(ctx); err != nil {
+		logConnectionTestError(ctx, err)
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
 		result.HealthCheckResult = connectionErrorResult(err)
 		return result, nil
@@ -1449,12 +1448,25 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	return result, nil
 }
 
-// connectionErrorResult formats the connector's credential-free error for health status storage.
+func logConnectionTestError(ctx context.Context, err error) {
+	if failure, ok := errors.AsType[*interfaces.APIResourceError](err); ok {
+		otellog.LogError(ctx, "Failed to test connection to data source", failure,
+			attr.String("stage", failure.Stage), attr.Int("upstream_status", failure.HTTPStatus))
+		return
+	}
+	otellog.LogError(ctx, "Failed to test connection to data source", err)
+}
+
+// connectionErrorResult 生成只含连接器安全说明及失败分类的健康状态摘要。
 func connectionErrorResult(err error) string {
 	if err == nil {
 		return ""
 	}
-	result := strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(err.Error()))
+	details := err.Error()
+	if failure, ok := errors.AsType[*interfaces.APIResourceError](err); ok {
+		details = fmt.Sprintf("%s (stage %s, upstream status %d)", failure.Details, failure.Stage, failure.HTTPStatus)
+	}
+	result := strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(details))
 	if result == "" {
 		return connectionTestFailedResult
 	}
@@ -1463,17 +1475,6 @@ func connectionErrorResult(err error) string {
 		result = string(runes[:maximumConnectionTestResultLength-3]) + "..."
 	}
 	return result
-}
-
-func (cs *catalogService) testConnectorConnection(ctx context.Context, connector interfaces.Connector) error {
-	timeout := defaultConnectionTestTimeout
-	if cs.appSetting.CatalogHealthCheck.Timeout > 0 {
-		timeout = cs.appSetting.CatalogHealthCheck.Timeout
-	}
-	testCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	return connector.TestConnection(testCtx)
 }
 
 // catalogVariables 仅在独立副本上将 Go 变量声明还原为可修改的配置 map。

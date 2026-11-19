@@ -15,7 +15,7 @@ info:
     | `file` | 物理 | 单文件 |
     | `fileset` | 物理 | 文件集（计划中） |
     | `metric` | 物理 | 指标（计划中） |
-    | `api` | 物理 | API 数据源（计划中） |
+    | `api` | 物理 | 专业版及以上；兼容 API Catalog 下手动管理的只读 HTTP 操作 |
     | `logical_view` | 逻辑 | 专业版及以上可用；由 `logical_view_definition` 定义，目前仅支持衍生视图 |
     | `dataset` | 逻辑 | 文档集合（RAG 索引），documents 子资源走 [resource-data.yaml] |
 
@@ -42,7 +42,7 @@ paths:
       summary: 获取资源列表
       description: |
         分页 + 多维过滤获取 Resource 摘要。列表不返回扩展 JSON 字段
-        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`；
+        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`、`api_definition`；
         需要这些字段时使用 `GET /resources/{id}`。
       parameters:
         - name: name
@@ -156,11 +156,16 @@ paths:
         创建 Resource。`catalog_id` 必填且 catalog 必须存在；不存在返回 404
         `VegaBackend.Resource.CatalogNotFound`。
 
+        - 请求通过公共绑定函数直接绑定 ResourceRequest；未声明字段按默认解码行为忽略。
         - `id` 字段可选；后端在不指定时生成。
-        - `category` 必须为支持的取值之一。**仅 `dataset` 与 `logical_view` 允许通过本 API 创建**；
-          其他类别（`table` / `file` / `fileset` / `api` / `metric` / `topic` / `index`）由 discover 任务产出，
+        - `category` 必须为支持的取值之一。**仅 `dataset`、`logical_view` 与 `api` 允许通过本 API 创建**；
+          其他类别（`table` / `file` / `fileset` / `metric` / `topic` / `index`）由 discover 任务产出，
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
+        - `category=api` 仅支持专业版及以上的启用物理 API Catalog，必须提交 api_effect_type=read、
+          api_definition 和非空 schema_definition。先本地校验再执行默认单页只读验证，
+          完整响应、成功条件与字段映射通过后才写入；失败不保存。源身份由平台生成，
+          不支持发现、扫描、本地索引构建或物化任务。
         - `category=logical_view` 仅在 EE 专业版及以上授权可创建，且必须提交
           `logical_type=derived` 与对应的
           `logical_view_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
@@ -184,7 +189,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ResourceRequest"
+              allOf:
+                - $ref: "#/components/schemas/ResourceRequest"
+                - if:
+                    properties:
+                      category:
+                        const: api
+                    required: [category]
+                  then:
+                    required: [api_effect_type, api_definition, schema_definition]
+                    properties:
+                      api_effect_type:
+                        const: read
+                      api_definition:
+                        $ref: "#/components/schemas/APIDefinition"
+                      schema_definition:
+                        type: array
+                        minItems: 1
       responses:
         "201":
           description: 创建成功
@@ -208,6 +229,10 @@ paths:
           $ref: "#/components/responses/InternalServerError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+        "502":
+          $ref: "#/components/responses/APIValidationFailed"
+        "504":
+          $ref: "#/components/responses/APIValidationTimeout"
   /resources/{id}:
     parameters:
       - name: id
@@ -301,7 +326,10 @@ paths:
     put:
       summary: 更新资源
       description: |
-        更新 Resource。
+        更新 Resource。请求通过公共绑定函数直接绑定 ResourceRequest；未声明字段按默认解码行为忽略。
+
+        - API 的 api_definition、api_effect_type 和整个 schema_definition 省略或为 null 时保留已有值；
+          api_effect_type 的空字符串同样表示保留。显式提交定义或 Schema 时仍校验完整候选，验证成功后保存。
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
         - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
@@ -343,7 +371,7 @@ paths:
                     - expected_update_time
                   properties:
                     schema_definition:
-                      type: array
+                      type: [array, "null"]
                       items:
                         allOf:
                           - $ref: "#/components/schemas/Property"
@@ -368,6 +396,10 @@ paths:
           $ref: "#/components/responses/InternalServerError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+        "502":
+          $ref: "#/components/responses/APIValidationFailed"
+        "504":
+          $ref: "#/components/responses/APIValidationTimeout"
   /resources/{id}/discover:
     parameters:
       - name: id
@@ -443,6 +475,7 @@ paths:
       description: |
         仅将 Resource 的 `enabled` 设为 `true`，不改变 `status`、`last_discover_status`
         或任何发现元数据。已启用时幂等返回 204。
+        读取资源后若有其他请求先行更新资源，返回 409 `VegaBackend.Resource.UpdateConflict`。
       responses:
         "204":
           description: 已启用或原本已启用
@@ -450,6 +483,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /resources/{id}/disable:
@@ -465,6 +500,7 @@ paths:
       description: |
         仅将 Resource 的 `enabled` 设为 `false`，不改变 `status`、`last_discover_status`
         或任何发现元数据。已禁用时幂等返回 204。
+        读取资源后若有其他请求先行更新资源，返回 409 `VegaBackend.Resource.UpdateConflict`。
       responses:
         "204":
           description: 已禁用或原本已禁用
@@ -472,6 +508,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -486,7 +524,7 @@ components:
         - `VegaBackend.Resource.InvalidParameter.*`：具体字段非法
         - `VegaBackend.Resource.QueryTimeOutOfRange`：相对时间边界超出当前索引字段支持范围；metadata 包含 field、field_type、interval 和 unit
         - `VegaBackend.Resource.Duplicated.FieldFeatureType`：同一字段存在多个相同类型的特征
-        - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`/`logical_view` 类资源
+        - `VegaBackend.Resource.CategoryNotCreatable`：尝试通过 API 创建非 `dataset`、`logical_view` 或 `api` 类资源
         - `VegaBackend.Dataset.*`：dataset 创建时 `schema_definition` 为空 / 字段名 / 长度 / 重复 / 类型 / 特征校验失败
         - `VegaBackend.LogicalView.InvalidParameter.LogicDefinition`：derived 定义或输出字段非法，
           包括缺失或空白的 `display_name`
@@ -541,7 +579,21 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotImplemented:
-      description: 未安装 EE 逻辑视图扩展，或复合视图定义暂时不支持
+      description: 未安装所需的 EE 逻辑视图或 API Resource 扩展，或复合视图定义暂时不支持
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    APIValidationFailed:
+      description: |
+        保存 API Resource 前的真实调用失败，返回 `VegaBackend.Query.ExecuteFailed`，资源不写入。
+        已完整读取的上游错误正文按原文附于 error_details，上限 64 KiB，超出时按 UTF-8 字符边界截断并标记。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    APIValidationTimeout:
+      description: 保存 API Resource 前的真实调用超时或取消，返回 `VegaBackend.Query.ExecuteFailed`，资源不写入。
       content:
         application/json:
           schema:
@@ -612,9 +664,8 @@ components:
         api_name:
           description: |
             只读。字段的英文短名（snake_case，`^[a-z][a-z0-9_]{0,39}$`），可作机器标识；
-            由语义理解任务生成，只写一次，已有值之后不再覆盖。创建、更新、discover 刷新
-            都不会采纳请求里传入的值：新建字段一律为空，已存字段沿用已存值（省略或改写
-            均无效）。尚未生成时不返回该字段。
+            由语义理解任务生成，只写一次，已有值之后不再覆盖。Resource 创建/更新请求
+            不采纳该只读字段；discover 刷新不以外部请求值改写。尚未生成时不返回该字段。
           type: string
           readOnly: true
         display_name:
@@ -871,7 +922,7 @@ components:
           type: object
           additionalProperties: true
         schema_definition:
-          description: Schema 定义；derived 逻辑视图在此提交公开字段，每项须有 name、original_name、type
+          description: 有序字段定义；API 对象行按 original_name 映射，数组行按本列表顺序映射；derived 逻辑视图在此提交公开字段，每项须有 name、original_name、type
           type: array
           items:
             $ref: "#/components/schemas/Property"
@@ -902,6 +953,12 @@ components:
           description: 最近一次发现记录的源端行数估算；无法提供时省略。若同时存在 row_count，应优先使用精确值
           type: integer
           format: int64
+        api_effect_type:
+          description: 仅 category=api 返回；当前仅支持 read，不从 HTTP method 推导操作效果
+          type: string
+          enum: [read]
+        api_definition:
+          $ref: "#/components/schemas/APIDefinition"
         logical_type:
           description: 逻辑视图类型（仅 category=logical_view 有意义）
           type: string
@@ -932,10 +989,270 @@ components:
           type: array
           items:
             type: string
+    APIDefinition:
+      description: |
+        一个只读业务操作的最终定义。请求、响应和成功规则与 Catalog 登录复用同一契约，
+        由 EE 按场景校验。Catalog 和 Resource 均可声明敏感变量，登录仅使用 Catalog 配置。
+        查询调用方不能覆盖已保存的目标或认证配置。
+        本阶段拒绝调用方过滤条件及依赖过滤值/SQL 转换的执行；不提供 input_schema、
+        input 或独立业务载荷。所有 Schema 内联，Draft 2020-12；禁止 Schema 引用。
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HTTPOperationDefinition"
+      unevaluatedProperties: false
+      properties:
+        variables:
+          description: |
+            资源字面变量，复用 CatalogVariable 的 value/sensitive 声明；value 仅接受字符串，空字符串合法。
+            请求通过 {{ name }} 或 {{ __variables.name }} 访问实际 value；value 内模板字符原样保留，不求值、递归或隐式转换。
+            业务请求优先使用 Resource 的同名变量值，登录仅使用 Catalog 变量。Catalog 和 Resource 可分别为同名变量声明不同的 sensitive 标记。
+            存储加密和公开读取脱敏分别依据各自的 sensitive 标记。启用平台 Crypto 时加密敏感 value，公开读取保留敏感变量声明并省略 value。
+            完整定义替换须提交明文值，省略整个 api_definition 时保留旧定义。
+          type: object
+          propertyNames:
+            allOf:
+              - pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+              - not:
+                  enum: [base_url, options, variables, login_request]
+          additionalProperties:
+            $ref: "#/components/schemas/APIResourceVariable"
+        paging_rule:
+          $ref: "#/components/schemas/APIPagingRule"
+    APIResourceVariable:
+      description: |
+        复用 Catalog 变量声明，资源 value 限定为字面字符串；sensitive 可为 true。
+        公开读取敏感变量时省略 value，保留 sensitive=true；该元信息不能直接用于创建或完整定义替换。
+      anyOf:
+        - allOf:
+            - $ref: "catalog.yaml#/components/schemas/HTTPAPICatalogVariable"
+            - properties:
+                value:
+                  type: string
+        - type: object
+          required: [sensitive]
+          properties:
+            sensitive:
+              const: true
+            value: false
+    HTTPOperationDefinition:
+      description: Catalog 登录及 Resource 业务操作共享的 HTTP 请求、响应集合和成功规则；Resource 另行扩展变量、分页及结果提取。
+      type: object
+      required: [request, response, success_rule]
+      properties:
+        request:
+          $ref: "#/components/schemas/HTTPRequestDefinition"
+        response:
+          $ref: "#/components/schemas/HTTPResponsesDefinition"
+        success_rule:
+          $ref: "#/components/schemas/HTTPSuccessRule"
+    HTTPRequestDefinition:
+      description: |
+        Catalog 登录和业务 Resource 共享的请求结构；位置分别由 path、parameters、headers、body 承载。
+        登录模板仅使用 Catalog 变量；Resource 业务请求合并本资源变量，支持 {{ name }} 与 {{ __variables.name }}，并可引用合法分页上下文。
+        方法与操作效果独立，read 可以使用只读 POST。GET 不接受请求正文。登录和 Resource 都要求 JSON 响应正文，因此不支持 HEAD。
+      type: object
+      required: [method, path]
+      properties:
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        path:
+          description: Catalog 服务地址下的相对路径；不允许绝对 URL、查询、片段或目标覆盖
+          type: string
+          minLength: 1
+        headers:
+          description: 名称固定、值为常量或允许的模板；不能覆盖 Host/Cookie，不接受大小写重复名称；null 与省略同义
+          type: [object, "null"]
+          additionalProperties:
+            type: string
+        parameters:
+          description: |
+            仅 Query 参数，name 唯一，不含 in。
+            主值直接引用已声明变量中的缺失成员或数组项时，使用 default_value。未配置默认值时，省略可选参数，必填参数报错。
+            未声明变量、路径类型不匹配和显式 null 均报错。
+          type: [array, "null"]
+          items:
+            type: object
+            required: [name, value]
+            additionalProperties: true
+            properties:
+              name:
+                type: string
+                minLength: 1
+              value: {}
+              default_value:
+                description: 可选缺省值，不接受 null；未配置与合法的空字符串/0/false 区分
+              required:
+                type: boolean
+                default: false
+        body:
+          description: 标准 Schema 加 value/serialize/serialize_options 的构造节点；保留标准关键字，不执行 Schema 默认值填充
+          type: [object, "null"]
+          additionalProperties: true
+    HTTPResponsesDefinition:
+      description: 共享响应集合；content_type 在集合层声明，statuses 按精确状态码、范围、default 顺序选择一个状态，不因 Schema 失败回退。
+      type: object
+      required: [content_type, statuses]
+      properties:
+        content_type:
+          type: string
+          const: application/json
+        statuses:
+          type: object
+          minProperties: 1
+          propertyNames:
+            pattern: "^(default|[1-5]XX|[1-5][0-9]{2})$"
+          additionalProperties:
+            $ref: "#/components/schemas/HTTPResponseDefinition"
+    HTTPResponseDefinition:
+      description: |
+        共享单个 HTTP 状态响应；所有状态均须声明 description 和 schema，false Schema 可表示不接受的响应。
+        登录和 Resource 的定义校验均检查每个成功状态。如果按精确状态码、范围、default 顺序选中 false Schema，定义校验失败。
+        Resource 的成功状态必须配置 result_rows；result_total 按所选状态提取总数，Catalog 登录禁止配置这两个业务提取字段。
+        Schema 校验完整原始正文，响应 Schema 不执行请求构造注解或模板。
+        need_total 要求每个成功状态选中的响应配置 result_total，调用前检查；API 仅支持无会话单页查询。
+        所选响应显式声明的总数路径始终校验正文；无 paging_rule 时仍不开放 need_total，不生成续页位置或游标。
+      type: object
+      required: [description, schema]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          pattern: "\\S"
+        schema:
+          description: 完整原始正文的内联 Draft 2020-12 Schema，接受对象或布尔值。false 可用于未被成功状态选中的响应。oneOf 必须恰好匹配一个分支。
+          type: [object, boolean]
+          additionalProperties: true
+        headers:
+          type: [object, "null"]
+          additionalProperties: true
+        result_rows:
+          description: |
+            业务行集合或单对象在完整响应正文中的单节点路径；空字符串表示正文根节点。
+            Resource 的成功状态必须配置非 null 路径；Catalog 登录不使用，省略或 null 表示未配置。
+            对象行按 Resource.SchemaDefinition 的 original_name 映射；数组行第 i 项对应 SchemaDefinition[i]。
+            输入行的格式由完整响应 Schema 校验，缺少位置按 null 处理，额外值按输出字段投影。
+          type: [string, "null"]
+        result_total:
+          description: 从该状态的完整原始正文提取非负整数总数的单节点路径；省略或 null 表示未配置，不补造总数。
+          type: [string, "null"]
+          minLength: 1
+    HTTPSuccessRule:
+      type: object
+      required: [http_status]
+      properties:
+        http_status:
+          description: 登录和 Resource 的成功响应均须包含 JSON 正文。状态码使用整数字面量（如 200），拒绝 200.0 和 2e2。
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 200
+            maximum: 599
+            not:
+              enum: [204, 205, 304]
+        body_filter_condition:
+          anyOf:
+            - $ref: "#/components/schemas/APIBodyCondition"
+            - type: "null"
+    APIBodyCondition:
+      description: |
+        相对完整正文的成功条件。组仅支持 and/or，叶子仅支持 eq/empty/null/not_exist。
+        eq 比较 JSON 标量，value 可显式为 null；其他叶子不接受 value/value_from。
+        field 使用受限单节点路径，不能是空字符串或单独的 $，不执行模板或 SQL。
+      type: object
+      additionalProperties: false
+      required: [operation]
+      properties:
+        field:
+          type: string
+          minLength: 1
+        operation:
+          type: string
+          enum: [and, or, eq, empty, "null", not_exist]
+        sub_conditions:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/APIBodyCondition"
+        value:
+          type: [string, number, boolean, "null"]
+        value_from:
+          type: string
+          enum: [const]
+      oneOf:
+        - properties:
+            operation:
+              enum: [and, or]
+          required: [sub_conditions]
+          not:
+            anyOf:
+              - required: [field]
+              - required: [value]
+              - required: [value_from]
+        - properties:
+            operation:
+              const: eq
+          required: [field, value]
+          not:
+            required: [sub_conditions]
+        - properties:
+            operation:
+              enum: [empty, "null", not_exist]
+          required: [field]
+          not:
+            anyOf:
+              - required: [sub_conditions]
+              - required: [value]
+              - required: [value_from]
+    APIPagingRule:
+      description: |
+        上游单页分页规则。公开请求统一使用 offset/limit，page 模式由 Connector 换算。
+        创建 API Resource 或修改调用定义、字段映射时，保存前检查 Body 的有效构造值及 Query parameters 的主 value。
+        这两处合计须引用 __paging.limit 和当前 mode 对应的 __paging.offset 或 __paging.page。
+        保存前仍须通过一次默认单页只读调用验证。查询按实际输入计算并填充分页值，后续页由调用方请求。
+        总数提取定义位于各状态的 result_total。
+      type: object
+      additionalProperties: false
+      required: [mode, default_limit, max_limit]
+      properties:
+        mode:
+          type: string
+          enum: [offset, page]
+        default_limit:
+          type: integer
+          format: int64
+          minimum: 1
+        max_limit:
+          type: integer
+          format: int64
+          minimum: 1
+        page_base:
+          description: page 模式必填，offset 模式禁止；max_limit 必须不小于 default_limit
+          type: integer
+          enum: [0, 1]
+      oneOf:
+        - properties:
+            mode:
+              const: page
+          required: [page_base]
+        - properties:
+            mode:
+              const: offset
+          not:
+            required: [page_base]
     ResourceRequest:
       description: |
         创建 / 更新请求体。与 `Resource` 实体相比，去掉了后端计算 / 时间戳 / 操作者
-        等只读字段。
+        等只读字段。category=api 创建时必须提供 api_effect_type=read、api_definition
+        及非空 schema_definition，归属启用且兼容的物理 API Catalog。
+        创建及实际修改调用定义或字段映射时，先完成本地校验和一次默认分页只读调用验证，
+        成功后才保存；失败不写入。普通名称、描述等元数据更新不调用上游且保留已有定义。
+        已有 Resource 的定义/映射更新除 modify 外还需 query_data，乐观锁冲突不会部分写入。
+        API 不支持 index_config、本地索引 Feature 或用户指定的源身份。
+        创建/更新沿用公共绑定行为，外层及 Property 的未声明字段忽略；旧 logic_type / logic_definition 不作为别名。
+        API 更新时 api_definition、api_effect_type、schema_definition 的 null 与省略同义，不清空已有值。
       type: object
       required:
         - catalog_id
@@ -1016,6 +1333,9 @@ components:
           additionalProperties: true
         schema_definition:
           description: |
+            API 创建时必填且非空；对象行以 original_name 到 name 定义映射，数组行第 i 项对应本列表第 i 个字段，type 定义结果类型；
+            API 更新时省略或 null 保留已有映射。decimal 必须提供 attributes.precision/scale，
+            两者使用整数字面量（如 18），拒绝 18.0 和 18e0。
             derived 逻辑视图必填且非空；每个字段的 name、original_name、type、display_name
             均必填，display_name 不得为空且最多 255 个字符，可与源字段显示名不同，
             同一 View 内忽略首尾空白比较后不得重复（保存原值）；输出字段 name 也必须唯一。
@@ -1026,22 +1346,38 @@ components:
             vector 的只读 config.dimension 无须提交。删除 Feature 后，Index 源视图查询不能使用
             依赖该 Feature 的搜索、过滤、排序或聚合操作；Table 源的普通 SQL 字段查询不依赖 Feature。
             定义内固定 filter_condition 可引用未公开的源字段，但须满足实际查询路径的过滤能力。
-          type: array
+          type: [array, "null"]
           items:
             $ref: "#/components/schemas/Property"
         index_config:
           $ref: "#/components/schemas/ResourceIndexConfig"
+        api_effect_type:
+          description: API 创建时必填且只能为 read；更新时省略、null 或空字符串保留；其他 category 拒绝非空效果类型
+          type: [string, "null"]
+          enum: [read, "", null]
+        api_definition:
+          description: API 创建时必填且非 null；更新时省略或 null 保留，显式对象完整替换并为全部变量提供明文字符串 value；其他 category 拒绝非 null 定义
+          anyOf:
+            - allOf:
+                - $ref: "#/components/schemas/APIDefinition"
+                - properties:
+                    variables:
+                      additionalProperties:
+                        required: [value]
+                        properties:
+                          value:
+                            type: string
+            - type: "null"
         logical_type:
           description: |
             创建和完整 PUT 更新逻辑视图时必填；须与当前定义结构一致，PUT 不可改变既有类型。
-            旧 logic_type 按未知字段忽略，不作为别名或回退值；仅提交旧字段会因缺少此必填字段而失败。
+            旧 logic_type 按未知字段忽略，不作为别名或回退值；仅提交旧字段仍缺少必填定义。
           type: string
           enum: [derived, composite]
         logical_view_definition:
           description: |
             创建和完整 PUT 更新逻辑视图时必填且不能为 null。
-            旧 logic_definition 字段按未知字段忽略，不作为别名或回退值；
-            仅提交旧字段会因缺少此必填字段而失败。
+            旧 logic_definition 按未知字段忽略，不作为别名或回退值；仅提交旧字段仍缺少必填定义。
           $ref: "#/components/schemas/DerivedLogicalViewDefinition"
     DerivedLogicalViewDefinition:
       description: derived 逻辑视图的单一源和固定过滤配置；不接受旧节点数组、distinct 或未知字段
@@ -1098,7 +1434,7 @@ components:
     ResourceSummary:
       description: |
         Resource 列表摘要。为避免列表反序列化扩展 JSON，不包含
-        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`；
+        `source_metadata`、`schema_definition`、`index_config`、`logical_view_definition`、`api_definition`；
         详情请使用 `GET /resources/{id}`。
       type: object
       required:
@@ -1169,6 +1505,10 @@ components:
         index_name:
           description: 关联索引名
           type: string
+        api_effect_type:
+          description: 仅 category=api 返回的操作效果；列表不包含 api_definition
+          type: string
+          enum: [read]
         logical_type:
           description: 逻辑视图类型
           type: string

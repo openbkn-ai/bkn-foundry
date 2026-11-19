@@ -171,6 +171,7 @@ func TestValidateCreateResourceCategory(t *testing.T) {
 	t.Run("allows creatable categories", func(t *testing.T) {
 		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryDataset))
 		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryLogicalView))
+		require.NoError(t, validateCreateResourceCategory(ctx, interfaces.ResourceCategoryAPI))
 	})
 
 	t.Run("rejects discover-owned categories", func(t *testing.T) {
@@ -178,7 +179,6 @@ func TestValidateCreateResourceCategory(t *testing.T) {
 			interfaces.ResourceCategoryTable,
 			interfaces.ResourceCategoryFile,
 			interfaces.ResourceCategoryFileset,
-			interfaces.ResourceCategoryAPI,
 			interfaces.ResourceCategoryMetric,
 			interfaces.ResourceCategoryTopic,
 			interfaces.ResourceCategoryIndex,

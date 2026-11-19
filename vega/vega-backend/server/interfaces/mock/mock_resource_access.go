@@ -266,17 +266,18 @@ func (mr *MockResourceAccessMockRecorder) UpdateDiscoveryMetadata(ctx, tx, resou
 }
 
 // UpdateEnabled mocks base method.
-func (m *MockResourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64, updater interfaces.AccountInfo) error {
+func (m *MockResourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, expectedUpdateTime, updateTime int64, updater interfaces.AccountInfo) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateEnabled", ctx, id, enabled, updateTime, updater)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "UpdateEnabled", ctx, id, enabled, expectedUpdateTime, updateTime, updater)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // UpdateEnabled indicates an expected call of UpdateEnabled.
-func (mr *MockResourceAccessMockRecorder) UpdateEnabled(ctx, id, enabled, updateTime, updater any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) UpdateEnabled(ctx, id, enabled, expectedUpdateTime, updateTime, updater any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnabled", reflect.TypeOf((*MockResourceAccess)(nil).UpdateEnabled), ctx, id, enabled, updateTime, updater)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnabled", reflect.TypeOf((*MockResourceAccess)(nil).UpdateEnabled), ctx, id, enabled, expectedUpdateTime, updateTime, updater)
 }
 
 // UpdateLocalIndexName mocks base method.

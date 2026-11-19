@@ -120,7 +120,7 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 
 	if resultStr.Valid && resultStr.String != "" {
 		task.Result = &interfaces.DiscoverResult{}
-		_ = sonic.UnmarshalString(resultStr.String, task.Result)
+		_ = common.UnmarshalJSON([]byte(resultStr.String), task.Result)
 	}
 
 	return task, nil
@@ -154,7 +154,7 @@ func scanDiscoverTaskSummary(scanner discoverTaskScanner) (*interfaces.DiscoverT
 
 	if resultStr.Valid && resultStr.String != "" {
 		var result interfaces.DiscoverResult
-		if err := sonic.UnmarshalString(resultStr.String, &result); err == nil {
+		if err := common.UnmarshalJSON([]byte(resultStr.String), &result); err == nil {
 			task.Result = &interfaces.DiscoverTaskResultSummary{
 				CatalogID:      result.CatalogID,
 				NewCount:       result.NewCount,

@@ -121,12 +121,12 @@ func scanCatalog(scanner catalogRowScanner) (*interfaces.Catalog, error) {
 	}
 	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if connectorConfigStr != "" {
-		if err := sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg); err != nil {
+		if err := common.UnmarshalJSON([]byte(connectorConfigStr), &catalog.ConnectorCfg); err != nil {
 			return nil, err
 		}
 	}
 	if metadataStr != "" {
-		if err := sonic.UnmarshalString(metadataStr, &catalog.Metadata); err != nil {
+		if err := common.UnmarshalJSON([]byte(metadataStr), &catalog.Metadata); err != nil {
 			return nil, err
 		}
 	}
@@ -164,7 +164,7 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 		var metadata struct {
 			Schemas []string `json:"schemas"`
 		}
-		if err := sonic.UnmarshalString(metadataStr, &metadata); err != nil {
+		if err := common.UnmarshalJSON([]byte(metadataStr), &metadata); err != nil {
 			return nil, err
 		}
 		if metadata.Schemas != nil {

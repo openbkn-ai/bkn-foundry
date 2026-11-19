@@ -309,7 +309,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 			return fmt.Errorf("serialize index metadata: %w", err)
 		}
 		sourceMetadata := make(map[string]any)
-		if err := common.UnmarshalPreciseJSON(data, &sourceMetadata); err != nil {
+		if err := common.UnmarshalJSON(data, &sourceMetadata); err != nil {
 			return fmt.Errorf("decode index metadata: %w", err)
 		}
 		resource.SourceMetadata = sourceMetadata

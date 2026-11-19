@@ -18,11 +18,14 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/mohae/deepcopy"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -327,6 +330,52 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 }
 
 func TestResourceServiceGetByID(t *testing.T) {
+	t.Run("API public reads redact copies while internal reads retain ciphertext", func(t *testing.T) {
+		for _, batch := range []bool{false, true} {
+			t.Run(fmt.Sprintf("batch=%t", batch), func(t *testing.T) {
+				rs, ra, ps, _, ums, _, _ := newTestService(t)
+				req := apiResourceLifecycleRequest()
+				req.APIDefinition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:fixture-ciphertext", Sensitive: true}, "timeout": {Value: "30"}}
+				encoded, err := json.Marshal(req.APIDefinition)
+				require.NoError(t, err)
+				raw := apiResourceLifecycleStored(req, string(encoded))
+				require.NoError(t, json.Unmarshal([]byte("{}"), &raw.IndexConfig))
+				if batch {
+					ra.EXPECT().GetByIDs(gomock.Any(), []string{req.ID}).Return(map[string]*interfaces.Resource{req.ID: raw}, nil).Times(2)
+				} else {
+					ra.EXPECT().GetByID(gomock.Any(), nil, req.ID).Return(raw, nil).Times(2)
+				}
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{req.ID}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, interfaces.VISIBILITY_MATCH_ALL).
+					Return(map[string]interfaces.PermissionResourceOps{req.ID: {ResourceID: req.ID}}, nil)
+				ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+				var public, internal *interfaces.Resource
+				if batch {
+					items, err := rs.GetByIDs(t.Context(), []string{req.ID}, false)
+					require.NoError(t, err)
+					public = items[0]
+					stored, err := rs.InternalGetByIDs(t.Context(), []string{req.ID})
+					require.NoError(t, err)
+					internal = stored[req.ID]
+				} else {
+					public, err = rs.GetByID(t.Context(), req.ID)
+					require.NoError(t, err)
+					internal, err = rs.InternalGetByID(t.Context(), nil, req.ID)
+					require.NoError(t, err)
+				}
+				assert.Nil(t, public.APIDefinition.Variables["credential"].Value)
+				assert.True(t, public.APIDefinition.Variables["credential"].Sensitive)
+				assert.Equal(t, "30", public.APIDefinition.Variables["timeout"].Value)
+				serialized, err := json.Marshal(public)
+				require.NoError(t, err)
+				assert.NotContains(t, string(serialized), "fixture-ciphertext")
+				assert.NotContains(t, string(serialized), `"index_config"`)
+				assert.Contains(t, string(serialized), `"credential":{"sensitive":true}`)
+				assert.Equal(t, "ENC:fixture-ciphertext", internal.APIDefinition.Variables["credential"].Value)
+				assert.Nil(t, internal.IndexConfig)
+				assert.Equal(t, string(encoded), raw.LogicDefinitionStr)
+			})
+		}
+	})
 	t.Run("completes historical filterability without persisting a read", func(t *testing.T) {
 		rs, ra, ps, _, ums, _, _ := newTestService(t)
 		const stored = `[{"name":"id","type":"integer"},{"name":"payload","type":"json"},{"name":"disabled","type":"integer","filterable":false},{"name":"explicit","type":"json","filterable":true}]`
@@ -1150,12 +1199,12 @@ func TestJSONNumbersEqual(t *testing.T) {
 		SourceResourceID: "source-1",
 		FilterCondition:  map[string]any{"operation": "eq", "value": json.Number("1.0")},
 	}
-	assert.True(t, jsonNumbersEqual(stored, prepared))
-	assert.False(t, jsonNumbersEqual(stored, &interfaces.DerivedLogicalViewDefinition{
+	assert.True(t, common.JSONNumbersEqual(stored, prepared))
+	assert.False(t, common.JSONNumbersEqual(stored, &interfaces.DerivedLogicalViewDefinition{
 		SourceResourceID: "source-2",
 		FilterCondition:  prepared.FilterCondition,
 	}))
-	assert.False(t, jsonNumbersEqual(
+	assert.False(t, common.JSONNumbersEqual(
 		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740993")}},
 		map[string]any{"filter_condition": map[string]any{"value": json.Number("9007199254740992")}},
 	))
@@ -1419,6 +1468,80 @@ func TestResourceServiceCreateLogicalViewPreparation(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
+	t.Run("API delegates preparation before the generic transaction", func(t *testing.T) {
+		for _, outcome := range []string{"success", "extension failure", "unavailable"} {
+			t.Run(outcome, func(t *testing.T) {
+				rs, ra, ps, _, _, _, _ := newTestService(t)
+				cs := vmock.NewMockCatalogService(gomock.NewController(t))
+				rs.cs = cs
+				previous := GetAPIResourceService()
+				SetAPIResourceService(nil)
+				t.Cleanup(func() { SetAPIResourceService(previous) })
+				req := apiResourceLifecycleRequest()
+				req.ID = ""
+				req.APIDefinition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "fixture-private-value", Sensitive: true}}
+				cs.EXPECT().CheckCatalogPermission(gomock.Any(), req.CatalogID, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).Return(true, apiResourceLifecycleCatalog(), nil)
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				var prepared *interfaces.Resource
+				var extensionErr error
+				if outcome != "unavailable" {
+					extension := vmock.NewMockAPIResourceService(gomock.NewController(t))
+					SetAPIResourceService(extension)
+					if outcome == "extension failure" {
+						extensionErr = httperrors.NewHTTPError(t.Context(), http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed)
+					}
+					extension.EXPECT().PrepareCreate(gomock.Any(), gomock.Any(), req).DoAndReturn(func(_ context.Context, candidate *interfaces.Resource, received *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+						assert.Same(t, req, received)
+						assert.NotEmpty(t, candidate.ID)
+						assert.Positive(t, candidate.CreateTime)
+						assert.Equal(t, candidate.CreateTime, candidate.UpdateTime)
+						assert.Equal(t, req.CatalogID, candidate.CatalogID)
+						assert.Nil(t, candidate.APIDefinition, "API definition preparation belongs to the extension")
+						if extensionErr != nil {
+							return nil, extensionErr
+						}
+						prepared = deepcopy.Copy(candidate).(*interfaces.Resource)
+						prepared.APIEffectType = interfaces.APIEffectRead
+						definition := *req.APIDefinition
+						definition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:fixture-protected", Sensitive: true}}
+						prepared.APIDefinition = &definition
+						prepared.Status = interfaces.ResourceStatusActive
+						prepared.SourceIdentifier = candidate.ID
+						return prepared, nil
+					})
+				}
+				if outcome == "success" {
+					expectResourceServiceTransaction(t, rs, true)
+					ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, stored *interfaces.Resource) error {
+						assert.Same(t, prepared, stored)
+						assert.Nil(t, stored.IndexConfig)
+						assert.Equal(t, interfaces.APIEffectRead, stored.LogicType)
+						assert.Contains(t, stored.LogicDefinitionStr, "ENC:fixture-protected")
+						assert.NotContains(t, stored.LogicDefinitionStr, "fixture-private-value")
+						return nil
+					})
+				} else {
+					ra.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				}
+				got, err := rs.Create(t.Context(), req)
+				if outcome == "success" {
+					require.NoError(t, err)
+					assert.Nil(t, got.APIDefinition.Variables["credential"].Value)
+					assert.Empty(t, got.LogicDefinitionStr)
+					assert.Equal(t, "ENC:fixture-protected", prepared.APIDefinition.Variables["credential"].Value)
+					assert.Equal(t, "fixture-private-value", req.APIDefinition.Variables["credential"].Value)
+				} else {
+					assert.Nil(t, got)
+					if extensionErr != nil {
+						assert.Same(t, extensionErr, err)
+					} else {
+						failure := requireResourceHTTPError(t, err, httperrors.PublicError_NotImplemented)
+						assert.Equal(t, http.StatusNotImplemented, failure.HTTPCode)
+					}
+				}
+			})
+		}
+	})
 	t.Run("persists and reads explicit filterability and type defaults", func(t *testing.T) {
 		rs, ra, _, _, _, _, _ := newTestService(t)
 		dataset := vmock.NewMockDatasetService(gomock.NewController(t))
@@ -2466,6 +2589,119 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("API preparation preserves Core authorization versioning and exact storage", func(t *testing.T) {
+		for _, outcome := range []string{"metadata", "prepared definition", "extension failure", "unavailable", "modify denied", "stale version", "optimistic conflict", "same millisecond"} {
+			t.Run(outcome, func(t *testing.T) {
+				rs, ra, ps, _, _, cs, _ := newTestService(t)
+				previous := GetAPIResourceService()
+				SetAPIResourceService(nil)
+				t.Cleanup(func() { SetAPIResourceService(previous) })
+				req := apiResourceLifecycleRequest()
+				req.APIDefinition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:fixture-protected", Sensitive: true}}
+				stored, err := json.Marshal(req.APIDefinition)
+				require.NoError(t, err)
+				raw := apiResourceLifecycleStored(req, " "+string(stored)+"\n")
+				require.NoError(t, json.Unmarshal([]byte("{}"), &raw.IndexConfig))
+				if outcome == "same millisecond" {
+					fixed := time.UnixMilli(raw.UpdateTime)
+					t.Cleanup(gomonkey.ApplyFunc(time.Now, func() time.Time { return fixed }).Reset)
+				}
+				req.APIDefinition = nil
+				req.Name = "renamed"
+				if outcome == "prepared definition" {
+					req.APIDefinition = apiResourceLifecycleRequest().APIDefinition
+					req.APIDefinition.Request.Path = "prepared"
+				}
+				var permissionErr error
+				if outcome == "modify denied" {
+					permissionErr = httperrors.NewHTTPError(t.Context(), http.StatusForbidden, httperrors.PublicError_Forbidden)
+				}
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).Return(permissionErr)
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Times(0)
+				if permissionErr == nil {
+					ra.EXPECT().GetByID(gomock.Any(), nil, req.ID).Return(raw, nil)
+				} else {
+					ra.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				}
+				if outcome == "stale version" {
+					req.ExpectedUpdateTime = 41
+				}
+				var extensionErr error
+				expectedRaw := raw.LogicDefinitionStr
+				if outcome != "unavailable" {
+					extension := vmock.NewMockAPIResourceService(gomock.NewController(t))
+					SetAPIResourceService(extension)
+					if permissionErr != nil || outcome == "stale version" {
+						extension.EXPECT().PrepareUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					} else {
+						if outcome == "extension failure" {
+							extensionErr = httperrors.NewHTTPError(t.Context(), http.StatusGatewayTimeout, verrors.VegaBackend_Query_ExecuteFailed)
+						}
+						extension.EXPECT().PrepareUpdate(gomock.Any(), raw, req).DoAndReturn(func(_ context.Context, current *interfaces.Resource, received *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+							assert.Same(t, req, received)
+							assert.Nil(t, current.IndexConfig)
+							assert.Equal(t, "ENC:fixture-protected", current.APIDefinition.Variables["credential"].Value)
+							if extensionErr != nil {
+								return nil, extensionErr
+							}
+							prepared := deepcopy.Copy(current).(*interfaces.Resource)
+							if outcome == "prepared definition" {
+								prepared.APIDefinition = req.APIDefinition
+								encoded, err := json.Marshal(prepared.APIDefinition)
+								require.NoError(t, err)
+								expectedRaw = "\n" + string(encoded) + " "
+								prepared.LogicDefinitionStr = expectedRaw
+							}
+							return prepared, nil
+						})
+					}
+				}
+				persists := outcome == "metadata" || outcome == "prepared definition" || outcome == "optimistic conflict" || outcome == "same millisecond"
+				if persists {
+					expectResourceServiceTransaction(t, rs, outcome != "optimistic conflict")
+					cs.EXPECT().CheckExistByID(gomock.Any(), req.CatalogID).Return(true, nil)
+					ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42)).DoAndReturn(func(_ context.Context, _ *sql.Tx, prepared *interfaces.Resource, _ int64) (int64, error) {
+						assert.Nil(t, prepared.IndexConfig)
+						assert.Equal(t, expectedRaw, prepared.LogicDefinitionStr, "Core must retain the extension's exact protected storage definition")
+						assert.Equal(t, interfaces.APIEffectRead, prepared.LogicType)
+						assert.Equal(t, "renamed", prepared.Name)
+						if outcome == "optimistic conflict" {
+							return 0, nil
+						}
+						if outcome == "same millisecond" {
+							assert.Equal(t, req.ExpectedUpdateTime+1, prepared.UpdateTime)
+							raw.UpdateTime = prepared.UpdateTime
+						}
+						return 1, nil
+					})
+				} else {
+					ra.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				}
+				err = rs.Update(t.Context(), req)
+				switch outcome {
+				case "metadata", "prepared definition":
+					require.NoError(t, err)
+				case "same millisecond":
+					require.NoError(t, err)
+					ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+					ra.EXPECT().GetByID(gomock.Any(), nil, req.ID).Return(raw, nil)
+					failure := requireResourceHTTPError(t, rs.Update(t.Context(), req), verrors.VegaBackend_Resource_UpdateConflict)
+					assert.Equal(t, http.StatusConflict, failure.HTTPCode)
+				case "modify denied":
+					assert.Same(t, permissionErr, err)
+				case "extension failure":
+					assert.Same(t, extensionErr, err)
+				case "unavailable":
+					failure := requireResourceHTTPError(t, err, httperrors.PublicError_NotImplemented)
+					assert.Equal(t, http.StatusNotImplemented, failure.HTTPCode)
+				default:
+					failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
+					assert.Equal(t, http.StatusConflict, failure.HTTPCode)
+				}
+				assert.Equal(t, " "+string(stored)+"\n", raw.LogicDefinitionStr)
+			})
+		}
+	})
 	t.Run("rejects missing or null filterable before reading or persisting", func(t *testing.T) {
 		for _, wire := range []string{
 			`{"id":"r1","schema_definition":[{"name":"id","type":"integer"}]}`,
@@ -3644,6 +3880,44 @@ func TestResourceServiceUpdate(t *testing.T) {
 }
 
 func TestResourceServiceSetEnabledAuthorizesIdempotentRequest(t *testing.T) {
+	t.Run("API enable and no-op responses omit sensitive values", func(t *testing.T) {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+				rs, ra, ps, _, _, _, _ := newTestService(t)
+				req := apiResourceLifecycleRequest()
+				req.APIDefinition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:fixture-secret", Sensitive: true}}
+				encoded, err := json.Marshal(req.APIDefinition)
+				require.NoError(t, err)
+				raw := apiResourceLifecycleStored(req, string(encoded))
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+				ra.EXPECT().GetByID(gomock.Any(), nil, req.ID).Return(raw, nil)
+				if !enabled {
+					fixed := time.UnixMilli(raw.UpdateTime)
+					t.Cleanup(gomonkey.ApplyFunc(time.Now, func() time.Time { return fixed }).Reset)
+					ra.EXPECT().UpdateEnabled(gomock.Any(), req.ID, false, raw.UpdateTime, raw.UpdateTime+1, gomock.Any()).Return(int64(1), nil)
+				}
+				got, err := rs.SetEnabled(t.Context(), req.ID, enabled)
+				require.NoError(t, err)
+				assert.Nil(t, got.APIDefinition.Variables["credential"].Value)
+				assert.Equal(t, string(encoded), raw.LogicDefinitionStr)
+				assert.Empty(t, got.LogicDefinitionStr)
+			})
+		}
+	})
+	t.Run("reports conflict if PUT commits after the resource is read", func(t *testing.T) {
+		rs, ra, ps, _, _, _, _ := newTestService(t)
+		resource := &interfaces.Resource{ID: "r1", Enabled: true, UpdateTime: 42}
+		fixed := time.UnixMilli(42)
+		t.Cleanup(gomonkey.ApplyFunc(time.Now, func() time.Time { return fixed }).Reset)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+		ra.EXPECT().GetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+		ra.EXPECT().UpdateEnabled(gomock.Any(), resource.ID, false, int64(42), int64(43), gomock.Any()).Return(int64(0), nil)
+
+		got, err := rs.SetEnabled(t.Context(), resource.ID, false)
+		failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
+		assert.Equal(t, http.StatusConflict, failure.HTTPCode)
+		assert.Nil(t, got)
+	})
 	rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
 	resource := &interfaces.Resource{ID: "r1", Enabled: true}
 	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -3859,6 +4133,15 @@ func TestResourceServiceDiscoveryDoesNotSaveStatistics(t *testing.T) {
 }
 
 func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
+	t.Run("API resources are not updated by discovery", func(t *testing.T) {
+		rs, ra, _, _, _, _, _ := newTestService(t)
+		ra.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ra.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		err := rs.InternalUpdateDiscoveryMetadata(t.Context(), &sql.Tx{}, &interfaces.Resource{ID: "api", Category: interfaces.ResourceCategoryAPI}, 42)
+		failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter)
+		assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+	})
+
 	t.Run("fresh scan repairs unreadable previous metadata and invalidates uncertain indexes", func(t *testing.T) {
 		for _, raw := range []struct {
 			name  string
@@ -4160,7 +4443,7 @@ func TestResourceServiceReadsRawLogicFields(t *testing.T) {
 					default:
 						ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 						if path == "enable" {
-							ra.EXPECT().UpdateEnabled(gomock.Any(), "r1", true, gomock.Any(), gomock.Any()).Return(nil)
+							ra.EXPECT().UpdateEnabled(gomock.Any(), "r1", true, raw.UpdateTime, gomock.Any(), gomock.Any()).Return(int64(1), nil)
 						}
 						got, err = rs.SetEnabled(t.Context(), "r1", path == "enable")
 					}
@@ -4185,7 +4468,11 @@ func TestResourceServiceReadsRawLogicFields(t *testing.T) {
 				}
 				require.NoError(t, err)
 				require.NotNil(t, got)
-				assert.Equal(t, stored, got.LogicDefinitionStr)
+				if category == interfaces.ResourceCategoryAPI && (path == "detail" || path == "details" || path == "enable" || path == "enable-noop") {
+					assert.Empty(t, got.LogicDefinitionStr)
+				} else {
+					assert.Equal(t, stored, got.LogicDefinitionStr)
+				}
 				encoded, err := json.Marshal(got)
 				require.NoError(t, err)
 				assert.NotContains(t, string(encoded), `"logic_type"`)
@@ -4235,6 +4522,8 @@ func TestResourceServiceListsRawLogicType(t *testing.T) {
 			require.Len(t, got, 2)
 			assert.Equal(t, interfaces.LogicalType_Derived, got[0].LogicalType)
 			assert.Empty(t, got[1].LogicalType)
+			assert.Equal(t, interfaces.APIEffectRead, got[1].APIEffectType)
+			assert.Empty(t, got[0].APIEffectType)
 			encoded, err := json.Marshal(got)
 			require.NoError(t, err)
 			assert.NotContains(t, string(encoded), `"logic_type"`)
@@ -4243,7 +4532,14 @@ func TestResourceServiceListsRawLogicType(t *testing.T) {
 }
 
 func TestResourceServiceSemanticUpdateEncodesLogicFields(t *testing.T) {
-	for _, category := range []string{interfaces.ResourceCategoryLogicalView, interfaces.ResourceCategoryAPI} {
+	t.Run("API schema and definition remain user managed", func(t *testing.T) {
+		rs, ra, _, _, _, _, _ := newTestService(t)
+		ra.EXPECT().UpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		err := rs.InternalUpdateSemanticMetadata(t.Context(), nil, &interfaces.Resource{ID: "api", Category: interfaces.ResourceCategoryAPI}, 42)
+		failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter)
+		assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+	})
+	for _, category := range []string{interfaces.ResourceCategoryLogicalView} {
 		t.Run(category, func(t *testing.T) {
 			rs, ra, _, _, _, _, _ := newTestService(t)
 			const stored = `{ "stored": 1 }`
@@ -4292,7 +4588,7 @@ func TestResourceServiceSemanticUpdateEncodesLogicFields(t *testing.T) {
 }
 
 func TestResourceServiceUpdatePreservesOtherCategoriesLogicFields(t *testing.T) {
-	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryAPI} {
+	for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryMetric} {
 		t.Run(category, func(t *testing.T) {
 			rs, ra, ps, _, _, cs, _ := newTestService(t)
 			expectResourceServiceTransaction(t, rs, true)
@@ -4659,4 +4955,74 @@ func TestResourceServiceCreateClosedFilterability(t *testing.T) {
 			assert.Equal(t, "cat1", created.CatalogID)
 		})
 	}
+}
+
+func apiResourceLifecycleCatalog() *interfaces.Catalog {
+	return &interfaces.Catalog{ID: "api-catalog", Type: interfaces.CatalogTypePhysical, Category: interfaces.ResourceCategoryAPI, ConnectorType: "http", Enabled: true}
+}
+
+func apiResourceLifecycleRequest() *interfaces.ResourceRequest {
+	disabled := false
+	rows := ""
+	return &interfaces.ResourceRequest{ID: "api-resource", CatalogID: "api-catalog", Category: interfaces.ResourceCategoryAPI, Name: "items", Enabled: true, ExpectedUpdateTime: 42,
+		APIEffectType:    interfaces.APIEffectRead,
+		SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer, Filterable: &disabled}},
+		APIDefinition: &interfaces.APIDefinition{
+			HTTPOperationDefinition: interfaces.HTTPOperationDefinition{
+				Request:     &interfaces.HTTPRequestDefinition{Method: "GET", Path: "items", Parameters: []map[string]any{{"name": "sequence", "value": json.Number("9007199254740993")}}},
+				Response:    &interfaces.HTTPResponsesDefinition{ContentType: "application/json", Statuses: map[string]*interfaces.HTTPResponseDefinition{"200": {Description: "items", Schema: map[string]any{"type": "array", "items": map[string]any{"type": "object"}}, ResultRows: &rows}, "default": {Description: "rejected", Schema: false}}},
+				SuccessRule: &interfaces.HTTPSuccessRule{HTTPStatus: []any{200}},
+			},
+		},
+	}
+}
+
+func apiResourceLifecycleStored(req *interfaces.ResourceRequest, definition string) *interfaces.Resource {
+	return &interfaces.Resource{ID: req.ID, CatalogID: req.CatalogID, Category: interfaces.ResourceCategoryAPI, Name: req.Name, Enabled: true, Status: interfaces.ResourceStatusActive, SourceIdentifier: req.ID, LogicType: interfaces.APIEffectRead, LogicDefinitionStr: definition, SchemaDefinition: req.SchemaDefinition, UpdateTime: 42}
+}
+
+func TestEncodeResourceLogicFields(t *testing.T) {
+	t.Run("API storage round trip preserves exact values and category isolation", func(t *testing.T) {
+		req := apiResourceLifecycleRequest()
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, APIDefinition: req.APIDefinition}
+		require.NoError(t, encodeResourceLogicFields(resource))
+		assert.Equal(t, interfaces.APIEffectRead, resource.LogicType)
+		assert.Contains(t, resource.LogicDefinitionStr, "9007199254740993")
+		resource.APIDefinition = nil
+		resource.LogicalType = "conflicting"
+		resource.LogicalViewDefinition = map[string]any{"conflicting": true}
+		decodeResourceLogicFields(resource)
+		require.NotNil(t, resource.APIDefinition)
+		assert.Equal(t, json.Number("9007199254740993"), resource.APIDefinition.Request.Parameters[0]["value"])
+		assert.Equal(t, interfaces.APIEffectRead, resource.APIEffectType)
+		assert.Empty(t, resource.LogicalType)
+		assert.Nil(t, resource.LogicalViewDefinition)
+		encoded, err := json.Marshal(resource)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), "logical_view_definition")
+		assert.NotContains(t, string(encoded), "f_logic_definition")
+	})
+	t.Run("missing or unencodable API definition leaves storage intact", func(t *testing.T) {
+		for _, broken := range []bool{false, true} {
+			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, LogicType: "old", LogicDefinitionStr: "old definition"}
+			if broken {
+				resource.APIDefinition = &interfaces.APIDefinition{Variables: map[string]interfaces.CatalogVariable{"bad": {Value: make(chan int)}}}
+			}
+			require.Error(t, encodeResourceLogicFields(resource))
+			assert.Equal(t, "old", resource.LogicType)
+			assert.Equal(t, "old definition", resource.LogicDefinitionStr)
+		}
+	})
+}
+
+func TestDecodeResourceLogicFieldsPreservesIndexConfiguration(t *testing.T) {
+	config := &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"}
+	api := &interfaces.Resource{Category: interfaces.ResourceCategoryAPI, IndexConfig: config}
+	decodeResourceLogicFields(api)
+	assert.Same(t, config, api.IndexConfig)
+
+	emptyConfig := &interfaces.ResourceIndexConfig{}
+	table := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, IndexConfig: emptyConfig}
+	decodeResourceLogicFields(table)
+	assert.Same(t, emptyConfig, table.IndexConfig)
 }

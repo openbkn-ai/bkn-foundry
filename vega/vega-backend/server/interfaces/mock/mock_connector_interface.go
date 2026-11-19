@@ -2399,6 +2399,21 @@ func (mr *MockAPIConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockAPIConnector)(nil).Connect), ctx)
 }
 
+// ExecuteQuery mocks base method.
+func (m *MockAPIConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteQuery", ctx, resource, params)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteQuery indicates an expected call of ExecuteQuery.
+func (mr *MockAPIConnectorMockRecorder) ExecuteQuery(ctx, resource, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQuery", reflect.TypeOf((*MockAPIConnector)(nil).ExecuteQuery), ctx, resource, params)
+}
+
 // GetCategory mocks base method.
 func (m *MockAPIConnector) GetCategory() string {
 	m.ctrl.T.Helper()
@@ -2594,4 +2609,18 @@ func (m *MockAPIConnector) ValidateBuildSchema(resource *interfaces.Resource) er
 func (mr *MockAPIConnectorMockRecorder) ValidateBuildSchema(resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockAPIConnector)(nil).ValidateBuildSchema), resource)
+}
+
+// ValidateDefinition mocks base method.
+func (m *MockAPIConnector) ValidateDefinition(ctx context.Context, definition *interfaces.APIDefinition, schemaDefinition []*interfaces.Property) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateDefinition", ctx, definition, schemaDefinition)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateDefinition indicates an expected call of ValidateDefinition.
+func (mr *MockAPIConnectorMockRecorder) ValidateDefinition(ctx, definition, schemaDefinition any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateDefinition", reflect.TypeOf((*MockAPIConnector)(nil).ValidateDefinition), ctx, definition, schemaDefinition)
 }

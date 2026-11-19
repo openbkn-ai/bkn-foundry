@@ -6,6 +6,7 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -26,11 +28,12 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 	t.Run("keeps dynamic attributes and nested fields", func(t *testing.T) {
 		var prop Property
 
-		err := sonic.Unmarshal([]byte(`{
+		err := common.UnmarshalJSON([]byte(`{
 			"type": "text",
 			"index": false,
 			"analyzer": "ik_max_word",
 			"meta": {"description": "商品标题"},
+			"numeric_metadata": 9007199254740993,
 			"fields": {
 				"keyword": {"type": "keyword", "ignore_above": 256}
 			},
@@ -44,6 +47,7 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		assert.Equal(t, false, prop.Attributes["index"])
 		assert.Equal(t, "ik_max_word", prop.Attributes["analyzer"])
 		assert.Equal(t, map[string]any{"description": "商品标题"}, prop.Attributes["meta"])
+		assert.Equal(t, json.Number("9007199254740993"), prop.Attributes["numeric_metadata"])
 		out := map[string]interfaces.IndexFieldMeta{}
 		parseProperties("", map[string]Property{"title": prop}, out)
 		assert.Equal(t, "商品标题", out["title"].Description)
@@ -63,7 +67,7 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		assert.Equal(t, "ik_max_word", attributes["analyzer"])
 		require.Contains(t, prop.Fields, "keyword")
 		assert.Equal(t, "keyword", prop.Fields["keyword"].Type)
-		assert.Equal(t, float64(256), prop.Fields["keyword"].Attributes["ignore_above"])
+		assert.Equal(t, json.Number("256"), prop.Fields["keyword"].Attributes["ignore_above"])
 		require.Contains(t, prop.Properties, "title")
 		assert.Equal(t, "keyword", prop.Properties["title"].Type)
 	})

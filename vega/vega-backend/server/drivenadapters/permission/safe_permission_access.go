@@ -166,7 +166,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
 	}
 	if out != nil && len(data) > 0 {
-		return sonic.Unmarshal(data, out)
+		return common.UnmarshalJSON(data, out)
 	}
 	return nil
 }

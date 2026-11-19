@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"math/big"
+	"reflect"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -15,7 +17,15 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-var precisionJSON = sonic.Config{UseNumber: true}.Froze()
+var defaultJson = sonic.Config{
+	UseNumber:      true,
+	ValidateString: true,
+}.Froze()
+
+type normalizedJSONNumber struct {
+	significand string
+	exponent    string
+}
 
 // DecodeMapToStruct 精确匹配结构体字段名，并为每次解码创建绑定到独立结果的 Decoder。
 // 动态 map 的成员名和值保持不变，未知结构体字段沿用默认忽略行为。
@@ -34,14 +44,14 @@ func exactMapField(mapKey, fieldName string) bool {
 	return mapKey == fieldName
 }
 
-// DecodePreciseJSON preserves number literals in dynamic JSON fields.
-func DecodePreciseJSON(reader io.Reader, target any) error {
-	return precisionJSON.NewDecoder(reader).Decode(target)
+// DecodeJSON reads one JSON value and preserves numbers in interface values as json.Number.
+func DecodeJSON(reader io.Reader, target any) error {
+	return defaultJson.NewDecoder(reader).Decode(target)
 }
 
-// UnmarshalPreciseJSON preserves number literals in byte-backed dynamic JSON.
-func UnmarshalPreciseJSON(data []byte, target any) error {
-	return precisionJSON.Unmarshal(data, target)
+// UnmarshalJSON decodes JSON bytes and preserves numbers in interface values as json.Number.
+func UnmarshalJSON(data []byte, target any) error {
+	return defaultJson.Unmarshal(data, target)
 }
 
 // JSONSourceValueText 归一化数据库返回的完整 JSON 文本中的顶层 null。
@@ -110,6 +120,7 @@ func NumberAsFloat64(value any) (float64, bool) {
 }
 
 // NumberAsInt64 converts JSON and Go numeric values that represent an integer.
+// JSON numbers must use integer syntax without a fraction or exponent.
 func NumberAsInt64(value any) (int64, bool) {
 	switch number := value.(type) {
 	case int:
@@ -139,9 +150,10 @@ func NumberAsInt64(value any) (int64, bool) {
 		}
 		return 0, false
 	case json.Number:
-		if converted, err := number.Int64(); err == nil {
-			return converted, true
+		if integer, err := number.Int64(); err == nil {
+			return integer, true
 		}
+		return 0, false
 	}
 	floating, ok := NumberAsFloat64(value)
 	if !ok || floating < math.MinInt64 || floating >= float64(math.MaxInt64) || math.Trunc(floating) != floating {
@@ -150,10 +162,85 @@ func NumberAsInt64(value any) (int64, bool) {
 	return int64(floating), true
 }
 
-// BindPreciseJSON decodes an HTTP request body and applies Gin's validator.
-func BindPreciseJSON(reader io.Reader, target any) error {
-	if err := DecodePreciseJSON(reader, target); err != nil {
+// BindJSON decodes an HTTP request body and applies Gin's validator.
+func BindJSON(reader io.Reader, target any) error {
+	if err := DecodeJSON(reader, target); err != nil {
 		return err
 	}
 	return binding.Validator.ValidateStruct(target)
+}
+
+// JSONNumbersEqual compares JSON-backed values without treating float64 and
+// json.Number representations of the same number as a schema change.
+func JSONNumbersEqual(current, next any) bool {
+	currentValue, err := comparableJSONValue(current)
+	if err != nil {
+		return false
+	}
+	nextValue, err := comparableJSONValue(next)
+	return err == nil && reflect.DeepEqual(currentValue, nextValue)
+}
+
+func comparableJSONValue(value any) (any, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var decoded any
+	if err := UnmarshalJSON(encoded, &decoded); err != nil {
+		return nil, err
+	}
+	return normalizeJSONNumbers(decoded), nil
+}
+
+func normalizeJSONNumbers(value any) any {
+	switch v := value.(type) {
+	case json.Number:
+		if number, ok := normalizeJSONNumber(v); ok {
+			return number
+		}
+		return v
+	case []any:
+		for i := range v {
+			v[i] = normalizeJSONNumbers(v[i])
+		}
+	case map[string]any:
+		for key := range v {
+			v[key] = normalizeJSONNumbers(v[key])
+		}
+	}
+	return value
+}
+
+// normalizeJSONNumber represents a number as a signed significand times a
+// power of ten without constructing the power or expanding the significand.
+func normalizeJSONNumber(number json.Number) (normalizedJSONNumber, bool) {
+	text := string(number)
+	if text == "" || (text[0] != '-' && (text[0] < '0' || text[0] > '9')) || !json.Valid([]byte(text)) {
+		return normalizedJSONNumber{}, false
+	}
+	negative := text[0] == '-'
+	text = strings.TrimPrefix(text, "-")
+	exponentText := "0"
+	if position := strings.IndexAny(text, "eE"); position >= 0 {
+		text, exponentText = text[:position], text[position+1:]
+	}
+	whole, fraction, _ := strings.Cut(text, ".")
+	digits := strings.TrimLeft(whole+fraction, "0")
+	if digits == "" {
+		return normalizedJSONNumber{significand: "0", exponent: "0"}, true
+	}
+	significand := strings.TrimRight(digits, "0")
+	var exponent big.Int
+	if _, ok := exponent.SetString(exponentText, 10); !ok {
+		return normalizedJSONNumber{}, false
+	}
+	exponent.Add(&exponent, big.NewInt(int64(len(digits)-len(significand)-len(fraction))))
+	if negative {
+		significand = "-" + significand
+	}
+	return normalizedJSONNumber{
+		significand: significand,
+		exponent:    exponent.String(),
+	}, true
 }

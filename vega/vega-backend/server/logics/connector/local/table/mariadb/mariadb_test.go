@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -353,12 +354,20 @@ func TestMariaDBConnectorValidateDatabases(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		connector, mock := newMariaDBConnectorMock(t, []string{"app", "audit"})
 		defer cleanupMariaDBConnectorMock(t, connector, mock)
-
 		mock.ExpectQuery("SELECT SCHEMA_NAME FROM information_schema\\.SCHEMATA WHERE SCHEMA_NAME IN").
 			WithArgs("app", "audit").
 			WillReturnRows(sqlmock.NewRows([]string{"Database"}).AddRow("audit").AddRow("app"))
 
 		require.NoError(t, connector.validateDatabases(context.Background()))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("canceled parent skips database scope I/O", func(t *testing.T) {
+		connector, mock := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanupMariaDBConnectorMock(t, connector, mock)
+		parent, cancel := context.WithCancel(t.Context())
+		cancel()
+		require.ErrorIs(t, connector.validateDatabases(parent), context.Canceled)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -567,6 +576,65 @@ func TestMariaDBConnectorFilterabilityValidation(t *testing.T) {
 }
 
 func TestMariaDBConnectorConnect(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		call     func(*MariaDBConnector, context.Context) error
+		pings    int
+		checking bool
+	}{
+		{name: "Connect uses the caller context", call: (*MariaDBConnector).Connect, pings: 1},
+		{name: "Ping limits each driver ping", call: (*MariaDBConnector).Ping, pings: 2, checking: true},
+		{name: "TestConnection limits the initial driver ping", call: (*MariaDBConnector).TestConnection, pings: 1, checking: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			parent := t.Context()
+			var requests []<-chan struct{}
+			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) { return db, nil })
+			defer patches.Reset()
+			patches.ApplyMethod(db, "PingContext", func(_ *sql.DB, ctx context.Context) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if tc.checking {
+					if len(requests) > 0 {
+						select {
+						case <-requests[len(requests)-1]:
+						default:
+							t.Fatal("the previous Ping must release its context")
+						}
+					}
+					deadline, ok := ctx.Deadline()
+					require.True(t, ok)
+					assert.Positive(t, time.Until(deadline))
+					assert.LessOrEqual(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
+				} else {
+					assert.Same(t, parent, ctx)
+				}
+				requests = append(requests, ctx.Done())
+				return nil
+			})
+			connector := &MariaDBConnector{config: &mariadbConfig{}}
+			require.NoError(t, tc.call(connector, parent))
+			assert.Len(t, requests, tc.pings)
+			if tc.checking {
+				for _, done := range requests {
+					select {
+					case <-done:
+					default:
+						t.Fatal("completed Ping must release its local context")
+					}
+				}
+			}
+			assert.NoError(t, parent.Err())
+			cancelled, cancel := context.WithCancel(parent)
+			cancel()
+			require.ErrorIs(t, connector.Ping(cancelled), context.Canceled)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 	for _, cause := range []error{errors.New("private-driver-fixture"), &mysql.MySQLError{Number: 1045, Message: "private-driver-fixture"}, context.Canceled, context.DeadlineExceeded} {
 		t.Run("driver errors exclude source contents "+cause.Error(), func(t *testing.T) {
 			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) { return nil, cause })

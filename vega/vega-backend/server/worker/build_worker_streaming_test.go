@@ -340,7 +340,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 			} {
 				t.Run(operation+"/"+tc.logicalType, func(t *testing.T) {
 					var event map[string]any
-					require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
+					require.NoError(t, common.UnmarshalJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
 					after := event["payload"].(map[string]any)["after"].(map[string]any)
 					lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
 					worker := &streamingBuildWorker{lim: lim}

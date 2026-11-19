@@ -119,6 +119,12 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		span.SetStatus(codes.Error, "Resource does not support semantic understanding")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+			WithErrorDetails("API resources do not support semantic understanding")
+	}
+
 	task, err := normalizeResourceSemanticUnderstandingRequest(ctx, resource, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid semantic understanding task request")
@@ -610,7 +616,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 		return fmt.Errorf("resource data service is unavailable")
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := common.UnmarshalPreciseJSON([]byte(task.Input), &input); err != nil {
+	if err := common.UnmarshalJSON([]byte(task.Input), &input); err != nil {
 		return fmt.Errorf("unmarshal semantic understanding input: %w", err)
 	}
 	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {

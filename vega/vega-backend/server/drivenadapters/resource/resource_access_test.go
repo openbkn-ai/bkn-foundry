@@ -975,17 +975,28 @@ func TestResourceAccessListAuthResources(t *testing.T) {
 }
 
 func TestResourceAccessUpdateEnabled(t *testing.T) {
-	access, mock, cleanup := newResourceAccessMock(t)
-	defer cleanup()
+	for _, tc := range []struct {
+		name     string
+		affected int64
+	}{
+		{name: "matching version", affected: 1},
+		{name: "stale version", affected: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			access, mock, cleanup := newResourceAccessMock(t)
+			defer cleanup()
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
-		WithArgs(false, "u1", interfaces.ACCESSOR_TYPE_USER, int64(42), "resource-1").
-		WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+				WithArgs(false, "u1", interfaces.ACCESSOR_TYPE_USER, int64(42), "resource-1", int64(41)).
+				WillReturnResult(sqlmock.NewResult(0, tc.affected))
 
-	err := access.UpdateEnabled(context.Background(), "resource-1", false, 42,
-		interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
-	require.NoError(t, err)
-	require.NoError(t, mock.ExpectationsWereMet())
+			affected, err := access.UpdateEnabled(t.Context(), "resource-1", false, 41, 42,
+				interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
+			require.NoError(t, err)
+			assert.Equal(t, tc.affected, affected)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestResourceAccessUpdateStatus(t *testing.T) {

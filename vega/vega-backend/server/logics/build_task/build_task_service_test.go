@@ -563,6 +563,24 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 }
 
 func TestBuildTaskServiceCreate(t *testing.T) {
+	t.Run("API resources cannot create batch or streaming build tasks", func(t *testing.T) {
+		for _, mode := range []string{interfaces.BuildTaskModeBatch, interfaces.BuildTaskModeStreaming} {
+			t.Run(mode, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				rs := vmock.NewMockResourceService(ctrl)
+				cs := vmock.NewMockCatalogService(ctrl)
+				access := vmock.NewMockBuildTaskAccess(ctrl)
+				service := &buildTaskService{rs: rs, cs: cs, bta: access}
+				rs.EXPECT().GetByID(gomock.Any(), "api-resource").Return(&interfaces.Resource{ID: "api-resource", CatalogID: "api-catalog", Category: interfaces.ResourceCategoryAPI}, nil)
+				cs.EXPECT().CheckCatalogPermission(gomock.Any(), "api-catalog", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+				access.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+				id, err := service.Create(t.Context(), &interfaces.CreateBuildTaskRequest{ResourceID: "api-resource", Mode: mode})
+				assert.Empty(t, id)
+				failure := requireHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_InvalidCategory)
+				assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+			})
+		}
+	})
 	for _, scheduled := range []bool{false, true} {
 		t.Run(fmt.Sprintf("persists server assigned provenance scheduled=%t", scheduled), func(t *testing.T) {
 			ctrl := gomock.NewController(t)

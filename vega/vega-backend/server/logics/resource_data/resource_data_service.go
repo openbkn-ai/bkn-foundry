@@ -62,7 +62,21 @@ type resourceDataPageRunner struct {
 func (runner *resourceDataPageRunner) ExecutePage(ctx context.Context,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 	runner.querySource = resourceQuerySource(runner.resource, params)
-	page, err := runner.service.query(ctx, runner.resource, params)
+	var page *interfaces.ResourceDataQueryResult
+	var err error
+	if runner.resource.Category == interfaces.ResourceCategoryAPI {
+		if runner.service.cl != nil {
+			release, err := runner.service.acquireQueryPermit(ctx, rate.AcquireParams{CatalogID: runner.resource.CatalogID})
+			if err != nil {
+				return nil, err
+			}
+			defer release()
+		}
+		// API 扩展负责加载 Catalog。
+		page, err = runner.service.executeSourceQuery(ctx, nil, runner.resource, params)
+	} else {
+		page, err = runner.service.query(ctx, runner.resource, params)
+	}
 	if err != nil {
 		invalidCode := verrors.VegaBackend_Query_InvalidParameter
 		if runner.querySource == interfaces.ResourceQuerySourceLocalIndex || runner.resource.Category == interfaces.ResourceCategoryDataset {
@@ -173,33 +187,15 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		}
 	}
 
-	// Concurrent control
-	var release func()
 	if rds.cl != nil {
-		// Obtain concurrent permission
-		var acquireErr error
-		release, acquireErr = rds.cl.Acquire(rate.AcquireParams{
+		release, acquireErr := rds.acquireQueryPermit(ctx, rate.AcquireParams{
 			CatalogID:            resource.CatalogID,
 			MaxConcurrentQueries: maxConcurrentQueries,
 		})
 		if acquireErr != nil {
-			logger.Warnf("Concurrency limit exceeded: catalog=%s, error=%v",
-				resource.CatalogID, acquireErr)
-
-			// Return a rate limiting error
-			var rateErr *rate.RateLimitError
-			if errors.As(acquireErr, &rateErr) {
-				httpErr := httperrors.NewHTTPError(ctx, rateErr.HTTPStatus, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
-					WithErrorDetails(rateErr.Message)
-				otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
-				return nil, httpErr
-			}
-			httpErr := httperrors.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
-				WithErrorDetails("Query concurrency limit exceeded, please retry later")
-			otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
-			return nil, httpErr
+			return nil, acquireErr
 		}
-		defer release() // Release the permission after the query is completed
+		defer release()
 	}
 
 	querySchema := resource.SchemaDefinition
@@ -325,7 +321,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
 
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQuery(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query table data failed", err)
 			return nil, err
@@ -341,7 +337,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		return result, nil
 
 	case interfaces.ResourceCategoryIndex:
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQuery(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query index data failed", err)
 			return nil, err
@@ -368,7 +364,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
 
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQuery(ctx, catalog, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Query fileset data failed", err)
 			return nil, err
@@ -507,6 +503,10 @@ func (rds *resourceDataService) queryWithPaging(ctx context.Context, resource *i
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}
+	if resource.Category == interfaces.ResourceCategoryAPI && (params.Paging.Cursor != "" || params.Paging.Mode != "" && params.Paging.Mode != interfaces.PagingModeSingle) {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("API queries support only single paging without a cursor")
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
 			return nil, err
@@ -618,14 +618,36 @@ func accountIDFromContext(ctx context.Context) string {
 	return accountInfo.ID
 }
 
-func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+func (rds *resourceDataService) acquireQueryPermit(ctx context.Context, params rate.AcquireParams) (rate.ReleaseFunc, error) {
+	release, err := rds.cl.Acquire(params)
+	if err == nil {
+		return release, nil
+	}
+
+	logger.Warnf("Concurrency limit exceeded: catalog=%s, error=%v", params.CatalogID, err)
+	status := http.StatusTooManyRequests
+	details := "Query concurrency limit exceeded, please retry later"
+	var rateErr *rate.RateLimitError
+	if errors.As(err, &rateErr) {
+		status = rateErr.HTTPStatus
+		details = rateErr.Message
+	}
+	httpErr := httperrors.NewHTTPError(ctx, status, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
+		WithErrorDetails(details)
+	otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
+	return nil, httpErr
+}
+
+func (rds *resourceDataService) executeSourceQuery(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query data")
 	defer span.End()
 
-	logger.Debugf("QueryData, resourceID: %s, catalogID: %s, params: %v",
-		resource.ID, resource.CatalogID, params)
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		return resourcelogic.QueryAPIResource(ctx, resource, params)
+	}
+	logger.Debugf("executeSourceQuery, resourceID: %s, catalogID: %s, params: %v", resource.ID, resource.CatalogID, params)
 
 	connector, err := rds.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {

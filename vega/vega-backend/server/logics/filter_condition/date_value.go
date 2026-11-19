@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	localDatetimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,9})?$`)
+	localDatetimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,9})?$`)
 	rfc3339Pattern       = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$`)
 	timePattern          = regexp.MustCompile(`^\d{2}:\d{2}:\d{2}(\.\d{1,9})?$`)
 )
@@ -109,7 +109,11 @@ func parseDatetimeValue(value any, timeZone string) (time.Time, error) {
 			}
 		}
 		if localDatetimePattern.MatchString(text) {
-			if timestamp, err := time.ParseInLocation(common.DatetimeLayout, text, location); err == nil && timestamp.Format(time.DateTime) == text[:19] {
+			layout := common.DatetimeLayout
+			if text[10] == 'T' {
+				layout = common.ISO8601DatetimeLayout
+			}
+			if timestamp, err := time.ParseInLocation(layout, text, location); err == nil && timestamp.Format(layout)[:19] == text[:19] {
 				return timestamp, nil
 			}
 		}
@@ -125,7 +129,7 @@ func parseDatetimeValue(value any, timeZone string) (time.Time, error) {
 	} else if millis, ok := common.NumberAsInt64(value); ok {
 		return time.UnixMilli(millis).In(location), nil
 	}
-	return time.Time{}, interfaces.NewConditionBuildError("invalid datetime value %v; supported formats: RFC3339, YYYY-MM-DD HH:mm:ss[.fraction], or integer epoch milliseconds", value)
+	return time.Time{}, interfaces.NewConditionBuildError("invalid datetime value %v; supported formats: RFC3339, YYYY-MM-DD[ T]HH:mm:ss[.fraction], or integer epoch milliseconds", value)
 }
 
 // normalizeTemporalCondition 创建运行时副本，原始配置及数组元素保持不变。

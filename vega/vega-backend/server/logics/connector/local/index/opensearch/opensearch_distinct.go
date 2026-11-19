@@ -418,7 +418,7 @@ func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
 		return nil, interfaces.NewQueryExecutionBudgetError(budget+"_response_memory", nil)
 	}
 	var result map[string]any
-	if err := common.UnmarshalPreciseJSON(encoded, &result); err != nil {
+	if err := common.UnmarshalJSON(encoded, &result); err != nil {
 		return nil, fmt.Errorf("decode aggregation response failed")
 	}
 	return result, nil

@@ -16,6 +16,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -38,7 +39,7 @@ func ApplyResourceSemanticResult(ctx context.Context, tx *sql.Tx, rs interfaces.
 	}
 
 	var result interfaces.SemanticUnderstandingResourceResult
-	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
+	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal resource semantic understanding result failed: %w", err)
 	}
 	if err := validateConfidence(result.Resource.Confidence, "resource.confidence"); err != nil {

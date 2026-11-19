@@ -13,13 +13,95 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
+
+type requestScopeBody struct {
+	io.ReadCloser
+	check func()
+}
+
+func (body requestScopeBody) Read(data []byte) (int, error) {
+	body.check()
+	return body.ReadCloser.Read(data)
+}
+
+func (body requestScopeBody) Close() error {
+	body.check()
+	return body.ReadCloser.Close()
+}
+
+func TestAnyShareConnectorTestConnection(t *testing.T) {
+	for _, configuredPath := range []bool{false, true} {
+		t.Run(map[bool]string{false: "entry libraries", true: "configured path"}[configuredPath], func(t *testing.T) {
+			connector := newConnectedTestConnector()
+			connector.connected = false
+			connector.config.AuthType = authTypeAppSecret
+			if configuredPath {
+				connector.config.Paths = []string{"/docs"}
+			}
+			parent := t.Context()
+			var requests []<-chan struct{}
+			connector.httpClient = &http.Client{Timeout: httpTimeout, Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if len(requests) > 0 {
+					select {
+					case <-requests[len(requests)-1]:
+					default:
+						t.Fatal("the previous request must release its local budget before the next request")
+					}
+				}
+				deadline, ok := request.Context().Deadline()
+				require.True(t, ok)
+				assert.Positive(t, time.Until(deadline))
+				assert.LessOrEqual(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
+				requests = append(requests, request.Context().Done())
+				payload := `[]`
+				switch request.URL.Path {
+				case "/oauth2/token":
+					payload = `{"access_token":"fixture-token"}`
+				case "/api/efast/v1/file/getinfobypath":
+					payload = `{"docid":"gns://fixture/object","size":-1}`
+				case "/api/efast/v2/items/object/doc_lib":
+					payload = `{"doc_lib":{"type":"knowledge_doc_lib"}}`
+				}
+				response := jsonResponse(http.StatusOK, payload)
+				response.Body = requestScopeBody{ReadCloser: response.Body, check: func() {
+					assert.NoError(t, request.Context().Err(), "request budget must remain alive through body consumption and close")
+				}}
+				return response, nil
+			})}
+			require.NoError(t, connector.TestConnection(parent))
+			expected := 2
+			if configuredPath {
+				expected = 3
+			}
+			assert.Len(t, requests, expected)
+			for _, done := range requests {
+				select {
+				case <-done:
+				default:
+					t.Fatal("completed HTTP request context must be canceled")
+				}
+			}
+			assert.NoError(t, parent.Err())
+			assert.Equal(t, httpTimeout, connector.httpClient.Timeout)
+		})
+	}
+	t.Run("canceled parent remains identifiable", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		parent, cancel := context.WithCancel(t.Context())
+		cancel()
+		connector.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) { return nil, request.Context().Err() })}
+		require.ErrorIs(t, connector.TestConnection(parent), context.Canceled)
+	})
+}
 
 func TestAnyShareConnectorMetadata(t *testing.T) {
 	t.Run("any share connector metadata", func(t *testing.T) {
@@ -250,8 +332,11 @@ func TestAnyShareConnectorConnectAndMetadata(t *testing.T) {
 		connector.config.AuthType = authTypeAppSecret
 		connector.config.AppID = "app"
 		connector.config.AppSecret = "secret"
-		connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		connector.httpClient = &http.Client{Timeout: httpTimeout, Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			assert.Equal(t, "/oauth2/token", r.URL.Path)
+			deadline, ok := r.Context().Deadline()
+			require.True(t, ok)
+			assert.Greater(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
 			user, password, ok := r.BasicAuth()
 			assert.True(t, ok)
 			assert.Equal(t, "app", user)
@@ -264,10 +349,13 @@ func TestAnyShareConnectorConnectAndMetadata(t *testing.T) {
 	})
 }
 
-func TestAnyShareConnectorListFilesetsFromEntryDocLib(t *testing.T) {
-	t.Run("any share connector list filesets from entry doc lib", func(t *testing.T) {
+func TestAnyShareConnectorListFilesets(t *testing.T) {
+	t.Run("discovers entry libraries with the ordinary client timeout", func(t *testing.T) {
 		connector := newConnectedTestConnector()
-		connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		connector.httpClient = &http.Client{Timeout: httpTimeout, Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			deadline, ok := r.Context().Deadline()
+			require.True(t, ok)
+			assert.Greater(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
 			assert.Equal(t, "/api/document/v1/entry-doc-lib", r.URL.Path)
 			assert.Equal(t, "knowledge_doc_lib", r.URL.Query().Get("type"))
 			assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
@@ -298,9 +386,45 @@ func TestAnyShareConnectorListFilesetsFromEntryDocLib(t *testing.T) {
 		}
 		assert.Equal(t, "1", filesets[0].SourceMetadata["rev"])
 	})
+	t.Run("discovers configured directories with the ordinary client timeout", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		connector.config.Paths = []string{"/docs"}
+		var paths []string
+		connector.httpClient = &http.Client{Timeout: httpTimeout, Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			deadline, ok := r.Context().Deadline()
+			require.True(t, ok)
+			assert.Greater(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
+			paths = append(paths, r.URL.Path)
+			if r.Method == http.MethodPost {
+				return jsonResponse(http.StatusOK, `{"docid":"gns://fixture/object","size":-1}`), nil
+			}
+			return jsonResponse(http.StatusOK, `{"doc_id":"gns://fixture/object","name":"docs","path":"/docs"}`), nil
+		})}
+		filesets, err := connector.ListFilesets(t.Context())
+		require.NoError(t, err)
+		require.Len(t, filesets, 1)
+		assert.Equal(t, "gns://fixture/object", filesets[0].ID)
+		assert.Equal(t, []string{"/api/efast/v1/file/getinfobypath", "/api/efast/v2/items/object/all"}, paths)
+	})
 }
 
 func TestAnyShareConnectorSearchFiles(t *testing.T) {
+	t.Run("file queries retain their original context and client timeout", func(t *testing.T) {
+		connector := newConnectedTestConnector()
+		parent := t.Context()
+		connector.httpClient = &http.Client{Timeout: httpTimeout, Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			// net/http may layer its own existing client timeout over the supplied context.
+			deadline, ok := request.Context().Deadline()
+			require.True(t, ok)
+			assert.Greater(t, time.Until(deadline), common.CatalogHealthCheckTimeout())
+			return jsonResponse(http.StatusOK, `{"files":[]}`), nil
+		})}
+		files, err := connector.SearchFiles(parent, "gns://docs", "", nil, "", nil, nil, 10, 0, nil, nil)
+		require.NoError(t, err)
+		assert.Empty(t, files)
+		assert.Equal(t, httpTimeout, connector.httpClient.Timeout)
+		assert.NoError(t, parent.Err())
+	})
 	t.Run("any share connector search files", func(t *testing.T) {
 		connector := newConnectedTestConnector()
 		connector.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

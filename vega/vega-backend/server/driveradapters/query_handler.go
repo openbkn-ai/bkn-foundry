@@ -90,7 +90,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.RawQueryRequest
-	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		otellog.LogError(ctx, "Bind raw query request failed", httpErr)

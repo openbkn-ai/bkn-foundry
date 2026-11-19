@@ -109,7 +109,7 @@ func DecodeDerivedLogicalViewDefinition(raw any) (*DerivedLogicalViewDefinition,
 		return nil, err
 	}
 	var definition DerivedLogicalViewDefinition
-	if err := common.UnmarshalPreciseJSON(encoded, &definition); err != nil {
+	if err := common.UnmarshalJSON(encoded, &definition); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(definition.SourceResourceID) == "" {
@@ -186,40 +186,40 @@ type ViewProperty struct {
 func (v *ViewProperty) UnmarshalJSON(data []byte) error {
 	// 1. Detect whether it is a pure string (wildcard mode "*" or projection mode "field_a")
 	var s string
-	if err := sonic.Unmarshal(data, &s); err == nil {
+	if err := common.UnmarshalJSON(data, &s); err == nil {
 		v.Name = s
 		return nil
 	}
 
 	// 2. Detect whether it is an object
 	var raw map[string]sonic.NoCopyRawMessage
-	if err := sonic.Unmarshal(data, &raw); err != nil {
+	if err := common.UnmarshalJSON(data, &raw); err != nil {
 		return err
 	}
 
 	// Decode the fields of the base class Property (Name, Type, DisplayName, OriginalName, Description, Features)
 	type PropertyAlias Property
 	var propAlias PropertyAlias
-	if err := sonic.Unmarshal(data, &propAlias); err != nil {
+	if err := common.UnmarshalJSON(data, &propAlias); err != nil {
 		return err
 	}
 	v.Property = Property(propAlias)
 
 	// Decode from_node
 	if rawFromNode, ok := raw["from_node"]; ok {
-		_ = sonic.Unmarshal(rawFromNode, &v.FromNode)
+		_ = common.UnmarshalJSON(rawFromNode, &v.FromNode)
 	}
 
 	// Decoding from: It could be string (mapping mode) or array (alignment mode)
 	if rawFrom, ok := raw["from"]; ok {
 		// Try string
 		var fromStr string
-		if err := sonic.Unmarshal(rawFrom, &fromStr); err == nil {
+		if err := common.UnmarshalJSON(rawFrom, &fromStr); err == nil {
 			v.From = fromStr
 		} else {
 			// Try array
 			var fromList []*OutputFieldRef
-			if err := sonic.Unmarshal(rawFrom, &fromList); err == nil {
+			if err := common.UnmarshalJSON(rawFrom, &fromList); err == nil {
 				v.FromList = fromList
 			}
 		}

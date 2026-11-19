@@ -224,9 +224,9 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.CatalogRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid catalog request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -373,30 +373,15 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("id")
 
 	var req interfaces.CatalogRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid catalog request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	if req.ID != "" && req.ID != id {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDMismatch).
-			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", id, req.ID))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	req.ID = id
-
-	if err := ValidateCatalogRequest(ctx, &req); err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+	if err := ValidateUpdateCatalogRequest(ctx, &req, id); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -648,9 +633,15 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.CatalogConnectionTestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid connection-test request body")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if err := ValidateCatalogConnectionTestRequest(ctx, &req); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -665,10 +656,11 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	rest.ReplyOK(c, http.StatusOK, map[string]any{
+	result := map[string]any{
 		"success": status.HealthCheckStatus == interfaces.CatalogHealthStatusHealthy,
 		"message": status.HealthCheckResult,
-	})
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
 }
 
 // TestConnectionByEx handles POST /api/vega-backend/v1/catalogs/:id/test-connection (External)
@@ -702,7 +694,6 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	id := c.Param("id")
-
 	status, err := r.cs.TestConnection(ctx, id)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
@@ -762,9 +753,9 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 		var req struct {
 			Strategy string `json:"strategy,omitempty"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := common.BindJSON(c.Request.Body, &req); err != nil {
 			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-				WithErrorDetails(err.Error())
+				WithErrorDetails("invalid request body")
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -25,7 +26,7 @@ func ColumnMetadata(resource *interfaces.Resource) (map[string]interfaces.Filese
 	columns, ok := raw.([]interfaces.FilesetColumnMeta)
 	if !ok {
 		encoded, err := sonic.Marshal(raw)
-		if err != nil || sonic.Unmarshal(encoded, &columns) != nil {
+		if err != nil || common.UnmarshalJSON(encoded, &columns) != nil {
 			return nil, fmt.Errorf("invalid stored source column metadata")
 		}
 	}

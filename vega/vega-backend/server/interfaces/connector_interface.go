@@ -214,4 +214,8 @@ type IndexConnector interface {
 // Implementations: rest, graphql, etc.
 type APIConnector interface {
 	Connector
+	// ValidateDefinition 仅在持久化前校验 API 操作和输出字段映射，不访问上游。
+	ValidateDefinition(ctx context.Context, definition *APIDefinition, schemaDefinition []*Property) error
+	// ExecuteQuery 使用已校验的 Resource 定义执行一次查询，负责在访问上游前建立连接。
+	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
 }

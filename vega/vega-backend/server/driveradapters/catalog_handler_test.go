@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -714,4 +715,135 @@ func TestCatalogDiscoverCountsLogicalCatalog(t *testing.T) {
 	engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "task-1")
+}
+
+func TestCatalogRestHandlerPreciseBinding(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			engine, cs, _ := setupCatalogHandlerTest(t)
+			check := func(req *interfaces.CatalogRequest) {
+				assert.Equal(t, "catalog", req.Name)
+				values := req.ConnectorCfg["variables"].(map[string]any)
+				assert.Equal(t, json.Number("9007199254740993"), values["large"])
+				assert.Equal(t, json.Number("12345678901234567890.123456789"), values["amount"])
+			}
+			url := "/api/vega-backend/in/v1/catalogs"
+			status := http.StatusCreated
+			if method == http.MethodPost {
+				cs.EXPECT().Create(gomock.Any(), gomock.Any(), true).DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) (string, error) {
+					check(req)
+					return "catalog-1", nil
+				})
+			} else {
+				url += "/catalog-1"
+				status = http.StatusNoContent
+				cs.EXPECT().Update(gomock.Any(), gomock.Any(), true).DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) error {
+					check(req)
+					assert.Equal(t, "catalog-1", req.ID)
+					return nil
+				})
+			}
+			body := `{"name":"catalog","connector_type":"http","connector_config":{"variables":{"large":9007199254740993,"amount":12345678901234567890.123456789}},"expected_update_time":1,"unknown":true}`
+			request := httptest.NewRequest(method, url+"?allow_unhealthy=true", strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, status, recorder.Code, recorder.Body.String())
+		})
+	}
+}
+
+func TestCatalogRestHandlerBindErrorsHideRequestValues(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, test := range []struct {
+		name, method, url, typeError string
+	}{
+		{"create", http.MethodPost, "/api/vega-backend/in/v1/catalogs", `{"connector_config":{"sample":"fixture-private-value"},"name":false}`},
+		{"update", http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", `{"connector_config":{"sample":"fixture-private-value"},"name":false}`},
+		{"unpersisted test", http.MethodPost, "/api/vega-backend/in/v1/catalogs/test-connection", `{"connector_config":{"sample":"fixture-private-value"},"connector_type":false}`},
+	} {
+		for _, body := range []string{`{"unknown":"fixture-private-value"`, test.typeError} {
+			t.Run(test.name+"/"+body, func(t *testing.T) {
+				engine, cs, _ := setupCatalogHandlerTest(t)
+				cs.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+				cs.EXPECT().TestConnectionConfig(gomock.Any(), gomock.Any()).Times(0)
+				cs.EXPECT().TestConnection(gomock.Any(), gomock.Any()).Times(0)
+				request := httptest.NewRequest(test.method, test.url, strings.NewReader(body))
+				request.Header.Set("Content-Type", "application/json")
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+				assert.NotContains(t, recorder.Body.String(), "fixture-private-value")
+				assert.Contains(t, recorder.Body.String(), "invalid ")
+			})
+		}
+	}
+}
+
+func TestRestHandlerTestConnectionConfig(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, test := range []struct {
+		name, body     string
+		valid, precise bool
+	}{
+		{name: "required connector configuration", body: `{"connector_type":"http","connector_config":{}}`, valid: true},
+		{name: "unknown fields ignored", body: `{"connector_type":"http","connector_config":{},"unknown":false}`, valid: true},
+		{name: "precise config", body: `{"connector_type":"http","connector_config":{"variables":{"large":9007199254740993,"amount":12345678901234567890.123456789}}}`, valid: true, precise: true},
+		{name: "missing connector", body: `{"connector_config":{}}`},
+		{name: "missing config", body: `{"connector_type":"http"}`},
+		{name: "null config", body: `{"connector_type":"http","connector_config":null}`},
+		{name: "config type", body: `{"connector_type":"http","connector_config":[]}`},
+		{name: "connector type", body: `{"connector_type":false,"connector_config":{}}`},
+		{name: "null request", body: `null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			engine, cs, _ := setupCatalogHandlerTest(t)
+			if test.valid {
+				cs.EXPECT().TestConnectionConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
+					assert.Equal(t, "http", req.ConnectorType)
+					assert.NotNil(t, req.ConnectorCfg)
+					if test.precise {
+						values := req.ConnectorCfg["variables"].(map[string]any)
+						assert.Equal(t, json.Number("9007199254740993"), values["large"])
+						assert.Equal(t, json.Number("12345678901234567890.123456789"), values["amount"])
+					}
+					return &interfaces.CatalogHealthCheckStatus{HealthCheckStatus: interfaces.CatalogHealthStatusHealthy, HealthCheckResult: "validated"}, nil
+				})
+			} else {
+				cs.EXPECT().TestConnectionConfig(gomock.Any(), gomock.Any()).Times(0)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/test-connection", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			status := http.StatusBadRequest
+			if test.valid {
+				status = http.StatusOK
+			}
+			require.Equal(t, status, recorder.Code, recorder.Body.String())
+
+		})
+	}
+}
+
+func TestCatalogRestHandlerTestConnectionIgnoresBody(t *testing.T) {
+	restore := setGinMode()
+	defer restore()
+	for _, body := range []string{"", `{}`, `{"unknown":"fixture"`, `{"scope":"resource","resource_id":"ignored","paging":false,"connector_config":{"sample":"ignored"}}`} {
+		t.Run(body, func(t *testing.T) {
+			engine, cs, _ := setupCatalogHandlerTest(t)
+			cs.EXPECT().TestConnection(gomock.Any(), "catalog-1").Return(&interfaces.CatalogHealthCheckStatus{HealthCheckStatus: interfaces.CatalogHealthStatusHealthy, HealthCheckResult: "Connection test succeeded."}, nil)
+			request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/catalogs/catalog-1/test-connection", strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			assert.JSONEq(t, `{"success":true,"message":"Connection test succeeded."}`, recorder.Body.String())
+		})
+	}
 }

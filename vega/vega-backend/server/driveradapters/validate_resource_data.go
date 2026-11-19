@@ -21,7 +21,14 @@ import (
 )
 
 // Parameter verification for resource data query
-func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams, category string) error {
+	if err := validateBinaryMode(ctx, params.BinaryMode); err != nil {
+		return err
+	}
+	if category == interfaces.ResourceCategoryAPI && (params.Paging.Cursor != "" || params.Paging.Mode != "" && params.Paging.Mode != interfaces.PagingModeSingle) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("API queries support only single paging without a cursor")
+	}
 	if params.Paging.Cursor != "" {
 		return validateResourceDataCursorContinuation(ctx, params)
 	}
@@ -35,15 +42,12 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 			return err
 		}
 	}
-	if err := validateBinaryMode(ctx, params.BinaryMode); err != nil {
-		return err
-	}
 	if params.BinaryMode == nil {
 		defaultBinaryMode := interfaces.BinaryModeMetadata
 		params.BinaryMode = &defaultBinaryMode
 	}
 
-	err := validateResourceDataPaging(ctx, params)
+	err := validateResourceDataPaging(ctx, params, category)
 	if err != nil {
 		return err
 	}
@@ -88,7 +92,21 @@ func validateBinaryMode(ctx context.Context, mode *string) error {
 		WithErrorDetails("binary_mode must be either metadata or content")
 }
 
-func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
+func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams, category string) error {
+	if category == interfaces.ResourceCategoryAPI {
+		if params.Paging.Mode == "" {
+			params.Paging.Mode = interfaces.PagingModeSingle
+		}
+		if params.Paging.Offset < 0 {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+				WithErrorDetails("paging.offset must not be negative")
+		}
+		if params.Paging.Limit < 0 {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+				WithErrorDetails("paging.limit must not be negative")
+		}
+		return nil
+	}
 	paging := params.Paging
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
@@ -158,6 +176,10 @@ func validatePaginationParams(ctx context.Context, offset, limit int) error {
 
 func validateSortFields(ctx context.Context, sortFields []*interfaces.SortField) error {
 	for _, sortField := range sortFields {
+		if sortField == nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
+				WithErrorDetails("sort items must be objects")
+		}
 		sortField.Direction = strings.ToUpper(sortField.Direction)
 		if sortField.Direction != interfaces.ASC_DIRECTION &&
 			sortField.Direction != interfaces.DESC_DIRECTION {
@@ -309,7 +331,7 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 
 	// Verify group_by
 	for _, groupByItem := range params.GroupBy {
-		if groupByItem.Property == "" {
+		if groupByItem == nil || groupByItem.Property == "" {
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails("GroupBy property cannot be empty")
 		}
