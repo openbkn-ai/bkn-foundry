@@ -41,7 +41,8 @@ type NetworkCheckResult struct {
 	// MisplacedParameters are parameters whose value source sits in Source, as the legacy parameter
 	// table wrote it. Execution drops them; a 3.0 export is refused until they are fixed.
 	MisplacedParameters []NetworkCheckParameter `json:"misplaced_parameters"`
-	// InvalidParameters are the other parameters whose value_from is not property, input or const.
+	// InvalidParameters are the other parameters whose value_from is not property, input or const
+	// (nor, for an action, source_identity or target_identity).
 	// There is no rewrite to suggest; execution drops them and a 3.0 export is refused until they
 	// are fixed.
 	InvalidParameters []NetworkCheckInvalidParameter `json:"invalid_parameters"`

@@ -132,3 +132,25 @@ func TestHasV3Declarations(t *testing.T) {
 		assert.True(t, HasV3Declarations(net), name)
 	}
 }
+
+// A relation action takes its two ends' identities through source_identity and target_identity, which a
+// 3.0 import accepts for action parameters; the check accepts them too. A logic property cannot use them.
+func TestFindInvalidParameters_RelationEndIdentities(t *testing.T) {
+	net := &BknNetwork{
+		ActionTypes: []*BknActionType{{
+			BknActionTypeFrontmatter: BknActionTypeFrontmatter{ID: "link_product_brand"},
+			Parameters: []Parameter{
+				{Name: "key", Source: "body", ValueFrom: "source_identity"},
+				{Name: "X-Relation-Target", Source: "header", ValueFrom: "target_identity"},
+			},
+		}},
+		ObjectTypes: []*BknObjectType{{
+			BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{ID: "product"},
+			LogicProperties: []*LogicProperty{{Name: "score", Parameters: []Parameter{{Name: "k", ValueFrom: "source_identity"}}}},
+		}},
+	}
+	invalid := FindInvalidParameters(net)
+	require.Len(t, invalid, 1)
+	assert.Equal(t, "product", invalid[0].ObjectTypeID)
+	assert.Empty(t, FindMisplacedParameters(net))
+}

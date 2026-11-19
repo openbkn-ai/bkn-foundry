@@ -1061,17 +1061,22 @@ func Test_RequirementDrafting(t *testing.T) {
 			})
 		})
 
-		Convey("Drafting needs catalogs, and documents a drafting can read; documents are optional\n", func() {
+		Convey("Drafting needs documents a drafting can read; documents and catalogs are optional\n", func() {
+			// A project over a knowledge base alone reads no catalog: its scenarios are drafted from the
+			// confirmed model, as for any project.
 			noCatalogs := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(noCatalogs, nil)
-			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return(docs, nil)
+			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{}, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmedDraft(), true, nil)
+			ra.EXPECT().GetRequirement(gomock.Any(), "p1").Return(nil, false, nil)
+			ra.EXPECT().StartDrafting(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(owned, nil)
 			ra.EXPECT().GetDocuments(gomock.Any(), "p1").Return([]*interfaces.RequirementDocument{
 				{ID: "d1", Content: strings.Repeat("字", maxInputRunes+1)},
 			}, nil)
 
 			_, err := svc.GenerateRequirement(ctx, token, "p1", caller, false)
-			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_NoCatalogs)
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Requirement_Drafting)
 			_, err = svc.GenerateRequirement(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Requirement_InputsTooLarge)
 		})

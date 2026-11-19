@@ -130,11 +130,14 @@ type releaseCheck struct {
 	// copyFrom names the copies of the functions and Skills the latest release made.
 	copyFrom string
 	// ownDraft is set when the draft holds only what a prepared release of the lineage wrote.
-	ownDraft   bool
-	versioning *interfaces.KNVersioning
-	previous   *capability.Manifest
-	pkg        map[string][]byte
-	steps      []*capability.Step
+	ownDraft bool
+	// draftInMain is set when the draft has edits but its definitions are main's: they were
+	// committed to the project, so replacing the draft loses none of them.
+	draftInMain bool
+	versioning  *interfaces.KNVersioning
+	previous    *capability.Manifest
+	pkg         map[string][]byte
+	steps       []*capability.Step
 }
 
 func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, token string, lineageID string,
@@ -166,10 +169,11 @@ func (s *lineageService) prepare(ctx context.Context, gs interfaces.GitStore, to
 	}
 	// Every write into the draft comes first; the regression then reads the draft at the revision
 	// the last of them made. Edits someone made to the draft and did not publish are dropped only
-	// when the owner said so, or when they are what an earlier preparing of this lineage wrote.
+	// when the owner said so, when they are what an earlier preparing of this lineage wrote, or when
+	// they were committed to the project. The revision read guards an edit made since the review.
 	imported, revision, err := s.kva.ReplaceDraft(ctx, token, pkg, interfaces.KNReplaceImport{
 		ExpectedDraftRevision: checked.versioning.Draft.Revision,
-		Overwrite:             req.OverwriteDraftChanges || checked.ownDraft,
+		Overwrite:             req.OverwriteDraftChanges || checked.ownDraft || checked.draftInMain,
 	})
 	if err != nil {
 		return nil, err
@@ -635,6 +639,7 @@ func (s *lineageService) checkRelease(ctx context.Context, gs interfaces.GitStor
 			return nil, err
 		}
 		diff = drift.DiffFiles(stored, draft)
+		checked.draftInMain = diff.Empty()
 	}
 	// So would edits made to the functions and Skills the last release recorded.
 	previous, tracked, capabilityDiff, err := drift.CheckCapabilities(ctx, gs, s.efa, token, lineageID, mainHead)

@@ -1007,12 +1007,9 @@ func (s *requirementService) GenerateRequirement(ctx context.Context, token stri
 		span.SetStatus(codes.Error, "Get documents failed")
 		return nil, internalError(ctx, "Get documents failed", err)
 	}
-	// Tables are read from the catalogs the project reads; the inputs record those it keeps.
+	// Tables are read from the catalogs the project reads; the inputs record those it keeps. A
+	// project over a knowledge base alone reads none: its scenarios rest on the confirmed model.
 	catalogIDs := s.catalogsOf(ctx, token, entry, caller)
-	if len(catalogIDs) == 0 {
-		span.SetStatus(codes.Error, "No catalogs")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Requirement_NoCatalogs)
-	}
 	if err := checkInputsSize(ctx, docs); err != nil {
 		span.SetStatus(codes.Error, "Inputs too large")
 		return nil, err
