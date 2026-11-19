@@ -173,6 +173,40 @@ func Test_BuildSpecInputsReadTheRecordTheQuestionNames(t *testing.T) {
 	})
 }
 
+func Test_BuildSpecQuestionsRestOnTheModelWithoutDocuments(t *testing.T) {
+	Convey("With no requirement document, a question about the adopted model rests on it though the Agent gave no reason\n", t, func() {
+		order := &interfaces.DraftObjectType{ID: "plan_order", Name: "MRP计划订单", Adopted: true, PrimaryKeys: []string{"billno"},
+			Properties: []*interfaces.DraftProperty{{Name: "billno", Type: "string"}, {Name: "status", Type: "string"}}}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{order},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, text string, conceptIDs ...string) agentQuestion {
+			return agentQuestion{ID: id, Text: text, Template: text, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, ConceptIDs: conceptIDs}
+		}
+		out := func() *draftOutput {
+			return &draftOutput{Questions: []agentQuestion{
+				question("q1", "MRP计划订单一共有多少张？"),
+				question("q2", "这些单据什么时候关闭？", "plan_order"),
+				question("q3", "今天天气怎么样？"),
+			}}
+		}
+		spec := emptySpec()
+		buildSpec(out(), map[string]*interfaces.RequirementDocument{}, draft, spec)
+		texts := []string{}
+		for _, q := range spec.Questions {
+			texts = append(texts, q.Text)
+			So(q.SupplementReason, ShouldEqual, "项目没有需求文档可引用，问题依据已采纳的概念模型起草")
+		}
+		So(texts, ShouldResemble, []string{"MRP计划订单一共有多少张？", "这些单据什么时候关闭？"})
+		So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{{Kind: rejectedQuestion, Text: "今天天气怎么样？", Reason: rejectedMissingBasis}})
+
+		// A project with documents cites them: a question citing nothing stays refused.
+		spec = emptySpec()
+		buildSpec(out(), documentsByID(testDocuments()), draft, spec)
+		So(spec.Questions, ShouldBeEmpty)
+	})
+}
+
 func Test_BuildSpec(t *testing.T) {
 	Convey("Test buildSpec\n", t, func() {
 		docs := documentsByID(testDocuments())

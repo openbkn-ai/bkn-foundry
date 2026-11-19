@@ -25,7 +25,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 )
 
 // requirementAgentID is the bkn-agent task Agent that drafts specifications.
@@ -804,6 +806,15 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		if slices.ContainsFunc(keptSpec.Questions, func(k *interfaces.RequirementQuestion) bool { return sameText(k.Text, q.Text) }) {
 			continue
 		}
+		// With no requirement document there is nothing to cite: a question about the adopted
+		// model rests on it, as drafting was told, whether or not the Agent said so.
+		if len(docs) == 0 && len(q.Citations) == 0 && strings.TrimSpace(q.SupplementReason) == "" && asksOfModel(q, draft) {
+			reason, ok := locale.ModelBasisTexts[projecthooks.DraftLanguage(draft)]
+			if !ok {
+				reason = locale.ModelBasisTexts[interfaces.NAMING_LANGUAGE_EN_US]
+			}
+			q.SupplementReason = reason
+		}
 		citations, reason := basisOf(q.Citations, q.SupplementReason, docs, true)
 		if reason == "" && len(citations) > 0 && !numbersInQuotes(q.Text, citations) && !recordValuesInText(q, citations, docs) {
 			reason = rejectedNumberNotInQuote
@@ -1308,4 +1319,27 @@ func (s *requirementService) FailInterrupted(ctx context.Context) error {
 		logger.Infof("Failed %d question guidance generations a previous run left going", n)
 	}
 	return nil
+}
+
+// asksOfModel tells whether a question is about the adopted model: it names an adopted object type
+// by id or by name, or an input reads a property of one.
+func asksOfModel(q agentQuestion, draft *interfaces.Draft) bool {
+	if draft == nil {
+		return false
+	}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot == nil || !ot.Adopted {
+			continue
+		}
+		name := strings.TrimSpace(ot.Name)
+		if slices.Contains(q.ConceptIDs, ot.ID) || name != "" && (strings.Contains(q.Text, name) || strings.Contains(q.Template, name)) {
+			return true
+		}
+		for _, in := range q.Inputs {
+			if in.Property != "" && slices.ContainsFunc(ot.Properties, func(p *interfaces.DraftProperty) bool { return p != nil && p.Name == in.Property }) {
+				return true
+			}
+		}
+	}
+	return false
 }
