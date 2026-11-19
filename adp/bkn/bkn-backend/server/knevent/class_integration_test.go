@@ -332,13 +332,14 @@ func TestIntegrationEarlierEventTypesAreGivenTheirClasses(t *testing.T) {
 		t.Fatalf("kn1 at %d of %d, synced %v", projected, last, synced)
 	}
 	// A versioned network with a clean draft is given its classes too, and they
-	// are published.
+	// are published in one version: one each would drop the versions its people
+	// published from a network that keeps no full history.
 	for _, code := range []string{"late_order", "low_stock"} {
 		if given := cs.eventType(t, "kn2", code); given.ObjectTypeID != code || cs.definitions.objects["kn2/draft/"+code] == nil {
 			t.Fatalf("kn2 %s was not given its class: %+v", code, given)
 		}
 	}
-	if len(cs.definitions.published) < 2 {
+	if want := []string{"Event classes: 订单超期, 低库存"}; !reflect.DeepEqual(cs.definitions.published, want) {
 		t.Fatalf("published %v", cs.definitions.published)
 	}
 	cs.agrees(t, "kn2", "late_order")

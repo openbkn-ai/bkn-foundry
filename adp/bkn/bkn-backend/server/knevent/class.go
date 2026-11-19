@@ -338,9 +338,14 @@ func settled(err error) bool {
 	return false
 }
 
-// classNote and removalNote say why a version was published: the class of an
-// event type made or changed, or taken away.
-func classNote(name string) string   { return "Event class: " + name }
+// classNote and removalNote say why a version was published: the classes of
+// event types made or changed, or the class of one taken away.
+func classNote(names ...string) string {
+	if len(names) == 1 {
+		return "Event class: " + names[0]
+	}
+	return "Event classes: " + strings.Join(names, ", ")
+}
 func removalNote(name string) string { return "Event class removed: " + name }
 
 // ensure makes or completes the class of an event type, and publishes it in a
