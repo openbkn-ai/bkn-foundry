@@ -304,7 +304,7 @@ func TestIntegrationALongFeedIsFollowedPageByPage(t *testing.T) {
 }
 
 // Event types from before events were object types have no class. The worker
-// gives them one, except in a versioned network, and writes their events.
+// gives them one, in a versioned network as well, and writes their events.
 func TestIntegrationEarlierEventTypesAreGivenTheirClasses(t *testing.T) {
 	cs := newClassService(t)
 	ctx := userContext()
@@ -331,22 +331,16 @@ func TestIntegrationEarlierEventTypesAreGivenTheirClasses(t *testing.T) {
 	if last, projected, synced := cs.state(t, "kn1"); projected != last || !reflect.DeepEqual(synced, []string{"late_order", "low_stock"}) {
 		t.Fatalf("kn1 at %d of %d, synced %v", projected, last, synced)
 	}
-	// The draft of a versioned network is not written to behind its people's backs.
-	if waiting := cs.eventType(t, "kn2", "late_order"); waiting.ObjectTypeID != "" || len(cs.definitions.objects) != 2 {
-		t.Fatalf("kn2 was given a class: %+v", waiting)
+	// A versioned network with a clean draft is given its classes too, and they
+	// are published.
+	for _, code := range []string{"late_order", "low_stock"} {
+		if given := cs.eventType(t, "kn2", code); given.ObjectTypeID != code || cs.definitions.objects["kn2/draft/"+code] == nil {
+			t.Fatalf("kn2 %s was not given its class: %+v", code, given)
+		}
 	}
-	// Its feed is followed all the same, so it does not come up every round.
-	if last, projected, _ := cs.state(t, "kn2"); projected != last {
-		t.Fatalf("kn2 at %d of %d", projected, last)
+	if len(cs.definitions.published) < 2 {
+		t.Fatalf("published %v", cs.definitions.published)
 	}
-
-	// The type gets its class when someone updates it; the events it already
-	// had are then written from the ledger.
-	must(cs.UpdateEventType(ctx, "kn2", "late_order", interfaces.KnEventTypeInput{Name: "订单超期", Subject: "order"}))
-	if cs.definitions.objects["kn2/draft/late_order"] == nil {
-		t.Fatalf("the class was not written to the draft: %v", cs.definitions.writes)
-	}
-	cs.round()
 	cs.agrees(t, "kn2", "late_order")
 
 	// Types without a class are looked for now and then, not every round.

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -207,9 +208,18 @@ func isEventClass(objectType *interfaces.ObjectType) bool {
 // class, as the definition API does.
 type definitions interface {
 	// branch is the branch a network's definitions are written to: its draft
-	// when the network is versioned, where a class waits to be published like
-	// any other change to the model.
+	// when the network is versioned.
 	branch(ctx context.Context, knID string) (string, error)
+	// begin readies a versioned network's draft for writes of class
+	// definitions. A draft with no unpublished changes of its own, after it is
+	// put back on the running version if that was switched, is one whose
+	// writes publish may release; the context returned remembers that. Any
+	// other draft, and a network without versions, gives the context as it was.
+	begin(ctx context.Context, knID string) (context.Context, error)
+	// publish releases as a new version, noting why, what the writes under a
+	// context from begin put in the draft. It does nothing when begin found
+	// changes of other people in the draft, or the writes changed nothing.
+	publish(ctx context.Context, knID, note string) error
 	// objectTypes reads object types by ID; one that does not exist is left out.
 	objectTypes(ctx context.Context, knID, branch string, ids []string) (map[string]*interfaces.ObjectType, error)
 	saveObjectType(ctx context.Context, objectType *interfaces.ObjectType) error
@@ -237,6 +247,19 @@ type eventClass struct {
 type classes struct {
 	definitions definitions
 	datasets    interfaces.VegaBackendService
+
+	// unpublished holds, by network, the class definitions whose release
+	// failed, with the context that wrote them, to be released again.
+	mu          sync.Mutex
+	unpublished map[string]unpublished
+}
+
+// unpublished is a release of class definitions to make again: the context
+// carries the running version and the draft revision the writes left, so a
+// release made again never carries a change of anyone else.
+type unpublished struct {
+	ctx  context.Context
+	note string
 }
 
 // asPlatform is ctx acting as the platform rather than as the caller.
@@ -245,17 +268,100 @@ func asPlatform(ctx context.Context) context.Context {
 		interfaces.AccountInfo{ID: interfaces.ADMIN_ACCOUNT_ID, Type: interfaces.ADMIN_ACCOUNT_TYPE})
 }
 
-// versioned reports whether a network's classes wait in its draft.
-func (c *classes) versioned(ctx context.Context, knID string) (bool, error) {
-	branch, err := c.definitions.branch(asPlatform(ctx), knID)
-	return branch == interfaces.DRAFT_BRANCH, err
+// begin readies the draft of a versioned network for writes of class
+// definitions that are published once they are done.
+func (c *classes) begin(ctx context.Context, knID string) (context.Context, error) {
+	return c.definitions.begin(asPlatform(ctx), knID)
 }
 
-// ensure makes or completes the class of an event type. Every step keeps
-// what is already as it should be, so a call that failed half way is made
-// again.
+// publish releases the class definitions written under a context from begin.
+// The definitions are in the draft by then, and stay there when the release
+// fails: the event type is as it should be, and the next publication of the
+// network carries them.
+func (c *classes) publish(ctx context.Context, knID, note string) {
+	err := c.definitions.publish(ctx, knID, note)
+	if err == nil {
+		return
+	}
+	logger.Warnf("knowledge-network event: publish %q of network %s: %v", note, knID, err)
+	if !settled(err) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.unpublished == nil {
+			c.unpublished = map[string]unpublished{}
+		}
+		c.unpublished[knID] = unpublished{ctx: context.WithoutCancel(ctx), note: note}
+	}
+}
+
+// republish makes again the releases that failed. One is let go once it is
+// made, or once the network moved on without it: someone published or wrote
+// the draft since, and the definitions go with their next release.
+func (c *classes) republish(ctx context.Context) {
+	c.mu.Lock()
+	waiting := make(map[string]unpublished, len(c.unpublished))
+	for knID, release := range c.unpublished {
+		waiting[knID] = release
+	}
+	c.mu.Unlock()
+	for knID, release := range waiting {
+		if ctx.Err() != nil {
+			return
+		}
+		err := c.definitions.publish(release.ctx, knID, release.note)
+		if err != nil && !settled(err) {
+			logger.Warnf("knowledge-network event: publish %q of network %s again: %v", release.note, knID, err)
+			continue
+		}
+		c.mu.Lock()
+		if c.unpublished[knID] == release {
+			delete(c.unpublished, knID)
+		}
+		c.mu.Unlock()
+	}
+}
+
+// settled reports whether a refused release is one no later try makes: the
+// network was published or its draft written since, or it is no longer
+// versioned.
+func settled(err error) bool {
+	var refused *httperrors.HTTPError
+	if !errors.As(err, &refused) {
+		return false
+	}
+	switch refused.ErrorCode {
+	case berrors.BknBackend_KNVersion_RunningVersionMismatch, berrors.BknBackend_KNVersion_DraftRevisionMismatch,
+		berrors.BknBackend_KNVersion_DraftBaseOutdated, berrors.BknBackend_KNVersion_NothingToPublish,
+		berrors.BknBackend_KNVersion_NotVersioned, berrors.BknBackend_KNVersion_VersioningDisabling:
+		return true
+	}
+	return false
+}
+
+// classNote and removalNote say why a version was published: the class of an
+// event type made or changed, or taken away.
+func classNote(name string) string   { return "Event class: " + name }
+func removalNote(name string) string { return "Event class removed: " + name }
+
+// ensure makes or completes the class of an event type, and publishes it in a
+// versioned network whose draft holds no changes of other people. Every step
+// keeps what is already as it should be, so a call that failed half way is
+// made again.
 func (c *classes) ensure(ctx context.Context, eventType interfaces.KnEventType) (eventClass, error) {
 	ctx = asPlatform(ctx)
+	ctx, err := c.begin(ctx, eventType.KNID)
+	if err != nil {
+		return eventClass{objectTypeID: classObjectTypeID(eventType.Code), datasetID: classDatasetID(eventType.KNID, eventType.Code)}, err
+	}
+	class, err := c.define(ctx, eventType)
+	if err == nil {
+		c.publish(ctx, eventType.KNID, classNote(eventType.Name))
+	}
+	return class, err
+}
+
+// define makes or completes the class definitions and the dataset of an event type.
+func (c *classes) define(ctx context.Context, eventType interfaces.KnEventType) (eventClass, error) {
 	class := eventClass{
 		objectTypeID: classObjectTypeID(eventType.Code),
 		datasetID:    classDatasetID(eventType.KNID, eventType.Code),
@@ -356,9 +462,9 @@ func (c *classes) clear(ctx context.Context, eventType interfaces.KnEventType, c
 // relation to the subject. A class that other definitions use is kept, and so
 // is the type: they would be left pointing at nothing. A class that is gone,
 // or that this module did not make, is left alone. versioned says the network
-// is versioned, where the removal waits in the draft. changed says the
-// definitions may have been changed, even when err says the removal did not
-// finish.
+// is versioned, where the removal is made in the draft: it is published by the
+// caller, under a context from begin. changed says the definitions may have
+// been changed, even when err says the removal did not finish.
 func (c *classes) remove(ctx context.Context, eventType interfaces.KnEventType) (versioned, changed bool, err error) {
 	id := eventType.ObjectTypeID
 	if id == "" {
@@ -397,9 +503,15 @@ func (c *classes) discard(ctx context.Context, eventType interfaces.KnEventType,
 	ctx = context.WithoutCancel(ctx)
 	if class.madeType {
 		eventType.ObjectTypeID = class.objectTypeID
-		if _, _, err := c.remove(ctx, eventType); err != nil {
+		removed, err := c.begin(ctx, eventType.KNID)
+		if err != nil {
 			logger.Warnf("knowledge-network event: take back class %s of network %s, made for event type %s that was not stored: %v",
 				class.objectTypeID, eventType.KNID, eventType.Code, err)
+		} else if _, _, err := c.remove(removed, eventType); err != nil {
+			logger.Warnf("knowledge-network event: take back class %s of network %s, made for event type %s that was not stored: %v",
+				class.objectTypeID, eventType.KNID, eventType.Code, err)
+		} else {
+			c.publish(removed, eventType.KNID, removalNote(eventType.Name))
 		}
 	}
 	if class.madeDataset {

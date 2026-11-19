@@ -7,15 +7,20 @@ package knevent
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	corelogics "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 // coreDefinitions writes definitions in process with what the definition
@@ -52,6 +57,69 @@ func (d *coreDefinitions) branch(ctx context.Context, knID string) (string, erro
 		return interfaces.MAIN_BRANCH, nil
 	}
 	return interfaces.DRAFT_BRANCH, nil
+}
+
+// publishableKey marks a context whose draft writes may be published, with the
+// version that was running when the draft was found clean.
+type publishableKey struct{}
+
+// publishSource tells a version that the platform published it.
+var publishSource = &interfaces.KNVersionSource{Type: "platform", Ref: "knevent"}
+
+// begin follows a public direct write on a versioned network: a draft with no
+// changes of its own, put back on the running version if that was switched,
+// takes the writes, and they are published. The writes carry the draft
+// revision seen here, so that a change of anyone else in between fails them
+// rather than being published with them.
+func (d *coreDefinitions) begin(ctx context.Context, knID string) (context.Context, error) {
+	if corelogics.KNVA == nil {
+		return ctx, nil
+	}
+	state, err := corelogics.KNVA.GetState(ctx, nil, knID, false)
+	if err != nil || state == nil || state.Mode == interfaces.KNVersioningDisabling || state.RunningVersion == 0 {
+		return ctx, err
+	}
+	if state.DraftHasChanges() {
+		versions := kn_version.Current()
+		if versions == nil {
+			return ctx, nil
+		}
+		if err := versions.RebaseDraft(ctx, knID); err != nil {
+			logger.Warnf("knowledge-network event: put the draft of network %s back on its running version: %v", knID, err)
+			return ctx, nil
+		}
+		if state, err = corelogics.KNVA.GetState(ctx, nil, knID, false); err != nil || state == nil {
+			return ctx, err
+		}
+		if state.DraftHasChanges() {
+			return ctx, nil
+		}
+	}
+	revision := state.DraftRevision
+	ctx, _ = corelogics.WithDraftWrite(ctx, &revision)
+	return context.WithValue(ctx, publishableKey{}, state.RunningVersion), nil
+}
+
+func (d *coreDefinitions) publish(ctx context.Context, knID, note string) error {
+	running, ok := ctx.Value(publishableKey{}).(int)
+	write := corelogics.DraftWriteFrom(ctx)
+	versions := kn_version.Current()
+	if !ok || write == nil || !write.Written || versions == nil {
+		return nil
+	}
+	revision := write.Revision
+	// The writes are committed: the release finishes when the caller has gone.
+	_, err := versions.Publish(context.WithoutCancel(ctx), knID, &interfaces.KNPublishRequest{
+		ExpectedRunningVersion: &running,
+		ExpectedDraftRevision:  &revision,
+		Notes:                  note,
+		Source:                 publishSource,
+	})
+	var refused *httperrors.HTTPError
+	if errors.As(err, &refused) && refused.ErrorCode == berrors.BknBackend_KNVersion_NothingToPublish {
+		return nil
+	}
+	return err
 }
 
 func (d *coreDefinitions) objectTypes(ctx context.Context, knID, branch string, ids []string) (map[string]*interfaces.ObjectType, error) {

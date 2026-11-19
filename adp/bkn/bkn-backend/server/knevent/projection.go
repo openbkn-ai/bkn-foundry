@@ -83,10 +83,13 @@ func (p *projector) run(ctx context.Context) error {
 	}
 }
 
-// round does one turn of the work, unless another replica is at it.
+// round makes again the class releases that failed, and does one turn of the
+// work, unless another replica is at it.
 func (p *projector) round(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, projectRun)
 	defer cancel()
+	// Each replica makes again the releases that failed on it.
+	p.classes.republish(ctx)
 	_, err := p.store.alone(ctx, projectLock, func() error {
 		for _, step := range []struct {
 			name string
@@ -121,9 +124,8 @@ func (p *projector) failed(key, what string, err error) {
 }
 
 // backfill gives a class to the event types that have none. A versioned
-// network is left out: its class would be written to its draft, which the
-// people working on the draft have not asked for. Such a type gets its class
-// when it is next updated.
+// network's class is published at once unless its draft holds changes of
+// other people, which it then waits in with them.
 func (p *projector) backfill(ctx context.Context) error {
 	if p.now().Sub(p.backfilled) < backfillPeriod {
 		return nil
@@ -133,21 +135,9 @@ func (p *projector) backfill(ctx context.Context) error {
 		return err
 	}
 	p.backfilled = p.now()
-	versioned := map[string]bool{}
 	for _, eventType := range types {
 		if ctx.Err() != nil {
 			return nil
-		}
-		waits, known := versioned[eventType.KNID]
-		if !known {
-			if waits, err = p.classes.versioned(ctx, eventType.KNID); err != nil {
-				logger.Warnf("knowledge-network event classes: read the version state of network %s: %v", eventType.KNID, err)
-				continue
-			}
-			versioned[eventType.KNID] = waits
-		}
-		if waits {
-			continue
 		}
 		if err := p.give(ctx, eventType); err != nil {
 			logger.Warnf("knowledge-network event classes: give event type %s of network %s its class: %v",

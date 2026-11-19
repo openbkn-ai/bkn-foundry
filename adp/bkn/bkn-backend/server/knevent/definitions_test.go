@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	corelogics "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 // publisherStub runs a change as the network's proxy publication would, and
@@ -185,5 +186,46 @@ func TestCoreDefinitionsRemoveTheClassAsTheDefinitionAPIDoes(t *testing.T) {
 		told.ObjectTypes[0].OTID != "order_late" || told.ObjectTypes[0].DataSource != nil ||
 		publisher.modes[0] != interfaces.ImportMode_Overwrite {
 		t.Fatalf("published %+v as %s", told.ObjectTypes, publisher.modes[0])
+	}
+}
+
+type versionStateStub struct {
+	interfaces.KNVersionAccess
+	state *interfaces.KNVersionState
+}
+
+func (v versionStateStub) GetState(context.Context, *sql.Tx, string, bool) (*interfaces.KNVersionState, error) {
+	return v.state, nil
+}
+
+// A draft with no changes of its own takes the writes with the revision it
+// has, and they are published against the running version. A draft with
+// changes, or a network without versions, is written as it is.
+func TestBeginPreparesOnlyADraftWithoutChangesForPublication(t *testing.T) {
+	previous := corelogics.KNVA
+	defer func() { corelogics.KNVA = previous }()
+	definitions := &coreDefinitions{}
+	ctx := asPlatform(context.Background())
+
+	corelogics.KNVA = versionStateStub{state: &interfaces.KNVersionState{
+		RunningVersion: 3, DraftBaseVersion: 3, DraftBasedOnRunning: 3, DraftRevision: 7,
+	}}
+	clean, err := definitions.begin(ctx, "kn1")
+	write := corelogics.DraftWriteFrom(clean)
+	if err != nil || write == nil || write.Expected == nil || *write.Expected != 7 || clean.Value(publishableKey{}) != 3 {
+		t.Fatalf("clean draft: %v, %+v", err, write)
+	}
+
+	for name, state := range map[string]*interfaces.KNVersionState{
+		"modified":    {RunningVersion: 3, DraftBaseVersion: 3, DraftBasedOnRunning: 3, DraftModified: true},
+		"unpublished": {RunningVersion: 0},
+		"no versions": nil,
+		"disabling":   {Mode: interfaces.KNVersioningDisabling, RunningVersion: 3, DraftBaseVersion: 3, DraftBasedOnRunning: 3},
+	} {
+		corelogics.KNVA = versionStateStub{state: state}
+		other, err := definitions.begin(ctx, "kn1")
+		if err != nil || corelogics.DraftWriteFrom(other) != nil || other.Value(publishableKey{}) != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
 	}
 }
