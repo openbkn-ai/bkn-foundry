@@ -132,6 +132,47 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 	})
 }
 
+func Test_BuildSpecInputsReadTheRecordTheQuestionNames(t *testing.T) {
+	Convey("A number field several tables share is read from the object the question names for it\n", t, func() {
+		// The bill number is the key of planned orders and a field of requests and orders: a question
+		// about a request reads the request's number, not the planned order's it is the key of.
+		bill := func(id, name string, keys ...string) *interfaces.DraftObjectType {
+			return &interfaces.DraftObjectType{ID: id, Name: name, Adopted: true, PrimaryKeys: keys, Properties: []*interfaces.DraftProperty{
+				{Name: "id", Type: "string"}, {Name: "billno", Type: "string"}}}
+		}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{bill("plan_order", "MRP计划订单", "billno"), bill("request", "采购申请单", "id"), bill("order", "采购订单", "id")},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, text, template, slot string) agentQuestion {
+			return agentQuestion{ID: id, Text: text, Template: template, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				Inputs: []agentInput{{Name: slot, Property: "billno", Role: interfaces.REQUIREMENT_INPUT_RECORD}}, SupplementReason: "依据已采纳的对象类"}
+		}
+		out := &draftOutput{Questions: []agentQuestion{
+			question("q1", "某张采购申请单的申请数量是多少？", "采购申请单 {单据编号} 的申请数量是多少？", "单据编号"),
+			// Two object types named: the one before the slot is the one numbered.
+			question("q2", "某张采购订单来自哪张采购申请单？", "采购订单 {单号} 来自哪张采购申请单？", "单号"),
+			// None named: the one it is the key of.
+			question("q3", "某个计划订单投放了吗？", "计划订单 {编号} 投放了吗？", "编号"),
+		}}
+		spec := emptySpec()
+		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
+
+		So(spec.Questions, ShouldHaveLength, 3)
+		objectOf := func(i int) string {
+			id := (*spec.Questions[i].Inputs)[0].ConceptID
+			for _, c := range spec.Concepts {
+				if c.ID == id {
+					return c.MapsTo.ID
+				}
+			}
+			return ""
+		}
+		So(objectOf(0), ShouldEqual, "request")
+		So(objectOf(1), ShouldEqual, "order")
+		So(objectOf(2), ShouldEqual, "plan_order")
+	})
+}
+
 func Test_BuildSpec(t *testing.T) {
 	Convey("Test buildSpec\n", t, func() {
 		docs := documentsByID(testDocuments())

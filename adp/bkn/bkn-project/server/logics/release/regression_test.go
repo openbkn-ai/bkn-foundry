@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -52,8 +54,11 @@ func Test_RegressionService(t *testing.T) {
 		pa := pmock.NewMockProjectAccess(mockCtrl)
 		clock := time.UnixMilli(1000)
 		va := pmock.NewMockVegaAccess(mockCtrl)
+		// One clock for questions asked a few at a time.
+		var clockMu sync.Mutex
 		svc := &regressionService{ra: ra, rs: rs, ba: ba, gs: gs, da: da, pa: pa, va: va, run: func(fn func()) { fn() },
-			sleep: func(d time.Duration) { clock = clock.Add(d) }, now: func() time.Time { return clock }}
+			sleep: func(d time.Duration) { clockMu.Lock(); clock = clock.Add(d); clockMu.Unlock() },
+			now:   func() time.Time { clockMu.Lock(); defer clockMu.Unlock(); return clock }}
 		ctx := context.Background()
 		const token = "Bearer t"
 		runner := interfaces.AccountInfo{ID: "u1", Type: "user"}
@@ -98,10 +103,25 @@ func Test_RegressionService(t *testing.T) {
 		// The judge answers by the question it is given: answered unless verdicts says otherwise.
 		verdicts := map[string]judgeOutput{}
 		var judged []judgeInput
+		var judgedMu sync.Mutex
+		// judgedOf is what the judge was given for a question: questions are judged in no set order.
+		judgedOf := func(question string) judgeInput {
+			for _, in := range judged {
+				if in.Question == question {
+					return in
+				}
+			}
+			return judgeInput{}
+		}
 		ba.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
 				var in judgeInput
-				So(json.Unmarshal([]byte(req.Message), &in), ShouldBeNil)
+				// Judged a few at a time: an assertion here would run off the test's goroutine.
+				if err := json.Unmarshal([]byte(req.Message), &in); err != nil {
+					return nil, err
+				}
+				judgedMu.Lock()
+				defer judgedMu.Unlock()
 				judged = append(judged, in)
 				out, ok := verdicts[in.Question]
 				if !ok {
@@ -127,9 +147,12 @@ func Test_RegressionService(t *testing.T) {
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(files, nil)
 			var asked []*interfaces.BknAgentAnswerRequest
+			var askedMu sync.Mutex
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					askedMu.Lock()
 					asked = append(asked, req)
+					askedMu.Unlock()
 					if req.Message == "Text of q1" {
 						return answered("Supplier S1."), nil
 					}
@@ -196,9 +219,12 @@ func Test_RegressionService(t *testing.T) {
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
 			var asked []string
+			var askedMu sync.Mutex
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					askedMu.Lock()
 					asked = append(asked, req.Message)
+					askedMu.Unlock()
 					return answered("Part."), nil
 				}).Times(3)
 			expectFinish()
@@ -213,7 +239,7 @@ func Test_RegressionService(t *testing.T) {
 				Expect: interfaces.TEST_EXPECT_EXISTS}})
 			So(finished.Questions[1].NoRecord, ShouldBeTrue)
 			So(finished.Questions[2].Tests[0].ID, ShouldEqual, "t1")
-			So(asked, ShouldResemble, []string{"Text of q1 about P7", "Text of q3 about P1", "Text of q4"})
+			So(sorted(asked), ShouldResemble, sorted([]string{"Text of q1 about P7", "Text of q3 about P1", "Text of q4"}))
 			So(finished.Results[1], ShouldResemble, interfaces.RegressionResult{QuestionID: "q2",
 				Outcome: interfaces.REGRESSION_OUTCOME_NEEDS_VALUES})
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
@@ -226,15 +252,17 @@ func Test_RegressionService(t *testing.T) {
 			rs.EXPECT().RecordTests(gomock.Any(), runner, "p1", []string{"q1"}).Return(nil, errors.New("down"))
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			var message string
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
-					So(req.Message, ShouldEqual, "Text of q1")
+					message = req.Message
 					return answered("Part."), nil
 				})
 			expectFinish()
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 			So(err, ShouldBeNil)
+			So(message, ShouldEqual, "Text of q1")
 			So(finished.Questions[0].NoRecord, ShouldBeFalse)
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{passed("q1", "Part.")})
 		})
@@ -298,10 +326,13 @@ func Test_RegressionService(t *testing.T) {
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), "supply", "b1").Return(files, nil)
 			calls := map[string][]string{}
+			var callsMu sync.Mutex
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					callsMu.Lock()
 					calls[req.Message] = append(calls[req.Message], req.ClientRequestID)
 					first := len(calls[req.Message]) == 1
+					callsMu.Unlock()
 					switch req.Message {
 					case "Text of q1":
 						// Refused before answering, then answered.
@@ -487,7 +518,7 @@ func Test_RegressionService(t *testing.T) {
 			So([]string{o, v}, ShouldResemble, []string{"not_answered", "off_topic"})
 			// The judge was given the question, the answer, the calls without their output, the needs by
 			// name and the project's naming language.
-			So(judged[0], ShouldResemble, judgeInput{
+			So(judgedOf("Text of q1"), ShouldResemble, judgeInput{
 				Question: "Text of q1", Answer: "An answer.",
 				ToolCalls: []judgeToolCall{{Name: "query_object_instance", Input: json.RawMessage(`{"ot_id":"part"}`)}, {Name: "search_schema"}},
 				Needs:     []interfaces.ReleaseItem{{Kind: ot, ID: "part", Name: "Part"}, {Kind: ot, ID: "supplier", Name: "Supplier"}},
@@ -673,9 +704,12 @@ func Test_RegressionService(t *testing.T) {
 			va.EXPECT().MissingTables(gomock.Any(), runner, []string{"t_part", "t_supplier", "t_supplier_part"}).
 				Return([]string{"t_part", "t_supplier_part"}, nil)
 			var asked []string
+			var askedMu sync.Mutex
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					askedMu.Lock()
 					asked = append(asked, req.Message)
+					askedMu.Unlock()
 					return answered("Supplier S1."), nil
 				})
 			expectFinish()
@@ -683,7 +717,7 @@ func Test_RegressionService(t *testing.T) {
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
 			So(err, ShouldBeNil)
-			So(asked, ShouldResemble, []string{"Text of q1"})
+			So(sorted(asked), ShouldResemble, sorted([]string{"Text of q1"}))
 			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_DATA_SOURCE_MISSING)
 			So(finished.Results, ShouldResemble, []interfaces.RegressionResult{
 				passed("q1", "Supplier S1."),
@@ -830,18 +864,26 @@ func Test_RegressionService(t *testing.T) {
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
 			judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(2)
 			var schema map[string]any
+			var judgeAgents []string
+			var mu sync.Mutex
+			question := map[string]string{}
 			judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ interfaces.BknAgentAccount, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentTask, error) {
-					So(req.AgentID, ShouldEqual, judgeAgentID)
-					schema = req.ResponseFormat
-					return &interfaces.BknAgentTask{TaskID: "t-" + req.Message[len(req.Message)-30:], Status: interfaces.BKN_AGENT_TASK_PENDING}, nil
+					var in judgeInput
+					_ = json.Unmarshal([]byte(req.Message), &in)
+					mu.Lock()
+					defer mu.Unlock()
+					judgeAgents, schema = append(judgeAgents, req.AgentID), req.ResponseFormat
+					id := fmt.Sprintf("t-%d", len(judgeAgents))
+					question[id] = in.Question
+					return &interfaces.BknAgentTask{TaskID: id, Status: interfaces.BKN_AGENT_TASK_PENDING}, nil
 				}).Times(3)
-			// q1's task finishes after a poll; q2's never does, nor its retry.
-			first := true
+			// q1's task finishes when polled; q2's never does, nor its retry.
 			judge.EXPECT().GetTask(gomock.Any(), runner, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ interfaces.BknAgentAccount, taskID string) (*interfaces.BknAgentTask, error) {
-					if first {
-						first = false
+					mu.Lock()
+					defer mu.Unlock()
+					if question[taskID] == "Text of q1" {
 						return &interfaces.BknAgentTask{TaskID: taskID, Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
 							Output: `{"verdict":"answered","reason":"R","used_needs":[]}`}, nil
 					}
@@ -852,6 +894,7 @@ func Test_RegressionService(t *testing.T) {
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
 			So(err, ShouldBeNil)
+			So(judgeAgents, ShouldResemble, []string{judgeAgentID, judgeAgentID, judgeAgentID})
 			So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_PASSED)
 			So(finished.Results[1].ErrorCode, ShouldEqual, interfaces.REGRESSION_CODE_JUDGE_UNAVAILABLE)
 			verdict := schema["properties"].(map[string]any)["verdict"].(map[string]any)
@@ -869,9 +912,12 @@ func Test_RegressionService(t *testing.T) {
 			expectStart()
 			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
 			var asked []string
+			var askedMu sync.Mutex
 			ba.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, req *interfaces.BknAgentAnswerRequest) (*interfaces.BknAgentAnswer, error) {
+					askedMu.Lock()
 					asked = append(asked, req.Message)
+					askedMu.Unlock()
 					return answered("An answer."), nil
 				}).Times(3)
 			expectFinish()
@@ -884,9 +930,9 @@ func Test_RegressionService(t *testing.T) {
 				{ID: "t2", Text: "Which part is P2?", Expect: interfaces.TEST_EXPECT_NOT_EXISTS},
 			})
 			// The judge reads what each test expects of the data; a template question expects nothing.
-			So([]string{judged[0].Expect, judged[1].Expect, judged[2].Expect}, ShouldResemble,
+			So([]string{judgedOf("Which part is P1?").Expect, judgedOf("Which part is P2?").Expect, judgedOf("Text of q2").Expect}, ShouldResemble,
 				[]string{interfaces.TEST_EXPECT_EXISTS, interfaces.TEST_EXPECT_NOT_EXISTS, ""})
-			So(asked, ShouldResemble, []string{"Which part is P1?", "Which part is P2?", "Text of q2"})
+			So(sorted(asked), ShouldResemble, sorted([]string{"Which part is P1?", "Which part is P2?", "Text of q2"}))
 			So(finished.Results, ShouldHaveLength, 3)
 			So([]string{finished.Results[0].QuestionID, finished.Results[0].TestID}, ShouldResemble, []string{"q1", "t1"})
 			So([]string{finished.Results[1].TestID, finished.Results[1].Outcome}, ShouldResemble, []string{"t2", "not_answered"})
@@ -936,4 +982,11 @@ func Test_RegressionService(t *testing.T) {
 func withPath(q interfaces.ScenarioQuestion, path ...interfaces.RequirementItemRef) interfaces.ScenarioQuestion {
 	q.Path = path
 	return q
+}
+
+// sorted is a sorted copy: a run asks its questions a few at a time, in no set order.
+func sorted(texts []string) []string {
+	out := slices.Clone(texts)
+	slices.Sort(out)
+	return out
 }

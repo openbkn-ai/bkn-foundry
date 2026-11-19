@@ -879,7 +879,7 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			before := len(spec.Concepts)
 			if concept, ok := concepts[in.ConceptID]; ok {
 				input.ConceptID = concept.ID
-			} else if ot := objectTypeOfProperty(draft, in.Property); ot != nil &&
+			} else if ot := objectTypeOfProperty(draft, in.Property, q.Template, strings.TrimSpace(in.Name), q.Text); ot != nil &&
 				(hasConceptOf(spec, ot) || len(spec.Concepts)-len(keptSpec.Concepts) < maxDraftConcepts) {
 				taken = conceptOfObjectType(spec, draft, ot)
 				input.ConceptID = taken.ID
