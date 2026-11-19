@@ -92,6 +92,39 @@ func Test_Knowledge(t *testing.T) {
 		})
 	})
 
+	Convey("Test the knowledge as a document runs cite\n", t, func() {
+		maintenance := interfaces.RequirementKnowledge{Files: 1,
+			Concepts: []*interfaces.RequirementKnowledgeItem{{Name: "设备", Description: "场所里的维护对象", Kind: interfaces.CONCEPT_VERDICT_OBJECT, Adopted: true}},
+			Rules: []*interfaces.RequirementKnowledgeItem{
+				{Name: "维护建议查询", Description: "动力需求 DR03：提供只读查询设备维护建议的接口", Kind: interfaces.CONCEPT_VERDICT_KINETIC},
+			}}
+
+		Convey("None makes no document\n", func() {
+			So(knowledgeDocument("p1", interfaces.NAMING_LANGUAGE_ZH_CN, interfaces.RequirementKnowledge{}), ShouldBeNil)
+		})
+
+		Convey("A need resting on a rule cites the rule, numbers and all; an unrelated quote is still refused\n", func() {
+			doc := knowledgeDocument("p1", interfaces.NAMING_LANGUAGE_ZH_CN, maintenance)
+			So(doc.ID, ShouldEqual, interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID)
+			So(doc.Content, ShouldContainSubstring, "动力需求 DR03：提供只读查询设备维护建议的接口")
+			So(doc.Content, ShouldContainSubstring, "场所里的维护对象")
+			network := &interfaces.RequirementDocument{ID: interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID, Content: "2. **查找关系定义**",
+				Blocks: segment("2. **查找关系定义**", interfaces.REQUIREMENT_FORMAT_MARKDOWN)}
+			spec := emptySpec()
+			var rejected []string
+			addLogicNeeds(spec, []agentLogicNeed{
+				{Kind: interfaces.LOGIC_NEED_API, Name: "查询设备维护建议接口", Definition: "动力需求 DR03 的只读查询接口",
+					Citations: []agentCitation{cite(interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID, "动力需求 DR03：提供只读查询设备维护建议的接口")}},
+				{Kind: interfaces.LOGIC_NEED_API, Name: "生成设备维护建议", Definition: "动力需求 DR04 的生成接口",
+					Citations: []agentCitation{cite(interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID, "2. **查找关系定义**")}},
+			}, interfaces.LOGIC_NEED_FROM_ANALYSIS, documentsByID([]*interfaces.RequirementDocument{network, doc}), kineticDraft(),
+				map[string]string{}, func(kind, text, reason string) { rejected = append(rejected, text+" "+reason) })
+			So(len(spec.LogicNeeds), ShouldEqual, 1)
+			So(spec.LogicNeeds[0].Name, ShouldEqual, "查询设备维护建议接口")
+			So(rejected, ShouldResemble, []string{"生成设备维护建议 " + rejectedNumberNotInQuote})
+		})
+	})
+
 	Convey("Test reading the knowledge of a project\n", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -122,6 +155,15 @@ func Test_Knowledge(t *testing.T) {
 			_, err := svc.GetKnowledge(ctx, token, "p1")
 			So(err, ShouldBeNil)
 			So(read, ShouldBeNil)
+		})
+
+		Convey("The knowledge is read as a document a citation opens\n", func() {
+			defer withKnowledge(contractKnowledge())()
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(kineticDraft(), true, nil)
+			doc, err := svc.GetDocument(ctx, token, "p1", interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID)
+			So(err, ShouldBeNil)
+			So(doc.Content, ShouldContainSubstring, "Price change check: A price change needs a signed amendment")
+			So(doc.Name, ShouldEqual, "Rules and concepts of the knowledge base")
 		})
 
 		Convey("A draft that cannot be read is an error\n", func() {

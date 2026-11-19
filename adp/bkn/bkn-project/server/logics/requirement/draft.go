@@ -125,6 +125,10 @@ const (
 	// rejectedLogicNeed is a kinetic need; rejectedUnknownKind one of a kind there is none of.
 	rejectedLogicNeed   = "logic_need"
 	rejectedUnknownKind = "unknown_kind"
+	// rejectedSameNameMeasuredOtherwise is a metric of the name of one the specification has, atomic
+	// where that is derived or the other way round: another measure, which a person decides on,
+	// never merged into the one they have.
+	rejectedSameNameMeasuredOtherwise = "same_name_measured_otherwise"
 )
 
 // questionTypeFilter is the type of a question that filters records on their properties.
@@ -1149,8 +1153,11 @@ func (s *requirementService) draft(ctx context.Context, req *interfaces.Requirem
 		fail(failureInterrupted, fmt.Errorf("read draft: %v", err))
 		return
 	}
+	// The knowledge base's rules and concepts are cited as a document too, as kinetic analysis cites them.
+	knowledge := knowledgeOf(ctx, draft)
+	cited = withKnowledgeDocument(cited, project.ID, project.NamingLanguage, knowledge)
 	message, omitted, propertiesOmitted, err := buildDraftMessage(project.NamingLanguage, cited, tables, draft, &base, &base,
-		networkItems, supplement, knowledgeOf(ctx, draft))
+		networkItems, supplement, knowledge)
 	if err != nil {
 		fail(failureAgentUnavailable, err)
 		return

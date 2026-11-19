@@ -250,6 +250,24 @@ func (s *requirementService) GetDocument(ctx context.Context, token string, proj
 		span.SetStatus(codes.Ok, "")
 		return doc, nil
 	}
+	// So are the knowledge base's rules and concepts: written from the draft as runs read them.
+	if documentID == interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID {
+		d, found, err := s.da.GetDraft(ctx, projectID)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get draft failed")
+			return nil, internalError(ctx, "Get draft failed", err)
+		}
+		if !found {
+			d = nil
+		}
+		doc := knowledgeDocument(projectID, entry.Project.NamingLanguage, knowledgeOf(ctx, d))
+		if doc == nil {
+			span.SetStatus(codes.Error, "Document not found")
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Requirement_DocumentNotFound)
+		}
+		span.SetStatus(codes.Ok, "")
+		return doc, nil
+	}
 	doc, ok, err := s.ra.GetDocument(ctx, projectID, documentID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get document failed")

@@ -6,11 +6,15 @@ package requirement
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 )
 
@@ -79,4 +83,52 @@ func (s *requirementService) GetKnowledge(ctx context.Context, token string,
 	knowledge := knowledgeOf(ctx, d)
 	span.SetStatus(codes.Ok, "")
 	return &knowledge, nil
+}
+
+// knowledgeDocument is the knowledge as a document a run reads and cites beside the uploaded ones:
+// each rule, then each concept, by name and definition. A need resting on a rule cites it there, so
+// the numbers it names are checked against the rule, as against any quote. Nil when there is none.
+func knowledgeDocument(projectID string, language string, k interfaces.RequirementKnowledge) *interfaces.RequirementDocument {
+	if k.Empty() {
+		return nil
+	}
+	texts, ok := locale.KnowledgeDocumentTexts[language]
+	if !ok {
+		texts = locale.KnowledgeDocumentTexts[interfaces.NAMING_LANGUAGE_EN_US]
+	}
+	var b strings.Builder
+	section := func(title string, items []*interfaces.RequirementKnowledgeItem) {
+		if len(items) == 0 {
+			return
+		}
+		b.WriteString("## " + title + "\n\n")
+		for _, item := range items {
+			line := strings.TrimSpace(item.Name)
+			if definition := strings.TrimSpace(item.Description); definition != "" {
+				line += ": " + definition
+			}
+			b.WriteString("- " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+	section(texts["rules"], k.Rules)
+	section(texts["concepts"], k.Concepts)
+	content := strings.TrimSpace(b.String())
+	sum := sha256.Sum256([]byte(content))
+	return &interfaces.RequirementDocument{
+		ID: interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID, ProjectID: projectID, Name: texts["name"],
+		DocType: interfaces.REQUIREMENT_DOC_OTHER, Format: interfaces.REQUIREMENT_FORMAT_MARKDOWN,
+		Content: content, Blocks: segment(content, interfaces.REQUIREMENT_FORMAT_MARKDOWN),
+		SHA256: hex.EncodeToString(sum[:]), Size: int64(len(content)),
+	}
+}
+
+// withKnowledgeDocument is what a run cites with the knowledge as a document, when there is any.
+func withKnowledgeDocument(docs []*interfaces.RequirementDocument, projectID string, language string,
+	k interfaces.RequirementKnowledge) []*interfaces.RequirementDocument {
+	doc := knowledgeDocument(projectID, language, k)
+	if doc == nil {
+		return docs
+	}
+	return append(append([]*interfaces.RequirementDocument{}, docs...), doc)
 }
