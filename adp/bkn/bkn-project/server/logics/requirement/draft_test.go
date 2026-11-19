@@ -225,7 +225,7 @@ func Test_BuildSpec(t *testing.T) {
 			So(spec.Questions, ShouldBeEmpty)
 			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
 				{Kind: rejectedScenario, Text: "Invented", Reason: rejectedQuoteNotFound},
-				{Kind: rejectedScenario, Text: "No basis", Reason: rejectedQuoteNotFound},
+				{Kind: rejectedScenario, Text: "No basis", Reason: rejectedMissingBasis},
 				{Kind: rejectedScenario, Text: "Unknown document", Reason: rejectedUnknownDocument},
 				{Kind: rejectedQuestion, Text: "Reworded?", Reason: rejectedQuoteNotFound},
 			})
@@ -570,8 +570,8 @@ func Test_BuildSpec(t *testing.T) {
 				reasons[r.Kind+" "+r.Text] = r.Reason
 			}
 			So(reasons, ShouldResemble, map[string]string{
-				"concept unquoted":                             rejectedQuoteNotFound,
-				"concept late unquoted":                        rejectedQuoteNotFound,
+				"concept unquoted":                             rejectedMissingBasis,
+				"concept late unquoted":                        rejectedMissingBasis,
 				fmt.Sprintf("scenario s%d", maxSpecScenarios):  rejectedTooMany,
 				fmt.Sprintf("concept t%d", maxDraftConcepts):   rejectedTooMany,
 				fmt.Sprintf("concept t%d", maxDraftConcepts+1): rejectedTooMany,

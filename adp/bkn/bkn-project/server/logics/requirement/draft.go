@@ -593,6 +593,9 @@ func basisOf(cs []agentCitation, supplementReason string, docs map[string]*inter
 		return nil, reason
 	}
 	if len(kept) == 0 && !(supplementAllowed && strings.TrimSpace(supplementReason) != "") {
+		if len(cs) == 0 {
+			return nil, rejectedMissingBasis
+		}
 		return nil, rejectedQuoteNotFound
 	}
 	return kept, ""

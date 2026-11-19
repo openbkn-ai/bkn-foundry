@@ -121,7 +121,7 @@ func Test_Knowledge(t *testing.T) {
 				map[string]string{}, func(kind, text, reason string) { rejected = append(rejected, text+" "+reason) })
 			So(len(spec.LogicNeeds), ShouldEqual, 1)
 			So(spec.LogicNeeds[0].Name, ShouldEqual, "查询设备维护建议接口")
-			So(rejected, ShouldResemble, []string{"生成设备维护建议 " + rejectedNumberNotInQuote})
+			So(rejected, ShouldResemble, []string{"生成设备维护建议 " + rejectedBackgroundNotBasis})
 		})
 	})
 

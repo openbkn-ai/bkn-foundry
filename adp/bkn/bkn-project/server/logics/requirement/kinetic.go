@@ -120,26 +120,51 @@ func buildKineticMessage(language string, docs []*interfaces.RequirementDocument
 // keepForKinetic drops from spec the kinetic needs the kinetic run analyses anew: those an earlier
 // analysis or scenario drafting gave that no one made theirs and no question rests on. With discard
 // set, only those questions rest on stay of them. Needs the documents state, or a person added, stay.
-func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) {
+func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) []*interfaces.RequirementLogicNeed {
 	// No id once given is given again, of a need dropped here too.
 	withLists(spec)
 	recordAllIDs(spec, spec)
 	_, needs := questionRefs(spec.Questions)
+	dropped := []*interfaces.RequirementLogicNeed{}
 	spec.LogicNeeds = slices.DeleteFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
 		// One adopted from Ask AI is accepted: it stays, as one a person accepted, unless they start over.
 		analysed := n.Source == interfaces.LOGIC_NEED_FROM_ANALYSIS || n.Source == interfaces.LOGIC_NEED_FROM_SCENARIOS ||
 			n.Source == interfaces.REQUIREMENT_SOURCE_ASK
-		return analysed && !needs[n.ID] && n.Link == nil && (discard || !n.Accepted && !n.Edited)
+		drop := analysed && !needs[n.ID] && n.Link == nil && (discard || !n.Accepted && !n.Edited)
+		if drop {
+			dropped = append(dropped, n)
+		}
+		return drop
 	})
+	return dropped
 }
 
-// addLogicNeeds checks the kinetic needs the Agent proposed and adds those that pass to spec, with
-// the server's ids, from source; concepts maps the ids the Agent named concepts by to theirs. A need
-// repeating one of the same kind and name, or naming its kept- id, is merged into it: it adds its
-// concepts, and its object types and properties when the need has none and no one changed it. A
-// need stated in the documents quotes
-// them; one the analysis adds may say why instead. Numbers in a definition must be in its quotes, a
-// Skill must be one the documents name, and object types and properties must be adopted ones.
+// restoreDropped puts back, in their places, the suggestions a run dropped before it began, and what
+// executed each action before: one that adds no new need does not replace them, so a person
+// reviewing them keeps them.
+func restoreDropped(spec *interfaces.RequirementSpec, dropped []*interfaces.RequirementLogicNeed, order []string,
+	executedBy map[string]string) {
+	for _, n := range dropped {
+		if !slices.ContainsFunc(spec.LogicNeeds, func(kept *interfaces.RequirementLogicNeed) bool { return kept.ID == n.ID }) {
+			spec.LogicNeeds = append(spec.LogicNeeds, n)
+		}
+	}
+	place := func(id string) int {
+		if i := slices.Index(order, id); i >= 0 {
+			return i
+		}
+		return len(order)
+	}
+	slices.SortStableFunc(spec.LogicNeeds, func(a, b *interfaces.RequirementLogicNeed) int { return place(a.ID) - place(b.ID) })
+	// Dropping a suggestion cleared what it executed; back in place, it executes it again.
+	for _, n := range spec.LogicNeeds {
+		if by, ok := executedBy[n.ID]; ok && n.ExecutedBy == "" {
+			n.ExecutedBy = by
+		}
+	}
+	followExecutors(spec)
+}
+
 // measuredOtherwise tells a metric the Agent gave that is atomic where the kept one is derived, or
 // the other way round.
 func measuredOtherwise(kept *interfaces.RequirementLogicNeed, p agentLogicNeed) bool {
@@ -148,9 +173,17 @@ func measuredOtherwise(kept *interfaces.RequirementLogicNeed, p agentLogicNeed) 
 		given != kept.SuggestedMetricType
 }
 
+// addLogicNeeds checks the kinetic needs the Agent proposed and adds those that pass to spec, with
+// the server's ids, from source; concepts maps the ids the Agent named concepts by to theirs, and it
+// returns how many it added. A need repeating one of the same kind and name, naming its kept- id, or
+// covered, the Agent says, by a kept need of its kind, is merged into it: it adds its concepts, and
+// its object types and properties when the need has none and no one changed it. A need stated in
+// the documents quotes them; one the analysis adds may say why instead. A quote of the network's
+// background alone is no basis. Numbers in a definition must be in its quotes, a Skill must be one
+// the documents name, and object types and properties must be adopted ones.
 func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, source string,
 	docs map[string]*interfaces.RequirementDocument, draft *interfaces.Draft, concepts map[string]string,
-	reject func(kind, text, reason string)) {
+	reject func(kind, text, reason string)) int {
 	properties := map[string]map[string]bool{}
 	if draft != nil {
 		for _, ot := range draft.Items.ObjectTypes {
@@ -187,7 +220,8 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			continue
 		}
 		if i := slices.IndexFunc(spec.LogicNeeds, func(n *interfaces.RequirementLogicNeed) bool {
-			return p.ID == keptPrefix+n.ID || n.Kind == p.Kind && sameText(n.Name, name)
+			return p.ID == keptPrefix+n.ID || n.Kind == p.Kind && (sameText(n.Name, name) ||
+				strings.TrimSpace(p.CoveredBy) == keptPrefix+n.ID)
 		}); i >= 0 {
 			kept := spec.LogicNeeds[i]
 			// A metric of the same name measured otherwise, atomic against derived, is another
@@ -219,7 +253,14 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 			}
 			continue
 		}
-		citations, reason := basisOf(p.Citations, p.SupplementReason, docs, source != interfaces.LOGIC_NEED_FROM_DOCUMENTS)
+		// The network's background says what the network is: a need is not grounded in it.
+		grounds := slices.DeleteFunc(slices.Clone(p.Citations), func(c agentCitation) bool {
+			return c.DocumentID == interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID
+		})
+		citations, reason := basisOf(grounds, p.SupplementReason, docs, source != interfaces.LOGIC_NEED_FROM_DOCUMENTS)
+		if reason == rejectedMissingBasis && len(p.Citations) > 0 {
+			reason = rejectedBackgroundNotBasis
+		}
 		switch {
 		case reason != "":
 		case !interfaces.IsLogicNeedKind(p.Kind):
@@ -255,6 +296,7 @@ func addLogicNeeds(spec *interfaces.RequirementSpec, proposed []agentLogicNeed, 
 		}
 	}
 	followExecutors(spec)
+	return added
 }
 
 // placeOnModel gives a need the object types, properties and metric type the Agent proposed for it.
@@ -327,7 +369,15 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 	if ok {
 		spec, version, read = withLists(cloneSpec(&previous.Spec)), nextVersion(previous.Version, draft), previous
 	}
-	keepForKinetic(spec, discardDecisions)
+	order := make([]string, 0, len(spec.LogicNeeds))
+	executedBy := map[string]string{}
+	for _, n := range spec.LogicNeeds {
+		order = append(order, n.ID)
+		if n.ExecutedBy != "" {
+			executedBy[n.ID] = n.ExecutedBy
+		}
+	}
+	dropped := keepForKinetic(spec, discardDecisions)
 	run, err := s.startRun(ctx, projectID, interfaces.REQUIREMENT_RUN_KINETIC, caller, read)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start run failed")
@@ -359,10 +409,15 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		checked := cloneSpec(spec)
 		checked.Rejected = rejectedOf(checked.Rejected, kind)
 		proposed, covered := uncovered(out.(*kineticOutput).LogicNeeds, items)
-		addLogicNeeds(checked, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS,
+		added := addLogicNeeds(checked, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS,
 			byID, draft, concepts, func(k, text, reason string) {
 				checked.Rejected = append(checked.Rejected, &interfaces.RequirementRejected{Kind: k, Text: text, Reason: reason, Run: kind})
 			})
+		// A run that adds nothing new replaces nothing: the last run's suggestions stay, and what it
+		// left out says why. Starting over drops them still.
+		if added == 0 && !discardDecisions {
+			restoreDropped(checked, dropped, order, executedBy)
+		}
 		// What the network has covers the needs the Agent said it covers and those of its name: they
 		// are linked to it, not left new.
 		linkCovered(checked, items, covered, caller, s.now())

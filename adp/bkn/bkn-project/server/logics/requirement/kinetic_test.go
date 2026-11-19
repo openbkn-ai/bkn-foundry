@@ -72,7 +72,7 @@ func Test_AddLogicNeeds(t *testing.T) {
 			// Only a metric suggests a metric type.
 			So(spec.LogicNeeds[3].SuggestedMetricType, ShouldEqual, "")
 			So(rejected, ShouldResemble, []string{
-				"logic_need Escalate " + rejectedQuoteNotFound,
+				"logic_need Escalate " + rejectedMissingBasis,
 				"logic_need Very late " + rejectedNumberNotInQuote,
 				"logic_need Board " + rejectedUnknownKind,
 				"logic_need Date lookup Skill " + rejectedBasisNotInDocuments,
@@ -185,6 +185,59 @@ func Test_AddLogicNeeds(t *testing.T) {
 			So(rejected, ShouldResemble, []string{fmt.Sprintf("logic_need api %d %s", maxRunLogicNeeds-1, rejectedTooMany)})
 		})
 
+		Convey("A need the Agent says a kept need of its kind covers is merged into it, whatever its name\n", func() {
+			// The second analysis renamed the person's API and action; it said which kept needs cover
+			// them (bkn-foundry#3304).
+			rejected = nil
+			spec := emptySpec()
+			spec.LogicNeeds = []*interfaces.RequirementLogicNeed{
+				{ID: "n2", Kind: interfaces.LOGIC_NEED_API, Name: "查询设备维护建议API（测试）", Source: interfaces.LOGIC_NEED_FROM_PERSON},
+				{ID: "n3", Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "生成设备维护建议（测试）", Source: interfaces.LOGIC_NEED_FROM_PERSON},
+			}
+			proposed := []agentLogicNeed{
+				{Kind: interfaces.LOGIC_NEED_API, Name: "查询设备维护建议API", CoveredBy: "kept-n2", SupplementReason: "r"},
+				{Kind: interfaces.LOGIC_NEED_ACTION_TYPE, Name: "生成设备维护建议", CoveredBy: "kept-n3", SupplementReason: "r"},
+				// A kept need of another kind covers nothing of this one.
+				{Kind: interfaces.LOGIC_NEED_METRIC, Name: "设备数量", CoveredBy: "kept-n2", SupplementReason: "r"},
+			}
+
+			addLogicNeeds(spec, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS, docs, draft, concepts, reject)
+
+			names := []string{}
+			for _, n := range spec.LogicNeeds {
+				names = append(names, n.ID+" "+n.Name)
+			}
+			So(names, ShouldResemble, []string{"n2 查询设备维护建议API（测试）", "n3 生成设备维护建议（测试）", "n4 设备数量"})
+			So(rejected, ShouldBeEmpty)
+		})
+
+		Convey("A need with no basis at all says so; one resting only on the network's background is refused\n", func() {
+			// The network's description and SKILL.md say what the network is, not what is required
+			// (bkn-foundry#3289).
+			rejected = nil
+			spec := emptySpec()
+			network := documentsByID(append(testDocuments(), &interfaces.RequirementDocument{ID: interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID,
+				Content: "本网络由 BKN SDK 自动生成 SKILL.md", Blocks: segment("本网络由 BKN SDK 自动生成 SKILL.md", interfaces.REQUIREMENT_FORMAT_MARKDOWN)}))
+			proposed := []agentLogicNeed{
+				{Kind: interfaces.LOGIC_NEED_API, Name: "No basis"},
+				{Kind: interfaces.LOGIC_NEED_API, Name: "On the background", Citations: []agentCitation{cite(interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID, "本网络由 BKN SDK 自动生成 SKILL.md")}},
+				{Kind: interfaces.LOGIC_NEED_API, Name: "Not found", Citations: []agentCitation{cite("pol", "no such words")}},
+				// Said why, the analysis may add it.
+				{Kind: interfaces.LOGIC_NEED_API, Name: "Inferred", Citations: []agentCitation{cite(interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID, "本网络由 BKN SDK 自动生成 SKILL.md")},
+					SupplementReason: "the maintenance rules need it"},
+			}
+
+			addLogicNeeds(spec, proposed, interfaces.LOGIC_NEED_FROM_ANALYSIS, network, draft, concepts, reject)
+
+			So(rejected, ShouldResemble, []string{
+				"logic_need No basis " + rejectedMissingBasis,
+				"logic_need On the background " + rejectedBackgroundNotBasis,
+				"logic_need Not found " + rejectedQuoteNotFound,
+			})
+			So(spec.LogicNeeds, ShouldHaveLength, 1)
+			So(spec.LogicNeeds[0].Citations, ShouldBeEmpty)
+		})
+
 		Convey("A metric of the same name measured another way is not merged into it, and is listed for a person to decide\n", func() {
 			rejected = nil
 			spec := emptySpec()
@@ -295,6 +348,59 @@ func Test_AnalyseKinetic(t *testing.T) {
 				"concept_ids":["kept-c1"],"citations":[{"document_id":"pol","quote":"within 2 working days"}]},
 			{"id":"y","kind":"metric","name":"stated","definition":"","concept_ids":["c1"],"citations":[]},
 			{"id":"z","kind":"skill","name":"Made up Skill","definition":"","citations":[],"supplement_reason":"r"}]}`
+
+		Convey("A run that adds no new need keeps the suggestions of the last one, and says why\n", func() {
+			// The Agent's answer is all refused: nothing replaces the last run's suggestions, which
+			// a person may still be reviewing (bkn-foundry#3305).
+			st := &runStore{req: previous()}
+			expectRun(st, kineticDraft())
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+				Output: `{"logic_needs":[{"id":"z","kind":"skill","name":"Made up Skill","definition":"","citations":[],"supplement_reason":"r"}]}`}, nil)
+
+			_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			spec := st.req.Spec
+			So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4", "n5"})
+			So(spec.Rejected[len(spec.Rejected)-1], ShouldResemble, &interfaces.RequirementRejected{Kind: rejectedLogicNeed,
+				Text: "Made up Skill", Reason: rejectedBasisNotInDocuments, Run: interfaces.REQUIREMENT_RUN_KINETIC})
+		})
+
+		Convey("A run that adds no new need keeps what executes a kept action, too\n", func() {
+			// The person's action is carried out by an analysed API no one adopted: the run that
+			// adds nothing puts the API back, and the action still names it.
+			prev := previous()
+			api := need("n6", "Old API", interfaces.LOGIC_NEED_FROM_ANALYSIS, false)
+			api.Kind = interfaces.LOGIC_NEED_API
+			action := need("n7", "Hold order", interfaces.LOGIC_NEED_FROM_PERSON, false)
+			action.Kind, action.Edited, action.ExecutedBy = interfaces.LOGIC_NEED_ACTION_TYPE, true, "n6"
+			prev.Spec.LogicNeeds = append(prev.Spec.LogicNeeds, api, action)
+			prev.Spec.LastIDs["n"] = 7
+			st := &runStore{req: prev}
+			expectRun(st, kineticDraft())
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"logic_needs":[]}`}, nil)
+
+			_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			spec := st.req.Spec
+			So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4", "n5", "n6", "n7"})
+			So(spec.LogicNeeds[6].ExecutedBy, ShouldEqual, "n6")
+		})
+
+		Convey("Starting over drops them even when the run adds none\n", func() {
+			st := &runStore{req: previous()}
+			expectRun(st, kineticDraft())
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"logic_needs":[]}`}, nil)
+
+			_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, true)
+
+			So(err, ShouldBeNil)
+			So(ids(st.req.Spec.LogicNeeds, logicNeedID), ShouldNotContain, "n1")
+		})
 
 		Convey("On a network the project created, it replaces the analysed needs no one made theirs, and keeps the rest\n", func() {
 			st := &runStore{req: previous()}
