@@ -154,6 +154,64 @@ func TestToolExecutionPayloadKeepsHTTPGroupsAtTopLevel(t *testing.T) {
 	})
 }
 
+// The Toolbox proxy response envelope carries a sanitized
+// request_observation for transport evidence consumers (#3303). The retrieval
+// service must return it unchanged instead of dropping it, and must never
+// confuse it with business body fields of the same name.
+func TestExecutePublishedToolAsProxyPassesRequestObservationThrough(t *testing.T) {
+	convey.Convey("as-proxy returns the transport observation at the envelope top level", t, func() {
+		client, httpClient := toolsTestClient(t)
+		observation := map[string]any{
+			"method":         "GET",
+			"path":           "/echo/A+B%20space",
+			"query_keys":     []any{"qa_probe"},
+			"content_type":   "application/json",
+			"content_length": 41,
+			"redirected":     false,
+		}
+		httpClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, map[string]any{
+				"status_code":         http.StatusOK,
+				"request_observation": observation,
+				"body":                map[string]any{"request_observation": "lookalike-from-business-body"},
+			}, nil)
+
+		ctx := common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
+			AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+		})
+		resp, err := client.ExecutePublishedToolAsProxy(ctx,
+			&interfaces.ExecutePublishedToolRequest{
+				ToolboxID:  "box-1",
+				ToolID:     "tool-1",
+				Parameters: map[string]any{"qa_probe": 0},
+			},
+			&interfaces.KNProxyExecution{Binding: interfaces.KNProxyBinding{
+				KNID: "kn-1", ChildType: interfaces.KNProxyChildTypeCapability, ChildID: "binding-1",
+				TargetType: interfaces.KNProxyTargetTypeToolBox, TargetID: "box-1",
+				Operation: interfaces.KNProxyOperationExecute,
+			}, Mapping: &interfaces.KNProxyAccount{
+				KNID: "kn-1", ProxyAccountID: "proxy-1", ProxyAccountType: "app", Version: 7,
+			}})
+
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp["status_code"], convey.ShouldEqual, http.StatusOK)
+		got, ok := resp["request_observation"].(map[string]any)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(got["method"], convey.ShouldEqual, "GET")
+		convey.So(got["path"], convey.ShouldEqual, "/echo/A+B%20space")
+		convey.So(got["query_keys"], convey.ShouldResemble, []any{"qa_probe"})
+		convey.So(got["content_type"], convey.ShouldEqual, "application/json")
+		convey.So(got["content_length"], convey.ShouldEqual, 41)
+		convey.So(got["redirected"], convey.ShouldEqual, false)
+
+		// A same-named business body field stays nested under body and never
+		// overrides the transport-level observation.
+		body, ok := resp["body"].(map[string]any)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(body["request_observation"], convey.ShouldEqual, "lookalike-from-business-body")
+	})
+}
+
 // The catalogue is read as the caller too, so an account only ever discovers
 // what Execution Factory would let it call.
 func TestPublishedCatalogueReadsAsTheCaller(t *testing.T) {
