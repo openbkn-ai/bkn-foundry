@@ -71,6 +71,60 @@ func built(out *draftOutput, docs map[string]*interfaces.RequirementDocument, dr
 	return spec
 }
 
+func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
+	Convey("An input naming no concept takes the one of the adopted object type that has its property\n", t, func() {
+		// A project over a knowledge base alone has no requirement concepts: the Agent names the
+		// property it asks about, and the server finds the object type, adding its concept.
+		contract := &interfaces.DraftObjectType{ID: "contract_doc", Name: "文本内采购合同记录", Description: "一份合同", Adopted: true,
+			PrimaryKeys: []string{"contract_no"}, Properties: []*interfaces.DraftProperty{
+				{Name: "contract_no", Type: "string"}, {Name: "total_amount", Type: "decimal"}}}
+		line := &interfaces.DraftObjectType{ID: "contract_line", Name: "文本内合同物料明细", Adopted: true,
+			PrimaryKeys: []string{"line_id"}, Properties: []*interfaces.DraftProperty{
+				{Name: "line_id", Type: "string"}, {Name: "contract_no", Type: "string"}, {Name: "material_code", Type: "string"}}}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{contract, line},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, template string, in agentInput) agentQuestion {
+			return agentQuestion{ID: id, Text: template, Template: template, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				Inputs: []agentInput{in}, SupplementReason: "依据已采纳的对象类"}
+		}
+		out := &draftOutput{Questions: []agentQuestion{
+			// Two object types have contract_no: the one it is the key of is meant.
+			question("q1", "合同 {contract} 包含哪些明细？", agentInput{Name: "contract", Property: "contract_no", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
+			// A concept id the specification does not have is no concept either.
+			question("q2", "明细 {line} 属于哪份合同？", agentInput{Name: "line", ConceptID: "knowledge-明细", Property: "material_code", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
+			question("q3", "金额超过 {limit} 的合同？", agentInput{Name: "limit", Property: "total_amount", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
+			question("q4", "{x} 是什么？", agentInput{Name: "x", Property: "nowhere", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
+		}}
+		spec := emptySpec()
+		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
+		rejected := []string{}
+		for _, r := range spec.Rejected {
+			rejected = append(rejected, r.Text+" "+r.Reason)
+		}
+
+		So(spec.Concepts, ShouldHaveLength, 2)
+		byObject := map[string]*interfaces.RequirementConcept{}
+		for _, c := range spec.Concepts {
+			So(c.MapsTo.Kind, ShouldEqual, interfaces.REQUIREMENT_ITEM_OBJECT_TYPE)
+			So(c.Source, ShouldEqual, interfaces.REQUIREMENT_CONCEPT_FROM_SCENARIOS)
+			So(c.SupplementReason, ShouldNotBeEmpty)
+			byObject[c.MapsTo.ID] = c
+		}
+		So(byObject["contract_doc"].Term, ShouldEqual, "文本内采购合同记录")
+		inputOf := func(i int) interfaces.RequirementInput { return (*spec.Questions[i].Inputs)[0] }
+		So(inputOf(0).ConceptID, ShouldEqual, byObject["contract_doc"].ID)
+		So(inputOf(1).ConceptID, ShouldEqual, byObject["contract_line"].ID)
+		So(inputOf(2).ConceptID, ShouldEqual, byObject["contract_doc"].ID)
+		// The question rests on the concept it asks about, so drafting again keeps both.
+		So(spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{byObject["contract_doc"].ID})
+		So(spec.Questions[0].Needs, ShouldContain, *byObject["contract_doc"].MapsTo)
+		So(spec.Questions, ShouldHaveLength, 4)
+		So(spec.Questions[3].Inputs == nil || len(*spec.Questions[3].Inputs) == 0, ShouldBeTrue)
+		So(rejected, ShouldResemble, []string{"x.nowhere ({x} 是什么？) " + inputUnknownConcept})
+	})
+}
+
 func Test_BuildSpec(t *testing.T) {
 	Convey("Test buildSpec\n", t, func() {
 		docs := documentsByID(testDocuments())
@@ -229,7 +283,7 @@ func Test_BuildSpec(t *testing.T) {
 					{Text: "a", Template: "Lines of order {order} by {missing} as {kind}?", SupplementReason: "r", Inputs: []agentInput{
 						record("order", "ord", "order_no"),
 						record("order", "ord", "order_no"),                                    // the same name again
-						record("nobody", "ghost", "order_no"),                                 // no such concept
+						record("nobody", "ghost", "no_such_field"),                            // no such concept, nor an object type with the field
 						record("missing", "ord", "nope"),                                      // no such property: the key
 						record("absent", "ord", "order_no"),                                   // not in the template
 						{Name: "kind", ConceptID: "ord", Property: "order_no", Role: "guess"}, // no such role
@@ -291,7 +345,7 @@ func Test_BuildSpec(t *testing.T) {
 			}
 			So(reasons["input order.order_no (a)"], ShouldEqual, inputDuplicateName)
 			So(reasons["input kind.order_no (a)"], ShouldEqual, inputUnknownRole)
-			So(reasons["input nobody.order_no (a)"], ShouldEqual, inputUnknownConcept)
+			So(reasons["input nobody.no_such_field (a)"], ShouldEqual, inputUnknownConcept)
 			So(reasons["input absent.order_no (a)"], ShouldEqual, inputNotInTemplate)
 			So(reasons["input order.order_no (d)"], ShouldEqual, inputNotInTemplate)
 			So(reasons["input reference_time (f)"], ShouldEqual, rejectedWindowWithoutRefTime)

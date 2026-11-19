@@ -872,6 +872,17 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			input := interfaces.RequirementInput{Name: strings.TrimSpace(in.Name), Property: in.Property, Role: in.Role}
 			if concept, ok := concepts[in.ConceptID]; ok {
 				input.ConceptID = concept.ID
+			} else if ot := objectTypeOfProperty(draft, in.Property); ot != nil {
+				// No concept the specification has: the object type that has the property is the one
+				// asked about. The question rests on its concept, so drafting again keeps both.
+				concept := conceptOfObjectType(spec, draft, ot)
+				input.ConceptID = concept.ID
+				if !slices.Contains(question.Basis.ConceptIDs, concept.ID) {
+					question.Basis.ConceptIDs = append(question.Basis.ConceptIDs, concept.ID)
+				}
+				if !slices.Contains(question.Needs, *concept.MapsTo) {
+					question.Needs = append(question.Needs, *concept.MapsTo)
+				}
 			}
 			given := input.Name
 			if input.Property != "" {

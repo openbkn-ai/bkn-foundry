@@ -18,3 +18,10 @@ var KnowledgeDocumentTexts = map[string]map[string]string{
 		"concepts": "Concepts",
 	},
 }
+
+// InputConceptTexts say why scenario drafting added the concept of an object type: a question's
+// input reads a property of it.
+var InputConceptTexts = map[string]string{
+	"zh-CN": "场景问题的输入取自已采纳的对象类「%s」",
+	"en-US": "A scenario question takes its input from the adopted object type %s",
+}
