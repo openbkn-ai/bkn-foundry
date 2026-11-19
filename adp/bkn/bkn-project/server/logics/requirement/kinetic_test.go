@@ -367,6 +367,29 @@ func Test_AnalyseKinetic(t *testing.T) {
 				Text: "Made up Skill", Reason: rejectedBasisNotInDocuments, Run: interfaces.REQUIREMENT_RUN_KINETIC})
 		})
 
+		Convey("A run that adds no new need keeps what executes a kept action, too\n", func() {
+			// The person's action is carried out by an analysed API no one adopted: the run that
+			// adds nothing puts the API back, and the action still names it.
+			prev := previous()
+			api := need("n6", "Old API", interfaces.LOGIC_NEED_FROM_ANALYSIS, false)
+			api.Kind = interfaces.LOGIC_NEED_API
+			action := need("n7", "Hold order", interfaces.LOGIC_NEED_FROM_PERSON, false)
+			action.Kind, action.Edited, action.ExecutedBy = interfaces.LOGIC_NEED_ACTION_TYPE, true, "n6"
+			prev.Spec.LogicNeeds = append(prev.Spec.LogicNeeds, api, action)
+			prev.Spec.LastIDs["n"] = 7
+			st := &runStore{req: prev}
+			expectRun(st, kineticDraft())
+			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).Return(&interfaces.BknAgentTask{TaskID: "t1",
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"logic_needs":[]}`}, nil)
+
+			_, err := svc.AnalyseKinetic(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			spec := st.req.Spec
+			So(ids(spec.LogicNeeds, logicNeedID), ShouldResemble, []string{"n1", "n2", "n3", "n4", "n5", "n6", "n7"})
+			So(spec.LogicNeeds[6].ExecutedBy, ShouldEqual, "n6")
+		})
+
 		Convey("Starting over drops them even when the run adds none\n", func() {
 			st := &runStore{req: previous()}
 			expectRun(st, kineticDraft())

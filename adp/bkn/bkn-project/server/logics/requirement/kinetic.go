@@ -139,9 +139,11 @@ func keepForKinetic(spec *interfaces.RequirementSpec, discard bool) []*interface
 	return dropped
 }
 
-// restoreDropped puts back, in their places, the suggestions a run dropped before it began: one that
-// adds no new need does not replace them, so a person reviewing them keeps them.
-func restoreDropped(spec *interfaces.RequirementSpec, dropped []*interfaces.RequirementLogicNeed, order []string) {
+// restoreDropped puts back, in their places, the suggestions a run dropped before it began, and what
+// executed each action before: one that adds no new need does not replace them, so a person
+// reviewing them keeps them.
+func restoreDropped(spec *interfaces.RequirementSpec, dropped []*interfaces.RequirementLogicNeed, order []string,
+	executedBy map[string]string) {
 	for _, n := range dropped {
 		if !slices.ContainsFunc(spec.LogicNeeds, func(kept *interfaces.RequirementLogicNeed) bool { return kept.ID == n.ID }) {
 			spec.LogicNeeds = append(spec.LogicNeeds, n)
@@ -154,6 +156,13 @@ func restoreDropped(spec *interfaces.RequirementSpec, dropped []*interfaces.Requ
 		return len(order)
 	}
 	slices.SortStableFunc(spec.LogicNeeds, func(a, b *interfaces.RequirementLogicNeed) int { return place(a.ID) - place(b.ID) })
+	// Dropping a suggestion cleared what it executed; back in place, it executes it again.
+	for _, n := range spec.LogicNeeds {
+		if by, ok := executedBy[n.ID]; ok && n.ExecutedBy == "" {
+			n.ExecutedBy = by
+		}
+	}
+	followExecutors(spec)
 }
 
 // measuredOtherwise tells a metric the Agent gave that is atomic where the kept one is derived, or
@@ -361,8 +370,12 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		spec, version, read = withLists(cloneSpec(&previous.Spec)), nextVersion(previous.Version, draft), previous
 	}
 	order := make([]string, 0, len(spec.LogicNeeds))
+	executedBy := map[string]string{}
 	for _, n := range spec.LogicNeeds {
 		order = append(order, n.ID)
+		if n.ExecutedBy != "" {
+			executedBy[n.ID] = n.ExecutedBy
+		}
 	}
 	dropped := keepForKinetic(spec, discardDecisions)
 	run, err := s.startRun(ctx, projectID, interfaces.REQUIREMENT_RUN_KINETIC, caller, read)
@@ -403,7 +416,7 @@ func (s *requirementService) AnalyseKinetic(ctx context.Context, token string, p
 		// A run that adds nothing new replaces nothing: the last run's suggestions stay, and what it
 		// left out says why. Starting over drops them still.
 		if added == 0 && !discardDecisions {
-			restoreDropped(checked, dropped, order)
+			restoreDropped(checked, dropped, order, executedBy)
 		}
 		// What the network has covers the needs the Agent said it covers and those of its name: they
 		// are linked to it, not left new.
