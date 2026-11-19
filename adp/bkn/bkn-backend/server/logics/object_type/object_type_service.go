@@ -2803,6 +2803,11 @@ func (ots *objectTypeService) processConditionOperations(_ *interfaces.ObjectTyp
 	dataView *interfaces.DataView) []string {
 	var ops []string
 	switch prop.Type {
+	case "integer", "unsigned integer", "float", "decimal":
+		// A numeric Dataset column executes comparisons such as >= even without a
+		// keyword or vector index; leaving the baseline empty hid that capability
+		// from BKN's object detail and blocked numeric Eval filters (#3286).
+		ops = interfaces.NUMERIC_COMPARE_OPS
 	case "keyword":
 		ops = interfaces.DSL_KEYWORD_OPS
 	case "varchar", "string":

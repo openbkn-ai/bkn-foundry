@@ -116,6 +116,21 @@ var (
 		condition.OperationOutRange,
 	}
 
+	// NUMERIC_COMPARE_OPS are the comparisons numeric properties support on both
+	// SQL and DSL views. Text-matching operations stay string-only.
+	NUMERIC_COMPARE_OPS = []string{
+		condition.OperationEq,
+		condition.OperationNotEq,
+		condition.OperationGt,
+		condition.OperationGte,
+		condition.OperationLt,
+		condition.OperationLte,
+		condition.OperationIn,
+		condition.OperationNotIn,
+		condition.OperationRange,
+		condition.OperationOutRange,
+	}
+
 	// Operator set for configured object indexes.
 	INDEX_CONDITION_OPS = []string{
 		condition.OperationEq,
