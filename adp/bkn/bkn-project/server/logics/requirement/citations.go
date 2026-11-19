@@ -21,6 +21,12 @@ const (
 	rejectedQuoteNotFound    = "quote_not_found"
 	rejectedUnknownDocument  = "unknown_document"
 	rejectedNumberNotInQuote = "number_not_in_quote"
+	// rejectedMissingBasis is an item that gave no quote and said no reason: no basis at all, told
+	// apart from quotes that were given and not found.
+	rejectedMissingBasis = "missing_basis"
+	// rejectedBackgroundNotBasis is a kinetic need resting only on the network's description and
+	// SKILL.md, which say what the network is, not what is required.
+	rejectedBackgroundNotBasis = "background_not_basis"
 )
 
 // minQuoteRunes is the shortest quote taken as a basis, not counting spaces: a word or two is

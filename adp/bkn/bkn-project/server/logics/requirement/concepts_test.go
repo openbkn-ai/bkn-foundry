@@ -62,7 +62,7 @@ func Test_BuildConcepts(t *testing.T) {
 			So(spec.Concepts[2].MapsTo, ShouldResemble, &customer)
 			So(spec.Concepts[3].MapsTo, ShouldBeNil)
 			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
-				{Kind: rejectedConcept, Text: "Invented", Reason: rejectedQuoteNotFound, Run: run},
+				{Kind: rejectedConcept, Text: "Invented", Reason: rejectedMissingBasis, Run: run},
 				{Kind: rejectedConcept, Text: "Gadget", Reason: rejectedUnknownKind, Run: run},
 			})
 		})
@@ -96,7 +96,7 @@ func Test_BuildConcepts(t *testing.T) {
 			So(spec.Rules[0].CompilesTo, ShouldEqual, "metric_definition")
 			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
 				{Kind: rejectedRule, Text: "Answer within 3 working days", Reason: rejectedNumberNotInQuote, Run: run},
-				{Kind: rejectedRule, Text: "Only signed changes count", Reason: rejectedQuoteNotFound, Run: run},
+				{Kind: rejectedRule, Text: "Only signed changes count", Reason: rejectedMissingBasis, Run: run},
 			})
 		})
 
@@ -150,7 +150,7 @@ func Test_BuildConcepts(t *testing.T) {
 			So(spec.Choices[1].RecommendedOptionID, ShouldEqual, "")
 			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
 				{Kind: rejectedChoice, Text: "One option?", Reason: rejectedTooFewOptions, Run: run},
-				{Kind: rejectedChoice, Text: "No quote?", Reason: rejectedQuoteNotFound, Run: run},
+				{Kind: rejectedChoice, Text: "No quote?", Reason: rejectedMissingBasis, Run: run},
 			})
 		})
 
@@ -191,7 +191,7 @@ func Test_BuildConcepts(t *testing.T) {
 			So(n.ConceptIDs, ShouldResemble, []string{"c1"})
 			So(n.SuggestedMetricType, ShouldEqual, "atomic")
 			So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{
-				{Kind: rejectedLogicNeed, Text: "Signed check", Reason: rejectedQuoteNotFound, Run: run}})
+				{Kind: rejectedLogicNeed, Text: "Signed check", Reason: rejectedMissingBasis, Run: run}})
 		})
 
 		Convey("What is kept stays as it is: repeats are merged into it, and the run lists its own rejections anew\n", func() {
