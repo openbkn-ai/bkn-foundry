@@ -198,6 +198,10 @@ func Test_BuildSpecQuestionsRestOnTheModelWithoutDocuments(t *testing.T) {
 			So(q.SupplementReason, ShouldEqual, "项目没有需求文档可引用，问题依据已采纳的概念模型起草")
 		}
 		So(texts, ShouldResemble, []string{"MRP计划订单一共有多少张？", "这些单据什么时候关闭？"})
+		// The object type named as its concept is what the question needs, through the concept added for it.
+		So(spec.Questions[1].Needs, ShouldResemble, []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "plan_order"}})
+		So(spec.Questions[1].Basis.ConceptIDs, ShouldHaveLength, 1)
+		So(spec.Concepts, ShouldHaveLength, 1)
 		So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{{Kind: rejectedQuestion, Text: "今天天气怎么样？", Reason: rejectedMissingBasis}})
 
 		// A project with documents cites them: a question citing nothing stays refused.

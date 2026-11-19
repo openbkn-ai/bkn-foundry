@@ -872,6 +872,14 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		}
 		for _, cid := range q.ConceptIDs {
 			concept, ok := concepts[cid]
+			if !ok {
+				// With no concept to name, as in a project without requirement documents, the Agent
+				// names the adopted object type the question is about: the question rests on its concept.
+				if ot := adoptedObjectType(draft, cid); ot != nil &&
+					(hasConceptOf(spec, ot) || len(spec.Concepts)-len(keptSpec.Concepts) < maxDraftConcepts) {
+					concept, ok = conceptOfObjectType(spec, draft, ot), true
+				}
+			}
 			if !ok || slices.Contains(question.Basis.ConceptIDs, concept.ID) {
 				continue
 			}
@@ -1342,4 +1350,17 @@ func asksOfModel(q agentQuestion, draft *interfaces.Draft) bool {
 		}
 	}
 	return false
+}
+
+// adoptedObjectType is the adopted object type of the draft with the id, nil when none.
+func adoptedObjectType(draft *interfaces.Draft, id string) *interfaces.DraftObjectType {
+	if draft == nil || id == "" {
+		return nil
+	}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot != nil && ot.Adopted && ot.ID == id {
+			return ot
+		}
+	}
+	return nil
 }
