@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, ToolException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
@@ -2351,6 +2351,200 @@ def test_tool_events_tell_unreachable_calls_from_tool_errors():
         finished = {d["tool_call_id"]: d for e, d in events if e == "tool_finished"}
         assert finished["a"]["error_kind"] == "unavailable"
         assert finished["b"]["error_kind"] == "error"
+
+    asyncio.run(run())
+
+
+def test_replayed_messages_are_not_reported_again():
+    """Summarization's update carries earlier replies and results again
+    (bkn-foundry issue 3282): they are not new calls, failures or tokens."""
+    from langchain_core.messages import HumanMessage, RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+
+    earlier = [
+        HumanMessage(content="Earlier question", id="h1"),
+        AIMessage(
+            content="",
+            id="ai-1",
+            tool_calls=[{"name": "query", "args": {}, "id": "old"}],
+            usage_metadata={"input_tokens": 90, "output_tokens": 10, "total_tokens": 100},
+        ),
+        ToolMessage(content="failed", tool_call_id="old", name="query", status="error", id="t1"),
+        AIMessage(content="Earlier answer", id="ai-2", usage_metadata={"input_tokens": 5, "output_tokens": 5, "total_tokens": 10}),
+    ]
+    public = PublicChat("run", "network-1")
+    public.remember(earlier)
+    new_call = AIMessage(
+        content="",
+        id="ai-3",
+        tool_calls=[{"name": "query", "args": {}, "id": "new"}],
+        usage_metadata={"input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
+    )
+    # A tools node's result has no message id until the thread saves it.
+    result = ToolMessage(content="ok", tool_call_id="new", name="query")
+    saved = result.model_copy(update={"id": "t2"})
+
+    def summarized(*kept):
+        return {
+            "TurnSummarization.before_model": {
+                "messages": [
+                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                    HumanMessage(content="Summary", id="s"),
+                    *kept,
+                ]
+            }
+        }
+
+    events = parse_sse(
+        "".join(
+            [
+                *public.updates(summarized(*earlier[1:], HumanMessage(content="Now", id="h2"))),
+                *public.updates({"model": {"messages": [new_call]}}),
+                *public.updates({"tools": {"messages": [result]}}),
+                # A second summary in the same question keeps this run's own messages.
+                *public.updates(summarized(*earlier[1:], new_call, saved)),
+            ]
+        )
+    )
+    assert [(name, data["tool_call_id"]) for name, data in events] == [
+        ("tool_started", "new"),
+        ("tool_finished", "new"),
+    ]
+    assert events[1][1]["status"] == "succeeded"
+    assert public.usage["total_tokens"] == 50
+    # An earlier answer kept by the summary is not this question's answer.
+    assert public.final is None
+
+
+def test_interrupted_call_closed_by_a_fill_is_not_a_failure_of_this_run():
+    interrupted = AIMessage(
+        content="", id="ai-1", tool_calls=[{"name": "query", "args": {}, "id": "cut"}]
+    )
+    public = PublicChat("run", "network-1")
+    public.remember([interrupted])
+    fills = public.interrupted_messages([interrupted])
+    assert not list(public.updates({"tools": {"messages": fills}}))
+
+
+def test_summarized_thread_reports_only_the_current_questions_calls(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import context_budget, graph
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    class Eager(context_budget.TurnSummarization):
+        # Summarize earlier questions as soon as there are any.
+        def __init__(self, model, **kwargs):
+            super().__init__(
+                model, trigger=("tokens", 1), keep=("messages", 5), trim_tokens_to_summarize=4000
+            )
+
+    def usage(total):
+        return {"input_tokens": total - 1, "output_tokens": 1, "total_tokens": total}
+
+    def call(*ids):
+        return AIMessage(
+            content="",
+            tool_calls=[{"name": "query", "args": {"kn_id": "network-1", "q": i}, "id": i} for i in ids],
+        )
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async def query(kn_id: str, q: str) -> str:
+                """Read the selected network."""
+                if q == "bad":
+                    raise ToolException("no such record")
+                return "found"
+
+            tool = StructuredTool.from_function(
+                coroutine=query,
+                name="query",
+                metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+            )
+
+            async def tools(*args, **kwargs):
+                return [tool]
+
+            saver = MemorySaver()
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield saver
+
+            first = call("good", "bad")
+            first.usage_metadata = usage(100)
+            second = call("again")
+            second.usage_metadata = usage(50)
+            model = Model(
+                responses=[
+                    first,
+                    AIMessage(content="Answer one", usage_metadata=usage(10)),
+                    second,
+                    AIMessage(content="Answer two", usage_metadata=usage(20)),
+                ]
+            )
+            summary_calls = []
+
+            class Summaries(FakeMessagesListChatModel):
+                def _generate(self, messages, *args, **kwargs):
+                    summary_calls.append(messages)
+                    return super()._generate(messages, *args, **kwargs)
+
+            summaries = Summaries(
+                responses=[
+                    AIMessage(content=f"Summary {i}", usage_metadata=usage(1000))
+                    for i in range(4)
+                ]
+            )
+            monkeypatch.setattr(context_budget, "TurnSummarization", Eager)
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(
+                graph,
+                "build_chat_model",
+                lambda *args, **kwargs: summaries if kwargs.get("streaming") is False else model,
+            )
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+
+            def report(response):
+                events = parse_sse(response.text)
+                assert events[-1][1]["status"] == "succeeded", response.text
+                finished = [data for name, data in events if name == "tool_finished"]
+                return (
+                    [data["tool_call_id"] for name, data in events if name == "tool_started"],
+                    [data["tool_call_id"] for data in finished],
+                    sum(data["status"] == "failed" for data in finished),
+                    next(data for name, data in events if name == "result")["content"],
+                )
+
+            started, finished, failed, result = report(
+                await client.post(URL, json=BODY, headers=AUTH)
+            )
+            assert (started, finished, failed) == (["good", "bad"], ["good", "bad"], 1)
+            assert result["usage"]["total_tokens"] == 110
+            assert not summary_calls
+
+            async with factory() as session:
+                thread_id = (await session.execute(select(TaskRow))).scalar_one().f_parent_thread_id
+            started, finished, failed, result = report(
+                await client.post(
+                    URL,
+                    json={**BODY, "client_request_id": "request-2", "thread_id": thread_id},
+                    headers=AUTH,
+                )
+            )
+            # The earlier question's calls, kept by the summary, are not reported
+            # again: no failure from them, no tokens from them.
+            assert summary_calls
+            assert (started, finished, failed) == (["again"], ["again"], 0)
+            assert result["answer"] == "Answer two"
+            # Every model call of this question, the summaries included.
+            assert result["usage"]["total_tokens"] == 50 + 20 + 1000 * len(summary_calls)
 
     asyncio.run(run())
 
