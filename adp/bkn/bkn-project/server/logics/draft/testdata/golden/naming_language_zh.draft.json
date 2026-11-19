@@ -208,7 +208,7 @@
   "relation_types": [
     {
       "id": "dd_to_kh",
-      "name": "按下单客户关联客户主数据",
+      "name": "下单客户",
       "description": "",
       "source": "dd",
       "target": "kh",

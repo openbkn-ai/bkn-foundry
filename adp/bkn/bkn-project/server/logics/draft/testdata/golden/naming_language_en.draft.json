@@ -208,7 +208,7 @@
   "relation_types": [
     {
       "id": "dd_to_kh",
-      "name": "Links Customer",
+      "name": "Customer",
       "description": "",
       "source": "dd",
       "target": "kh",

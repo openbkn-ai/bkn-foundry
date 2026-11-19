@@ -273,17 +273,22 @@ func Test_RelationSuggestions(t *testing.T) {
 	})
 }
 
-// A candidate whose short name the draft, or a candidate found before it, has already is named by
-// its source as well: adopting it must not bring in a second relation of that name.
+// A candidate whose role name a relation of the draft, or a candidate found before it, from the same
+// source has already takes the field's whole name: adopting it must not bring in a second relation of
+// that name from its source. Another source's relation of that name does not matter.
 func Test_CandidateNameTaken(t *testing.T) {
-	Convey("A candidate named like a relation of the draft takes its source's name\n", t, func() {
+	Convey("A candidate named like a relation of its source takes the field's whole name\n", t, func() {
 		material := &interfaces.DraftObjectType{ID: "material", Name: "物料"}
 		stock := &interfaces.DraftObjectType{ID: "stock", Name: "实时库存",
 			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
-		existing := []*interfaces.DraftRelationType{{ID: "work_order_to_material", Name: "按物料编码关联物料"}}
-		So(candidateName("zh-CN", existing, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "实时库存按物料编码关联物料")
-		So(candidateName("zh-CN", nil, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "按物料编码关联物料")
-		found := []interfaces.DraftRelationCandidate{{Name: "按物料编码关联物料"}}
-		So(candidateName("zh-CN", nil, found, stock, material, "material_code", "stock_to_material"), ShouldEqual, "实时库存按物料编码关联物料")
+		other := []*interfaces.DraftRelationType{{ID: "work_order_to_material", Source: "work_order", Name: "物料"}}
+		So(candidateName("zh-CN", other, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "物料")
+		same := []*interfaces.DraftRelationType{{ID: "stock_to_material_2", Source: "stock", Name: "物料"}}
+		So(candidateName("zh-CN", same, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "物料编码")
+		So(candidateName("zh-CN", nil, nil, stock, material, "material_code", "stock_to_material"), ShouldEqual, "物料")
+		found := []interfaces.DraftRelationCandidate{{SourceObjectTypeID: "stock", Name: "物料"}}
+		So(candidateName("zh-CN", nil, found, stock, material, "material_code", "stock_to_material"), ShouldEqual, "物料编码")
+		elsewhere := []interfaces.DraftRelationCandidate{{SourceObjectTypeID: "work_order", Name: "物料"}}
+		So(candidateName("zh-CN", nil, elsewhere, stock, material, "material_code", "stock_to_material"), ShouldEqual, "物料")
 	})
 }

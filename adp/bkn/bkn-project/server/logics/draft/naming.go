@@ -13,6 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/locale"
 )
 
 // nameLanguage is the naming language a name reads in: Chinese when it holds a Han character,
@@ -97,106 +98,165 @@ func givenName(table *interfaces.VegaTable) string {
 	return table.Name
 }
 
-// messageRelationName is the localized template a relation drafted from a referring field is named
-// by, in the naming language: a predicate read from its source to its target.
-const messageRelationName = "BknProject.Draft.RelationLinks"
+// roleOfField is the role a referring field names, its display name without a trailing code word:
+// 父项物料编码 → 父项物料, 客户ID → 客户, Supplier No. → Supplier, CustomerID → Customer. An English
+// code word ends the role only after a space, underscore or hyphen, a Han character, or a lower-case
+// letter when it starts in upper case, so Barcode and Monkey keep their ending. Empty when nothing
+// that names a role is left: no letter, or a single Han character, as 父 of 父编码 or 工 of 工号.
+func roleOfField(field string) string {
+	field = strings.TrimSpace(field)
+	for _, word := range locale.RelationCodeWords {
+		at := len(field) - len(word)
+		if at < 0 || !utf8.RuneStart(field[at]) || !strings.EqualFold(field[at:], word) {
+			continue
+		}
+		if at == 0 {
+			return ""
+		}
+		before, _ := utf8.DecodeLastRuneInString(field[:at])
+		first, _ := utf8.DecodeRuneInString(field[at:])
+		ascii := first < utf8.RuneSelf
+		if ascii && !(before == ' ' || before == '_' || before == '-' || unicode.Is(unicode.Han, before) ||
+			unicode.IsLower(before) && unicode.IsUpper(first)) {
+			continue
+		}
+		role := strings.TrimRight(field[:at], " _-")
+		runes := []rune(role)
+		if len(runes) == 1 && unicode.Is(unicode.Han, runes[0]) || !strings.ContainsFunc(role, unicode.IsLetter) {
+			return ""
+		}
+		return role
+	}
+	return field
+}
 
-// messageRelationNameByTarget names such a relation when its field reads as its target's name, as a
-// field 客户 that refers to 客户 does: the field tells nothing more.
-const messageRelationNameByTarget = "BknProject.Draft.RelationLinksTarget"
-
-// messageLegacyRelationName is the template drafting named such relations by before: the field's
-// name with its object type's, which reads as a field, not a relation. Edits still recognise it.
-const messageLegacyRelationName = "BknProject.Draft.RelationName"
-
-// relationName names a relation drafted from a referring field, in the naming language: a predicate
-// that reads as a sentence from its source to its target, with the field that joins them
-// (物料BOM明细 「按父项物料编码关联物料」 物料, BOM detail "Links Material by Parent material code"
-// Material), as the referring fields tell apart the relations between the same two types; without
-// the field when it reads as the target's name (「关联客户」, "Links Customer"). When that
-// is longer than BKN takes for a display name, the field's name alone. A field nobody named keeps an
-// ASCII physical name such as customer_id, and joining technical names reads no better than the id,
-// which also names the target: the relation keeps its id. A physical name that is not ASCII, such as
-// 供应商编号, reads as written.
+// relationName names a relation drafted from a referring field as a link type is named: by the role
+// its target plays for its source, read from the source. The role is the field's display name
+// without a trailing code word (物料BOM明细 —父项物料→ 物料, from 父项物料编码; 销售订单 —下单客户→
+// 客户); the target's name when nothing is left or the field reads as the target's name (供应商编号
+// → 供应商, Customer ID → Customer). The source and the joining field are not in the name: they are
+// the mapping. A field nobody named keeps an ASCII physical name such as customer_id, which names
+// the target no better than the id: the relation keeps its id. A physical name that is not ASCII,
+// such as 供应商编号, reads as written.
 func (d *drafter) relationName(source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
 	property string, id string) string {
 	return relationNameIn(d.language(), source, target, property, id)
 }
 
-// relationNameIn is relationName in a given naming language.
-func relationNameIn(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
+// relationNameIn is relationName in a given naming language. The role name reads in the field's
+// language; the naming language only matters for the names earlier drafts gave.
+func relationNameIn(_ string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
 	property string, id string) string {
 	p := findProperty(source, property)
 	if p == nil || target == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
 		return id
 	}
-	message := messageRelationName
-	if strings.EqualFold(strings.TrimSpace(p.DisplayName), strings.TrimSpace(target.Name)) {
-		message = messageRelationNameByTarget
+	role := roleOfField(p.DisplayName)
+	if role == "" || strings.EqualFold(role, strings.TrimSpace(target.Name)) ||
+		strings.EqualFold(strings.TrimSpace(p.DisplayName), strings.TrimSpace(target.Name)) {
+		role = strings.TrimSpace(target.Name)
 	}
-	name, err := i18n.Render(i18n.Language(language), message,
-		map[string]any{"target": target.Name, "field": p.DisplayName})
-	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
+	if role == "" || utf8.RuneCountInString(role) > maxDisplayNameRunes {
 		return p.DisplayName
 	}
-	return name
+	return role
 }
 
-// messageRelationNameFrom names such a relation by its source as well, when another relation has
-// its short name already: relation type names are unique in a network.
-const messageRelationNameFrom = "BknProject.Draft.RelationLinksFrom"
-
-// relationNameFromIn is relationNameIn with the source's name in front, for a relation whose short
-// name another relation has.
-func relationNameFromIn(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
-	property string, id string) string {
+// relationNameFullIn names such a relation by the field's whole display name, when another relation
+// of the same source has its role name already: 父项物料编码 and 子项物料编码 both give 物料 once
+// their roles are taken. A relation's name is unique among the relations of its source only; it may
+// equal an object type's name or the name of another source's relation.
+func relationNameFullIn(source *interfaces.DraftObjectType, target *interfaces.DraftObjectType, property string,
+	id string) string {
 	p := findProperty(source, property)
 	if p == nil || target == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
 		return id
 	}
-	name, err := i18n.Render(i18n.Language(language), messageRelationNameFrom,
-		map[string]any{"source": source.Name, "target": target.Name, "field": p.DisplayName})
-	if err != nil || utf8.RuneCountInString(name) > maxDisplayNameRunes {
-		return relationNameIn(language, source, target, property, id)
-	}
-	return name
+	return p.DisplayName
 }
 
-// relationNameTaken reports whether a relation of items other than id is named name.
-func relationNameTaken(items []*interfaces.DraftRelationType, id string, name string) bool {
+// relationNameTaken reports whether a relation of items other than id, from source, is named name.
+func relationNameTaken(items []*interfaces.DraftRelationType, source string, id string, name string) bool {
 	for _, r := range items {
-		if r != nil && r.ID != id && r.Name == name {
+		if r != nil && r.ID != id && r.Source == source && r.Name == name {
 			return true
 		}
 	}
 	return false
 }
 
-// relationNameInWithLimit is the name drafting gave such a relation before it named relations as
-// predicates, under the display-name contract of a particular draft version. It lets edits recognise
-// relation names generated before the contract grew from 40 to 128 characters.
-func relationNameInWithLimit(language string, source *interfaces.DraftObjectType, property string, id string,
-	maxRunes int) string {
+// The templates earlier drafts named such relations by. Edits and translations still recognise them,
+// so a relation that bears one follows its ends as one named now does.
+const (
+	// messageLegacyRelationLinks is 「按{字段}关联{目标}」, "Links {target} by {field}".
+	messageLegacyRelationLinks = "BknProject.Draft.RelationLinks"
+	// messageLegacyRelationLinksTarget is 「关联{目标}」, "Links {target}", for a field that reads as
+	// the target's name.
+	messageLegacyRelationLinksTarget = "BknProject.Draft.RelationLinksTarget"
+	// messageLegacyRelationLinksFrom is 「{来源}按{字段}关联{目标}」, for a relation whose short name
+	// was taken.
+	messageLegacyRelationLinksFrom = "BknProject.Draft.RelationLinksFrom"
+	// messageLegacyRelationName is 「{对象}的{字段}」, "{field} of {object}", which reads as a field.
+	messageLegacyRelationName = "BknProject.Draft.RelationName"
+)
+
+// legacyRelationNamesIn are the names earlier drafts gave a relation drafted from a referring field:
+// the predicates 「按{字段}关联{目标}」 or 「关联{目标}」, and 「{来源}按{字段}关联{目标}」; and the
+// field-like 「{对象}的{字段}」 under the 128- and the former 40-character display-name limits, which
+// fell back to the field's name when longer.
+func legacyRelationNamesIn(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
+	property string) []string {
 	p := findProperty(source, property)
 	if p == nil || p.DisplayName == p.MappedField && isASCII(p.MappedField) {
-		return id
+		return nil
 	}
-	name, err := i18n.Render(i18n.Language(language), messageLegacyRelationName,
-		map[string]any{"object_type": source.Name, "field": p.DisplayName})
-	if err != nil || utf8.RuneCountInString(name) > maxRunes {
-		return p.DisplayName
+	render := func(message string, values map[string]any, maxRunes int) string {
+		name, err := i18n.Render(i18n.Language(language), message, values)
+		if err != nil || utf8.RuneCountInString(name) > maxRunes {
+			return p.DisplayName
+		}
+		return name
 	}
-	return name
+	names := []string{
+		render(messageLegacyRelationName, map[string]any{"object_type": source.Name, "field": p.DisplayName}, maxDisplayNameRunes),
+		render(messageLegacyRelationName, map[string]any{"object_type": source.Name, "field": p.DisplayName}, legacyRelationNameMaxRunes),
+	}
+	if target != nil {
+		values := map[string]any{"source": source.Name, "target": target.Name, "field": p.DisplayName}
+		message := messageLegacyRelationLinks
+		if strings.EqualFold(strings.TrimSpace(p.DisplayName), strings.TrimSpace(target.Name)) {
+			message = messageLegacyRelationLinksTarget
+		}
+		names = append(names, render(message, values, maxDisplayNameRunes),
+			render(messageLegacyRelationLinksFrom, values, maxDisplayNameRunes))
+	}
+	return names
 }
 
 // draftedRelationName tells whether a relation still bears a name drafting gave it from its source's
-// referring field: the predicate it names relations by now, or the field-like name of earlier drafts.
+// referring field: the role it names relations by now, the field's whole name a clash gives, or a
+// name of earlier drafts.
 func draftedRelationName(language string, source *interfaces.DraftObjectType, target *interfaces.DraftObjectType,
 	property string, id string, name string) bool {
 	return name == relationNameIn(language, source, target, property, id) ||
-		name == relationNameFromIn(language, source, target, property, id) ||
-		name == relationNameInWithLimit(language, source, property, id, maxDisplayNameRunes) ||
-		name == relationNameInWithLimit(language, source, property, id, legacyRelationNameMaxRunes)
+		name == relationNameFullIn(source, target, property, id) ||
+		slices.Contains(legacyRelationNamesIn(language, source, target, property), name)
+}
+
+// relationNameAmong names a relation drafted from a referring field among relations: by its role,
+// or by the field's whole name when another relation of the same source has the role name, or by its
+// id when that one is taken too.
+func relationNameAmong(language string, relations []*interfaces.DraftRelationType, source *interfaces.DraftObjectType,
+	target *interfaces.DraftObjectType, property string, id string) string {
+	name := relationNameIn(language, source, target, property, id)
+	if !relationNameTaken(relations, source.ID, id, name) {
+		return name
+	}
+	if full := relationNameFullIn(source, target, property, id); !relationNameTaken(relations, source.ID, id, full) {
+		return full
+	}
+	// Another field of the source is named like this one's role: the id keeps the two apart.
+	return id
 }
 
 // dropAliasesOfOtherProperties leaves out an alias that is another property's name or display name:
@@ -238,6 +298,8 @@ func itemsLanguage(items *interfaces.DraftItems) string {
 // renameRelations names again, after its object type is renamed to name, each relation drafted
 // from a referring field that ends at it and still bears the name drafting gave it, now or in an
 // earlier draft; a relation a person renamed stays, and one named by its id is named by it again.
+// A role name changes only when it is its target's name; a name of an earlier draft, or the field's
+// whole name a clash gave, takes the role unless another relation of the source has it.
 // Each rename is recorded through decide.
 func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftObjectType, name string,
 	decide func(kind string, id string, action string, before any, after any)) {
@@ -254,18 +316,13 @@ func renameRelations(items *interfaces.DraftItems, objectType *interfaces.DraftO
 		if source == nil || !draftedRelationName(language, source, target, property, r.ID, r.Name) {
 			continue
 		}
-		qualified := r.Name != relationNameIn(language, source, target, property, r.ID) &&
-			r.Name == relationNameFromIn(language, source, target, property, r.ID)
 		if r.Source == objectType.ID {
 			source = &renamed
 		}
 		if r.Target == objectType.ID {
 			target = &renamed
 		}
-		again := relationNameIn(language, source, target, property, r.ID)
-		if qualified || relationNameTaken(items.RelationTypes, r.ID, again) {
-			again = relationNameFromIn(language, source, target, property, r.ID)
-		}
+		again := relationNameAmong(language, items.RelationTypes, source, target, property, r.ID)
 		if again != r.Name {
 			decide(interfaces.DRAFT_KIND_RELATION_TYPES, r.ID, interfaces.DRAFT_DECISION_RENAME, r.Name, again)
 			r.Name = again

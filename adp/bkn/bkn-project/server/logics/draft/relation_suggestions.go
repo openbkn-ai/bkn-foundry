@@ -327,22 +327,23 @@ func relationCandidateOf(rt *interfaces.DraftRelationType, origin string, relati
 	return candidate
 }
 
-// candidateName names a candidate drafted from a referring field. Relation type names are unique
-// in a network: when the draft or a candidate found before has its short name, it takes its
-// source's name too, so adopting it brings in no second relation of that name.
+// candidateName names a candidate drafted from a referring field by its role. A relation's name
+// differs from the other relations of its source: when a relation of the draft or a candidate found
+// before from the same source has the role name, it takes the field's whole name, so adopting it
+// brings in no second relation of that name from its source.
 func candidateName(language string, relations []*interfaces.DraftRelationType, found []interfaces.DraftRelationCandidate,
 	source *interfaces.DraftObjectType, target *interfaces.DraftObjectType, property string, id string) string {
 	name := relationNameIn(language, source, target, property, id)
-	if relationNameTaken(relations, id, name) || candidateNameTaken(found, name) {
-		name = relationNameFromIn(language, source, target, property, id)
+	if relationNameTaken(relations, source.ID, id, name) || candidateNameTaken(found, source.ID, name) {
+		name = relationNameFullIn(source, target, property, id)
 	}
 	return name
 }
 
-// candidateNameTaken reports whether a candidate found already is named name.
-func candidateNameTaken(found []interfaces.DraftRelationCandidate, name string) bool {
+// candidateNameTaken reports whether a candidate found already from source is named name.
+func candidateNameTaken(found []interfaces.DraftRelationCandidate, source string, name string) bool {
 	for _, c := range found {
-		if c.Name == name {
+		if c.SourceObjectTypeID == source && c.Name == name {
 			return true
 		}
 	}

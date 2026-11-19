@@ -114,31 +114,46 @@ func Test_NameInLanguage(t *testing.T) {
 			So(textLanguage(r.Name), ShouldEqual, en)
 		})
 
-		Convey("Two fields named alike once translated keep their relations' names apart\n", func() {
+		Convey("Fields whose roles read alike once translated keep apart only the relations of one source\n", func() {
 			withInvoices := func() []*interfaces.VegaTable {
 				tables := catalog()
 				invoiceID := col("invoice_id", "string", "")
 				invoiceID.DisplayName = "发票编号"
 				invoiceCustomer := col("customer_id", "string", "")
 				invoiceCustomer.DisplayName = "开票客户"
-				invoices := table("r_invoices", "c1", "发票", 500, []string{"invoice_id"}, invoiceID, invoiceCustomer)
+				payer := col("payer_id", "string", "")
+				payer.DisplayName = "开票客户编号"
+				order := col("order_id", "string", "")
+				order.DisplayName = "订单编号"
+				// A third reference keeps the table an object type rather than a link between customers.
+				invoices := table("r_invoices", "c1", "发票", 500, []string{"invoice_id"}, invoiceID, invoiceCustomer, payer, order)
 				invoices.SourceName = "invoices"
-				invoices.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_id", "customers", "customer_id")}
+				invoices.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_id", "customers", "customer_id"),
+					fk("payer_id", "customers", "customer_id"), fk("order_id", "orders", "order_id")}
 				return append(tables, invoices)
 			}
 			english["发票"] = [2]string{"Invoice", ""}
 			english["发票编号"] = [2]string{"Invoice ID", ""}
 			english["开票客户"] = [2]string{"Ordering customer", ""}
+			english["开票客户编号"] = [2]string{"Ordering customer ID", ""}
 			ba.EXPECT().RunTask(gomock.Any(), caller, gomock.Any()).DoAndReturn(translate).AnyTimes()
 			d := newDrafter(testSetting, sampleCounter()).withNamingLanguage(en)
 			items, err := d.draft(context.Background(), withInvoices(), nil)
 			So(err, ShouldBeNil)
 			svc.nameInLanguage(context.Background(), caller, &items, en, withInvoices())
-			customers, orders, invoices := objectType(items, "customers"), objectType(items, "orders"), objectType(items, "invoices")
-			a, b := relation(items, orders.ID, customers.ID), relation(items, invoices.ID, customers.ID)
+			customers, orders := objectType(items, "customers"), objectType(items, "orders")
+			a := relation(items, orders.ID, customers.ID)
 			So(a, ShouldNotBeNil)
-			So(b, ShouldNotBeNil)
-			So(a.Name, ShouldNotEqual, b.Name)
+			So(a.Name, ShouldEqual, "Ordering customer")
+			// Another source may name a relation alike; within one source the second takes the
+			// field's whole name.
+			var invoiceNames []string
+			for _, r := range items.RelationTypes {
+				if r.Source == "invoices" {
+					invoiceNames = append(invoiceNames, r.Name)
+				}
+			}
+			So(invoiceNames, ShouldResemble, []string{"Ordering customer", "Ordering customer ID", "Order"})
 		})
 
 		Convey("A Chinese project on the same catalog keeps its names and asks nothing\n", func() {

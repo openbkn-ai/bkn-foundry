@@ -321,7 +321,9 @@ func mapped(ot *bkn.BknObjectType) bool {
 }
 
 // namesCheck compares the names of the object types and relation types the release adds with
-// those of the others on the branch. The same name blocks; a similar one can be accepted.
+// those of the others on the branch they must differ from: object types with object types, relation
+// types with the relation types of the same source. The same name blocks; a similar one can be
+// accepted.
 func namesCheck(added []string, files map[string][]byte) interfaces.ReleaseCheck {
 	addedItems := []interfaces.ReleaseItem{}
 	for _, p := range added {
@@ -330,12 +332,18 @@ func namesCheck(added []string, files map[string][]byte) interfaces.ReleaseCheck
 		}
 	}
 	all := []interfaces.ReleaseItem{}
+	sources := map[string]string{}
 	for p := range files {
 		if kindOf(p) != "" {
 			all = append(all, itemAt(p, files))
 		}
+		if kindOf(p) == interfaces.RELEASE_ITEM_RELATION_TYPE {
+			if rt, err := bkn.ParseRelationTypeFile(string(files[p]), p); err == nil && rt.ID != "" {
+				sources[rt.ID] = rt.Endpoint.Source
+			}
+		}
 	}
-	same, similar := compareNames(addedItems, all)
+	same, similar := compareNames(addedItems, all, sources)
 	details := map[string][]interfaces.SimilarNames{"same": same, "similar": similar}
 	switch {
 	case len(same) > 0:

@@ -223,28 +223,28 @@ func Test_DraftRelationName(t *testing.T) {
 			return names
 		}
 
-		Convey("A Chinese project names it a predicate from the source to the target, by the referring field\n", func() {
+		Convey("A Chinese project names it by the role the target plays: the referring field without its code word\n", func() {
 			So(relationNames(zh, schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码")),
 				ShouldResemble, map[string]string{
-					"material_code": "按BOM所属物料编码关联物料",
-					"parent_code":   "按父项物料编码关联物料",
-					"child_code":    "按子项物料编码关联物料",
+					"material_code": "BOM所属物料",
+					"parent_code":   "父项物料",
+					"child_code":    "子项物料",
 				})
 		})
 
-		Convey("An English project names it a predicate from the source to the target, by the referring field\n", func() {
+		Convey("An English project names it by the role the target plays: the referring field without its code word\n", func() {
 			So(relationNames(en, schema("BOM detail", "Material code", "Parent material code", "Child material code")),
 				ShouldResemble, map[string]string{
-					"material_code": "Links Material by Material code",
-					"parent_code":   "Links Material by Parent material code",
-					"child_code":    "Links Material by Child material code",
+					"material_code": "Material",
+					"parent_code":   "Parent material",
+					"child_code":    "Child material",
 				})
 		})
 
 		Convey("A field nobody named keeps the relation's id: joining physical names reads no better\n", func() {
 			names := relationNames(zh, schema("物料BOM明细", "", "父项物料编码", ""))
 			So(names["material_code"], ShouldEqual, "material_bom_to_material")
-			So(names["parent_code"], ShouldEqual, "按父项物料编码关联物料")
+			So(names["parent_code"], ShouldEqual, "父项物料")
 			So(names["child_code"], ShouldEqual, "material_bom_to_material_3")
 		})
 
@@ -255,25 +255,107 @@ func Test_DraftRelationName(t *testing.T) {
 			names := relationNames(zh, []*interfaces.VegaTable{materials, bom})
 			So(names, ShouldHaveLength, 1)
 			for _, name := range names {
-				So(name, ShouldEqual, "按父项编码关联物料")
+				So(name, ShouldEqual, "父项")
 			}
 		})
 
-		Convey("A naming language without a template keeps the referring field's name\n", func() {
+		Convey("The name is the role whatever the naming language: no template is involved\n", func() {
 			names := relationNames("fr-FR", schema("物料BOM明细", "BOM所属物料编码", "父项物料编码", "子项物料编码"))
-			So(names["parent_code"], ShouldEqual, "父项物料编码")
+			So(names["parent_code"], ShouldEqual, "父项物料")
 		})
 
-		Convey("Too long a name keeps the referring field's name only, within BKN's 128-character display names\n", func() {
+		Convey("The source's name is not in the name, however long it is\n", func() {
 			long := strings.Repeat("物", maxDisplayNameRunes)
 			tables := schema("", "BOM所属物料编码", "父项物料编码", "子项物料编码")
 			tables[0].Name = long
 			names := relationNames(zh, tables)
-			So(names["parent_code"], ShouldEqual, "父项物料编码")
+			So(names["parent_code"], ShouldEqual, "父项物料")
 			for _, name := range names {
 				So(utf8.RuneCountInString(name), ShouldBeLessThanOrEqualTo, maxDisplayNameRunes)
 			}
 		})
+
+		Convey("Two fields of one source whose roles read alike: the second takes the field's whole name\n", func() {
+			names := relationNames(zh, schema("物料BOM明细", "物料编码", "物料编号", "子项物料编码"))
+			So(names["material_code"], ShouldEqual, "物料")
+			So(names["parent_code"], ShouldEqual, "物料编号")
+			So(names["child_code"], ShouldEqual, "子项物料")
+		})
+	})
+}
+
+func Test_RoleOfField(t *testing.T) {
+	Convey("Test the role a referring field names\n", t, func() {
+		for field, role := range map[string]string{
+			"父项物料编码": "父项物料", "物料编号": "物料", "客户ID": "客户", "客户 id": "客户", "产品线代码": "产品线",
+			"联系号码": "联系", "运单号": "运单", "下单客户": "下单客户",
+			"Customer ID": "Customer", "CustomerID": "Customer", "Customer_id": "Customer", "Supplier No.": "Supplier",
+			"Order number": "Order", "PartCode": "Part", "Account key": "Account", "Parent material code": "Parent material",
+			// An English code word inside a word is no code word.
+			"Barcode": "Barcode", "Monkey": "Monkey", "Paid": "Paid",
+			// Nothing that names a role is left.
+			"编码": "", "ID": "", "工号": "", "父编码": "", "001号": "",
+		} {
+			So(roleOfField(field), ShouldEqual, role)
+		}
+	})
+}
+
+// The default names of relations drafted from referring fields: the role, else the target's name.
+func Test_DraftRelationRoleName(t *testing.T) {
+	Convey("Test the default name of a relation drafted from a referring field\n", t, func() {
+		source := &interfaces.DraftObjectType{ID: "s", Name: "物料BOM明细"}
+		name := func(field string, target string) string {
+			source.Properties = []*interfaces.DraftProperty{{Name: "f", DisplayName: field, MappedField: "f"}}
+			return relationNameIn("zh-CN", source, &interfaces.DraftObjectType{ID: "t", Name: target}, "f", "s_to_t")
+		}
+		So(name("父项物料编码", "物料"), ShouldEqual, "父项物料")
+		So(name("子项物料编码", "物料"), ShouldEqual, "子项物料")
+		So(name("物料编号", "物料"), ShouldEqual, "物料")
+		So(name("供应商编号", "供应商"), ShouldEqual, "供应商")
+		So(name("客户ID", "客户"), ShouldEqual, "客户")
+		So(name("产品线编码", "生产线"), ShouldEqual, "产品线")
+		So(name("下单客户", "客户"), ShouldEqual, "下单客户")
+		// Nothing left, or the field reads as the target's name: the target's name.
+		So(name("编码", "物料"), ShouldEqual, "物料")
+		So(name("工号", "员工"), ShouldEqual, "员工")
+		So(name("customer", "Customer"), ShouldEqual, "Customer")
+		So(name("产品型号", "产品型号"), ShouldEqual, "产品型号")
+		// A field still named by its ASCII physical name keeps the relation's id.
+		source.Properties = []*interfaces.DraftProperty{{Name: "customer_id", DisplayName: "customer_id", MappedField: "customer_id"}}
+		So(relationNameIn("zh-CN", source, &interfaces.DraftObjectType{ID: "t", Name: "客户"}, "customer_id", "s_to_t"), ShouldEqual, "s_to_t")
+	})
+}
+
+// Every name an earlier draft gave a relation drafted from a referring field still reads as drafted,
+// so renames and translations follow it.
+func Test_DraftedRelationNameRecognisesEarlierNames(t *testing.T) {
+	Convey("Test recognising the names earlier drafts gave\n", t, func() {
+		material := &interfaces.DraftObjectType{ID: "material", Name: "物料"}
+		bom := &interfaces.DraftObjectType{ID: "bom", Name: "物料BOM明细",
+			Properties: []*interfaces.DraftProperty{{Name: "parent_code", DisplayName: "父项物料编码", MappedField: "parent_code"}}}
+		for _, name := range []string{"父项物料", "父项物料编码", "物料BOM明细的父项物料编码", "按父项物料编码关联物料",
+			"物料BOM明细按父项物料编码关联物料"} {
+			So(draftedRelationName("zh-CN", bom, material, "parent_code", "r", name), ShouldBeTrue)
+		}
+		So(draftedRelationName("zh-CN", bom, material, "parent_code", "r", "组成"), ShouldBeFalse)
+
+		customer := &interfaces.DraftObjectType{ID: "customer", Name: "Customer"}
+		order := &interfaces.DraftObjectType{ID: "order", Name: "Sales order",
+			Properties: []*interfaces.DraftProperty{{Name: "customer", DisplayName: "Customer", MappedField: "cust"}}}
+		for _, name := range []string{"Customer", "Customer of Sales order", "Links Customer", "Sales order links Customer by Customer"} {
+			So(draftedRelationName("en-US", order, customer, "customer", "r", name), ShouldBeTrue)
+		}
+		zhCustomer := &interfaces.DraftObjectType{ID: "customer", Name: "客户"}
+		zhOrder := &interfaces.DraftObjectType{ID: "order", Name: "销售订单",
+			Properties: []*interfaces.DraftProperty{{Name: "customer", DisplayName: "客户", MappedField: "cust"}}}
+		So(draftedRelationName("zh-CN", zhOrder, zhCustomer, "customer", "r", "关联客户"), ShouldBeTrue)
+
+		// Under the former 40-character limit a long 「{对象}的{字段}」 fell back to the field's name.
+		long := &interfaces.DraftObjectType{ID: "bom", Name: strings.Repeat("长", 40),
+			Properties: bom.Properties}
+		So(draftedRelationName("zh-CN", long, material, "parent_code", "r", "父项物料编码"), ShouldBeTrue)
+		So(draftedRelationName("zh-CN", long, material, "parent_code", "r", strings.Repeat("长", 40)+"的父项物料编码"), ShouldBeTrue)
 	})
 }
 
@@ -314,23 +396,31 @@ func Test_RenameTableNameIn(t *testing.T) {
 	})
 }
 
-// Two tables that name the same target by a field of the same name draft relations whose short
-// names would match: relation type names are unique in a network, so the second names its source.
-func Test_DraftRelationNameTakenNamesTheSource(t *testing.T) {
-	Convey("A relation whose short name another relation has is named by its source as well\n", t, func() {
+// A relation's name differs from the other relations of its source only: two sources may name a
+// relation alike, and a clash within one source is resolved by the field's whole name.
+func Test_DraftRelationNameTakenWithinTheSource(t *testing.T) {
+	Convey("A relation whose role name another relation of its source has takes the field's whole name\n", t, func() {
 		material := &interfaces.DraftObjectType{ID: "material", Name: "物料"}
 		order := &interfaces.DraftObjectType{ID: "work_order", Name: "生产工单",
-			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
+			Properties: []*interfaces.DraftProperty{
+				{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"},
+				{Name: "material_no", DisplayName: "物料编号", MappedField: "material_no"}}}
 		stock := &interfaces.DraftObjectType{ID: "stock", Name: "实时库存",
 			Properties: []*interfaces.DraftProperty{{Name: "material_code", DisplayName: "物料编码", MappedField: "material_code"}}}
 		first := relationNameIn("zh-CN", order, material, "material_code", "r1")
-		So(first, ShouldEqual, "按物料编码关联物料")
-		taken := []*interfaces.DraftRelationType{{ID: "r1", Name: first}}
-		So(relationNameTaken(taken, "r2", relationNameIn("zh-CN", stock, material, "material_code", "r2")), ShouldBeTrue)
-		So(relationNameTaken(taken, "r1", first), ShouldBeFalse)
-		second := relationNameFromIn("zh-CN", stock, material, "material_code", "r2")
-		So(second, ShouldEqual, "实时库存按物料编码关联物料")
-		So(draftedRelationName("zh-CN", stock, material, "material_code", "r2", second), ShouldBeTrue)
-		So(relationNameFromIn("en-US", stock, material, "material_code", "r2"), ShouldEqual, "实时库存 links 物料 by 物料编码")
+		So(first, ShouldEqual, "物料")
+		taken := []*interfaces.DraftRelationType{{ID: "r1", Source: "work_order", Name: first}}
+		// Another source may use the same name.
+		So(relationNameTaken(taken, "stock", "r2", "物料"), ShouldBeFalse)
+		So(relationNameAmong("zh-CN", taken, stock, material, "material_code", "r2"), ShouldEqual, "物料")
+		// The same source may not.
+		So(relationNameTaken(taken, "work_order", "r3", "物料"), ShouldBeTrue)
+		So(relationNameTaken(taken, "work_order", "r1", first), ShouldBeFalse)
+		second := relationNameAmong("zh-CN", taken, order, material, "material_no", "r3")
+		So(second, ShouldEqual, "物料编号")
+		So(draftedRelationName("zh-CN", order, material, "material_no", "r3", second), ShouldBeTrue)
+		// When the field's whole name is taken too, the id keeps the two apart.
+		taken = append(taken, &interfaces.DraftRelationType{ID: "r3", Source: "work_order", Name: second})
+		So(relationNameAmong("zh-CN", taken, order, material, "material_no", "r4"), ShouldEqual, "r4")
 	})
 }
