@@ -806,9 +806,10 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		if slices.ContainsFunc(keptSpec.Questions, func(k *interfaces.RequirementQuestion) bool { return sameText(k.Text, q.Text) }) {
 			continue
 		}
-		// With no requirement document there is nothing to cite: a question about the adopted
+		// With no requirement document there is nothing to cite (the network's background and the
+		// knowledge base's rules drafting cites beside them are none): a question about the adopted
 		// model rests on it, as drafting was told, whether or not the Agent said so.
-		if len(docs) == 0 && len(q.Citations) == 0 && strings.TrimSpace(q.SupplementReason) == "" && asksOfModel(q, draft) {
+		if !hasRequirementDocuments(docs) && len(q.Citations) == 0 && strings.TrimSpace(q.SupplementReason) == "" && asksOfModel(q, draft) {
 			reason, ok := locale.ModelBasisTexts[projecthooks.DraftLanguage(draft)]
 			if !ok {
 				reason = locale.ModelBasisTexts[interfaces.NAMING_LANGUAGE_EN_US]
@@ -949,6 +950,22 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 			reject(rejectedInput, interfaces.REQUIREMENT_INPUT_REFERENCE_TIME+" ("+q.Text+")", rejectedWindowWithoutRefTime)
 		}
 		question.RelativeWindow = q.RelativeWindow
+		// Still resting on nothing it needs, as when the Agent named concepts the specification
+		// lacks: the adopted object types its text names are what it is about.
+		if len(question.Needs) == 0 {
+			for _, ot := range objectTypesNamed(draft, q.Template+"\n"+q.Text) {
+				if !hasConceptOf(spec, ot) && len(spec.Concepts)-len(keptSpec.Concepts) >= maxDraftConcepts {
+					continue
+				}
+				concept := conceptOfObjectType(spec, draft, ot)
+				if !slices.Contains(question.Basis.ConceptIDs, concept.ID) {
+					question.Basis.ConceptIDs = append(question.Basis.ConceptIDs, concept.ID)
+				}
+				if concept.MapsTo != nil && !slices.Contains(question.Needs, *concept.MapsTo) {
+					question.Needs = append(question.Needs, *concept.MapsTo)
+				}
+			}
+		}
 		// None given is no input value; given but none standing is not known, as before inputs.
 		if len(q.Inputs) == 0 || len(inputs) > 0 {
 			question.Inputs = &inputs
@@ -1363,4 +1380,36 @@ func adoptedObjectType(draft *interfaces.Draft, id string) *interfaces.DraftObje
 		}
 	}
 	return nil
+}
+
+// hasRequirementDocuments tells whether docs hold a document the project's people gave, beside the
+// network's background and the knowledge base's rules drafting cites with them.
+func hasRequirementDocuments(docs map[string]*interfaces.RequirementDocument) bool {
+	for id := range docs {
+		if id != interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID && id != interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID {
+			return true
+		}
+	}
+	return false
+}
+
+// objectTypesNamed are the adopted object types whose names text holds, in the draft's order; of
+// two names one holds, only the longer, as 物料清单 is no question about 物料.
+func objectTypesNamed(draft *interfaces.Draft, text string) []*interfaces.DraftObjectType {
+	if draft == nil {
+		return nil
+	}
+	named := []*interfaces.DraftObjectType{}
+	for _, ot := range draft.Items.ObjectTypes {
+		if ot != nil && ot.Adopted && strings.TrimSpace(ot.Name) != "" && strings.Contains(text, strings.TrimSpace(ot.Name)) {
+			named = append(named, ot)
+		}
+	}
+	return slices.DeleteFunc(named, func(ot *interfaces.DraftObjectType) bool {
+		name := strings.TrimSpace(ot.Name)
+		return slices.ContainsFunc(named, func(other *interfaces.DraftObjectType) bool {
+			longer := strings.TrimSpace(other.Name)
+			return other != ot && len(longer) > len(name) && strings.Contains(longer, name) && strings.Count(text, name) == strings.Count(text, longer)
+		})
+	})
 }
