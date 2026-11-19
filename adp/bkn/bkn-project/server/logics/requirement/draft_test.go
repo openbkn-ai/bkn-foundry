@@ -81,8 +81,10 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 		line := &interfaces.DraftObjectType{ID: "contract_line", Name: "文本内合同物料明细", Adopted: true,
 			PrimaryKeys: []string{"line_id"}, Properties: []*interfaces.DraftProperty{
 				{Name: "line_id", Type: "string"}, {Name: "contract_no", Type: "string"}, {Name: "material_code", Type: "string"}}}
+		supplier := &interfaces.DraftObjectType{ID: "supplier", Name: "供应商", Adopted: true, PrimaryKeys: []string{"supplier_code"},
+			Properties: []*interfaces.DraftProperty{{Name: "supplier_code", Type: "string"}}}
 		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
-			ObjectTypes: []*interfaces.DraftObjectType{contract, line},
+			ObjectTypes: []*interfaces.DraftObjectType{contract, line, supplier},
 			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
 		question := func(id, template string, in agentInput) agentQuestion {
 			return agentQuestion{ID: id, Text: template, Template: template, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
@@ -95,6 +97,8 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 			question("q2", "明细 {line} 属于哪份合同？", agentInput{Name: "line", ConceptID: "knowledge-明细", Property: "material_code", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 			question("q3", "金额超过 {limit} 的合同？", agentInput{Name: "limit", Property: "total_amount", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 			question("q4", "{x} 是什么？", agentInput{Name: "x", Property: "nowhere", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
+			// An input refused for another reason adds no concept, and the question rests on none.
+			question("q5", "哪家供应商最多？", agentInput{Name: "s", Property: "supplier_code", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 		}}
 		spec := emptySpec()
 		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
@@ -119,9 +123,12 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 		// The question rests on the concept it asks about, so drafting again keeps both.
 		So(spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{byObject["contract_doc"].ID})
 		So(spec.Questions[0].Needs, ShouldContain, *byObject["contract_doc"].MapsTo)
-		So(spec.Questions, ShouldHaveLength, 4)
+		So(spec.Questions, ShouldHaveLength, 5)
+		So(spec.Questions[4].Basis.ConceptIDs, ShouldBeEmpty)
+		So(spec.Questions[4].Needs, ShouldBeEmpty)
 		So(spec.Questions[3].Inputs == nil || len(*spec.Questions[3].Inputs) == 0, ShouldBeTrue)
-		So(rejected, ShouldResemble, []string{"x.nowhere ({x} 是什么？) " + inputUnknownConcept})
+		So(rejected, ShouldResemble, []string{"x.nowhere ({x} 是什么？) " + inputUnknownConcept,
+			"s.supplier_code (哪家供应商最多？) " + inputNotInTemplate})
 	})
 }
 

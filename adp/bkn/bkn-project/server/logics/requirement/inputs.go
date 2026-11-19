@@ -239,6 +239,14 @@ func objectTypeOfProperty(draft *interfaces.Draft, property string) *interfaces.
 	return having[0]
 }
 
+// hasConceptOf tells whether the specification has a concept of the object type.
+func hasConceptOf(spec *interfaces.RequirementSpec, ot *interfaces.DraftObjectType) bool {
+	ref := interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID}
+	return slices.ContainsFunc(spec.Concepts, func(c *interfaces.RequirementConcept) bool {
+		return c.MapsTo != nil && *c.MapsTo == ref
+	})
+}
+
 // conceptOfObjectType is the specification's concept of the object type, added when it has none:
 // a question's input names a concept, and a project with no requirement documents, such as one over
 // a knowledge base alone, has none to name.

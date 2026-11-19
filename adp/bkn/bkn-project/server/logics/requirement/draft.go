@@ -870,19 +870,16 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 		inputs := []interfaces.RequirementInput{}
 		for _, in := range q.Inputs {
 			input := interfaces.RequirementInput{Name: strings.TrimSpace(in.Name), Property: in.Property, Role: in.Role}
+			// The concept of the object type an input reads when it names none the specification has;
+			// one added for it is taken back if the input does not stand.
+			var taken *interfaces.RequirementConcept
+			before := len(spec.Concepts)
 			if concept, ok := concepts[in.ConceptID]; ok {
 				input.ConceptID = concept.ID
-			} else if ot := objectTypeOfProperty(draft, in.Property); ot != nil {
-				// No concept the specification has: the object type that has the property is the one
-				// asked about. The question rests on its concept, so drafting again keeps both.
-				concept := conceptOfObjectType(spec, draft, ot)
-				input.ConceptID = concept.ID
-				if !slices.Contains(question.Basis.ConceptIDs, concept.ID) {
-					question.Basis.ConceptIDs = append(question.Basis.ConceptIDs, concept.ID)
-				}
-				if !slices.Contains(question.Needs, *concept.MapsTo) {
-					question.Needs = append(question.Needs, *concept.MapsTo)
-				}
+			} else if ot := objectTypeOfProperty(draft, in.Property); ot != nil &&
+				(hasConceptOf(spec, ot) || len(spec.Concepts)-len(keptSpec.Concepts) < maxDraftConcepts) {
+				taken = conceptOfObjectType(spec, draft, ot)
+				input.ConceptID = taken.ID
 			}
 			given := input.Name
 			if input.Property != "" {
@@ -894,8 +891,18 @@ func buildSpec(out *draftOutput, docs map[string]*interfaces.RequirementDocument
 				reason = inputDuplicateName
 			}
 			if reason != "" {
+				spec.Concepts = spec.Concepts[:before]
 				reject(rejectedInput, given+" ("+q.Text+")", reason)
 				continue
+			}
+			// The question rests on the concept it asks about, so drafting again keeps both.
+			if taken != nil {
+				if !slices.Contains(question.Basis.ConceptIDs, taken.ID) {
+					question.Basis.ConceptIDs = append(question.Basis.ConceptIDs, taken.ID)
+				}
+				if !slices.Contains(question.Needs, *taken.MapsTo) {
+					question.Needs = append(question.Needs, *taken.MapsTo)
+				}
 			}
 			if input.Example = strings.TrimSpace(in.Example); input.Example != "" {
 				cited, ok := exampleCitation(input.Example, docs)

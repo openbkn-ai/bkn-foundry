@@ -182,6 +182,16 @@ func Test_Judge(t *testing.T) {
 			}
 		}
 		So(names, ShouldResemble, map[string]string{"mrp_planorder": "源单", "forecast": "物料需求预测", "product": "产品"})
+
+		// The Agent's suggestion of a subtype and the counts' one share a name: a later relation of
+		// the subtype is not renamed for the copy.
+		j := newJudge(setting, sampleFacts(sampleDraft()), sampleQuestions(), sampleConcepts())
+		st := j.facts.Subtypes[0]
+		first, again := j.subtypeRelation(st, "", ""), j.subtypeRelation(st, "", "")
+		So(applyOf[interfaces.DiagnosisCreateRelation](again).Name, ShouldEqual, applyOf[interfaces.DiagnosisCreateRelation](first).Name)
+		later := j.createRelation(interfaces.DraftReference{Source: "product", SourceProperty: "code", Target: "material",
+			TargetProperty: "code", Rows: 30, Hits: 30, Rate: 1, Name: "物料"}, "", "", "", nil)
+		So(applyOf[interfaces.DiagnosisCreateRelation](later).Name, ShouldEqual, "物料")
 	})
 
 	Convey("Test the suggestions of a network diagnosis\n", t, func() {
