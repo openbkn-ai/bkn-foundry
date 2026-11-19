@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -142,9 +143,10 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 		return nil, err
 	}
 	return &interfaces.HTTPResponse{
-		StatusCode: resp.StatusCode,
-		Headers:    headers,
-		Duration:   time.Since(startTime).Milliseconds(),
+		StatusCode:         resp.StatusCode,
+		Headers:            headers,
+		Duration:           time.Since(startTime).Milliseconds(),
+		RequestObservation: buildRequestObservation(httpReq, resp.Request),
 	}, nil
 }
 
@@ -174,9 +176,10 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 				time.Since(startTime).Seconds(), err.Error())
 		}
 		return &interfaces.HTTPResponse{
-			StatusCode: status,
-			Error:      message,
-			Duration:   time.Since(startTime).Milliseconds(),
+			StatusCode:         status,
+			Error:              message,
+			Duration:           time.Since(startTime).Milliseconds(),
+			RequestObservation: buildRequestObservation(httpReq, nil),
 		}, nil
 	}
 	defer func() {
@@ -184,7 +187,7 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 	}()
 
 	// Handle response.
-	return f.processResponse(resp, startTime)
+	return f.processResponse(resp, startTime, buildRequestObservation(httpReq, resp.Request))
 }
 
 // buildRequest Builds an HTTP request based on request parameters.
@@ -495,7 +498,7 @@ func unresolvedPathPlaceholders(rawURL string) []string {
 }
 
 // processResponse handles HTTP responses.
-func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*interfaces.HTTPResponse, error) {
+func (f *forwarder) processResponse(resp *http.Response, startTime time.Time, observation *interfaces.RequestObservation) (*interfaces.HTTPResponse, error) {
 	// Read response body.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -524,11 +527,48 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*
 	}
 
 	return &interfaces.HTTPResponse{
-		StatusCode: resp.StatusCode,
-		Headers:    headers,
-		Body:       responseBody,
-		Duration:   time.Since(startTime).Milliseconds(),
+		StatusCode:         resp.StatusCode,
+		Headers:            headers,
+		Body:               responseBody,
+		Duration:           time.Since(startTime).Milliseconds(),
+		RequestObservation: observation,
 	}, nil
+}
+
+// buildRequestObservation describes the request actually sent to the upstream.
+// final is the request that produced the response (after redirects); when nil,
+// the originally built request is described and redirected stays false. Only
+// transport-level facts are collected: header values, cookies, the request
+// body and query values are deliberately excluded.
+func buildRequestObservation(original, final *http.Request) *interfaces.RequestObservation {
+	if original == nil {
+		return nil
+	}
+	observed := original
+	redirected := false
+	if final != nil {
+		observed = final
+		redirected = original.URL.String() != final.URL.String()
+	}
+	observation := &interfaces.RequestObservation{
+		Method:     observed.Method,
+		Path:       observed.URL.EscapedPath(),
+		Redirected: redirected,
+	}
+	if keys := observed.URL.Query(); len(keys) > 0 {
+		observation.QueryKeys = make([]string, 0, len(keys))
+		for key := range keys {
+			observation.QueryKeys = append(observation.QueryKeys, key)
+		}
+		sort.Strings(observation.QueryKeys)
+	}
+	if contentType := observed.Header.Get("Content-Type"); contentType != "" {
+		observation.ContentType = contentType
+	}
+	if observed.ContentLength > 0 {
+		observation.ContentLength = observed.ContentLength
+	}
+	return observation
 }
 
 func prepareStreamRequest(streamingMode interfaces.StreamingMode, req *http.Request) {
