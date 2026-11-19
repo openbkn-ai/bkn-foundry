@@ -83,10 +83,13 @@ func (p *projector) run(ctx context.Context) error {
 	}
 }
 
-// round does one turn of the work, unless another replica is at it.
+// round makes again the class releases that failed, and does one turn of the
+// work, unless another replica is at it.
 func (p *projector) round(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, projectRun)
 	defer cancel()
+	// Each replica makes again the releases that failed on it.
+	p.classes.republish(ctx)
 	_, err := p.store.alone(ctx, projectLock, func() error {
 		for _, step := range []struct {
 			name string
@@ -121,9 +124,11 @@ func (p *projector) failed(key, what string, err error) {
 }
 
 // backfill gives a class to the event types that have none. A versioned
-// network is left out: its class would be written to its draft, which the
-// people working on the draft have not asked for. Such a type gets its class
-// when it is next updated.
+// network's classes are published at once, in one version for all the types
+// of the network given theirs in a round, unless its draft holds changes of
+// other people, which they then wait in with them. One version, not one per
+// type: a network that keeps no full history drops its versions before the
+// last two at each publication, and an upgrade must not drop its people's.
 func (p *projector) backfill(ctx context.Context) error {
 	if p.now().Sub(p.backfilled) < backfillPeriod {
 		return nil
@@ -133,55 +138,82 @@ func (p *projector) backfill(ctx context.Context) error {
 		return err
 	}
 	p.backfilled = p.now()
-	versioned := map[string]bool{}
+	var networks []string
+	byNetwork := map[string][]interfaces.KnEventType{}
 	for _, eventType := range types {
+		if _, seen := byNetwork[eventType.KNID]; !seen {
+			networks = append(networks, eventType.KNID)
+		}
+		byNetwork[eventType.KNID] = append(byNetwork[eventType.KNID], eventType)
+	}
+	for _, knID := range networks {
 		if ctx.Err() != nil {
 			return nil
 		}
-		waits, known := versioned[eventType.KNID]
-		if !known {
-			if waits, err = p.classes.versioned(ctx, eventType.KNID); err != nil {
-				logger.Warnf("knowledge-network event classes: read the version state of network %s: %v", eventType.KNID, err)
-				continue
-			}
-			versioned[eventType.KNID] = waits
-		}
-		if waits {
-			continue
-		}
-		if err := p.give(ctx, eventType); err != nil {
-			logger.Warnf("knowledge-network event classes: give event type %s of network %s its class: %v",
-				eventType.Code, eventType.KNID, err)
-		}
+		p.giveAll(ctx, knID, byNetwork[knID])
 	}
 	return nil
 }
 
+// giveAll gives the event types of a network their classes under the head
+// lock of its classes, and publishes them once the lock is let go.
+func (p *projector) giveAll(ctx context.Context, knID string, types []interfaces.KnEventType) {
+	var writes context.Context
+	var given []string
+	err := p.store.exclusive(ctx, classLock(knID), func() error {
+		var err error
+		if writes, err = p.classes.begin(ctx, knID); err != nil {
+			return err
+		}
+		for _, eventType := range types {
+			if ctx.Err() != nil {
+				return nil
+			}
+			defined, err := p.give(writes, eventType)
+			if err != nil {
+				logger.Warnf("knowledge-network event classes: give event type %s of network %s its class: %v",
+					eventType.Code, eventType.KNID, err)
+			}
+			if defined {
+				given = append(given, eventType.Name)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Warnf("knowledge-network event classes: give the event types of network %s their classes: %v", knID, err)
+	}
+	if len(given) > 0 {
+		p.classes.publish(writes, knID, classNote(given...))
+	}
+}
+
 // give makes the class of an event type and stores it with the type, unless
 // the type was given one or deleted meanwhile, or another type has the class.
-func (p *projector) give(ctx context.Context, listed interfaces.KnEventType) error {
-	return p.store.exclusive(ctx, classLock(listed.KNID), func() error {
-		eventType, found, err := p.store.getType(ctx, listed.KNID, listed.Code)
-		if err != nil || !found || eventType.ObjectTypeID != "" {
+// It is called under the head lock of the network's classes, with a context
+// from begin; defined says its class definitions were written, which are then
+// published even when the type could not be stored with them, as ensure does.
+func (p *projector) give(ctx context.Context, listed interfaces.KnEventType) (defined bool, err error) {
+	eventType, found, err := p.store.getType(ctx, listed.KNID, listed.Code)
+	if err != nil || !found || eventType.ObjectTypeID != "" {
+		return false, err
+	}
+	if err := claim(ctx, p.store, eventType.KNID, eventType.Code, false); err != nil {
+		return false, err
+	}
+	class, err := p.classes.define(ctx, eventType)
+	if err != nil {
+		return false, err
+	}
+	return true, p.store.write(ctx, eventType.KNID, func(w *writer) error {
+		current, found, err := w.eventType(eventType.Code)
+		if err != nil || !found || current.ObjectTypeID != "" {
 			return err
 		}
-		if err := claim(ctx, p.store, eventType.KNID, eventType.Code, false); err != nil {
+		if err := p.classes.clear(ctx, eventType, class); err != nil {
 			return err
 		}
-		class, err := p.classes.ensure(ctx, eventType)
-		if err != nil {
-			return err
-		}
-		return p.store.write(ctx, eventType.KNID, func(w *writer) error {
-			current, found, err := w.eventType(eventType.Code)
-			if err != nil || !found || current.ObjectTypeID != "" {
-				return err
-			}
-			if err := p.classes.clear(ctx, eventType, class); err != nil {
-				return err
-			}
-			return w.setClass(eventType.Code, class)
-		})
+		return w.setClass(eventType.Code, class)
 	})
 }
 

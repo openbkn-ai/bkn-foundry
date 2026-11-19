@@ -534,11 +534,23 @@ func (s *service) DeleteEventType(ctx context.Context, knID, code string) error 
 	var versioned bool
 	err := s.store.exclusive(ctx, classLock(knID), func() error {
 		var class string
-		var changed bool
+		var changed, removed bool
+		var name string
+		// The removal is published after the head lock is let go, not while
+		// holding it. A draft that cannot be published to is written as it is.
+		removing, err := s.classes.begin(ctx, knID)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if removed {
+				s.classes.publish(removing, knID, removalNote(name))
+			}
+		}()
 		// Under the head lock no event of the type can be written meanwhile, so
 		// the class goes only with a type that has no events, and before it: a
 		// class left without its type would stay in the network.
-		err := s.write(ctx, knID, "type delete", func(w *writer) error {
+		err = s.write(ctx, knID, "type delete", func(w *writer) error {
 			current, found, err := w.eventType(code)
 			if err != nil {
 				return err
@@ -553,9 +565,10 @@ func (s *service) DeleteEventType(ctx context.Context, knID, code string) error 
 				return err
 			}
 			class = current.ObjectTypeID
-			if versioned, changed, err = s.classes.remove(ctx, current); err != nil {
+			if versioned, changed, err = s.classes.remove(removing, current); err != nil {
 				return err
 			}
+			removed, name = changed, current.Name
 			if _, used, err := w.deleteType(code); err != nil || used {
 				if err == nil {
 					err = inUse()
