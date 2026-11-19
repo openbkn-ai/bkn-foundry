@@ -45,7 +45,7 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 | --- | --- |
 | `query` | Cypher 文本，最长 8192 字符 |
 | `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；null 只能用于 `$name IS NULL` 判空（见下文「可选条件」）。参数名区分大小写，也可以是关键字，如 `$end`、`$limit` |
-| `object_properties` | 返回节点时，每个节点变量额外带回哪些属性，例如 `{"t": ["team_name"]}`。变量必须是查询里返回的节点，属性总数最多 128 个，授权规则与查询中其他属性相同 |
+| `object_properties` | 返回节点时，每个节点额外带回哪些属性，例如 `{"t": ["team_name"]}`。键是节点变量（`(t:team)` 里的 `t`），也可以是节点返回时的别名（`RETURN t AS team` 时写 `team`）；必须是查询里返回的节点，属性总数最多 128 个，授权规则与查询中其他属性相同 |
 | `explain` | 为 `true` 时只返回执行计划、不读数据，见下文「先用 explain 校验」 |
 
 分支用查询参数 `branch` 指定，默认 `main`。
@@ -414,6 +414,7 @@ RETURN h AS source, '主场结果' AS relationType,
 | 写法 | 数据集和索引上 |
 | --- | --- |
 | MATCH、多跳关系、OPTIONAL MATCH | 支持 |
+| 经关联表（link table）连接两端的关系，知识库构建的网络里常见 | MATCH 里支持；OPTIONAL MATCH 里不支持，会被拒并点名这个关系类 |
 | WHERE 条件（比较、IN、字符串匹配、IS NULL、算术） | 支持 |
 | RETURN 属性、聚合（count、sum、avg、min、max）、ORDER BY / SKIP / LIMIT | 支持 |
 | WITH 先聚合再过滤、按上一段的值过滤（半连接） | 支持 |

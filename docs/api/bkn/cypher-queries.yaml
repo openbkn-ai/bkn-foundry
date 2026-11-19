@@ -206,7 +206,8 @@ components:
               type: string
           description: |-
             Properties a returned node carries besides its identity, keyed by the node's
-            variable. Each variable must be a node the query returns, and at most 128
+            variable or by the alias it is returned as (team for RETURN t AS team). Each key
+            must be a node the query returns, and at most 128
             properties may be named in all, across every variable; the properties are read
             under the same authorization as any other property the query names.
           example:
@@ -332,7 +333,9 @@ components:
             coalesce, the scalar functions, totals over groups, comparing two lists, passing nodes on and collect are
             refused with 400, and a read too large or too slow is refused too. Nodes,
             relationships and derived relationships are returned as on a SQL data source,
-            and UNION works, each part read on its own.
+            and UNION works, each part read on its own. A relation that links its ends
+            through a link table, as networks built from a knowledge base have, works in
+            MATCH; in OPTIONAL MATCH it is refused with 400 naming the relation type.
 
             In the semi-join form each row of the second stage is kept once if its value is
             among the first stage's, however often the first stage produced it; v may also be

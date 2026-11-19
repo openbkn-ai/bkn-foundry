@@ -8,6 +8,7 @@ package cypher
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -133,6 +134,11 @@ func (e *bindJoinExecutor) prepare() error {
 	}
 
 	for i, table := range e.plan.Tables {
+		if table.Backing {
+			// A backing resource is no object: it has no primary key, and
+			// what it is read with is its join keys.
+			continue
+		}
 		objectType := e.schema.objectTypesByID[table.ObjectTypeID]
 		if objectType == nil {
 			return fmt.Errorf("plan table %d has unknown object type %q", i, table.ObjectTypeID)
@@ -896,6 +902,7 @@ func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReade
 		// wrong result, such as the groups rather than their totals.
 		return nil, nil, fmt.Errorf("the bind-join executor does not run this query; the SQL path does")
 	}
+	plan = throughBackings(plan)
 	plan, err := resolveSemiJoins(ctx, plan, schema, read, limits)
 	if err != nil {
 		return nil, nil, err
@@ -915,6 +922,36 @@ func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReade
 		return nil, nil, err
 	}
 	return bindJoinColumns(plan, schema, entries), entries, nil
+}
+
+// throughBackings writes each join over an indirect relation as the two inner
+// joins the SQL path writes it as: the left end to a backing row on the
+// relation's source keys, and that row to the right end on its target keys.
+// The backing table is then read like any other, by the keys the bound rows
+// hold, and a link row matches only where both of its key sets do. A join
+// keeps its index, since a relationship value names it by index; the second
+// half is appended. An outer join over a backing row never comes here (the
+// planner marks it SQLOnly). The plan is copied, as the caller still holds it.
+func throughBackings(plan *Plan) *Plan {
+	if !slices.ContainsFunc(plan.Joins, func(join PlanJoin) bool { return join.Backing != nil }) {
+		return plan
+	}
+	copied := *plan
+	copied.Joins = slices.Clone(plan.Joins)
+	for index, join := range plan.Joins {
+		link := join.Backing
+		if link == nil {
+			continue
+		}
+		near := join
+		near.Right, near.Backing, near.Readings = link.Table, nil, [][]PlanJoinKey{link.LeftKeys}
+		copied.Joins[index] = near
+		copied.Joins = append(copied.Joins, PlanJoin{
+			Left: link.Table, Right: join.Right, RelationTypeID: join.RelationTypeID,
+			Direction: join.Direction, Readings: [][]PlanJoinKey{link.RightKeys},
+		})
+	}
+	return &copied
 }
 
 // readWindow is a single sorted, limited read.

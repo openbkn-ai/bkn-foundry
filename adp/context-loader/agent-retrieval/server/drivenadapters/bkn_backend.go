@@ -305,6 +305,13 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
 		}
+		// A 4xx is the query's or the caller's, not a dependency fault:
+		// labelled "dependency service error" it read as an outage, and the
+		// model kept rewriting a query that could not run (bkn-foundry issue
+		// 3283). Only a 5xx stays one.
+		if respCode >= http.StatusBadRequest && respCode < http.StatusInternalServerError {
+			return nil, infraErr.DefaultHTTPError(ctx, respCode, baseError)
+		}
 		return nil, infraErr.NewHTTPError(ctx, respCode,
 			infraErr.ErrExtCommonExternalServerError, baseError)
 	}

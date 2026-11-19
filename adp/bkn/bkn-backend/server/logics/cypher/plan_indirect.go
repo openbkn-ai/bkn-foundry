@@ -172,9 +172,25 @@ func (p *planner) addIndirectJoin(edge EdgeRef, relationType *interfaces.Relatio
 		join.Conditions = append(join.Conditions, planned)
 	}
 	p.plan.Joins = append(p.plan.Joins, join)
-	// Only the SQL path reads a backing resource.
-	p.plan.SQLOnly = true
+	// The bind-join executor reads an inner join through a backing row as the
+	// two joins in a row the SQL path writes (see throughBackings). An outer
+	// one has to find a backing row and its far end together, which the SQL
+	// path nests (see writeBackingJoin) and only it does.
+	if edge.Optional {
+		p.plan.SQLOnly = true
+	}
 	return nil
+}
+
+// optionalBacking is the relation type of an OPTIONAL MATCH over an indirect
+// relation, which only the SQL path answers; "" when the plan has none.
+func optionalBacking(plan *Plan) string {
+	for _, join := range plan.Joins {
+		if join.Backing != nil && join.Optional {
+			return join.RelationTypeID
+		}
+	}
+	return ""
 }
 
 // swapKeys turns key pairs around, for a reading that runs against the
