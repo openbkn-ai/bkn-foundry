@@ -41,11 +41,42 @@ type definitionsStub struct {
 	// saved and removed are called with the key of each object type saved or
 	// removed, after it is.
 	saved, removed func(key string)
+	// dirty names the versioned networks whose draft holds changes of other
+	// people. published lists the notes of the versions published, and
+	// publishErr is what publishing is refused with.
+	dirty      map[string]bool
+	published  []string
+	publishErr error
+}
+
+// beganKey marks a context from begin, with how many writes were made before.
+type beganKey struct{}
+
+// begin gives a context to publish with unless the network has no versions or
+// its draft holds changes of other people, as the platform's does.
+func (d *definitionsStub) begin(ctx context.Context, knID string) (context.Context, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.versioned[knID] || d.dirty[knID] {
+		return ctx, nil
+	}
+	return context.WithValue(ctx, beganKey{}, len(d.writes)), nil
+}
+
+func (d *definitionsStub) publish(ctx context.Context, _, note string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if from, ok := ctx.Value(beganKey{}).(int); ok && len(d.writes) > from {
+		d.as(ctx)
+		d.published = append(d.published, note)
+		return d.publishErr
+	}
+	return nil
 }
 
 func newDefinitionsStub() *definitionsStub {
 	return &definitionsStub{
-		versioned: map[string]bool{}, objects: map[string]*interfaces.ObjectType{},
+		versioned: map[string]bool{}, dirty: map[string]bool{}, objects: map[string]*interfaces.ObjectType{},
 		relations: map[string]*interfaces.RelationType{}, actors: map[string]bool{}, users: map[string][]string{},
 	}
 }
@@ -391,11 +422,150 @@ func TestEnsureWritesAVersionedNetworksClassToItsDraft(t *testing.T) {
 	if want := []string{"object kn1/draft/order_late", "relation kn1/draft/order_late_subject"}; !reflect.DeepEqual(definitions.writes, want) {
 		t.Fatalf("writes %v", definitions.writes)
 	}
-	if waits, err := classes.versioned(userContext(), "kn1"); err != nil || !waits {
-		t.Fatalf("versioned = %v, %v", waits, err)
+	if want := []string{"Event class: 订单超期"}; !reflect.DeepEqual(definitions.published, want) {
+		t.Fatalf("published %v", definitions.published)
 	}
-	if waits, _ := classes.versioned(userContext(), "kn2"); waits {
-		t.Fatal("a network without versions waits for none")
+}
+
+// A draft with changes of other people is not published: that would release
+// their work. The class waits in it for their publication.
+func TestEnsureLeavesTheClassInADraftWithOtherChanges(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"], definitions.dirty["kn1"] = true, true
+	definitions.subject("kn1", "draft", "order", "order_id")
+	class, err := classes.ensure(userContext(), lateOrder)
+	if err != nil || class.objectTypeID != "order_late" {
+		t.Fatalf("ensure = %+v, %v", class, err)
+	}
+	if want := []string{"object kn1/draft/order_late", "relation kn1/draft/order_late_subject"}; !reflect.DeepEqual(definitions.writes, want) {
+		t.Fatalf("writes %v", definitions.writes)
+	}
+	if len(definitions.published) != 0 {
+		t.Fatalf("published %v", definitions.published)
+	}
+}
+
+func TestEnsureDoesNotPublishInANetworkWithoutVersions(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.subject("kn1", "main", "order", "order_id")
+	if _, err := classes.ensure(userContext(), lateOrder); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"object kn1/main/order_late", "relation kn1/main/order_late_subject"}; !reflect.DeepEqual(definitions.writes, want) ||
+		len(definitions.published) != 0 {
+		t.Fatalf("writes %v, published %v", definitions.writes, definitions.published)
+	}
+}
+
+// A publication that fails leaves the class in the draft and does not fail
+// the event type.
+func TestEnsureKeepsTheClassWhenItsPublicationFails(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.publishErr = errors.New("the publication is refused")
+	if _, err := classes.ensure(userContext(), lateOrder); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if definitions.objects["kn1/draft/order_late"] == nil || len(definitions.published) != 1 {
+		t.Fatalf("writes %v, published %v", definitions.writes, definitions.published)
+	}
+}
+
+// A publication that failed is made again later, until it is made.
+func TestAFailedPublicationIsMadeAgain(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.publishErr = errors.New("the concept index could not be built")
+	if _, err := classes.ensure(userContext(), lateOrder); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	classes.republish(context.Background())
+	definitions.publishErr = nil
+	classes.republish(context.Background())
+	classes.republish(context.Background())
+	want := []string{"Event class: 订单超期", "Event class: 订单超期", "Event class: 订单超期"}
+	if !reflect.DeepEqual(definitions.published, want) || len(classes.unpublished) != 0 {
+		t.Fatalf("published %v, waiting %v", definitions.published, classes.unpublished)
+	}
+	if !definitions.actors[platform] {
+		t.Fatalf("published again by %v", definitions.actors)
+	}
+}
+
+// A publication is let go once the network moved on without it: someone wrote
+// the draft or published since, and the class goes with their release.
+func TestAPublicationTheNetworkMovedPastIsLetGo(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.publishErr = errors.New("the concept index could not be built")
+	if _, err := classes.ensure(userContext(), lateOrder); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	definitions.publishErr = httperrors.NewHTTPError(userContext(), http.StatusConflict, berrors.BknBackend_KNVersion_DraftRevisionMismatch)
+	classes.republish(context.Background())
+	classes.republish(context.Background())
+	if len(definitions.published) != 2 || len(classes.unpublished) != 0 {
+		t.Fatalf("published %v, waiting %v", definitions.published, classes.unpublished)
+	}
+
+	// Refused so at once, it is not kept to be made again.
+	other, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.publishErr = httperrors.NewHTTPError(userContext(), http.StatusConflict, berrors.BknBackend_KNVersion_RunningVersionMismatch)
+	if _, err := other.ensure(userContext(), lateOrder); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	if len(other.unpublished) != 0 {
+		t.Fatalf("waiting %v", other.unpublished)
+	}
+}
+
+// A class that failed half way is not published.
+func TestEnsureDoesNotPublishWhatFailed(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.subject("kn1", "draft", "order", "order_id")
+	definitions.relationErr = errors.New("definitions are down")
+	if _, err := classes.ensure(userContext(), lateOrder); err == nil || len(definitions.published) != 0 {
+		t.Fatalf("ensure = %v, published %v", err, definitions.published)
+	}
+}
+
+// The removal of a class from a clean draft is published, with the type's name.
+func TestRemovalFromACleanDraftIsPublished(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	definitions.subject("kn1", "draft", "order", "order_id")
+	class, _ := classes.ensure(userContext(), lateOrder)
+	definitions.writes, definitions.published = nil, nil
+
+	ctx, err := classes.begin(userContext(), "kn1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := classes.remove(ctx, stored(lateOrder, class)); err != nil || !changed {
+		t.Fatalf("remove = %v, %v", changed, err)
+	}
+	classes.publish(ctx, "kn1", removalNote(lateOrder.Name))
+	want := []string{"no relation kn1/draft/order_late_subject", "no object kn1/draft/order_late"}
+	if !reflect.DeepEqual(definitions.writes, want) || !reflect.DeepEqual(definitions.published, []string{"Event class removed: 订单超期"}) {
+		t.Fatalf("writes %v, published %v", definitions.writes, definitions.published)
+	}
+	if !definitions.actors[platform] {
+		t.Fatalf("published by %v", definitions.actors)
+	}
+}
+
+// Taking a class back is published like its making, so that no version keeps
+// a class that no type stands for.
+func TestDiscardPublishesTheTakingBack(t *testing.T) {
+	classes, definitions, _ := newTestClasses()
+	definitions.versioned["kn1"] = true
+	class, _ := classes.ensure(userContext(), lateOrder)
+	classes.discard(userContext(), lateOrder, class)
+	if want := []string{"Event class: 订单超期", "Event class removed: 订单超期"}; !reflect.DeepEqual(definitions.published, want) ||
+		definitions.objects["kn1/draft/order_late"] != nil {
+		t.Fatalf("published %v, writes %v", definitions.published, definitions.writes)
 	}
 }
 
