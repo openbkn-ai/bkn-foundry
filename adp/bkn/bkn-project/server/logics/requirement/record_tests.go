@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -59,17 +60,37 @@ func (s *requirementService) RecordTests(ctx context.Context, caller interfaces.
 	}
 	unmapped := unmappedConcepts(&req.Spec)
 	deadline := s.now() + recordTestsTimeout.Milliseconds()
+	// Reads of records the server or the edition makes stop with the run's budget, not their own.
+	bounded, cancel := context.WithTimeout(ctx, recordTestsTimeout)
+	defer cancel()
 	for _, q := range req.Spec.Questions {
 		if q == nil || !slices.Contains(questionIDs, q.ID) {
 			continue
 		}
+		if s.now() >= deadline {
+			// Out of time: the rest are asked as they are written.
+			break
+		}
 		written := serverTests(q, unmapped)
 		if len(written) == 0 {
+			// No template: asked of a record of the first object type it needs.
+			if askable, filled := s.exampleTest(bounded, caller, draft, q); askable {
+				tests[q.ID] = filled
+			}
 			continue
 		}
 		// Only the template asked of a record that exists: the question as it is meant.
 		template := written[0]
 		template.ID = recordTestID
+		// Records a knowledge-base build wrote are read by the edition, not by the data's SQL.
+		if document, filled, err := documentTemplate(bounded, caller, &req.Spec, draft, template); document {
+			if err != nil {
+				logger.Warnf("Read records for question %s failed: %v", q.ID, err)
+				continue
+			}
+			tests[q.ID] = filled
+			continue
+		}
 		s.checkTests(ctx, caller, &req.Spec, draft, q, []*interfaces.QuestionTest{template}, deadline)
 		if template.Check.Outcome != interfaces.TEST_CHECK_PASSED {
 			// Only data that has no such record says so; a read that failed, ran out of time or

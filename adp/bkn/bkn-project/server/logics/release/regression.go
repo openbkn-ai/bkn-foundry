@@ -279,9 +279,12 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 
 	asks := regressionAsks(r.Questions)
 	r.Results = make([]interfaces.RegressionResult, len(asks))
-	for i, a := range asks {
-		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 1, a, r.Runner, rc)
-	}
+	// Asked a few at a time: a run asks as the person who started it, with the credential they
+	// started it with, and one asked a question after another can outlast it.
+	eachAsk(len(asks), func(i int) {
+		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 1, asks[i], r.Runner, rc)
+	})
+	// What could not be asked is asked once more, alone.
 	for i, a := range asks {
 		result := r.Results[i]
 		if result.Outcome != interfaces.REGRESSION_OUTCOME_ERROR {
@@ -296,6 +299,24 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 2, a, r.Runner, rc)
 	}
 	r.Status = regressionStatus(r.Results)
+}
+
+// regressionConcurrency is how many questions a run asks at once.
+const regressionConcurrency = 4
+
+// eachAsk calls ask for 0..n-1, regressionConcurrency at a time, and returns when all have.
+func eachAsk(n int, ask func(int)) {
+	slots := make(chan struct{}, regressionConcurrency)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		slots <- struct{}{}
+		go func(i int) {
+			defer func() { <-slots; wg.Done() }()
+			ask(i)
+		}(i)
+	}
+	wg.Wait()
 }
 
 // regressionContext reads the names a run judges with. The draft and the project are read as they

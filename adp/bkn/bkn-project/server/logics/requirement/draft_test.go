@@ -97,7 +97,7 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 			question("q2", "明细 {line} 属于哪份合同？", agentInput{Name: "line", ConceptID: "knowledge-明细", Property: "material_code", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 			question("q3", "金额超过 {limit} 的合同？", agentInput{Name: "limit", Property: "total_amount", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 			question("q4", "{x} 是什么？", agentInput{Name: "x", Property: "nowhere", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
-			// An input refused for another reason adds no concept, and the question rests on none.
+			// An input refused for another reason adds no concept; the question rests on what it names.
 			question("q5", "哪家供应商最多？", agentInput{Name: "s", Property: "supplier_code", Role: interfaces.REQUIREMENT_INPUT_RECORD}),
 		}}
 		spec := emptySpec()
@@ -107,7 +107,7 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 			rejected = append(rejected, r.Text+" "+r.Reason)
 		}
 
-		So(spec.Concepts, ShouldHaveLength, 2)
+		So(spec.Concepts, ShouldHaveLength, 3)
 		byObject := map[string]*interfaces.RequirementConcept{}
 		for _, c := range spec.Concepts {
 			So(c.MapsTo.Kind, ShouldEqual, interfaces.REQUIREMENT_ITEM_OBJECT_TYPE)
@@ -124,11 +124,135 @@ func Test_BuildSpecInputsWithoutConcepts(t *testing.T) {
 		So(spec.Questions[0].Basis.ConceptIDs, ShouldResemble, []string{byObject["contract_doc"].ID})
 		So(spec.Questions[0].Needs, ShouldContain, *byObject["contract_doc"].MapsTo)
 		So(spec.Questions, ShouldHaveLength, 5)
-		So(spec.Questions[4].Basis.ConceptIDs, ShouldBeEmpty)
-		So(spec.Questions[4].Needs, ShouldBeEmpty)
+		So(spec.Questions[4].Basis.ConceptIDs, ShouldResemble, []string{byObject["supplier"].ID})
+		So(spec.Questions[4].Needs, ShouldResemble, []interfaces.RequirementItemRef{*byObject["supplier"].MapsTo})
 		So(spec.Questions[3].Inputs == nil || len(*spec.Questions[3].Inputs) == 0, ShouldBeTrue)
 		So(rejected, ShouldResemble, []string{"x.nowhere ({x} 是什么？) " + inputUnknownConcept,
 			"s.supplier_code (哪家供应商最多？) " + inputNotInTemplate})
+	})
+}
+
+func Test_BuildSpecInputsReadTheRecordTheQuestionNames(t *testing.T) {
+	Convey("A number field several tables share is read from the object the question names for it\n", t, func() {
+		// The bill number is the key of planned orders and a field of requests and orders: a question
+		// about a request reads the request's number, not the planned order's it is the key of.
+		bill := func(id, name string, keys ...string) *interfaces.DraftObjectType {
+			return &interfaces.DraftObjectType{ID: id, Name: name, Adopted: true, PrimaryKeys: keys, Properties: []*interfaces.DraftProperty{
+				{Name: "id", Type: "string"}, {Name: "billno", Type: "string"}}}
+		}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{bill("plan_order", "MRP计划订单", "billno"), bill("request", "采购申请单", "id"), bill("order", "采购订单", "id")},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, text, template, slot string) agentQuestion {
+			return agentQuestion{ID: id, Text: text, Template: template, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				Inputs: []agentInput{{Name: slot, Property: "billno", Role: interfaces.REQUIREMENT_INPUT_RECORD}}, SupplementReason: "依据已采纳的对象类"}
+		}
+		out := &draftOutput{Questions: []agentQuestion{
+			question("q1", "某张采购申请单的申请数量是多少？", "采购申请单 {单据编号} 的申请数量是多少？", "单据编号"),
+			// Two object types named: the one before the slot is the one numbered.
+			question("q2", "某张采购订单来自哪张采购申请单？", "采购订单 {单号} 来自哪张采购申请单？", "单号"),
+			// None named: the one it is the key of.
+			question("q3", "某个计划订单投放了吗？", "计划订单 {编号} 投放了吗？", "编号"),
+			// A short name before the slot and another object named earlier: the earlier one is another
+			// record, so the key decides.
+			question("q4", "采购申请单转成的计划订单投放了吗？", "采购申请单转成的计划订单 {编号} 投放了吗？", "编号"),
+		}}
+		spec := emptySpec()
+		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
+
+		So(spec.Questions, ShouldHaveLength, 4)
+		objectOf := func(i int) string {
+			id := (*spec.Questions[i].Inputs)[0].ConceptID
+			for _, c := range spec.Concepts {
+				if c.ID == id {
+					return c.MapsTo.ID
+				}
+			}
+			return ""
+		}
+		So(objectOf(0), ShouldEqual, "request")
+		So(objectOf(1), ShouldEqual, "order")
+		So(objectOf(2), ShouldEqual, "plan_order")
+		So(objectOf(3), ShouldEqual, "plan_order")
+	})
+}
+
+func Test_BuildSpecQuestionsRestOnTheModelWithoutDocuments(t *testing.T) {
+	Convey("With no requirement document, a question about the adopted model rests on it though the Agent gave no reason\n", t, func() {
+		order := &interfaces.DraftObjectType{ID: "plan_order", Name: "MRP计划订单", Adopted: true, PrimaryKeys: []string{"billno"},
+			Properties: []*interfaces.DraftProperty{{Name: "billno", Type: "string"}, {Name: "status", Type: "string"}}}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{order},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, text string, conceptIDs ...string) agentQuestion {
+			return agentQuestion{ID: id, Text: text, Template: text, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE, ConceptIDs: conceptIDs}
+		}
+		out := func() *draftOutput {
+			return &draftOutput{Questions: []agentQuestion{
+				question("q1", "MRP计划订单一共有多少张？"),
+				question("q2", "这些单据什么时候关闭？", "plan_order"),
+				question("q3", "今天天气怎么样？"),
+			}}
+		}
+		spec := emptySpec()
+		buildSpec(out(), map[string]*interfaces.RequirementDocument{}, draft, spec)
+		texts := []string{}
+		for _, q := range spec.Questions {
+			texts = append(texts, q.Text)
+			So(q.SupplementReason, ShouldEqual, "项目没有需求文档可引用，问题依据已采纳的概念模型起草")
+		}
+		So(texts, ShouldResemble, []string{"MRP计划订单一共有多少张？", "这些单据什么时候关闭？"})
+		// The object type named as its concept is what the question needs, through the concept added for it.
+		So(spec.Questions[1].Needs, ShouldResemble, []interfaces.RequirementItemRef{{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: "plan_order"}})
+		So(spec.Questions[1].Basis.ConceptIDs, ShouldHaveLength, 1)
+		So(spec.Concepts, ShouldHaveLength, 1)
+		So(spec.Rejected, ShouldResemble, []*interfaces.RequirementRejected{{Kind: rejectedQuestion, Text: "今天天气怎么样？", Reason: rejectedMissingBasis}})
+
+		// The network's own background and the knowledge base's rules, which drafting cites beside
+		// the documents, are no requirement document: the questions still rest on the model.
+		spec = emptySpec()
+		background := &interfaces.RequirementDocument{ID: interfaces.REQUIREMENT_NETWORK_DOCUMENT_ID, Name: "network"}
+		knowledge := &interfaces.RequirementDocument{ID: interfaces.REQUIREMENT_KNOWLEDGE_DOCUMENT_ID, Name: "knowledge"}
+		buildSpec(out(), documentsByID([]*interfaces.RequirementDocument{background, knowledge}), draft, spec)
+		So(spec.Questions, ShouldHaveLength, 2)
+
+		// A project with documents cites them: a question citing nothing stays refused.
+		spec = emptySpec()
+		buildSpec(out(), documentsByID(testDocuments()), draft, spec)
+		So(spec.Questions, ShouldBeEmpty)
+	})
+}
+
+func Test_BuildSpecQuestionsNeedWhatTheyName(t *testing.T) {
+	Convey("A question resting on nothing it needs needs the adopted object types its text names, the longer of two nested names\n", t, func() {
+		object := func(id, name string) *interfaces.DraftObjectType {
+			return &interfaces.DraftObjectType{ID: id, Name: name, Adopted: true, PrimaryKeys: []string{"code"},
+				Properties: []*interfaces.DraftProperty{{Name: "code", Type: "string"}}}
+		}
+		draft := &interfaces.Draft{Status: interfaces.DRAFT_STATUS_READY, Items: interfaces.DraftItems{
+			ObjectTypes: []*interfaces.DraftObjectType{object("material", "物料"), object("bom", "物料清单")},
+			Inputs:      &interfaces.DraftInputs{NamingLanguage: interfaces.NAMING_LANGUAGE_ZH_CN}}}
+		question := func(id, text string) agentQuestion {
+			return agentQuestion{ID: id, Text: text, Template: text, Layer: interfaces.REQUIREMENT_LAYER_KNOWLEDGE,
+				ConceptIDs: []string{"made-up"}, SupplementReason: "依据已采纳的对象类"}
+		}
+		out := &draftOutput{Questions: []agentQuestion{
+			question("q1", "某个物料清单的标准用量是多少？"),
+			question("q2", "某个物料清单包含哪些下级物料？"),
+		}}
+		spec := emptySpec()
+		buildSpec(out, map[string]*interfaces.RequirementDocument{}, draft, spec)
+
+		needs := func(i int) []string {
+			ids := []string{}
+			for _, n := range spec.Questions[i].Needs {
+				ids = append(ids, n.ID)
+			}
+			return ids
+		}
+		So(spec.Questions, ShouldHaveLength, 2)
+		So(needs(0), ShouldResemble, []string{"bom"})
+		So(needs(1), ShouldResemble, []string{"material", "bom"})
 	})
 }
 

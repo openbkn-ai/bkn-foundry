@@ -6,6 +6,7 @@ package draft
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -371,6 +372,37 @@ func (r *checkResults) join(relationType string, index int) *checkJoinResult {
 		}
 	}
 	return nil
+}
+
+// PartialOnlyForKnowledgeBase tells whether a partial check left uncounted only what the
+// knowledge-base build checks, as its acceptance does before every file is built: the release
+// review's own knowledge-base check holds those, so the check asks no one to accept them.
+func PartialOnlyForKnowledgeBase(raw json.RawMessage) bool {
+	var results checkResults
+	if len(raw) == 0 || json.Unmarshal(raw, &results) != nil {
+		return false
+	}
+	delegated := false
+	uncounted := func(state, reason string) bool {
+		if state == checkCounted {
+			return true
+		}
+		delegated = delegated || reason == checkReasonKnowledgeBase
+		return reason == checkReasonKnowledgeBase
+	}
+	for _, k := range results.Keys {
+		if !uncounted(k.State, k.Reason) {
+			return false
+		}
+	}
+	for _, rel := range results.Relations {
+		for _, j := range rel.Joins {
+			if !uncounted(j.State, j.Reason) {
+				return false
+			}
+		}
+	}
+	return delegated
 }
 
 // checkStatus is failed while an item failed; issues when an identity has duplicates or nulls or

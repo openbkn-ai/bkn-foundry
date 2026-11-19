@@ -142,6 +142,8 @@ func networkFacts(ctx context.Context, draft *interfaces.Draft, c networkCounter
 
 // NetworkComponents are the adopted object types joined by adopted relation types, the largest
 // first, each in the draft's order; components of one size keep the order of their first member.
+// Where a fact was read is no business link: the source documents and blocks every document
+// object cites are left out, or a line no relation ties to its record would count as connected.
 func NetworkComponents(items *interfaces.DraftItems) [][]string {
 	parent := map[string]string{}
 	var find func(string) string
@@ -153,7 +155,7 @@ func NetworkComponents(items *interfaces.DraftItems) [][]string {
 	}
 	order := []string{}
 	for _, ot := range items.ObjectTypes {
-		if ot.Adopted {
+		if ot.Adopted && !isEvidence(ot.Document) {
 			parent[ot.ID] = ot.ID
 			order = append(order, ot.ID)
 		}

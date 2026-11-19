@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -217,8 +218,13 @@ func serverTests(q *interfaces.RequirementQuestion, unmapped map[string]bool) []
 }
 
 // objectTypeOfProperty is the adopted object type an input naming no concept reads property from:
-// the only one that has it, or of several the only one whose key it is; nil otherwise.
-func objectTypeOfProperty(draft *interfaces.Draft, property string) *interfaces.DraftObjectType {
+// the only one that has it; of several, the one whose name stands right before the input's slot in
+// the template (采购申请单 in "采购申请单 {单据编号} 的申请数量"), else the only one whose key it is,
+// else the one with the longest name the text holds; nil otherwise. A number field many tables share
+// is read from the record the question numbers, not from the one table it is the key of; a name
+// elsewhere in the template may be another record the question is about, so it does not outrank the
+// key.
+func objectTypeOfProperty(draft *interfaces.Draft, property, template, slot, text string) *interfaces.DraftObjectType {
 	if draft == nil || strings.TrimSpace(property) == "" {
 		return nil
 	}
@@ -228,15 +234,53 @@ func objectTypeOfProperty(draft *interfaces.Draft, property string) *interfaces.
 			having = append(having, ot)
 		}
 	}
-	if len(having) > 1 {
-		having = slices.DeleteFunc(having, func(ot *interfaces.DraftObjectType) bool {
-			return len(ot.PrimaryKeys) != 1 || ot.PrimaryKeys[0] != property
-		})
-	}
-	if len(having) != 1 {
+	if len(having) <= 1 {
+		if len(having) == 1 {
+			return having[0]
+		}
 		return nil
 	}
-	return having[0]
+	if named := namedBeforeSlot(having, template, slot); named != nil {
+		return named
+	}
+	keyed := slices.DeleteFunc(slices.Clone(having), func(ot *interfaces.DraftObjectType) bool {
+		return len(ot.PrimaryKeys) != 1 || ot.PrimaryKeys[0] != property
+	})
+	if len(keyed) == 1 {
+		return keyed[0]
+	}
+	return longestNamed(having, text)
+}
+
+// namedBeforeSlot is the object type of candidates whose name the template puts right before the
+// slot, nothing but space between; the longer of two that both end there. Nil when none does.
+func namedBeforeSlot(candidates []*interfaces.DraftObjectType, template, slot string) *interfaces.DraftObjectType {
+	at := strings.Index(template, "{"+slot+"}")
+	if slot == "" || at < 0 {
+		return nil
+	}
+	before := strings.TrimRightFunc(template[:at], unicode.IsSpace)
+	var named *interfaces.DraftObjectType
+	for _, ot := range candidates {
+		name := strings.TrimSpace(ot.Name)
+		if name != "" && strings.HasSuffix(before, name) && (named == nil || len(name) > len(strings.TrimSpace(named.Name))) {
+			named = ot
+		}
+	}
+	return named
+}
+
+// longestNamed is the object type of candidates with the longest name the text holds; nil when it
+// holds none.
+func longestNamed(candidates []*interfaces.DraftObjectType, text string) *interfaces.DraftObjectType {
+	var longest *interfaces.DraftObjectType
+	for _, ot := range candidates {
+		name := strings.TrimSpace(ot.Name)
+		if name != "" && strings.Contains(text, name) && (longest == nil || len(name) > len(strings.TrimSpace(longest.Name))) {
+			longest = ot
+		}
+	}
+	return longest
 }
 
 // hasConceptOf tells whether the specification has a concept of the object type.
