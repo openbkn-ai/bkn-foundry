@@ -34,7 +34,7 @@ func requirementConceptKey(id string) string {
 
 // documentConceptPrefix starts the key of a concept of the document samples that drafting modeled
 // no item for.
-const documentConceptPrefix = "document_concepts/"
+const documentConceptPrefix = interfaces.DOCUMENT_CONCEPT_KEY_PREFIX
 
 // documentConceptKey names a concept of the document samples that drafting modeled no item for.
 func documentConceptKey(id string) string {

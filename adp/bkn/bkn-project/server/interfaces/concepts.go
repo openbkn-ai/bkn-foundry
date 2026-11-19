@@ -236,6 +236,10 @@ type DraftConceptItem struct {
 	Adopted bool   `json:"adopted"`
 }
 
+// DOCUMENT_CONCEPT_KEY_PREFIX starts the concept key of a DraftDocumentConcept, as its judgments
+// and merges name it: document_concepts/c3.
+const DOCUMENT_CONCEPT_KEY_PREFIX = "document_concepts/"
+
 // DraftDocumentConcept is a concept the knowledge-base samples hold that document drafting
 // proposed no object type or relation type for: a property, a value list, kinetic, or not
 // included, with why and the sample text it was read from. Drafting records it in the draft, so it

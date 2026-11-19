@@ -149,6 +149,24 @@ func Test_NetworkFacts(t *testing.T) {
 				{"mrp_planorder"}, {"line"}, {"sample_batch"}})
 		})
 
+		Convey("Where a document fact was read joins no business objects: a line tied only to its source document stands apart\n", func() {
+			evidence := &interfaces.DraftDocumentModel{Role: "evidence_document", Layer: interfaces.DRAFT_DOCUMENT_LAYER_EVIDENCE}
+			items := &interfaces.DraftItems{
+				ObjectTypes: []*interfaces.DraftObjectType{
+					{ID: "invoice", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "file"}},
+					{ID: "invoice_line", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "in_document"}},
+					{ID: "supplier", Adopted: true, Document: &interfaces.DraftDocumentModel{Role: "entity"}},
+					{ID: "source_document", Adopted: true, Document: evidence},
+				},
+				RelationTypes: []*interfaces.DraftRelationType{
+					{ID: "invoice_seller", Source: "invoice", Target: "supplier", Adopted: true},
+					{ID: "invoice_evidence", Source: "invoice", Target: "source_document", Adopted: true, Document: evidence},
+					{ID: "line_evidence", Source: "invoice_line", Target: "source_document", Adopted: true, Document: evidence},
+				},
+			}
+			So(NetworkComponents(items), ShouldResemble, [][]string{{"invoice", "supplier"}, {"invoice_line"}})
+		})
+
 		Convey("An object type left out lists what its adoption brings in and its identity candidates\n", func() {
 			pending := pendingObjects(&diagnosisSample().Items)
 			So(pending, ShouldResemble, []interfaces.DraftPendingObject{{ObjectTypeID: "purchase_request",
