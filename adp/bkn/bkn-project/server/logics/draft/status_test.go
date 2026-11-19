@@ -386,6 +386,16 @@ func Test_ProjectStatus(t *testing.T) {
 			}
 		})
 
+		Convey("A partial check that left only what the knowledge-base build checks is confirmed\n", func() {
+			partial := checkOf("c1", interfaces.CHECK_STATUS_PARTIAL)
+			partial.Results = json.RawMessage(`{"keys":[{"state":"counted"},{"state":"not_counted","reason":"knowledge_base_build"}],"relations":[]}`)
+			s := status(project(), confirmed(), partial, owner, fresh)
+
+			So(s.Stage, ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+			So(codes(s), ShouldBeEmpty)
+			So(action(s, interfaces.ACTION_REVIEW_RELEASE), ShouldNotBeNil)
+		})
+
 		Convey("A passed check of the current confirmation is confirmed\n", func() {
 			s := status(project(), confirmed(), checkOf("c1", interfaces.CHECK_STATUS_PASSED), owner, fresh)
 

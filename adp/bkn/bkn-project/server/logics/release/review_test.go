@@ -6,6 +6,7 @@ package release
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -655,6 +656,24 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 				So(c.Reason, ShouldEqual, want[0])
 				So(c.Accept, ShouldEqual, want[1])
 				So(r.Blocked, ShouldEqual, want[1] == "")
+			}
+		})
+
+		Convey("A partial check that left only what the knowledge-base build checks passes; a table left out still asks\n", func() {
+			check.Status = interfaces.CHECK_STATUS_PARTIAL
+			for results, passes := range map[string]bool{
+				`{"keys":[{"object_type":"order","state":"counted"},{"object_type":"invoice_doc","state":"not_counted","reason":"knowledge_base_build"}],"relations":[{"joins":[{"state":"not_counted","reason":"knowledge_base_build"}]}]}`: true,
+				`{"keys":[{"object_type":"order","state":"not_counted","reason":"no_key"},{"object_type":"invoice_doc","state":"not_counted","reason":"knowledge_base_build"}],"relations":[]}`:                                              false,
+			} {
+				check.Results = json.RawMessage(results)
+				expect()
+				expectIndex()
+
+				c := checkOf(review(), interfaces.RELEASE_CHECK_CHECK)
+				So(c.Passed, ShouldEqual, passes)
+				if !passes {
+					So(c.Accept, ShouldEqual, interfaces.RELEASE_ACCEPT_CHECK_PARTIAL)
+				}
 			}
 		})
 

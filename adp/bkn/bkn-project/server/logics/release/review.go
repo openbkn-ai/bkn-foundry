@@ -411,6 +411,10 @@ func checkCheck(confirmation *interfaces.DraftConfirmation, check *interfaces.Ch
 	case interfaces.CHECK_STATUS_PASSED:
 		return passed(interfaces.RELEASE_CHECK_CHECK)
 	case interfaces.CHECK_STATUS_PARTIAL:
+		// What only the knowledge-base build checks is held by the knowledge-base check.
+		if draft.PartialOnlyForKnowledgeBase(check.Results) {
+			return passed(interfaces.RELEASE_CHECK_CHECK)
+		}
 		return failed(interfaces.RELEASE_CHECK_CHECK, interfaces.RELEASE_REASON_CHECK_PARTIAL,
 			interfaces.RELEASE_ACCEPT_CHECK_PARTIAL, nil)
 	case interfaces.CHECK_STATUS_RUNNING:

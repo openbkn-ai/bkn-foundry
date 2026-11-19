@@ -755,7 +755,9 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		run.Allowed, run.Reason = false, interfaces.ACTION_REASON_RUNNING
 		act(wait)
 		act(run)
-	case check.Status == interfaces.CHECK_STATUS_PASSED:
+	case check.Status == interfaces.CHECK_STATUS_PASSED ||
+		check.Status == interfaces.CHECK_STATUS_PARTIAL && PartialOnlyForKnowledgeBase(check.Results):
+		// What only the knowledge-base build checks waits on no one here.
 		s.Stage = interfaces.PROJECT_STAGE_CONFIRMED
 		act(review)
 		act(run)
