@@ -141,6 +141,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.Detail.ToolExecutionResponseInvalid":             "已发布工具响应无效。",
 		"agentRetrieval.Detail.ToolboxIDRequired":                        "缺少 toolbox_id 参数。",
 		"agentRetrieval.Detail.ToolboxIDAndToolIDRequired":               "缺少 toolbox_id 或 tool_id 参数，二者都取自 search_capabilities 的返回（owner_id / capability_id）。",
+		"agentRetrieval.Detail.ToolHTTPArgumentGroupInvalid":             "argument_format=http 时，arguments 只能包含 header、body、query、path 分组；非法分组或非对象分组：{{.group}}。",
 		"agentRetrieval.Detail.ToolNotExecutable":                        "该工具不在当前可调用的已启用工具列表中：工具可能已停用、所属工具箱未发布，或当前账户无权访问。请先用 search_capabilities 确认可用的 owner_id 与 capability_id。",
 		"agentRetrieval.Detail.NoPublishedToolsMatched":                  "没有匹配的已发布工具。请先在执行工厂注册工具、发布所属工具箱并启用工具，或放宽 query、去掉 toolbox_id 后重试。",
 		"agentRetrieval.Detail.NoBoundCapabilitiesInNetwork":             "该知识网络未挂载任何能力。请先在知识网络中挂载 Skill、函数工具或 MCP 工具后重试。",

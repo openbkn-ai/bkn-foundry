@@ -510,6 +510,9 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
 	}
+	if err := p.aliasedSnapshots(query.Return); err != nil {
+		return nil, err
+	}
 	if query.Carried != nil {
 		if err := p.planCarried(query.Carried); err != nil {
 			return nil, err

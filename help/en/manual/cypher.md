@@ -45,7 +45,7 @@ Request fields:
 | --- | --- |
 | `query` | The Cypher text, at most 8192 characters |
 | `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is accepted only where the query tests `$name IS NULL` (see "Optional conditions" below). Parameter names are case-sensitive and may be keywords, such as `$end` or `$limit` |
-| `object_properties` | Extra properties a returned node carries, per node variable, as in `{"t": ["team_name"]}`. Each variable must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
+| `object_properties` | Extra properties a returned node carries, as in `{"t": ["team_name"]}`. A key is a node variable (`t` in `(t:team)`) or the alias the node is returned as (`team` for `RETURN t AS team`), and must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
 | `explain` | When `true`, returns the plan and reads nothing; see "Checking a query with explain" below |
 
 The branch is chosen with the `branch` query parameter, `main` by default.
@@ -414,6 +414,7 @@ Only the basic forms are available there:
 | Form | On datasets and indexes |
 | --- | --- |
 | MATCH, multi-hop relationships, OPTIONAL MATCH | Yes |
+| Relations that link their ends through a link table, common in networks built from a knowledge base | Yes in MATCH; no in OPTIONAL MATCH, refused naming the relation type |
 | WHERE conditions (comparisons, IN, string matching, IS NULL, arithmetic) | Yes |
 | Returning properties, aggregates (count, sum, avg, min, max), ORDER BY / SKIP / LIMIT | Yes |
 | WITH to filter after aggregating or by an earlier stage's values (semi-join) | Yes |

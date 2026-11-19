@@ -108,8 +108,11 @@ func mustGenerateIndirect(t *testing.T, query string) string {
 	if err != nil {
 		t.Fatalf("Compile(%q): %v", query, err)
 	}
-	if !plan.SQLOnly {
-		t.Fatalf("a plan over a backing resource must stay on the SQL path")
+	// The bind-join executor reads an inner join through a backing row; an
+	// outer one only the SQL path answers.
+	if plan.SQLOnly != (optionalBacking(plan) != "") {
+		t.Fatalf("SQLOnly = %v for %q; want it set exactly for an OPTIONAL MATCH over a backing row",
+			plan.SQLOnly, query)
 	}
 	statement, err := Generate(plan, GenerateOptions{})
 	if err != nil {

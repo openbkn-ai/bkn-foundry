@@ -63,10 +63,14 @@ type ExecuteToolReq struct {
 	// KnID is required and is checked against the bindings before the call runs. Discovery being
 	// narrowed is not a control on its own: a tool id can be held from an earlier session, or
 	// guessed, and execution is the half that changes the world.
-	KnID      string         `json:"kn_id"`
-	ToolboxID string         `json:"toolbox_id"`
-	ToolID    string         `json:"tool_id"`
-	Arguments map[string]any `json:"arguments"`
+	// ArgumentFormat keeps the caller's parameter contract with Arguments. The
+	// default is plain business JSON; "http" marks arguments that are already
+	// grouped as the proxy's HTTPRequestParams (header/body/query/path).
+	KnID           string         `json:"kn_id"`
+	ToolboxID      string         `json:"toolbox_id"`
+	ToolID         string         `json:"tool_id"`
+	ArgumentFormat string         `json:"argument_format,omitempty"`
+	Arguments      map[string]any `json:"arguments"`
 }
 
 // KnToolsService is the published Function tool surface.
@@ -639,9 +643,10 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	}
 	run := func(executionContext context.Context) (map[string]any, error) {
 		return proxyOperator.ExecutePublishedToolAsProxy(executionContext, &interfaces.ExecutePublishedToolRequest{
-			ToolboxID:  toolboxID,
-			ToolID:     toolID,
-			Parameters: req.Arguments,
+			ArgumentFormat: req.ArgumentFormat,
+			ToolboxID:      toolboxID,
+			ToolID:         toolID,
+			Parameters:     req.Arguments,
 		}, proxy)
 	}
 	if state.MetadataType != "function" || s.managedFunctionTrace == nil {

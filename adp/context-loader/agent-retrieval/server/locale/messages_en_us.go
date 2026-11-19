@@ -142,6 +142,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"agentRetrieval.Detail.ToolExecutionResponseInvalid":             "The published tool response is invalid.",
 		"agentRetrieval.Detail.ToolboxIDRequired":                        "toolbox_id is required.",
 		"agentRetrieval.Detail.ToolboxIDAndToolIDRequired":               "toolbox_id and tool_id are required. Both come from a search_capabilities result (owner_id / capability_id).",
+		"agentRetrieval.Detail.ToolHTTPArgumentGroupInvalid":             "With argument_format=http, arguments may only contain the header, body, query and path groups; invalid or non-object group: {{.group}}.",
 		"agentRetrieval.Detail.ToolNotExecutable":                        "This tool is not in the enabled catalogue you can call: it may be disabled, its toolbox may be unpublished, or this account may not have access. Confirm a callable owner_id and capability_id with search_capabilities first.",
 		"agentRetrieval.Detail.NoPublishedToolsMatched":                  "No published tools matched. Register a tool in Execution Factory, publish its toolbox and enable the tool, or broaden query and drop toolbox_id, then retry.",
 		"agentRetrieval.Detail.NoBoundCapabilitiesInNetwork":             "This knowledge network has no capability mounted. Mount a Skill, a Function tool or an MCP tool first, then retry.",

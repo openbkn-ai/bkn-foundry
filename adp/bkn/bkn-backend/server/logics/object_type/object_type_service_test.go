@@ -3412,6 +3412,27 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			So(len(ops), ShouldBeGreaterThan, 0)
 		})
 
+		Convey("numeric properties expose comparison operations without an index\n", func() {
+			objectType := &interfaces.ObjectType{
+				Status: &interfaces.ObjectTypeStatus{
+					IndexAvailable: false,
+				},
+			}
+			for _, type_name := range []string{"integer", "unsigned integer", "float", "decimal"} {
+				prop := &interfaces.DataProperty{
+					Type: type_name,
+				}
+				dataView := &interfaces.DataView{
+					QueryType: interfaces.VIEW_QueryType_SQL,
+				}
+
+				ops := service.processConditionOperations(objectType, prop, dataView)
+				So(ops, ShouldContain, cond.OperationGte)
+				So(ops, ShouldContain, cond.OperationEq)
+				So(ops, ShouldNotContain, cond.OperationLike)
+			}
+		})
+
 		Convey("Index not available - varchar type with DSL query\n", func() {
 			objectType := &interfaces.ObjectType{
 				Status: &interfaces.ObjectTypeStatus{
