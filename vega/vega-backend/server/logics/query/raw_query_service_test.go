@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -93,6 +94,45 @@ func expectRawQueryResources(mockRS *vmock.MockResourceService,
 }
 
 func TestRawQueryServiceExecute(t *testing.T) {
+	t.Run("public fields execute native columns while returning public names", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "id", OriginalName: "native.id", OriginalType: "BIGINT", Type: interfaces.DataType_Integer}}
+		mysqlRawMetadata(rs, cs, resource, true)
+		mocks := nativeSQLConnectorMocks(t, cf, "mysql", 1)
+		mocks[0].ExpectQuery("SELECT `native.id` AS `id` FROM `sales.eu`.`order.items` LIMIT 2").WithoutArgs().
+			WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("BIGINT", int64(0))).AddRow(7)).RowsWillBeClosed()
+		mocks[0].ExpectClose()
+		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+			QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 2},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, result.Columns)
+		assert.Equal(t, []map[string]any{{"id": int64(7)}}, result.Entries)
+	})
+	t.Run("public column errors reject every paging and total mode before connector creation", func(t *testing.T) {
+		for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+			for _, total := range []bool{false, true} {
+				for _, sql := range []string{"SELECT missing FROM {{orders}}", "SELECT ID FROM {{orders}}", "SELECT id FROM {{orders}} WHERE missing IS NOT NULL"} {
+					t.Run(fmt.Sprintf("%s/total=%t/%s", mode, total, sql), func(t *testing.T) {
+						svc, rs, cs, _ := mysqlRawServices(t)
+						mysqlRawMetadata(rs, cs, builderTestResource(), true)
+						result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+							QueryFormat: interfaces.QueryFormatSQL, Query: sql, NeedTotal: total,
+							Paging: interfaces.PagingRequest{Mode: mode, Limit: 10},
+						})
+						assert.Nil(t, result)
+						var failure *httperrors.HTTPError
+						require.ErrorAs(t, err, &failure)
+						assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+						assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, failure.ErrorCode)
+						assert.Equal(t, "query references an unknown column", failure.ErrorDetails)
+						assert.Empty(t, rawQueryCursorSessions.sessions)
+					})
+				}
+			}
+		}
+	})
 	for _, connectorType := range []string{"mysql", "mariadb"} {
 		t.Run(connectorType+" actual connector", func(t *testing.T) {
 			for _, phase := range []string{"open", "count", "rows"} {
@@ -155,9 +195,10 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				t.Run(string(mode)+" preserves binary bytes and text through JSON encoding", func(t *testing.T) {
 					svc, rs, cs, cf := mysqlRawServices(t)
 					resource := builderTestResource()
+					resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "bits", Type: interfaces.DataType_Binary}, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Binary}, &interfaces.Property{Name: "label", Type: interfaces.DataType_Text}, &interfaces.Property{Name: "flag", Type: interfaces.DataType_Integer})
 					mysqlRawMetadata(rs, cs, resource, true, connectorType)
 					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
-					statement := "SELECT `bits`, `payload`, `label`, `flag` FROM `sales.eu`.`order.items` ORDER BY `id` ASC"
+					statement := "SELECT `bits`, `payload`, `label`, `flag` FROM `sales.eu`.`order.items` AS `_source_1` ORDER BY `_source_1`.`id` ASC"
 					limit := 2
 					if mode == interfaces.PagingModeSingle {
 						statement += " LIMIT 3"
@@ -427,6 +468,25 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	t.Run("public schema rejects unknown or differently cased fields before execution", func(t *testing.T) {
+		for _, sql := range []string{
+			"SELECT missing FROM {{orders}}",
+			"SELECT ID FROM {{orders}}",
+			"SELECT id FROM {{orders}} WHERE missing IS NOT NULL",
+		} {
+			t.Run(sql, func(t *testing.T) {
+				svc, rs, cs, _ := mysqlRawServices(t)
+				mysqlRawMetadata(rs, cs, builderTestResource(), true)
+				prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: sql})
+				assert.Nil(t, prepared)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, failure.ErrorCode)
+				assert.Equal(t, "query references an unknown column", failure.ErrorDetails)
+			})
+		}
+	})
 	t.Run("UNION walks all branches and binds repeated resource instances once", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		orders := builderTestResource()
@@ -525,11 +585,11 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		resource.SourceMetadata = map[string]any{"name": "payments"}
 		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "source_amount", OriginalType: "money", Type: interfaces.DataType_Decimal}, {Name: "id", OriginalType: "int4", Type: interfaces.DataType_Integer}}
 		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
-		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT payments.* FROM {{orders}} WHERE payments.source_amount > 1 ORDER BY payments.source_amount", QueryFormat: interfaces.QueryFormatSQL})
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT payments.* FROM {{orders}} WHERE payments.amount > 1 ORDER BY payments.amount", QueryFormat: interfaces.QueryFormatSQL})
 		require.NoError(t, err)
 		statement, args, err := postgresql.ToSql(prepared.builder)
 		require.NoError(t, err)
-		assert.Equal(t, `SELECT "payments".* FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments" WHERE ("payments"."source_amount" > CAST(1 AS BIGINT)) ORDER BY "payments"."source_amount" ASC NULLS FIRST`, statement)
+		assert.Equal(t, `SELECT "payments"."source_amount" AS "amount", "payments"."id" FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments" WHERE ("payments"."source_amount" > CAST(1 AS BIGINT)) ORDER BY "payments"."source_amount" ASC NULLS FIRST`, statement)
 		assert.Empty(t, args)
 		assert.Equal(t, "Display label", resource.Name)
 		assert.Equal(t, "payments", sqlBuilderTables(prepared.builder)[0].SourceName)
@@ -550,7 +610,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Equal(t, map[string]string{"source_amount": "money", "id": "int4"}, tables[0].ColumnOriginalTypes)
 		statement, _, err := postgresql.ToSql(prepared.builder)
 		require.NoError(t, err)
-		assert.Equal(t, `SELECT * FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments"`, statement)
+		assert.Equal(t, `SELECT "payments"."source_amount" AS "amount", "payments"."id" FROM (SELECT CAST("source_amount" AS NUMERIC) AS "source_amount", "id" FROM "public"."payments") AS "payments"`, statement)
 		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
 	})
 
@@ -590,7 +650,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Nil(t, prepared)
 		assertHTTPError(t, err, http.StatusForbidden)
 	})
-	t.Run("SQL Server receives physical source column names without rewriting query fields", func(t *testing.T) {
+	t.Run("SQL Server binds public fields to physical source column names", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SchemaDefinition = []*interfaces.Property{{Name: "amount", OriginalName: "AMOUNT"}, {Name: "id"}}
@@ -602,13 +662,14 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		tables := sqlBuilderTables(prepared.builder)
 		require.Len(t, tables, 1)
 		assert.Equal(t, []string{"AMOUNT", "id"}, tables[0].ColumnNames)
-		assert.Equal(t, "amount", prepared.builder.GroupByPart[0].(*sb.Column).Name)
+		assert.Equal(t, "AMOUNT", prepared.builder.GroupByPart[0].(*sb.Column).Name)
 		assert.Equal(t, "amount", resource.SchemaDefinition[0].Name)
 	})
 	for _, connectorType := range []string{"mysql", "mariadb", "postgresql"} {
 		t.Run(connectorType+" composite key statistics use the native parser and builder", func(t *testing.T) {
 			svc, rs, cs, _ := mysqlRawServices(t)
 			resource := builderTestResource()
+			resource.SchemaDefinition = []*interfaces.Property{{Name: "a"}, {Name: "b"}}
 			mysqlRawMetadata(rs, cs, resource, true, connectorType)
 			input := "SELECT COUNT(*) AS row_count, COUNT(CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN 1 END) AS keyed_rows, COUNT(DISTINCT CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN CONCAT_WS(CHAR(31), `a`, `b`) END) AS primary_key_distinct FROM {{orders}}"
 			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: input, QueryFormat: interfaces.QueryFormatSQL})
@@ -691,7 +752,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assertHTTPError(t, err, http.StatusBadRequest)
 	})
 
-	t.Run("star grouping positions are left to the source without schema expansion", func(t *testing.T) {
+	t.Run("star grouping positions follow the expanded public schema", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SourceIdentifier = `"public"."orders"`
@@ -700,7 +761,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		require.NoError(t, err)
 		text, args, err := postgresql.ToSql(prepared.builder)
 		require.NoError(t, err)
-		assert.Equal(t, `SELECT "o".*, COUNT(*) AS "n" FROM "public"."orders" AS "o" GROUP BY 1, 2`, text)
+		assert.Equal(t, `SELECT "o"."id", "o"."created", COUNT(*) AS "n" FROM "public"."orders" AS "o" GROUP BY 1, 2`, text)
 		assert.Empty(t, args)
 	})
 
@@ -730,6 +791,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SourceIdentifier = "[Sales.eu].[ord]]ers]"
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "name", Type: interfaces.DataType_String})
 		mysqlRawMetadata(rs, cs, resource, true, "sqlserver")
 		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} WHERE id=1 AND name='刘🙂备' ORDER BY id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
 		require.NoError(t, err)
@@ -1529,8 +1591,8 @@ func builderTestResource() *interfaces.Resource {
 	return &interfaces.Resource{ID: "orders", CatalogID: "catalog", Name: "display label", Category: interfaces.ResourceCategoryTable,
 		Enabled: true, Status: interfaces.ResourceStatusActive, UpdateTime: 11, SourceIdentifier: "`sales.eu`.`order.items`",
 		SchemaDefinition: []*interfaces.Property{
-			{Name: "id", Type: interfaces.DataType_Integer, OriginalName: "order.id", OriginalType: "BIGINT"},
-			{Name: "created", Type: interfaces.DataType_Datetime, OriginalName: "created at", OriginalType: "TIMESTAMP(6)"},
+			{Name: "id", Type: interfaces.DataType_Integer, OriginalName: "id", OriginalType: "BIGINT"},
+			{Name: "created", Type: interfaces.DataType_Datetime, OriginalName: "created", OriginalType: "TIMESTAMP(6)"},
 		}}
 }
 
@@ -1800,12 +1862,18 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 		t.Run("UNION source "+cause+" failure is sanitized and releases initial cursor", func(t *testing.T) {
 			svc, rs, cs, cf := mysqlRawServices(t)
 			mysqlRawMetadata(rs, cs, builderTestResource(), true)
-			statement := "SELECT * FROM (SELECT * FROM `sales.eu`.`order.items` UNION SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result`"
-			mysqlRawCursorRows(t, cf, statement, nil,
-				interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterReason(cause), errors.New("private source schema and column details")))
+			if cause != "column_count" {
+				statement := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION SELECT `id` FROM `sales.eu`.`order.items`) AS `_union_result`"
+				mysqlRawCursorRows(t, cf, statement, nil,
+					interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterReason(cause), errors.New("private source schema and column details")))
+			}
+			query := "SELECT id FROM {{orders}} UNION SELECT id FROM {{orders}}"
+			if cause == "column_count" {
+				query = "SELECT * FROM {{orders}} UNION SELECT id FROM {{orders}}"
+			}
 
 			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
-				Query: "SELECT * FROM {{orders}} UNION SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
+				Query: query, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
 
 			assert.Nil(t, result)
 			assertHTTPError(t, err, http.StatusBadRequest)
@@ -1828,10 +1896,10 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 		require.NotNil(t, result.Paging)
 		assert.Nil(t, result.Paging.NextCursor)
 	})
-	t.Run("self join authorizes once and preserves wildcard and physical field names", func(t *testing.T) {
+	t.Run("self join authorizes once and expands public wildcard fields", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		mysqlRawMetadata(rs, cs, builderTestResource(), true)
-		mysqlRawRead(t, cf, "SELECT `a`.*, `b`.`id` AS `other_id` FROM `sales.eu`.`order.items` AS `a` INNER JOIN `sales.eu`.`order.items` AS `b` ON (`a`.`id` = `b`.`id`) LIMIT 2", nil, []map[string]any{{"id": 1, "other_id": 1}}, nil)
+		mysqlRawRead(t, cf, "SELECT `a`.`id`, `a`.`created`, `b`.`id` AS `other_id` FROM `sales.eu`.`order.items` AS `a` INNER JOIN `sales.eu`.`order.items` AS `b` ON (`a`.`id` = `b`.`id`) LIMIT 2", nil, []map[string]any{{"id": 1, "other_id": 1}}, nil)
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT a.*,b.id AS other_id FROM {{orders}} a JOIN {{orders}} b ON a.id=b.id", Paging: interfaces.PagingRequest{Limit: 2}})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"orders"}, result.ResourceIDs)
@@ -2192,6 +2260,7 @@ func TestRawQueryServiceSQLRowsCursorContinuation(t *testing.T) {
 	t.Run("connector row conversion preserves decimal and NULL across pages", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "amount", Type: interfaces.DataType_Decimal})
 		mysqlRawMetadata(rs, cs, resource, true)
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -2291,6 +2360,49 @@ func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 
 // TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
 func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
+	for _, value := range []int64{0, 1} {
+		for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+			t.Run(fmt.Sprintf("DISTINCT constant alias %d with total and %s paging", value, mode), func(t *testing.T) {
+				svc, rs, cs, cf := mysqlRawServices(t)
+				resource := builderTestResource()
+				resource.SourceIdentifier = `"public"."orders"`
+				mysqlRawMetadata(rs, cs, resource, true, "postgresql")
+				mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
+				base := fmt.Sprintf(`SELECT DISTINCT "id", CAST(%d AS BIGINT) AS "n" FROM "public"."orders" ORDER BY 2 ASC NULLS FIRST`, value)
+				mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(
+					sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(2)).RowsWillBeClosed()
+				mocks[0].ExpectClose()
+				rows := sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("n").OfType("INT8", int64(0)))
+				paging := interfaces.PagingRequest{Limit: 1, Offset: 1}
+				statement, firstID := base+" LIMIT 1 OFFSET 1", int64(2)
+				if mode == interfaces.PagingModeCursor {
+					paging.Mode, paging.Offset = mode, 0
+					statement, firstID = base, 1
+					rows.AddRow(1, value)
+				}
+				rows.AddRow(2, value)
+				mocks[1].ExpectQuery(statement).WithoutArgs().WillReturnRows(rows).RowsWillBeClosed()
+				mocks[1].ExpectClose()
+				result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+					QueryFormat: interfaces.QueryFormatSQL,
+					Query:       fmt.Sprintf("SELECT DISTINCT id,%d AS n FROM {{orders}} ORDER BY n", value), NeedTotal: true, Paging: paging,
+				})
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"id": firstID, "n": value}}, result.Entries)
+				require.NotNil(t, result.TotalCount)
+				assert.EqualValues(t, 2, *result.TotalCount)
+				if mode == interfaces.PagingModeCursor {
+					require.NotNil(t, result.Paging.NextCursor)
+					mysqlRawMetadata(rs, cs, resource, true, "postgresql")
+					result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
+					require.NoError(t, err)
+					assert.Equal(t, []map[string]any{{"id": int64(2), "n": value}}, result.Entries)
+				}
+				assert.Nil(t, result.Paging.NextCursor)
+				assert.Empty(t, rawQueryCursorSessions.sessions)
+			})
+		}
+	}
 	for _, operator := range []string{"UNION", "UNION DISTINCT", "UNION ALL"} {
 		for _, reversed := range []bool{false, true} {
 			for _, window := range []struct {
@@ -2398,6 +2510,7 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SourceIdentifier = `"public"."orders"`
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Binary})
 		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
 		mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 1)
 		mocks[0].ExpectQuery(`SELECT "id", "payload" FROM "public"."orders" ORDER BY "id" ASC NULLS FIRST`).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("payload").OfType("BYTEA", []byte{})).AddRow(1, []byte{0, 255}).AddRow(2, []byte{}).AddRow(3, nil)).RowsWillBeClosed()
@@ -2637,7 +2750,7 @@ func TestRawQueryServicePrepareExtendedSQLBuilder(t *testing.T) {
 					for _, table := range sqlBuilderTables(query) {
 						if table.ResourceID == physical.ID {
 							assert.Equal(t, "orders", table.SourceName)
-							assert.Equal(t, []string{"order.id", "created at"}, table.ColumnNames)
+							assert.Equal(t, []string{"id", "created"}, table.ColumnNames)
 							assert.Equal(t, physical.SourceIdentifier, table.SourceIdentifier)
 						}
 					}

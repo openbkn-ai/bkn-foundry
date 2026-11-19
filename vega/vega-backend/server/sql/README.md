@@ -1,8 +1,26 @@
 # SQL 编译与函数规则
 
 本目录负责 Vega SQL 输入解析；公共结构保存在 [interfaces/sqlbuilder](../interfaces/sqlbuilder)，目标 SQL 由各连接器生成。
-SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备 → 连接器 ToSql/执行`。
+SQL 查询经过 `compiler.ParseSQL → SelectBuilder → 资源准备与 binding.BindColumns → 连接器 ToSql/执行`。
 结构化查询直接构造同一套 Builder 节点，不重新解析 SQL 字符串。
+
+## Raw SQL 公开字段绑定
+
+`binding.BindColumns` 只消费已授权资源及用户 AST，以 `Resource.SchemaDefinition[].Name` 为唯一公开字段集合。
+Table 和 View 的字段、来源别名及输出别名均精确区分大小写；不存在字段或大小写不符在连接器创建前返回
+HTTP 400 / `VegaBackend.Query.InvalidParameter`，安全提示为 `query references an unknown column`。
+空或缺失 Schema 表示没有公开字段，不回退到源数据库解析；不依赖字段的常量及 `COUNT(*)` 仍可使用。
+Table 字段匹配后通过非空 `OriginalName` 绑定物理列，裸列投影保留公开输出名；View 仍引用公开列，不映射到隐藏物理字段。
+投影星号按公开 Schema 顺序展开；函数 `COUNT(*)` 的星号保持原语义。Parser 生成的透明 UNION 星号包装保持不变。
+
+SELECT、WHERE 和 JOIN ON 只解析来源列；ON 仅能访问当前 JOIN 已引入的来源，括号 JOIN 保留独立范围。
+GROUP BY 优先来源列、再输出别名；HAVING/ORDER BY 优先输出别名、再来源列。聚合函数内部参数始终解析来源列。
+别名展开后的字段明确绑定来源，必要时生成避碰来源别名，避免物理名称被再次解释为其他输出别名；整数字面量别名用非位置常量表达式保留语义。
+子查询只公开其投影结果，UNION 只公开首分支结果名称；歧义列、重复来源别名和越界位置引用返回安全参数错误。
+字段类型、隐式转换和聚合合法性仍由既有编译器及目标数据库检查，不在绑定层重建类型系统。
+
+纯 Table 查询由 Core 在元数据绑定后调用；含 View 的查询由 EE 在来源、许可和依赖检查完成后、View 展开之前调用同一入口。
+生成的 View 固定过滤不再次按公开字段校验，隐藏过滤字段不会因此公开。
 
 ## 字面量与绑定参数
 
@@ -45,7 +63,7 @@ Parser 使用 `JoinedTable` 保留括号与连接边界，资源准备递归绑�
 ## 派生 View 来源
 
 Raw Query 通过已注册 `LogicalViewService.PrepareSQLQuery` 接入 EE；未注册 View 服务时拒绝 View 来源。
-EE 负责 View 来源限制、公开字段隔离、星号展开、独立子查询构造和专属依赖复核；
+EE 负责 View 来源限制、调用公共字段绑定、公开字段隔离、独立子查询构造和专属依赖复核；
 返回新增的物理来源与 `SQLQueryCursorValidator`，Core 负责通用物理来源校验、同 Catalog 检查、执行及游标资源管理。
 未安装对应 EE 能力时明确拒绝 View 来源。
 
@@ -62,8 +80,8 @@ View 始终保留独立子查询及固定过滤，SELECT 层次优化由源数�
 无额外子句的左侧集合包装可直接输出为左结合 UNION 链，避免平坦输入产生深层派生表；
 右侧括号及分支自己的投影、过滤、排序和分页边界始终保留。
 
-结果按列位置组合，列名来自首分支。Parser 只拒绝确定的显式列数不匹配；物理星号的实际列数、
-类型兼容性和去重比较遵循源端规则，不从 Schema 猜测星号展开，也不增加统一隐式 CAST。
+结果按列位置组合，列名来自首分支。Parser 拒绝确定的显式列数不匹配；字段绑定展开公开 Schema 星号后再次检查分支列数。
+类型兼容性和去重比较遵循源端规则，不增加统一隐式 CAST。
 整体 ORDER BY 仅接受无来源限定的结果列或正整数位置，不能访问分支表别名或使用表达式；
 表达式排序可通过显式外层 SELECT 表达。
 所有分支递归参与资源绑定、权限、状态、同 Catalog 检查和游标依赖复核。
@@ -149,8 +167,9 @@ Oracle SQL 生成按 1 MiB 预算限制（含参数占位符预留），嵌套�
 ## SQL Server
 
 SQL Server SQL 输入同样使用公共 MySQL SELECT 子集，经 Parser → Builder → EE SQL Server 生成器执行。
-使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；包含显式 `Param` 的分组表达式共享命名参数；SQL 字面量使用上述 `Literal` 规则。资源准备阶段从 schema_definition 填充 Table.ColumnNames，保留源字段大小写；EE 生成器按不区分大小写比较源字段和投影别名。GROUP BY/HAVING 优先引用同名源字段，只在源字段名列表完整且无同名字段时展开当前 SELECT 的投影别名。
-子查询按输出列判断，SQL 中的星号不展开；字段信息未知时保留源端解析。
+使用 `@pN` 命名绑定、方括号标识符及 DECIMAL(38) 精度边界；包含显式 `Param` 的分组表达式共享命名参数；SQL 字面量使用上述 `Literal` 规则。
+Raw SQL 先按上述公开 Schema 和精确大小写完成字段及别名绑定、星号展开，再传给 EE 生成器；不因源端大小写规则或缺失 Schema 回退解析。
+`Table.ColumnNames` 保留已绑定物理列，供生成器完成底层方言转换，不作为公开字段的替代集合。
 单次执行最多 2098 个业务绑定，为驱动 sp_executesql 保留两个 RPC 参数槽；旧版 ROW_NUMBER 分页的两个绑定也计入此上限，因此分页前最多 2096 个绑定。
 LIMIT 0（包括非零 OFFSET）生成 TOP (0)，LIMIT-only 使用 TOP，其他分页使用 OFFSET/FETCH；offset-only 不补最大 LIMIT。
 子查询中的排序保留在同一 SELECT 内，以 TOP 或 OFFSET 0 满足源端限制。GROUP BY 位置语义交给 SQL Server 检查。

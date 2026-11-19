@@ -29,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/sql/binding"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/sql/compiler"
 )
 
@@ -913,9 +914,10 @@ func (rqs *rawQueryService) prepareSQLBuilder(ctx context.Context, query *sb.Sel
 		}
 		bindSQLTableMetadata(table, resource)
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	if err := binding.BindColumns(query, resources); err != nil {
+		return nil, sqlBuilderExecutionError(ctx, err)
 	}
+
 	return &preparedSQLQuery{catalog: catalog, resourceIDs: ids, warnings: warnings, builder: query, resourceVersions: versions}, nil
 }
 
@@ -998,9 +1000,7 @@ func (rqs *rawQueryService) prepareExtendedSQLBuilder(ctx context.Context, query
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return nil, sqlBuilderQueryForbidden(ctx)
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+
 	return &preparedSQLQuery{
 		catalog:          catalog,
 		resourceIDs:      ids,
@@ -1110,13 +1110,13 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，ScanSQLBuilderRow 在读取结束时检查 Err。
 	stop()
 
-	session.SQLRows, session.SQLColumns = rows, columns
-	if ctx.Err() != nil {
-		return sqlBuilderExecutionError(ctx, ctx.Err())
-	}
 	if err != nil {
 		return sqlBuilderExecutionError(ctx, err)
 	}
+
+	session.SQLRows = rows
+	session.SQLColumns = columns
+
 	return nil
 }
 
@@ -1156,9 +1156,7 @@ func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (
 		result.Entries = append(result.Entries, row)
 	}
 	stop()
-	if ctx.Err() != nil {
-		err = ctx.Err()
-	}
+
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
 		return nil, sqlBuilderExecutionError(ctx, err)
@@ -1225,7 +1223,7 @@ func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, sessio
 			}
 		}
 	}
-	return ctx.Err()
+	return nil
 }
 
 func sqlBuilderCursorChanged(ctx context.Context) error {
