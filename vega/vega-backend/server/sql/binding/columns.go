@@ -226,10 +226,12 @@ func (binder *columnBinder) selectQuery(query *sb.SelectBuilder) ([]outputColumn
 			if err != nil {
 				return nil, err
 			}
-			if index >= 0 && isIntegerLiteral(outputs[index].expr) {
-				// 指向输出位置，避免常量被误作序号或加零后不再匹配 DISTINCT 投影。
-				order.Expr, order.Position = nil, uint64(index+1)
-				continue
+			if index >= 0 {
+				if _, literal := outputs[index].expr.(*sb.Literal); literal {
+					// 直接指向投影，避免常量被误作序号或方言 CAST 改变 DISTINCT 排序表达式。
+					order.Expr, order.Position = nil, uint64(index+1)
+					continue
+				}
 			}
 		}
 		order.Expr, err = bindExpression(order.Expr, scope)

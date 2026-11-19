@@ -58,13 +58,19 @@ func TestBindColumns(t *testing.T) {
 			assert.JSONEq(t, string(before), string(after))
 		})
 	}
-	t.Run("DISTINCT integer output aliases keep the selected sort expression", func(t *testing.T) {
+	t.Run("DISTINCT literal output aliases keep the selected sort expression", func(t *testing.T) {
 		for _, test := range []struct{ sql, want string }{
 			{"SELECT DISTINCT 0 AS zero FROM {{a}} ORDER BY zero", `SELECT DISTINCT CAST(0 AS BIGINT) AS "zero" FROM a ORDER BY 1 ASC NULLS FIRST`},
 			{"SELECT DISTINCT 1 AS one FROM {{a}} ORDER BY one", `SELECT DISTINCT CAST(1 AS BIGINT) AS "one" FROM a ORDER BY 1 ASC NULLS FIRST`},
 			{"SELECT DISTINCT id,1 AS one FROM {{a}} ORDER BY one DESC", `SELECT DISTINCT "order.id" AS "id", CAST(1 AS BIGINT) AS "one" FROM a ORDER BY 2 DESC NULLS LAST`},
 			{"SELECT DISTINCT 0 AS id FROM {{a}} ORDER BY id", `SELECT DISTINCT CAST(0 AS BIGINT) AS "id" FROM a ORDER BY 1 ASC NULLS FIRST`},
 			{"SELECT DISTINCT 0 AS n,1 AS N FROM {{a}} ORDER BY N,n", `SELECT DISTINCT CAST(0 AS BIGINT) AS "n", CAST(1 AS BIGINT) AS "N" FROM a ORDER BY 2 ASC NULLS FIRST, 1 ASC NULLS FIRST`},
+			{"SELECT DISTINCT id,'x' AS k FROM {{a}} ORDER BY k", `SELECT DISTINCT "order.id" AS "id", 'x' AS "k" FROM a ORDER BY 2 ASC NULLS FIRST`},
+			{"SELECT DISTINCT NULL AS k FROM {{a}} ORDER BY k", `SELECT DISTINCT NULL AS "k" FROM a ORDER BY 1 ASC NULLS FIRST`},
+			{"SELECT DISTINCT TRUE AS k FROM {{a}} ORDER BY k DESC", `SELECT DISTINCT TRUE AS "k" FROM a ORDER BY 1 DESC NULLS LAST`},
+			{"SELECT DISTINCT FALSE AS k FROM {{a}} ORDER BY k", `SELECT DISTINCT FALSE AS "k" FROM a ORDER BY 1 ASC NULLS FIRST`},
+			{"SELECT DISTINCT 1.5 AS k FROM {{a}} ORDER BY k", `SELECT DISTINCT CAST(1.5 AS NUMERIC) AS "k" FROM a ORDER BY 1 ASC NULLS FIRST`},
+			{"SELECT DISTINCT 'x' AS k,NULL AS K FROM {{a}} ORDER BY K,k", `SELECT DISTINCT 'x' AS "k", NULL AS "K" FROM a ORDER BY 2 ASC NULLS FIRST, 1 ASC NULLS FIRST`},
 		} {
 			t.Run(test.sql, func(t *testing.T) {
 				query, err := compiler.ParseSQL(test.sql)

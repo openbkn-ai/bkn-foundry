@@ -2360,35 +2360,46 @@ func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 
 // TestRawQueryServicePostgreSQLSQLBuilder 覆盖生产 parser、PG 连接器、COUNT 及保留 Rows 的服务闭环。
 func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
-	for _, value := range []int64{0, 1} {
+	for _, test := range []struct {
+		name, input, expression, nativeType string
+		value                               any
+	}{
+		{"zero", "0", "CAST(0 AS BIGINT)", "INT8", int64(0)},
+		{"one", "1", "CAST(1 AS BIGINT)", "INT8", int64(1)},
+		{"string", "'x'", "'x'", "TEXT", "x"},
+		{"null", "NULL", "NULL", "TEXT", nil},
+		{"true", "TRUE", "TRUE", "BOOL", true},
+		{"false", "FALSE", "FALSE", "BOOL", false},
+		{"decimal", "1.5", "CAST(1.5 AS NUMERIC)", "NUMERIC", "1.5"},
+	} {
 		for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
-			t.Run(fmt.Sprintf("DISTINCT constant alias %d with total and %s paging", value, mode), func(t *testing.T) {
+			t.Run(fmt.Sprintf("DISTINCT constant alias %s with total and %s paging", test.name, mode), func(t *testing.T) {
 				svc, rs, cs, cf := mysqlRawServices(t)
 				resource := builderTestResource()
 				resource.SourceIdentifier = `"public"."orders"`
 				mysqlRawMetadata(rs, cs, resource, true, "postgresql")
 				mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
-				base := fmt.Sprintf(`SELECT DISTINCT "id", CAST(%d AS BIGINT) AS "n" FROM "public"."orders" ORDER BY 2 ASC NULLS FIRST`, value)
+				base := fmt.Sprintf(`SELECT DISTINCT "id", %s AS "n" FROM "public"."orders" ORDER BY 2 ASC NULLS FIRST`, test.expression)
 				mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(
 					sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(2)).RowsWillBeClosed()
 				mocks[0].ExpectClose()
-				rows := sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("n").OfType("INT8", int64(0)))
+				rows := sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("n").OfType(test.nativeType, ""))
 				paging := interfaces.PagingRequest{Limit: 1, Offset: 1}
 				statement, firstID := base+" LIMIT 1 OFFSET 1", int64(2)
 				if mode == interfaces.PagingModeCursor {
 					paging.Mode, paging.Offset = mode, 0
 					statement, firstID = base, 1
-					rows.AddRow(1, value)
+					rows.AddRow(1, test.value)
 				}
-				rows.AddRow(2, value)
+				rows.AddRow(2, test.value)
 				mocks[1].ExpectQuery(statement).WithoutArgs().WillReturnRows(rows).RowsWillBeClosed()
 				mocks[1].ExpectClose()
 				result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
 					QueryFormat: interfaces.QueryFormatSQL,
-					Query:       fmt.Sprintf("SELECT DISTINCT id,%d AS n FROM {{orders}} ORDER BY n", value), NeedTotal: true, Paging: paging,
+					Query:       fmt.Sprintf("SELECT DISTINCT id,%s AS n FROM {{orders}} ORDER BY n", test.input), NeedTotal: true, Paging: paging,
 				})
 				require.NoError(t, err)
-				assert.Equal(t, []map[string]any{{"id": firstID, "n": value}}, result.Entries)
+				assert.Equal(t, []map[string]any{{"id": firstID, "n": test.value}}, result.Entries)
 				require.NotNil(t, result.TotalCount)
 				assert.EqualValues(t, 2, *result.TotalCount)
 				if mode == interfaces.PagingModeCursor {
@@ -2396,7 +2407,7 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 					mysqlRawMetadata(rs, cs, resource, true, "postgresql")
 					result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
 					require.NoError(t, err)
-					assert.Equal(t, []map[string]any{{"id": int64(2), "n": value}}, result.Entries)
+					assert.Equal(t, []map[string]any{{"id": int64(2), "n": test.value}}, result.Entries)
 				}
 				assert.Nil(t, result.Paging.NextCursor)
 				assert.Empty(t, rawQueryCursorSessions.sessions)
