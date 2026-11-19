@@ -13,6 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -101,6 +102,56 @@ func Test_RecordTests(t *testing.T) {
 			So(tests, ShouldBeEmpty)
 		})
 
+		Convey("A question with no template is asked of a record of the first object type it needs, said after it\n", func() {
+			req.Spec.Questions[0].Needs = []interfaces.RequirementItemRef{customerRef}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			sample(map[string]any{"v0": "10001"})
+			tests, err := svc.RecordTests(ctx, caller, "p1", []string{"q1"})
+			So(err, ShouldBeNil)
+			So(tests["q1"], ShouldNotBeNil)
+			So(tests["q1"].Text, ShouldStartWith, "Which orders?")
+			So(tests["q1"].Text, ShouldContainSubstring, "Customer ID")
+			So(tests["q1"].Text, ShouldContainSubstring, "10001")
+			So(tests["q1"].Expect, ShouldEqual, interfaces.TEST_EXPECT_EXISTS)
+
+			// The data has no value of it: the question has no record to be asked of.
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			sample()
+			tests, err = svc.RecordTests(ctx, caller, "p1", []string{"q1"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q1": nil})
+
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
+			sq, err := svc.ScenarioQuestions(ctx, "p1")
+			So(err, ShouldBeNil)
+			So(sq.Questions[0].Fillable, ShouldBeTrue)
+		})
+
+		Convey("A document object's records are read by the edition, not by the data's SQL\n", func() {
+			draft.Items.ObjectTypes[1].Document = &interfaces.DraftDocumentModel{Role: "entity"}
+			sampler := &recordSampler{rows: []map[string]any{{"customer_id": ""}, {"customer_id": "C-7"}}}
+			defer projecthooks.SetForTest(projecthooks.Hooks{Drafts: sampler})()
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			tests, err := svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q2": {ID: recordTestID,
+				Text: "Orders of customer C-7?", Expect: interfaces.TEST_EXPECT_EXISTS}})
+			So(sampler.objects, ShouldResemble, []string{"customer"})
+
+			// Nothing built is no record; a read that failed leaves the question out.
+			sampler.rows = nil
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			tests, err = svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldResemble, map[string]*interfaces.ScenarioTest{"q2": nil})
+			sampler.err = errors.New("down")
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			tests, err = svc.RecordTests(ctx, caller, "p1", []string{"q2"})
+			So(err, ShouldBeNil)
+			So(tests, ShouldBeEmpty)
+		})
+
 		Convey("Scenario questions say which the server can fill\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			ra.EXPECT().ListGuidance(gomock.Any(), "p1").Return(nil, nil)
@@ -110,4 +161,17 @@ func Test_RecordTests(t *testing.T) {
 			So(sq.Questions[1].Fillable, ShouldBeTrue)
 		})
 	})
+}
+
+// recordSampler reads records of document object types, as an edition does.
+type recordSampler struct {
+	projecthooks.Drafts
+	rows    []map[string]any
+	err     error
+	objects []string
+}
+
+func (r *recordSampler) SampleRecords(_ context.Context, _ interfaces.AccountInfo, _ *interfaces.Draft, objectTypeID string, _ int) ([]map[string]any, error) {
+	r.objects = append(r.objects, objectTypeID)
+	return r.rows, r.err
 }

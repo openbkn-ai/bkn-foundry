@@ -188,6 +188,17 @@ type SourcePlanChecker interface {
 	SourcePlanPending(items *interfaces.DraftItems, rt *interfaces.DraftRelationType) bool
 }
 
+// DocumentRecordSampler is what an edition's Drafts add when document object types hold records
+// a build wrote, which the data's SQL cannot read: a few of them, for a question about one record
+// to be asked of a record that exists. It is asserted on Drafts like LinkChecker; without it a
+// question about a document object is asked as its text.
+type DocumentRecordSampler interface {
+	// SampleRecords reads up to limit records of the adopted document object type of the
+	// confirmed draft that its knowledge base holds, as the caller, each by property name. None
+	// when nothing is built for the draft as confirmed.
+	SampleRecords(ctx context.Context, caller interfaces.AccountInfo, draft *interfaces.Draft, objectTypeID string, limit int) ([]map[string]any, error)
+}
+
 // DocumentConcept is what a document item is as a concept.
 type DocumentConcept struct {
 	// Evidence locates a business item's text: it follows its business items and is no concept.

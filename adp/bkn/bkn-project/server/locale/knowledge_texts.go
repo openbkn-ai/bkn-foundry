@@ -32,3 +32,10 @@ var ModelBasisTexts = map[string]string{
 	"zh-CN": "项目没有需求文档可引用，问题依据已采纳的概念模型起草",
 	"en-US": "The project has no requirement document to cite; the question is drafted from the adopted concept model",
 }
+
+// RecordExampleTexts ask a question about one record of a record the data has, when its text names
+// none: the question, then which record, by a property people read and its value.
+var RecordExampleTexts = map[string]string{
+	"zh-CN": "%s（以%s为「%s」的这一条为例）",
+	"en-US": "%s (take the one whose %s is %s)",
+}

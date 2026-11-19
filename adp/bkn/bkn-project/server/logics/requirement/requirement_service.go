@@ -157,7 +157,10 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 			Tests:        []interfaces.ScenarioTest{},
 		}
 		question.Path, question.Unconnected = questionPath(q, current)
-		question.Fillable = len(serverTests(q, unmapped)) > 0
+		// A question its template asks of a record, or, with no template, of the first object
+		// type it needs: the run asks it of a record the data has.
+		ot, _ := exampleObject(q, current)
+		question.Fillable = len(serverTests(q, unmapped)) > 0 || ot != nil
 		for _, need := range q.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)
