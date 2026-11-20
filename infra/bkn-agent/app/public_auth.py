@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import observability
-from app.auth import Account
+from app.auth import Account, Delegation
 from app.commons import locale
 from app.config import config
 from app.errors import err
@@ -63,6 +63,29 @@ async def get_public_account(
     request: Request,
     _credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Account:
+    """A sign-in or an AppKey. An execution credential is refused here: it
+    acts only on the execution routes, through get_execution_account."""
+    return await _verify(request, delegated=False)
+
+
+async def get_execution_account(
+    request: Request,
+    _credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> Account:
+    """As get_public_account, and also an execution credential bkn-safe issued
+    for a background run: it acts for the person who issued it, and the
+    account carries the network and Agent the run is held to."""
+    return await _verify(request, delegated=True)
+
+
+def _delegation(info: dict) -> Delegation:
+    fields = [info.get(key) for key in ("delegation_id", "kn_id", "agent_id")]
+    if not all(isinstance(value, str) and value and value == value.strip() for value in fields):
+        raise err(401, "BknAgent.Auth.TokenRequired")
+    return Delegation(*fields)
+
+
+async def _verify(request: Request, *, delegated: bool) -> Account:
     # Middleware captures headers before authentication. Do not send unverified
     # caller identity or attribution even to the introspection service.
     _set_subject(request, None)
@@ -71,7 +94,19 @@ async def get_public_account(
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise err(401, "BknAgent.Auth.TokenRequired")
     token = parts[1]
-    if token.startswith("bak_"):
+    delegation = None
+    if token.startswith("bex_"):
+        if not delegated:
+            raise err(401, "BknAgent.Auth.TokenRequired")
+        info = await _post(
+            f"{config.BKN_SAFE_BASE}/execution-grants/introspect", json={"token": token}
+        )
+        if info.get("active") is not True:
+            raise err(401, "BknAgent.Auth.TokenRequired")
+        delegation = _delegation(info)
+        # bkn-safe issues execution credentials to people only.
+        account_type = "user" if info.get("account_type") not in (None, "", "app") else None
+    elif token.startswith("bak_"):
         info = await _post(
             f"{config.BKN_SAFE_BASE}/api-keys/introspect", json={"token": token}
         )
@@ -128,11 +163,14 @@ async def get_public_account(
             (b"user_id", subject.encode()),
         ]
     )
+    if delegation is not None:
+        # Verified above: services downstream may attribute the work to it.
+        headers.append((b"x-bkn-delegation-id", delegation.delegation_id.encode()))
     request.scope["headers"] = headers
     # Request.headers was already read above; invalidate its cached view too.
     if hasattr(request, "_headers"):
         del request._headers
-    account = Account(subject, account_type)
+    account = Account(subject, account_type, delegation)
     _set_subject(request, account)
     return account
 

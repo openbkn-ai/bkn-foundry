@@ -45,7 +45,7 @@ from app.public_auth import (
     PUBLIC_AGENT_IDS,
     authorize_execution,
     authorize_network_setting,
-    get_public_account,
+    get_execution_account,
 )
 
 logger = logging.getLogger("bkn-agent.executions")
@@ -128,7 +128,7 @@ async def _owned(session, run_id, account):
 @router.get("/executions/{run_id}", response_model=ExecutionOut)
 async def get_execution(
     run_id: str,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     return _decode(await _owned(session, run_id, account))
@@ -137,7 +137,7 @@ async def get_execution(
 @router.post("/executions/{run_id}/cancel", response_model=ExecutionOut)
 async def cancel_execution(
     run_id: str,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     task = await _owned(session, run_id, account)
@@ -183,7 +183,7 @@ async def cancel_execution(
 )
 async def execute(
     req: ExecutionRequest,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     return await _execute_impl(req, account, session)
@@ -208,6 +208,13 @@ async def _execute_impl(
             "BknAgent.Execution.ContextInvalid",
             field="draft_revision requires kn_version=draft",
         )
+    # An execution credential acts only on the network and Agent it was issued for.
+    if account.delegation is not None and (
+        metric_request
+        or req.agent_id != account.delegation.agent_id
+        or req.context.kn_id != account.delegation.kn_id
+    ):
+        raise err(403, "BknAgent.Execution.Forbidden")
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
         raise not_found("agent", req.agent_id)
