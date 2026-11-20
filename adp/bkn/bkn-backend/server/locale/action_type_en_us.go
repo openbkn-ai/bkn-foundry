@@ -27,7 +27,7 @@ var actionTypeEnUS = i18n.I18nMessages{
 		"BknBackend.ActionType.InternalError.CheckActionTypeIfExistFailed":                      "Check Action Type Exist Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
 		"BknBackend.ActionType.InternalError.GetActionTypesByIDsFailed":                         "Get Action Type By IDS Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
 		"BknBackend.ActionType.InternalError.InsertOpenSearchDataFailed":                        "Insert Action Type Data Into OpenSearch Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
-		"BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType":             "An action type without an object_type_id cannot include a condition.",
+		"BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType":             "A condition on an unbound action type must declare its own object type.",
 		"BknBackend.ActionType.InvalidParameter.Detail.PropertyValueRequiresObjectType":         "An action type without an object_type_id cannot obtain parameter values from data properties.",
 		"BknBackend.ActionType.InvalidParameter.Detail.ParameterNameRequired":                   "Action type {{.actionType}} has an unnamed action-resource parameter.",
 		"BknBackend.ActionType.InvalidParameter.Detail.ConditionOperationRequired":              "An action condition requires an operation.",

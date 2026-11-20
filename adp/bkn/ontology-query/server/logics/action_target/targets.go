@@ -42,8 +42,11 @@ func ValidateDefinition(action *interfaces.ActionType) error {
 			return fmt.Errorf("relation operation requires a relation type, operation and anchor role")
 		}
 	case "tool":
-		if action.ObjectTypeID != "" || action.Condition != nil {
-			return fmt.Errorf("tool operations cannot bind object context")
+		if action.ObjectTypeID != "" {
+			return fmt.Errorf("tool operations cannot bind an object type")
+		}
+		if action.Condition != nil && action.Condition.ObjectTypeID == "" {
+			return fmt.Errorf("tool operation conditions require their own object type")
 		}
 		for _, parameter := range action.Parameters {
 			if parameter.ValueFrom == interfaces.LOGIC_PARAMS_VALUE_FROM_PROP {
@@ -67,10 +70,23 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 	}
 	switch action.OperationConfig.Type {
 	case "tool":
-		if len(req.InstanceIdentities) != 0 || req.RelationTarget != nil || len(req.ObjectInput) != 0 {
-			return nil, nil, actionTargetError(ctx, "tool execution does not accept object or relation targets")
+		if req.RelationTarget != nil || len(req.ObjectInput) != 0 {
+			return nil, nil, actionTargetError(ctx, "tool execution does not accept object_input or relation targets")
 		}
-		return []interfaces.ObjectSystemInfo{{InstanceIdentity: map[string]any{}}}, []map[string]any{{}}, nil
+		if action.Condition == nil {
+			if len(req.InstanceIdentities) != 0 {
+				return nil, nil, actionTargetError(ctx, "tool execution without a condition does not accept targets")
+			}
+			return []interfaces.ObjectSystemInfo{{InstanceIdentity: map[string]any{}}}, []map[string]any{{}}, nil
+		}
+		object, exists, err := s.Models.GetObjectType(ctx, req.KNID, req.Branch, action.Condition.ObjectTypeID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !exists {
+			return nil, nil, actionTargetError(ctx, "action condition object type does not exist")
+		}
+		return s.resolveExplicitTargets(ctx, req, &object, action.Condition, action.Parameters)
 	case "relation":
 		return s.resolveRelationTarget(ctx, action, req)
 	}
@@ -140,6 +156,15 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 	if len(req.InstanceIdentities) == 0 {
 		return nil, nil, actionTargetError(ctx, "modify and delete require explicit _instance_identities")
 	}
+	return s.resolveExplicitTargets(ctx, req, &object, action.Condition, action.Parameters)
+}
+
+// resolveExplicitTargets loads caller-supplied identities and enforces the
+// applicability condition on each instance before execution.
+func (s *Resolver) resolveExplicitTargets(ctx context.Context, req *interfaces.ActionExecutionRequest, object *interfaces.ObjectType, condition *cond.CondCfg, parameters []interfaces.Parameter) ([]interfaces.ObjectSystemInfo, []map[string]any, error) {
+	if len(req.InstanceIdentities) == 0 {
+		return nil, nil, actionTargetError(ctx, "conditioned execution requires explicit _instance_identities")
+	}
 	if len(req.InstanceIdentities) > logics.ActionExecutionMaxObjects {
 		return nil, nil, actionTargetError(ctx, "too many action targets")
 	}
@@ -152,7 +177,7 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 			return nil, nil, actionTargetError(ctx, "duplicate or invalid action target identity")
 		}
 		seen[string(encoded)] = true
-		instance, data, err := s.loadActionTarget(ctx, req, &object, identity, action.Condition, targetProperties(&object, action.Condition, action.Parameters))
+		instance, data, err := s.loadActionTarget(ctx, req, object, identity, condition, targetProperties(object, condition, parameters))
 		if err != nil {
 			return nil, nil, err
 		}

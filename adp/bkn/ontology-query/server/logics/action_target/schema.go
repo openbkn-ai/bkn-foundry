@@ -44,6 +44,20 @@ func (s *Resolver) ExecutionSchema(ctx context.Context, action *interfaces.Actio
 		return object, nil
 	}
 	switch action.OperationConfig.Type {
+	case "tool":
+		if action.Condition == nil {
+			break
+		}
+		object, err := getObject(action.Condition.ObjectTypeID)
+		if err != nil {
+			return nil, err
+		}
+		identity, err := identitySchema(&object)
+		if err != nil {
+			return nil, actionTargetError(ctx, err.Error())
+		}
+		properties["_instance_identities"] = map[string]any{"type": "array", "minItems": 1, "uniqueItems": true, "items": identity}
+		required = append(required, "_instance_identities")
 	case "object":
 		object, err := getObject(action.ObjectTypeID)
 		if err != nil {

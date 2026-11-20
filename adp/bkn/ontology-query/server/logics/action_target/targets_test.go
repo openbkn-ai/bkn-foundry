@@ -56,6 +56,70 @@ func TestCreateRejectsMissingOrNullMappedProperty(t *testing.T) {
 	}
 }
 
+func TestToolConditionGuardsExplicitTargets(t *testing.T) {
+	newAction := func(condition *cond.CondCfg) *interfaces.ActionType {
+		return &interfaces.ActionType{
+			OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+			Condition:       condition,
+		}
+	}
+	if err := ValidateDefinition(newAction(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateDefinition(newAction(&cond.CondCfg{Name: "status", Operation: "==", Value: "critical"})); err == nil {
+		t.Fatal("tool condition must declare its own object type")
+	}
+	condition := &cond.CondCfg{ObjectTypeID: "hosts", Name: "status", Operation: "==", Value: "critical"}
+	if err := ValidateDefinition(newAction(condition)); err != nil {
+		t.Fatal(err)
+	}
+
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	object := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "hosts", PrimaryKeys: []string{"id"},
+		DataProperties: []cond.DataProperty{
+			{Name: "id", Type: "string"}, {Name: "status", Type: "string"},
+		},
+	}}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "hosts").Return(object, true, nil).Times(3)
+	resolver := &Resolver{Models: models, Objects: objects}
+
+	req := &interfaces.ActionExecutionRequest{KNID: "kn", Branch: "main"}
+	if _, _, err := resolver.Resolve(context.Background(), newAction(condition), req); err == nil ||
+		!strings.Contains(err.Error(), "_instance_identities") {
+		t.Fatalf("conditioned tool execution must require explicit targets: %v", err)
+	}
+
+	unconditioned := &interfaces.ActionExecutionRequest{
+		KNID: "kn", Branch: "main", InstanceIdentities: []map[string]any{{"id": "h1"}},
+	}
+	if _, _, err := resolver.Resolve(context.Background(), newAction(nil), unconditioned); err == nil ||
+		!strings.Contains(err.Error(), "without a condition") {
+		t.Fatalf("unconditioned tool execution must reject targets: %v", err)
+	}
+
+	req.InstanceIdentities = []map[string]any{{"id": "h1"}}
+	objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+		Return(interfaces.Objects{Datas: []map[string]any{{"id": "h1", "status": "critical"}}}, nil)
+	instances, datas, err := resolver.Resolve(context.Background(), newAction(condition), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instances) != 1 || len(datas) != 1 || datas[0]["status"] != "critical" {
+		t.Fatalf("instances=%#v datas=%#v", instances, datas)
+	}
+
+	req.InstanceIdentities = []map[string]any{{"id": "h2"}}
+	objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+		Return(interfaces.Objects{Datas: []map[string]any{{"id": "h2", "status": "normal"}}}, nil)
+	if _, _, err := resolver.Resolve(context.Background(), newAction(condition), req); err == nil ||
+		!strings.Contains(err.Error(), "does not satisfy") {
+		t.Fatalf("an unmet condition must reject the target: %v", err)
+	}
+}
+
 func TestResolveRejectsEmptySearchValuesBeforeEvaluatingTargets(t *testing.T) {
 	for _, actionType := range []string{"add", "modify", "delete"} {
 		for _, operation := range []string{"like", "not_like", "prefix", "not_prefix", "regex"} {
