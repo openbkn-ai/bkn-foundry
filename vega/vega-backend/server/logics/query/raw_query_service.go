@@ -316,7 +316,7 @@ func (rqs *rawQueryService) prepareSQLCursorSources(ctx context.Context, session
 		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).
 			WithErrorDetails("source connector is unavailable for the current edition")
 	}
-	if availability.Disabled {
+	if !availability.Enabled {
 		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled)
 	}
 	return catalog, warnings, nil
