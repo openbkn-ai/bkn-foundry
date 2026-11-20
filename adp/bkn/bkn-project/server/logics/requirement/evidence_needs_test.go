@@ -51,28 +51,28 @@ func Test_EvidenceIsNoBusinessNeed(t *testing.T) {
 			q := &interfaces.RequirementQuestion{Text: "Which Source document has the Contract?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 				Needs: []interfaces.RequirementItemRef{objectRef("contract"), objectRef("file"),
 					{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "contract_file"}}}
-			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("contract")})
+			So(businessNeeds(nil, q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("contract")})
 			So(objectTypesNamed(draft, q.Text), ShouldHaveLength, 1)
 		})
 		Convey("one whose type is named only in its template needs it too, as drafting reads both\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Which costs most?", Template: "Which Contract line {no} costs most?",
 				NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS}
-			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
+			So(businessNeeds(nil, q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
 		})
 		Convey("a question that needs only evidence is asked of no record of it\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Which file?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_PERSON,
 				Needs: []interfaces.RequirementItemRef{objectRef("file")}}
 			asked := *q
-			asked.Needs = businessNeeds(q, draft)
+			asked.Needs = businessNeeds(nil, q, draft)
 			ot, _ := exampleObject(&asked, draft)
 			So(ot, ShouldBeNil)
 		})
 		Convey("a question drafted with no needs needs the object types its text names\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Which Contract line costs most?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS}
-			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
+			So(businessNeeds(nil, q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
 			// One a person said needs nothing keeps needing nothing.
 			q.NeedsSource = interfaces.REQUIREMENT_NEEDS_FROM_PERSON
-			So(businessNeeds(q, draft), ShouldBeEmpty)
+			So(businessNeeds(nil, q, draft), ShouldBeEmpty)
 		})
 	})
 }

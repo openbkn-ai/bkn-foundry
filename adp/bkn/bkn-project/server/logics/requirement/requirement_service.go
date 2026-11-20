@@ -154,7 +154,7 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 	for _, q := range req.Spec.Questions {
 		question := interfaces.ScenarioQuestion{
 			ID: q.ID, Text: q.Text, Layer: q.Layer,
-			Needs:        businessNeeds(q, current),
+			Needs:        businessNeeds(&req.Spec, q, current),
 			MissingItems: []interfaces.RequirementItemRef{},
 			Tests:        []interfaces.ScenarioTest{},
 		}
@@ -187,7 +187,9 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 // relations a knowledge base keeps to locate text, which no release lacks and no answer misses.
 // A question whose needs come from concepts and name none needs the adopted object types its
 // text names, as drafting finds them: a specification drafted before drafting did so has none.
-func businessNeeds(q *interfaces.RequirementQuestion, draft *interfaces.Draft) []interfaces.RequirementItemRef {
+// A question that names one record by values several object types hold needs the object type of
+// that record too, when one holds them all (recordNeed).
+func businessNeeds(spec *interfaces.RequirementSpec, q *interfaces.RequirementQuestion, draft *interfaces.Draft) []interfaces.RequirementItemRef {
 	needs := slices.DeleteFunc(append([]interfaces.RequirementItemRef{}, q.Needs...), func(n interfaces.RequirementItemRef) bool {
 		if draft == nil {
 			return false
@@ -206,5 +208,40 @@ func businessNeeds(q *interfaces.RequirementQuestion, draft *interfaces.Draft) [
 			needs = append(needs, interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID})
 		}
 	}
+	if record := recordNeed(spec, q, draft); record != nil && !slices.Contains(needs, *record) {
+		needs = append(needs, *record)
+	}
 	return needs
+}
+
+// recordNeed is the object type of the one record a question names by values of several object
+// types, as "the line of material {code} in contract {number}" names a line by a material and a
+// contract it refers to: the one adopted object type whose records hold every record input's
+// value, as the regression fills such a question. Nil when the inputs read one object type, or no
+// one object type, or several, hold them all; a person deciding what a question needs is kept.
+func recordNeed(spec *interfaces.RequirementSpec, q *interfaces.RequirementQuestion, draft *interfaces.Draft) *interfaces.RequirementItemRef {
+	if spec == nil || draft == nil || q.Inputs == nil || q.NeedsSource == interfaces.REQUIREMENT_NEEDS_FROM_PERSON {
+		return nil
+	}
+	slots := []*slotField{}
+	types := map[*interfaces.DraftObjectType]bool{}
+	for _, in := range *q.Inputs {
+		if in.Role != interfaces.REQUIREMENT_INPUT_RECORD {
+			continue
+		}
+		f, reason := resolveSlot(spec, draft, interfaces.QuestionTestSlot{ConceptID: in.ConceptID, Property: in.Property})
+		if reason != "" {
+			return nil
+		}
+		slots = append(slots, &slotField{objectType: f.objectType, field: in.Property})
+		types[f.objectType] = true
+	}
+	if len(types) < 2 {
+		return nil
+	}
+	carrier, _ := heldBy(draft, slots)
+	if carrier == nil {
+		return nil
+	}
+	return &interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: carrier.ID}
 }
