@@ -123,7 +123,7 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
                 # New seeds (the analysis writer, the eval assistant), ontology v6, graph explorer v2, resource
-                # semantic understanding v7 and requirements v14 explicitly set their source language on both
+                # semantic understanding v7 and requirements v15 explicitly set their source language on both
                 # install paths; unchanged historical heads preserve NULL.
                 has_explicit_source = upgrade == "fresh" or agent_id in {
                     "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "eval_assistant",
