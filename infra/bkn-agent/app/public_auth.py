@@ -196,16 +196,16 @@ CORE_BUILTIN_AGENT_IDS = (
     "business_provenance_optimizer",
     "catalog-semantic-understanding",
     "resource-semantic-understanding",
-    "bkn-project-requirements",
-    "bkn-project-answer-judge",
-    "bkn-project-ontology-ask",
-    "bkn-project-draft-naming",
 )
 
 # Agents an edition seeds through its own migrations. The core does not seed
 # them; it reserves their ids so that, when present, they are built-in too:
 # listed in System Admin, never deleted and never unpublished.
 EDITION_RESERVED_AGENT_IDS = (
+    "bkn-project-requirements",
+    "bkn-project-answer-judge",
+    "bkn-project-ontology-ask",
+    "bkn-project-draft-naming",
     "bkn-project-concept-extraction",
     "bkn-project-document-extraction",
     "bkn-project-document-ask",
