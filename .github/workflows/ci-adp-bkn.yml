@@ -34,8 +34,7 @@ jobs:
           I18N_MODE_UT: "true"
         run: go test -count=1 -gcflags="all=-l" ./...
 
-  # bkn-project is a Professional capability and lives in openbkn-ee (adp/bkn/bkn-project); neither
-  # its code nor its tables may come back to the open core.
+  # This repository carries no bkn-project code or tables.
   no-bkn-project:
     runs-on: ubuntu-24.04
     steps:
@@ -44,7 +43,7 @@ jobs:
         run: |
           set -u
           if [ -e adp/bkn/bkn-project ] || [ -e migrations/bkn-project ]; then
-            echo "::error::bkn-project belongs to the professional edition (openbkn-ee adp/bkn/bkn-project)."
+            echo "::error::bkn-project code and tables are not part of this repository."
             exit 1
           fi
 

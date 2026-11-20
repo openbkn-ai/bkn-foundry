@@ -4,7 +4,7 @@
 
 ### Changed
 
-- The BKN project Agents (`bkn-project-requirements`, `bkn-project-answer-judge`, `bkn-project-ontology-ask`, `bkn-project-draft-naming`) are seeded by the professional edition (openbkn-ee `bkn-project-ee migrate`) from 0.2.2 on. The 0.2.2 snapshot no longer seeds them and their 0.2.2 prompt deltas moved there; their ids are reserved for an edition like the knowledge-base Agents, so where present they stay built-in.
+- The 0.2.2 snapshot no longer seeds the BKN project Agents (`bkn-project-requirements`, `bkn-project-answer-judge`, `bkn-project-ontology-ask`, `bkn-project-draft-naming`), and their 0.2.2 prompt deltas were removed. Their ids stay reserved like the knowledge-base Agents, so where present they stay built-in.
 
 ### Added
 
