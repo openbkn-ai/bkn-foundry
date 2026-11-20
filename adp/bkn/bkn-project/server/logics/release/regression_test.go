@@ -793,10 +793,6 @@ func Test_RegressionService(t *testing.T) {
 				{"unknown verdict", func() (*interfaces.BknAgentTask, error) {
 					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED, Output: `{"verdict":"maybe","reason":"x","used_needs":[]}`}, nil
 				}, interfaces.REGRESSION_CODE_JUDGE_INVALID},
-				{"need not given", func() (*interfaces.BknAgentTask, error) {
-					return &interfaces.BknAgentTask{Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
-						Output: `{"verdict":"answered","reason":"x","used_needs":[{"kind":"object_type","id":"invented"}]}`}, nil
-				}, interfaces.REGRESSION_CODE_JUDGE_INVALID},
 			} {
 				Convey(c.name+"\n", func() {
 					judge := pmock.NewMockBknAgentAccess(mockCtrl)
@@ -829,6 +825,30 @@ func Test_RegressionService(t *testing.T) {
 					So(finished.Results[0].Answer, ShouldEqual, "An answer.")
 				})
 			}
+		})
+
+		Convey("A judge naming what it was not given as used still decides, keeping only the needs it was given\n", func() {
+			// The answer may rest on more than the question lists, as a contract's invoices on the
+			// invoices: the verdict stands, and what was not given is not kept as a need.
+			judge := pmock.NewMockBknAgentAccess(mockCtrl)
+			svc.ba = judge
+			rs.EXPECT().ScenarioQuestions(gomock.Any(), "p1").Return(questions(regQuestion("q1", knowledge, regNeed(ot, "part"))), nil)
+			expectStart()
+			gs.EXPECT().ReadTree(gomock.Any(), gomock.Any(), gomock.Any()).Return(files, nil)
+			judge.EXPECT().AnswerOnNetwork(gomock.Any(), token, gomock.Any()).Return(answered("An answer."), nil).Times(1)
+			judge.EXPECT().RunTask(gomock.Any(), runner, gomock.Any()).Return(&interfaces.BknAgentTask{
+				Status: interfaces.BKN_AGENT_TASK_SUCCEEDED,
+				Output: `{"verdict":"answered","reason":"R","used_needs":[{"kind":"object_type","id":"part"},{"kind":"object_type","id":"invoice"},{"kind":"relation_type","id":"invoice_of_part"}]}`,
+			}, nil).Times(1)
+			expectFinish()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Attempt, ShouldEqual, 1)
+			So(finished.Results[0].Outcome, ShouldEqual, interfaces.REGRESSION_OUTCOME_PASSED)
+			So(finished.Results[0].UsedNeeds, ShouldResemble, []interfaces.RequirementItemRef{regNeed(ot, "part")})
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
 		})
 
 		Convey("A judge that fails once and then judges decides the question\n", func() {
