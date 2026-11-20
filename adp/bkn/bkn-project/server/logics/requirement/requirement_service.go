@@ -9,6 +9,7 @@ package requirement
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/extension/projecthooks"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
@@ -152,11 +154,13 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 	for _, q := range req.Spec.Questions {
 		question := interfaces.ScenarioQuestion{
 			ID: q.ID, Text: q.Text, Layer: q.Layer,
-			Needs:        append([]interfaces.RequirementItemRef{}, q.Needs...),
+			Needs:        businessNeeds(q, current),
 			MissingItems: []interfaces.RequirementItemRef{},
 			Tests:        []interfaces.ScenarioTest{},
 		}
-		question.Path, question.Unconnected = questionPath(q, current)
+		asked := *q
+		asked.Needs = question.Needs
+		question.Path, question.Unconnected = questionPath(&asked, current)
 		// A question its template asks of a record, or, with no template, of the first object
 		// type it needs: the run asks it of a record the data has.
 		ot, _ := exampleObject(q, current)
@@ -177,4 +181,30 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// businessNeeds are what a question needs of the business model: never the system objects and
+// relations a knowledge base keeps to locate text, which no release lacks and no answer misses.
+// A question whose needs come from concepts and name none needs the adopted object types its
+// text names, as drafting finds them: a specification drafted before drafting did so has none.
+func businessNeeds(q *interfaces.RequirementQuestion, draft *interfaces.Draft) []interfaces.RequirementItemRef {
+	needs := slices.DeleteFunc(append([]interfaces.RequirementItemRef{}, q.Needs...), func(n interfaces.RequirementItemRef) bool {
+		if draft == nil {
+			return false
+		}
+		switch n.Kind {
+		case interfaces.REQUIREMENT_ITEM_OBJECT_TYPE:
+			ot := projecthooks.FindObjectType(&draft.Items, n.ID)
+			return ot != nil && isEvidenceObject(ot)
+		case interfaces.REQUIREMENT_ITEM_RELATION_TYPE:
+			return isEvidenceRelation(draft, projecthooks.FindRelationType(&draft.Items, n.ID))
+		}
+		return false
+	})
+	if len(needs) == 0 && q.NeedsSource == interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS {
+		for _, ot := range objectTypesNamed(draft, q.Text) {
+			needs = append(needs, interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID})
+		}
+	}
+	return needs
 }

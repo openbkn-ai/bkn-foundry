@@ -122,7 +122,8 @@ type checkExcludedResult struct {
 }
 
 // checkInputOf takes what confirming the draft writes: the adopted object types, and the adopted
-// relations whose ends are adopted.
+// relations whose ends are adopted. The source files and blocks a knowledge base keeps to locate
+// text are left out: they hold no business data to check, and their records are the build's.
 func checkInputOf(items *interfaces.DraftItems) *checkInput {
 	input := &checkInput{ObjectTypes: []checkObjectType{}, RelationTypes: []checkRelationType{}}
 	excluded := map[string][]string{}
@@ -131,7 +132,7 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 	}
 	objectTypes := map[string]*interfaces.DraftObjectType{}
 	for _, ot := range items.ObjectTypes {
-		if !ot.Adopted {
+		if !ot.Adopted || isEvidence(ot.Document) {
 			continue
 		}
 		objectTypes[ot.ID] = ot
@@ -156,7 +157,7 @@ func checkInputOf(items *interfaces.DraftItems) *checkInput {
 	}
 	for _, rt := range items.RelationTypes {
 		source, target := objectTypes[rt.Source], objectTypes[rt.Target]
-		if !rt.Adopted || rt.Existing || source == nil || target == nil {
+		if !rt.Adopted || rt.Existing || source == nil || target == nil || isEvidence(rt.Document) {
 			continue
 		}
 		checked := checkRelationType{ID: rt.ID}

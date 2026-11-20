@@ -477,8 +477,9 @@ func releaseChanges(diff interfaces.PathDiff, branchFiles map[string][]byte,
 				changes.Other++
 			default:
 				// A system object type is published as any, but is no change a person reviews.
+				// A relation is told by the object types it joins: several may share a name.
 				if it := itemAt(p, list.files); !systemItem(it) {
-					*list.into = append(*list.into, it)
+					*list.into = append(*list.into, withEnds(it, p, list.files))
 				}
 			}
 		}
@@ -572,6 +573,37 @@ func itemAt(p string, files map[string][]byte) interfaces.ReleaseItem {
 		it.Name = it.ID
 	}
 	return it
+}
+
+// withEnds is it, a relation type at p in files, with the names of the object types it joins.
+func withEnds(it interfaces.ReleaseItem, p string, files map[string][]byte) interfaces.ReleaseItem {
+	if it.Kind != interfaces.RELEASE_ITEM_RELATION_TYPE {
+		return it
+	}
+	if rt, err := bkn.ParseRelationTypeFile(string(files[p]), p); err == nil {
+		it.SourceName, it.TargetName = objectTypeName(rt.Endpoint.Source, files), objectTypeName(rt.Endpoint.Target, files)
+	}
+	return it
+}
+
+// objectTypeName is the name of the object type id in files, at its own file or any other; empty
+// when files do not define it.
+func objectTypeName(id string, files map[string][]byte) string {
+	if id == "" {
+		return ""
+	}
+	if ot, err := bkn.ParseObjectTypeFile(string(files[objectTypesDir+id+".bkn"]), objectTypesDir+id+".bkn"); err == nil && ot.ID == id {
+		return ot.Name
+	}
+	for p, data := range files {
+		if kindOf(p) != interfaces.RELEASE_ITEM_OBJECT_TYPE {
+			continue
+		}
+		if ot, err := bkn.ParseObjectTypeFile(string(data), p); err == nil && ot.ID == id {
+			return ot.Name
+		}
+	}
+	return ""
 }
 
 // systemItem tells whether it is a system object type, such as the domain term object type.

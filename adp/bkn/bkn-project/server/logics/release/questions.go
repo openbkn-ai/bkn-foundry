@@ -96,16 +96,17 @@ func itemsOf(files map[string][]byte) map[interfaces.ReleaseItem]interfaces.Rele
 	return items
 }
 
-// named is an item the branch lacks, named as main has it, else by its id.
+// named is an item the branch lacks, named as main has it, else unnamed: an id means nothing to
+// the person reading it, and the client words an unnamed item as one no longer in the model.
 func named(k interfaces.ReleaseItem, main map[interfaces.ReleaseItem]interfaces.ReleaseItem) interfaces.ReleaseItem {
 	if m, ok := main[k]; ok {
 		return m
 	}
-	k.Name = k.ID
+	k.Name = ""
 	return k
 }
 
-// namedIn is an item named as the branch has it, else as main has it, else by its id.
+// namedIn is an item named as the branch has it, else as main has it, else unnamed.
 func namedIn(k interfaces.ReleaseItem, branch map[interfaces.ReleaseItem]interfaces.ReleaseItem,
 	main map[interfaces.ReleaseItem]interfaces.ReleaseItem) interfaces.ReleaseItem {
 	if b, ok := branch[k]; ok {
