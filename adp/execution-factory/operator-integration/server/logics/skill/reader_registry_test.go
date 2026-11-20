@@ -1640,22 +1640,21 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			registry := &skillRegistry{
-				skillRepo:   mockSkillRepo,
-				fileRepo:    mockFileRepo,
-				assetStore:  mockAssetStore,
+				skillRepo:  mockSkillRepo,
+				fileRepo:   mockFileRepo,
+				assetStore: mockAssetStore,
+				releaseRepo: publishedRelease(&model.SkillReleaseDB{
+					SkillID: "skill-zip-1",
+					Name:    "demo-skill",
+					Version: "v1",
+					Status:  interfaces.BizStatusPublished.String(),
+				}),
 				AuthService: mockAuthService,
 				Logger:      logger.DefaultLogger(),
 			}
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
 			mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-zip-1", interfaces.AuthResourceTypeSkill,
 				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
-			mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-zip-1").Return(&model.SkillRepositoryDB{
-				SkillID:      "skill-zip-1",
-				Name:         "demo-skill",
-				SkillContent: "Use this skill carefully.",
-				Version:      "v1",
-				Status:       interfaces.BizStatusPublished.String(),
-			}, nil)
 			mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-zip-1", "v1").Return([]*model.SkillFileIndexDB{
 				{SkillID: "skill-zip-1", RelPath: SkillMD, StorageKey: "obj-skill-md"},
 				{SkillID: "skill-zip-1", RelPath: "refs/guide.md", StorageKey: "obj-1"},
@@ -1692,23 +1691,19 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			registry := &skillRegistry{
-				skillRepo:   mockSkillRepo,
-				fileRepo:    mockFileRepo,
-				assetStore:  mockAssetStore,
+				skillRepo:  mockSkillRepo,
+				fileRepo:   mockFileRepo,
+				assetStore: mockAssetStore,
+				releaseRepo: publishedRelease(&model.SkillReleaseDB{
+					SkillID: "skill-zip-dup", Name: "demo-skill", Version: "v1",
+					Status: interfaces.BizStatusPublished.String(),
+				}),
 				AuthService: mockAuthService,
 				Logger:      logger.DefaultLogger(),
 			}
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
 			mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-zip-dup", interfaces.AuthResourceTypeSkill,
 				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
-			mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-zip-dup").Return(&model.SkillRepositoryDB{
-				SkillID:      "skill-zip-dup",
-				Name:         "demo-skill",
-				Description:  "dup-desc",
-				SkillContent: "Primary skill body.",
-				Version:      "v1",
-				Status:       interfaces.BizStatusPublished.String(),
-			}, nil)
 			mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-zip-dup", "v1").Return([]*model.SkillFileIndexDB{
 				{SkillID: "skill-zip-dup", RelPath: SkillMD, StorageKey: "obj-skill-md"},
 				{SkillID: "skill-zip-dup", RelPath: "refs/guide.md", StorageKey: "obj-guide"},
@@ -1750,23 +1745,19 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			registry := &skillRegistry{
-				skillRepo:   mockSkillRepo,
-				fileRepo:    mockFileRepo,
-				assetStore:  mockAssetStore,
+				skillRepo:  mockSkillRepo,
+				fileRepo:   mockFileRepo,
+				assetStore: mockAssetStore,
+				releaseRepo: publishedRelease(&model.SkillReleaseDB{
+					SkillID: "skill-zip-missing", Name: "demo-skill", Version: "v1",
+					Status: interfaces.BizStatusPublished.String(),
+				}),
 				AuthService: mockAuthService,
 				Logger:      logger.DefaultLogger(),
 			}
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
 			mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-zip-missing", interfaces.AuthResourceTypeSkill,
 				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
-			mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-zip-missing").Return(&model.SkillRepositoryDB{
-				SkillID:      "skill-zip-missing",
-				Name:         "demo-skill",
-				Description:  "missing-desc",
-				SkillContent: "Primary skill body.",
-				Version:      "v1",
-				Status:       interfaces.BizStatusPublished.String(),
-			}, nil)
 			mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-zip-missing", "v1").Return([]*model.SkillFileIndexDB{
 				{SkillID: "skill-zip-missing", RelPath: "refs/guide.md", StorageKey: "obj-guide"},
 			}, nil)
@@ -1795,15 +1786,20 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(entries["refs/guide.md"], ShouldEqual, "guide body")
 		})
 
-		Convey("DownloadSkill builds archive from current skill snapshot version", func() {
+		Convey("DownloadSkill builds archive from the published release, not the draft", func() {
+			// No expectation on the Skill row: it holds the draft current-v3.
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			registry := &skillRegistry{
-				skillRepo:   mockSkillRepo,
-				fileRepo:    mockFileRepo,
-				assetStore:  mockAssetStore,
+				skillRepo:  mockSkillRepo,
+				fileRepo:   mockFileRepo,
+				assetStore: mockAssetStore,
+				releaseRepo: publishedRelease(&model.SkillReleaseDB{
+					SkillID: "skill-release-zip", Name: "released-skill", Version: "release-v2",
+					Status: interfaces.BizStatusPublished.String(),
+				}),
 				AuthService: mockAuthService,
 				Logger:      logger.DefaultLogger(),
 			}
@@ -1811,17 +1807,9 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			mockAuthService.EXPECT().GetAccessor(gomock.Any(), "").Return(&interfaces.AuthAccessor{ID: "viewer"}, nil)
 			mockAuthService.EXPECT().OperationCheckAny(gomock.Any(), gomock.Any(), "skill-release-zip", interfaces.AuthResourceTypeSkill,
 				interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess).Return(true, nil)
-			mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-release-zip").Return(&model.SkillRepositoryDB{
-				SkillID:      "skill-release-zip",
-				Name:         "released-skill",
-				Description:  "published-desc",
-				SkillContent: "Published body.",
-				Version:      "current-v3",
-				Status:       interfaces.BizStatusPublished.String(),
-			}, nil)
-			mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-release-zip", "current-v3").Return([]*model.SkillFileIndexDB{
-				{SkillID: "skill-release-zip", SkillVersion: "current-v3", RelPath: SkillMD, StorageKey: "release-skill-md"},
-				{SkillID: "skill-release-zip", SkillVersion: "current-v3", RelPath: "refs/guide.md", StorageKey: "release-obj-1"},
+			mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-release-zip", "release-v2").Return([]*model.SkillFileIndexDB{
+				{SkillID: "skill-release-zip", SkillVersion: "release-v2", RelPath: SkillMD, StorageKey: "release-skill-md"},
+				{SkillID: "skill-release-zip", SkillVersion: "release-v2", RelPath: "refs/guide.md", StorageKey: "release-obj-1"},
 			}, nil)
 			mockAssetStore.EXPECT().Download(gomock.Any(), &interfaces.OssObject{StorageKey: "release-skill-md"}).Return([]byte(validSkillMarkdown()), nil)
 			mockAssetStore.EXPECT().Download(gomock.Any(), &interfaces.OssObject{StorageKey: "release-obj-1"}).Return([]byte("released guide"), nil)
@@ -2308,20 +2296,18 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 			assetStore:    mockAssetStore,
 			sandboxClient: mockSandbox,
 			sessionPool:   sessionPool,
-			AuthService:   mockAuthService,
-			Logger:        logger.DefaultLogger(),
+			releaseRepo: publishedRelease(&model.SkillReleaseDB{
+				SkillID: "skill-exec-1",
+				Name:    "demo-skill",
+				Version: "v1",
+				Status:  interfaces.BizStatusPublished.String(),
+			}),
+			AuthService: mockAuthService,
+			Logger:      logger.DefaultLogger(),
 		}
 
 		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-exec-1", interfaces.AuthResourceTypeSkill).Return(nil)
-		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-exec-1").Return(&model.SkillRepositoryDB{
-			SkillID:      "skill-exec-1",
-			Name:         "demo-skill",
-			Description:  "demo desc",
-			Version:      "v1",
-			SkillContent: "run this skill",
-			Status:       interfaces.BizStatusPublished.String(),
-		}, nil)
 		mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-exec-1", "v1").Return([]*model.SkillFileIndexDB{
 			{
 				SkillID:    "skill-exec-1",
@@ -2446,8 +2432,9 @@ func TestExecuteSkillRejectsBashBeforeUsingASession(t *testing.T) {
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		acquired := false
 		registry := &skillRegistry{
-			skillRepo: mockSkillRepo,
-			fileRepo:  mockFileRepo,
+			skillRepo:   mockSkillRepo,
+			fileRepo:    mockFileRepo,
+			releaseRepo: publishedRelease(&model.SkillReleaseDB{SkillID: "s1", Version: "v1"}),
 			sessionPool: &fakeSessionPool{acquireFunc: func(context.Context) (string, error) {
 				acquired = true
 				return "sess", nil
@@ -2457,7 +2444,6 @@ func TestExecuteSkillRejectsBashBeforeUsingASession(t *testing.T) {
 		}
 		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "s1", interfaces.AuthResourceTypeSkill).Return(nil)
-		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "s1").Return(&model.SkillRepositoryDB{SkillID: "s1", Version: "v1"}, nil)
 		mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "s1", "v1").Return([]*model.SkillFileIndexDB{
 			{SkillID: "s1", RelPath: "run.sh", StorageKey: "k"},
 		}, nil)
