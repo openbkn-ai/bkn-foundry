@@ -180,8 +180,7 @@ const (
 	REGRESSION_CODE_TOOLS_UNAVAILABLE = "tools_unavailable"
 	// REGRESSION_CODE_JUDGE_UNAVAILABLE: the answer judge could not be run, failed or timed out.
 	REGRESSION_CODE_JUDGE_UNAVAILABLE = "judge_unavailable"
-	// REGRESSION_CODE_JUDGE_INVALID: the answer judge returned what its schema does not allow, or a
-	// need it was not given.
+	// REGRESSION_CODE_JUDGE_INVALID: the answer judge returned what its schema does not allow.
 	REGRESSION_CODE_JUDGE_INVALID = "judge_invalid"
 )
 
