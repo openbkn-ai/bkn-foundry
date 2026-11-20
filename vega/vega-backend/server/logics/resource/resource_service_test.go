@@ -2662,6 +2662,9 @@ func TestResourceServiceUpdate(t *testing.T) {
 								return nil, extensionErr
 							}
 							prepared := deepcopy.Copy(current).(*interfaces.Resource)
+							if outcome == "metadata" {
+								prepared.SourceIdentifier = received.SourceIdentifier
+							}
 							if outcome == "prepared definition" {
 								prepared.APIDefinition = req.APIDefinition
 								encoded, err := json.Marshal(prepared.APIDefinition)

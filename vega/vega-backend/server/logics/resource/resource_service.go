@@ -895,10 +895,12 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryAPI:
+		sourceIdentifier := resource.SourceIdentifier
 		resource, err = PrepareAPIResourceUpdate(ctx, resource, req)
 		if err != nil {
 			return err
 		}
+		resource.SourceIdentifier = sourceIdentifier
 	case interfaces.ResourceCategoryLogicalView:
 		resource.SchemaDefinition = req.SchemaDefinition
 		resource.LogicalType = req.LogicalType
