@@ -99,10 +99,17 @@ func recordCarrier(draft *interfaces.Draft, slots []*slotField) (*interfaces.Dra
 	if !document {
 		return nil, nil
 	}
+	return heldBy(draft, slots)
+}
+
+// heldBy is the one adopted object type, other than the knowledge base's evidence, whose records
+// hold the value of every slot, as heldProperty finds them, with its property for each slot. Nil
+// when none does, or more than one.
+func heldBy(draft *interfaces.Draft, slots []*slotField) (*interfaces.DraftObjectType, []string) {
 	var carrier *interfaces.DraftObjectType
 	var held []string
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot == nil || !ot.Adopted {
+		if ot == nil || !ot.Adopted || isEvidenceObject(ot) {
 			continue
 		}
 		own := []string{}

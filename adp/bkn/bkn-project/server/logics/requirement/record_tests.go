@@ -76,7 +76,7 @@ func (s *requirementService) RecordTests(ctx context.Context, caller interfaces.
 			// No template: asked of a record of the first object type it needs.
 			// Of the question's business needs: never of the files a knowledge base reads text from.
 			asked := *q
-			asked.Needs = businessNeeds(q, draft)
+			asked.Needs = businessNeeds(&req.Spec, q, draft)
 			if askable, filled := s.exampleTest(bounded, caller, draft, &asked); askable {
 				tests[q.ID] = filled
 			}
