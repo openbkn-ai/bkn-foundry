@@ -190,3 +190,32 @@ func TestRebuildKNConceptIndexRoute(t *testing.T) {
 		t.Errorf("rebuilds asked %v, want kn1 with no branch, main and v1", asked)
 	}
 }
+
+// stateReader answers GetState and records who asked.
+type stateReader struct {
+	interfaces.KNVersionService
+	asked interfaces.AccountInfo
+}
+
+func (s *stateReader) GetState(ctx context.Context, _ string) (*interfaces.KNVersioningView, error) {
+	s.asked, _ = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	return &interfaces.KNVersioningView{}, nil
+}
+
+// A background run reads where a draft stands as the person it runs for, named
+// by the trusted account headers, with no sign-in of its own.
+func TestInternalVersioningReadsAsTheAccountHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reader := &stateReader{}
+	r := &restHandler{kvs: reader}
+	engine := gin.New()
+	engine.GET("/api/bkn-backend/in/v1/knowledge-networks/:kn_id/versioning", knEventInternal(r.getKNVersioning))
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn1/versioning", nil)
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user-1")
+	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || reader.asked != (interfaces.AccountInfo{ID: "user-1", Type: "user"}) {
+		t.Fatalf("code %d asked as %+v", recorder.Code, reader.asked)
+	}
+}

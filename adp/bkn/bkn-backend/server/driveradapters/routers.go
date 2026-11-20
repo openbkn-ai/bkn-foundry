@@ -251,6 +251,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxies)
 	apiInV1.GET("/authorization-resources", r.ListAuthorizationResources)
 	apiInV1.POST("/knowledge-networks/:kn_id/versioning/disable", knEventInternal(r.disableKNVersioning))
+	// A background run reads where a network's draft stands as the person it runs
+	// for, after that person's sign-in may have lapsed; view_detail is still checked.
+	apiInV1.GET("/knowledge-networks/:kn_id/versioning", knEventInternal(r.getKNVersioning))
 	apiInV1.POST("/knowledge-networks/:kn_id/concept-index/rebuild", knEventInternal(r.rebuildKNConceptIndex))
 
 	// Knowledge networks.
