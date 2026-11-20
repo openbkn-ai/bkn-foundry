@@ -164,8 +164,9 @@ paths:
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
         - `category=api` 仅支持专业版及以上的启用物理 API Catalog，必须提交 api_effect_type=read、
           api_definition 和非空 schema_definition。先本地校验再执行默认单页只读验证，
-          完整响应、成功条件与字段映射通过后才写入；失败不保存。源身份由平台生成，
-          不支持发现、扫描、本地索引构建或物化任务。
+          完整响应、成功条件与字段映射通过后才写入；失败不保存。
+          服务端使用实际资源 ID 作为 `source_identifier`，忽略请求中的 `source_identifier`。
+          API 资源不支持发现、扫描、本地索引构建或物化任务。
         - `category=logical_view` 仅在 EE 专业版及以上授权可创建，且必须提交
           `logical_type=derived` 与对应的
           `logical_view_definition` 对象和非空 `schema_definition`；字段的 `name`、`original_name`、
@@ -344,7 +345,8 @@ paths:
           查询可用托管本地索引时，整份查询 Schema 由 LIM 按本地映射生成，filterable 委托其本地索引连接器按完整字段 mapping 判定，不继承源字段值。
           现有 OpenSearch 全文算子的通配字段不展开整个 Schema 校验该开关，沿用原字段解析与转换。
         - PUT 中的 `enabled` 不可修改；请使用 `POST /resources/{id}/enable` 或 `/disable`。
-        - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
+        - PUT 中的 `status`、`schema`、`source_metadata` 由内部流程管理。
+        - PUT 忽略 `source_identifier` 并保留已存标识。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
         - Dataset 已有文档时，不允许通过普通更新改变字段、Feature、embedding 模型或其他索引
@@ -907,7 +909,8 @@ components:
           description: |
             SQL 表在 0.2.1 起保存源方言可直接执行的限定表引用（含数据库引用符）；
             原始 database/schema/name 保存在 source_metadata，不拆分此字段。
-            非 SQL 资源继续使用路径、topic、index 等既有标识。
+            API 资源和逻辑视图创建时使用实际资源 ID，历史资源保留已存标识。
+            其他非 SQL 资源继续使用路径、topic、index 等既有标识。
           type: string
         source_metadata:
           description: |
@@ -1003,8 +1006,8 @@ components:
       properties:
         variables:
           description: |
-            资源字面变量，复用 CatalogVariable 的 value/sensitive 声明；value 仅接受字符串，空字符串合法。
-            请求通过 {{ name }} 或 {{ __variables.name }} 访问实际 value；value 内模板字符原样保留，不求值、递归或隐式转换。
+            静态资源变量，复用 CatalogVariable 的 value/sensitive 声明。普通变量接受非 null JSON 值，包括字符串、数字、布尔值、对象和数组；对象和数组内部允许 null。敏感变量只接受字符串。空字符串合法。
+            请求通过 {{ name }} 或 {{ __variables.name }} 访问实际 value；支持结构化值的请求位置使用独立占位符时保留 JSON 类型。value 内模板字符原样保留，不递归求值。
             业务请求优先使用 Resource 的同名变量值，登录仅使用 Catalog 变量。Catalog 和 Resource 可分别为同名变量声明不同的 sensitive 标记。
             存储加密和公开读取脱敏分别依据各自的 sensitive 标记。启用平台 Crypto 时加密敏感 value，公开读取保留敏感变量声明并省略 value。
             完整定义替换须提交明文值，省略整个 api_definition 时保留旧定义。
@@ -1020,14 +1023,10 @@ components:
           $ref: "#/components/schemas/APIPagingRule"
     APIResourceVariable:
       description: |
-        复用 Catalog 变量声明，资源 value 限定为字面字符串；sensitive 可为 true。
+        复用 Catalog 变量声明。普通变量接受非 null JSON 值，敏感变量接受字符串。
         公开读取敏感变量时省略 value，保留 sensitive=true；该元信息不能直接用于创建或完整定义替换。
       anyOf:
-        - allOf:
-            - $ref: "catalog.yaml#/components/schemas/HTTPAPICatalogVariable"
-            - properties:
-                value:
-                  type: string
+        - $ref: "catalog.yaml#/components/schemas/HTTPAPICatalogVariable"
         - type: object
           required: [sensitive]
           properties:
@@ -1322,8 +1321,10 @@ components:
           type: string
         source_identifier:
           description: |
+            API 资源和逻辑视图创建时由服务端使用实际资源 ID，忽略请求中的值。
+            PUT 忽略此字段并保留已存标识。
             物理资源由发现流程写入，SQL 表保存连接器生成的源方言表引用；
-            API 不允许创建物理表资源。PUT 时忽略此字段。
+            API 不允许创建物理表资源。
           type: string
         source_metadata:
           description: |
@@ -1496,7 +1497,10 @@ components:
           description: 所属 schema
           type: string
         source_identifier:
-          description: SQL 表为源方言限定表引用（含引用符），其他资源为既有源端标识
+          description: |
+            SQL 表为源方言限定表引用（含引用符）。
+            API 资源和逻辑视图创建时使用实际资源 ID，历史资源保留已存标识。
+            其他资源使用既有源端标识。
           type: string
         local_status:
           description: 本地索引状态

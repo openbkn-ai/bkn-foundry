@@ -202,8 +202,8 @@ func (cf *connectorFactory) SetConnectorEnabled(tp string, enabled bool) {
 	logger.Infof("Skip runtime enabled update for connector %s: not registered in this process", tp)
 }
 
-// GetConnectorAvailability reports the connector's current availability and
-// declared edition requirement from one registry snapshot.
+// GetConnectorAvailability reads runtime state and declared capabilities
+// from one registry snapshot without opening a source connection.
 func (cf *connectorFactory) GetConnectorAvailability(tp string) interfaces.ConnectorAvailability {
 	cf.mu.RLock()
 	defer cf.mu.RUnlock()
@@ -215,8 +215,9 @@ func (cf *connectorFactory) GetConnectorAvailability(tp string) interfaces.Conne
 	minimumEdition, hasMinimumEdition := cf.connectorRequiredEditions[tp]
 	return interfaces.ConnectorAvailability{
 		Available:       !hasMinimumEdition || entitlement.AtLeast(minimumEdition),
-		Disabled:        !connector.GetEnabled(),
+		Enabled:         connector.GetEnabled(),
 		RequiredEdition: minimumEdition,
+		SupportDiscover: connector.SupportDiscover(),
 	}
 }
 

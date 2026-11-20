@@ -2923,7 +2923,7 @@ func assertSQLExtensionCursorReleased(t *testing.T, state *sqlExtensionCursorTes
 func expectSQLExtensionRetry(state *sqlExtensionCursorTest) {
 	expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
 	state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
-	state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true})
+	state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true, Enabled: true})
 	state.rs.EXPECT().InternalGetByID(gomock.Any(), nil, state.physical.ID).Return(state.physical, nil)
 }
 
@@ -2975,7 +2975,7 @@ func TestRawQueryServiceSQLSourceCursorValidator(t *testing.T) {
 				state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(nil, failure)
 			} else {
 				state.cs.EXPECT().InternalGetByID(gomock.Any(), state.catalog.ID, true).Return(state.catalog, nil)
-				state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true})
+				state.cf.EXPECT().GetConnectorAvailability(state.catalog.ConnectorType).Return(interfaces.ConnectorAvailability{Available: true, Enabled: true})
 				state.rs.EXPECT().InternalGetByID(gomock.Any(), nil, state.physical.ID).Return(nil, errors.New("private physical Table metadata failure"))
 			}
 			result, err := state.svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: state.token}})
@@ -2994,18 +2994,19 @@ func TestRawQueryServiceSQLSourceCursorValidator(t *testing.T) {
 }
 
 func TestRawQueryServiceSQLSourceAvailability(t *testing.T) {
-	for _, change := range []string{"unavailable", "disabled", "nil factory", "physical version", "physical category", "physical missing", "Catalog version"} {
+	for _, change := range []string{"unavailable", "unavailable and disabled", "disabled", "nil factory", "physical version", "physical category", "physical missing", "Catalog version"} {
 		t.Run(change+" invalidates retained Rows", func(t *testing.T) {
 			state := newSQLExtensionCursorTest(t)
 			expectRawQueryResources(state.rs, []string{state.virtual.ID}, state.virtual)
 			status, code := http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed
-			availability := interfaces.ConnectorAvailability{Available: true}
+			availability := interfaces.ConnectorAvailability{Available: true, Enabled: true}
 			switch change {
-			case "unavailable":
+			case "unavailable", "unavailable and disabled":
 				availability.Available = false
+				availability.Enabled = change == "unavailable"
 				status, code = http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied
 			case "disabled":
-				availability.Disabled = true
+				availability.Enabled = false
 				code = verrors.VegaBackend_Connector_Disabled
 			case "nil factory":
 				state.svc.cf = nil
