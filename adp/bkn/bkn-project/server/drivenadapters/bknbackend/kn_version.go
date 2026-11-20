@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -78,7 +79,10 @@ func (bba *bknBackendAccess) callWith(ctx context.Context, name string, method s
 		httpUrl += "?" + query.Encode()
 	}
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: method})
-	headers := map[string]string{"Authorization": token}
+	headers := map[string]string{}
+	if token != "" {
+		headers["Authorization"] = token
+	}
 	for k, v := range extra {
 		if v != "" {
 			headers[k] = v
@@ -139,6 +143,18 @@ func (bba *bknBackendAccess) EnableVersioning(ctx context.Context, token string,
 func (bba *bknBackendAccess) GetVersioning(ctx context.Context, token string, knID string) (*interfaces.KNVersioning, error) {
 	out := &interfaces.KNVersioning{}
 	if err := bba.call(ctx, "GetVersioning", http.MethodGet, bba.networkUrl(knID, "versioning"), nil, token, nil, http.StatusOK, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetVersioningAs calls the internal GET /knowledge-networks/{kn_id}/versioning as account:
+// bkn-backend trusts the account headers there and still checks view_detail.
+func (bba *bknBackendAccess) GetVersioningAs(ctx context.Context, account interfaces.AccountInfo, knID string) (*interfaces.KNVersioning, error) {
+	out := &interfaces.KNVersioning{}
+	internal := strings.Replace(bba.networkUrl(knID, "versioning"), "/api/bkn-backend/v1/", "/api/bkn-backend/in/v1/", 1)
+	if err := bba.callWith(ctx, "GetVersioningAs", http.MethodGet, internal, nil, "",
+		map[string]string{"x-account-id": account.ID, "x-account-type": account.Type}, nil, http.StatusOK, out); err != nil {
 		return nil, err
 	}
 	return out, nil

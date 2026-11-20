@@ -84,8 +84,8 @@ func Test_RegressionService_Draft(t *testing.T) {
 
 		Convey("A draft ready at once is answered on, pinned to the revision, and checked again after\n", func() {
 			gomock.InOrder(
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
 			)
 			expectAnswer()
 
@@ -104,10 +104,11 @@ func Test_RegressionService_Draft(t *testing.T) {
 
 		Convey("A draft whose index is building is waited for, a failed read too\n", func() {
 			gomock.InOrder(
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(building, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(building, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(nil, errors.New("timeout")),
 				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(nil, errors.New("timeout")),
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
 			)
 			expectAnswer()
 
@@ -120,7 +121,7 @@ func Test_RegressionService_Draft(t *testing.T) {
 		})
 
 		Convey("A draft that moved on before the start is not answered on\n", func() {
-			kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(draftAt(8, true, interfaces.KN_DRAFT_INDEX_READY), nil)
+			kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(draftAt(8, true, interfaces.KN_DRAFT_INDEX_READY), nil)
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
@@ -132,8 +133,8 @@ func Test_RegressionService_Draft(t *testing.T) {
 
 		Convey("A draft written while answering fails the run: its answers cannot be vouched for\n", func() {
 			gomock.InOrder(
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(draftAt(8, false, interfaces.KN_DRAFT_INDEX_BUILDING), nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(draftAt(8, false, interfaces.KN_DRAFT_INDEX_BUILDING), nil),
 			)
 			expectAnswer()
 
@@ -147,7 +148,8 @@ func Test_RegressionService_Draft(t *testing.T) {
 
 		Convey("A draft that cannot be read again after answering counts as moved\n", func() {
 			gomock.InOrder(
-				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(nil, errors.New("timeout")),
 				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(nil, errors.New("timeout")),
 			)
 			expectAnswer()
@@ -159,8 +161,23 @@ func Test_RegressionService_Draft(t *testing.T) {
 			So(finished.Error, ShouldEqual, interfaces.REGRESSION_ERROR_DRAFT_CHANGED)
 		})
 
+		Convey("A bkn-backend without the internal read is read with the sign-in, as before\n", func() {
+			gomock.InOrder(
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(nil, errors.New("404")),
+				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
+				kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(nil, errors.New("404")),
+				kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(ready, nil),
+			)
+			expectAnswer()
+
+			_, _, err := svc.StartRegression(ctx, token, release, runner)
+
+			So(err, ShouldBeNil)
+			So(finished.Status, ShouldEqual, interfaces.REGRESSION_STATUS_PASSED)
+		})
+
 		Convey("An index that failed to build is not waited for\n", func() {
-			kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(draftAt(7, false, interfaces.KN_DRAFT_INDEX_FAILED), nil)
+			kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(draftAt(7, false, interfaces.KN_DRAFT_INDEX_FAILED), nil)
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)
 
@@ -172,7 +189,7 @@ func Test_RegressionService_Draft(t *testing.T) {
 		})
 
 		Convey("An index not built within the wait fails the run\n", func() {
-			kva.EXPECT().GetVersioning(gomock.Any(), token, "supply").Return(building, nil).
+			kva.EXPECT().GetVersioningAs(gomock.Any(), runner, "supply").Return(building, nil).
 				Times(int(draftIndexWait/draftIndexPoll) + 1)
 
 			_, _, err := svc.StartRegression(ctx, token, release, runner)

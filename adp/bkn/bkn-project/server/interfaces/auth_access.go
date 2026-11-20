@@ -6,6 +6,7 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -14,4 +15,7 @@ import (
 //go:generate mockgen -source ../interfaces/auth_access.go -destination ../interfaces/mock/mock_auth_access.go
 type AuthAccess interface {
 	VerifyToken(ctx context.Context, c *gin.Context) (hydra.Visitor, error)
+	// TokenExpiry is when a sign-in token stops being accepted; an error when it is not active
+	// or the time cannot be read.
+	TokenExpiry(ctx context.Context, token string) (time.Time, error)
 }

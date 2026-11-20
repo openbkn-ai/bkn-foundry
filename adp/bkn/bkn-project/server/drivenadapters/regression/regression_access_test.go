@@ -173,5 +173,16 @@ func Test_RegressionAccess(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(n, ShouldEqual, 3)
 		})
+
+		Convey("ListRunning reads the project and run of each running regression\n", func() {
+			smock.ExpectQuery(regexp.QuoteMeta("SELECT f_release_id, f_project_id, f_run_id FROM t_bkn_project_regression WHERE f_status = ?")).
+				WithArgs("running").WillReturnRows(sqlmock.NewRows([]string{"f_release_id", "f_project_id", "f_run_id"}).
+				AddRow("r1", "p1", "run-1"))
+
+			running, err := ra.ListRunning(ctx)
+
+			So(err, ShouldBeNil)
+			So(running, ShouldResemble, []*interfaces.Regression{{ReleaseID: "r1", ProjectID: "p1", RunID: "run-1"}})
+		})
 	})
 }

@@ -87,6 +87,21 @@ func (mr *MockRegressionAccessMockRecorder) GetRegression(ctx, releaseID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegression", reflect.TypeOf((*MockRegressionAccess)(nil).GetRegression), ctx, releaseID)
 }
 
+// ListRunning mocks base method.
+func (m *MockRegressionAccess) ListRunning(ctx context.Context) ([]*interfaces.Regression, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRunning", ctx)
+	ret0, _ := ret[0].([]*interfaces.Regression)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRunning indicates an expected call of ListRunning.
+func (mr *MockRegressionAccessMockRecorder) ListRunning(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRunning", reflect.TypeOf((*MockRegressionAccess)(nil).ListRunning), ctx)
+}
+
 // StartRegression mocks base method.
 func (m *MockRegressionAccess) StartRegression(ctx context.Context, r *interfaces.Regression, staleBefore int64) (bool, error) {
 	m.ctrl.T.Helper()

@@ -177,6 +177,9 @@ type KNVersionAccess interface {
 	// EnableVersioning turns an unversioned network versioned: its content becomes version 1.
 	EnableVersioning(ctx context.Context, token string, knID string, notes string) error
 	GetVersioning(ctx context.Context, token string, knID string) (*KNVersioning, error)
+	// GetVersioningAs is GetVersioning through bkn-backend's internal API, as account: a
+	// background run reads it after the sign-in it started with may have lapsed.
+	GetVersioningAs(ctx context.Context, account AccountInfo, knID string) (*KNVersioning, error)
 	// ListVersions returns every version, newest first.
 	ListVersions(ctx context.Context, token string, knID string) ([]*KNVersion, error)
 	GetVersion(ctx context.Context, token string, knID string, version int) (*KNVersion, error)

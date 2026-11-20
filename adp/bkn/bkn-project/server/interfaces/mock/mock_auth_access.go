@@ -12,6 +12,7 @@ package mock_interfaces
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	gin "github.com/gin-gonic/gin"
 	hydra "github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -40,6 +41,21 @@ func NewMockAuthAccess(ctrl *gomock.Controller) *MockAuthAccess {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockAuthAccess) EXPECT() *MockAuthAccessMockRecorder {
 	return m.recorder
+}
+
+// TokenExpiry mocks base method.
+func (m *MockAuthAccess) TokenExpiry(ctx context.Context, token string) (time.Time, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TokenExpiry", ctx, token)
+	ret0, _ := ret[0].(time.Time)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TokenExpiry indicates an expected call of TokenExpiry.
+func (mr *MockAuthAccessMockRecorder) TokenExpiry(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TokenExpiry", reflect.TypeOf((*MockAuthAccess)(nil).TokenExpiry), ctx, token)
 }
 
 // VerifyToken mocks base method.

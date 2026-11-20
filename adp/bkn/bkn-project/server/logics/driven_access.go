@@ -29,6 +29,7 @@ var (
 	BAA interfaces.BknAgentAccess
 	RGA interfaces.RegressionAccess
 	ADM interfaces.AdminAccess
+	EGA interfaces.ExecutionGrantAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -97,6 +98,10 @@ func SetBknAgentAccess(baa interfaces.BknAgentAccess) {
 
 func SetRegressionAccess(rga interfaces.RegressionAccess) {
 	RGA = rga
+}
+
+func SetExecutionGrantAccess(ega interfaces.ExecutionGrantAccess) {
+	EGA = ega
 }
 
 func SetAdminAccess(adm interfaces.AdminAccess) {
