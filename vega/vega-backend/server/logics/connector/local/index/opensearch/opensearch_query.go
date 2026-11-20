@@ -349,9 +349,15 @@ func rawHitColumns(source map[string]any, fieldTypes map[string]string) []interf
 	return columns
 }
 
-// rawQueryFieldTypes keys Resource field types by their names in the source document.
+// rawQueryFieldTypes 按源字段名取类型，显式 schema 优先于探查记录的对象类型。
 func rawQueryFieldTypes(resource *interfaces.Resource) map[string]string {
-	fieldTypes := make(map[string]string, len(resource.SchemaDefinition))
+	objects, _ := resource.SourceMetadata["object_fields"].([]any)
+	fieldTypes := make(map[string]string, len(resource.SchemaDefinition)+len(objects))
+	for _, object := range objects {
+		if name, ok := object.(string); ok && name != "" {
+			fieldTypes[name] = interfaces.DataType_Json
+		}
+	}
 	for _, field := range resource.SchemaDefinition {
 		if field == nil {
 			continue

@@ -205,9 +205,9 @@ func TestOpenSearchConnectorOpenRawIndexReadUsesResourceSchema(t *testing.T) {
 			_, _ = io.WriteString(w, `{"pit_id":"snapshot","_shards":{"failed":0}}`)
 		case r.URL.Path == "/_search":
 			if searches.Add(1) == 1 {
-				_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"total":{"value":2,"relation":"eq"},"hits":[{"_index":"events-000001","_source":{"payload":{"n":1},"public_payload":{"n":10}},"sort":[1]}]}}`)
+				_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"total":{"value":2,"relation":"eq"},"hits":[{"_index":"events-000001","_source":{"payload":{"n":1},"archived":{"n":10},"public_payload":{"n":100}},"sort":[1]}]}}`)
 			} else {
-				_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"hits":[{"_index":"events-000002","_source":{"payload":{"n":2},"public_payload":{"n":20}},"sort":[2]}]}}`)
+				_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"hits":[{"_index":"events-000002","_source":{"payload":{"n":2},"archived":{"n":20},"public_payload":{"n":200}},"sort":[2]}]}}`)
 			}
 		case r.Method == http.MethodDelete && r.URL.Path == "/_search/point_in_time":
 			closed.Store(true)
@@ -222,23 +222,32 @@ func TestOpenSearchConnectorOpenRawIndexReadUsesResourceSchema(t *testing.T) {
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{client: client}
 	property := &interfaces.Property{Name: "public_payload", OriginalName: "payload", Type: interfaces.DataType_Json}
-	resource := &interfaces.Resource{SourceIdentifier: "events-alias", SchemaDefinition: []*interfaces.Property{property}}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "events-alias",
+		SchemaDefinition: []*interfaces.Property{property},
+		SourceMetadata:   map[string]any{"object_fields": []any{"archived"}},
+	}
 	session, err := connector.OpenRawIndexRead(t.Context(), resource,
 		map[string]any{"sort": []any{"id"}, "track_total_hits": true}, time.Minute)
 	require.NoError(t, err)
-	// Each page uses the schema captured when the session opened.
+	// 每页都使用打开会话时得到的类型。
 	property.Type = interfaces.DataType_String
+	delete(resource.SourceMetadata, "object_fields")
 	first, err := session.ReadPage(t.Context(), 1)
 	require.NoError(t, err)
 	assert.True(t, first.HasMore)
-	assert.ElementsMatch(t, []interfaces.ColumnInfo{{Name: "payload", Type: interfaces.DataType_Json}, {Name: "public_payload", Type: interfaces.DataType_String}}, first.Columns)
-	assert.Equal(t, []map[string]any{{"payload": `{"n":1}`, "public_payload": map[string]any{"n": json.Number("10")}}}, first.Entries)
+	assert.ElementsMatch(t, []interfaces.ColumnInfo{
+		{Name: "payload", Type: interfaces.DataType_Json},
+		{Name: "archived", Type: interfaces.DataType_Json},
+		{Name: "public_payload", Type: interfaces.DataType_String},
+	}, first.Columns)
+	assert.Equal(t, []map[string]any{{"payload": `{"n":1}`, "archived": `{"n":10}`, "public_payload": map[string]any{"n": json.Number("100")}}}, first.Entries)
 
 	second, err := session.ReadPage(t.Context(), 1)
 	require.NoError(t, err)
 	assert.False(t, second.HasMore)
 	assert.ElementsMatch(t, first.Columns, second.Columns)
-	assert.Equal(t, []map[string]any{{"payload": `{"n":2}`, "public_payload": map[string]any{"n": json.Number("20")}}}, second.Entries)
+	assert.Equal(t, []map[string]any{{"payload": `{"n":2}`, "archived": `{"n":20}`, "public_payload": map[string]any{"n": json.Number("200")}}}, second.Entries)
 	require.NoError(t, session.Close())
 	assert.True(t, closed.Load())
 }

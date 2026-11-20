@@ -165,7 +165,11 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 			"products": {
 				"mappings": {
 					"_meta": {"description": "产品索引", "version": "1.0", "owner": {"team": "search"}},
-					"properties": {"title": {"type": "text"}}
+					"properties": {
+						"title": {"type": "text"},
+						"payload": {"properties": {"n": {"type": "long"}}},
+						"disabled": {"type": "object", "enabled": false}
+					}
 				}
 			}
 		}`))
@@ -185,7 +189,10 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 		"version":     "1.0",
 		"owner":       map[string]any{"team": "search"},
 	}, index.MappingMeta)
-	require.Contains(t, index.Mapping, "title")
+	assert.Len(t, index.Mapping, 2)
+	assert.Contains(t, index.Mapping, "title")
+	assert.Contains(t, index.Mapping, "payload.n")
+	assert.Equal(t, []string{"disabled", "payload"}, index.ObjectFields)
 }
 
 func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
@@ -244,11 +251,12 @@ func TestFetchMappingsDefaultsMissingMappingMetaToEmpty(t *testing.T) {
 	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{client: client}
-	index := &interfaces.IndexMeta{Name: "products", Description: "索引描述", MappingMeta: map[string]any{"old": true}}
+	index := &interfaces.IndexMeta{Name: "products", Description: "索引描述", MappingMeta: map[string]any{"old": true}, ObjectFields: []string{"removed"}}
 
 	require.NoError(t, connector.fetchMappings(context.Background(), index))
 	assert.Equal(t, "索引描述", index.Description)
 	assert.Empty(t, index.MappingMeta)
+	assert.Empty(t, index.ObjectFields)
 }
 
 func TestFetchMappingsReturnsErrorForInvalidJSON(t *testing.T) {

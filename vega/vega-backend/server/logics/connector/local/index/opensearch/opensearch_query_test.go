@@ -618,7 +618,7 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 			client, err := osclient.NewClient(osclient.Config{
 				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
 				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
-					body := `{` + completeSearchMetadata + `,"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"1","_source":{"object":{"n":9007199254740993},"array":[1,true],"text":"{incomplete","empty":"","nothing":null,"number":9007199254740993,"boolean":true,"null_text":"null","id":42,"vector":[1,2],"unknown":{"n":3}}}]}}`
+					body := `{` + completeSearchMetadata + `,"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"1","_source":{"object":{"n":9007199254740993},"disabled":[{"n":1},{"n":2}],"array":[1,true],"text":"{incomplete","empty":"","nothing":null,"number":9007199254740993,"boolean":true,"null_text":"null","id":42,"vector":[1,2],"unknown":{"n":3}}}]}}`
 					assert.Equal(t, "/events/_search", request.URL.Path)
 					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 				}),
@@ -630,6 +630,10 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 				{Name: "text", Type: interfaces.DataType_Json}, {Name: "empty", Type: interfaces.DataType_Json}, {Name: "nothing", Type: interfaces.DataType_Json}, {Name: "number", Type: interfaces.DataType_Json}, {Name: "boolean", Type: interfaces.DataType_Json}, {Name: "null_text", Type: interfaces.DataType_Json},
 				{Name: "id", Type: interfaces.DataType_Integer}, {Name: "vector", Type: interfaces.DataType_Vector},
 			}}
+			if mode != "structured" {
+				resource.SchemaDefinition[0] = &interfaces.Property{Name: "object.n", Type: interfaces.DataType_Integer}
+				resource.SourceMetadata = map[string]any{"object_fields": []any{"disabled", "object", "id"}}
+			}
 			var entries []map[string]any
 			switch mode {
 			case "structured":
@@ -639,6 +643,9 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 			case "raw":
 				got, err := c.ExecuteRawQuery(context.Background(), resource, map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
 				require.NoError(t, err)
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "object", Type: interfaces.DataType_Json})
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "disabled", Type: interfaces.DataType_Json})
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "id", Type: interfaces.DataType_Integer})
 				entries = got.Entries
 			case "dsl":
 				got, err := c.ExecuteQueryWithDsl(context.Background(), resource, `{"query":{"match_all":{}}}`)
@@ -647,6 +654,9 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 			}
 			require.Len(t, entries, 1)
 			assert.Equal(t, `{"n":9007199254740993}`, entries[0]["object"])
+			if mode != "structured" {
+				assert.Equal(t, `[{"n":1},{"n":2}]`, entries[0]["disabled"])
+			}
 			assert.Equal(t, `[1,true]`, entries[0]["array"])
 			assert.Equal(t, "{incomplete", entries[0]["text"])
 			assert.Equal(t, "", entries[0]["empty"])

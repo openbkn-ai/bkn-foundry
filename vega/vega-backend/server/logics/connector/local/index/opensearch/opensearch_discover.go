@@ -197,15 +197,23 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 	}
 
 	fieldMap := make(map[string]interfaces.IndexFieldMeta)
+	var objectFields []string
 	index.MappingMeta = make(map[string]any)
 	if idxData, ok := dataMapping[index.Name]; ok {
 		if idxData.Mappings.Meta != nil {
 			index.MappingMeta = idxData.Mappings.Meta
 		}
 		parseProperties("", idxData.Mappings.Properties, fieldMap)
+		for name, field := range idxData.Mappings.Properties {
+			if field.Type == "object" || (field.Type == "" && field.Properties != nil) {
+				objectFields = append(objectFields, name)
+			}
+		}
+		sort.Strings(objectFields)
 	}
 	resolveIndexAliasTypes(fieldMap)
 	index.Mapping = fieldMap
+	index.ObjectFields = objectFields
 	return nil
 }
 
