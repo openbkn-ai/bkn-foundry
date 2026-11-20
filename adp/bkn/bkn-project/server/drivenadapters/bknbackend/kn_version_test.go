@@ -30,6 +30,7 @@ func Test_KNVersionAccess(t *testing.T) {
 	Convey("Test the knowledge network version calls\n", t, func() {
 		type request struct {
 			method, path, query, auth, contentType, idempotencyKey string
+			account, accountType                                   string
 			body                                                   map[string]any
 			files                                                  map[string]string
 		}
@@ -40,7 +41,8 @@ func Test_KNVersionAccess(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req := request{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery,
 				auth: r.Header.Get("Authorization"), contentType: r.Header.Get("Content-Type"),
-				idempotencyKey: r.Header.Get("Idempotency-Key")}
+				idempotencyKey: r.Header.Get("Idempotency-Key"), account: r.Header.Get("x-account-id"),
+				accountType: r.Header.Get("x-account-type")}
 			if file, _, err := r.FormFile("file"); err == nil {
 				data, _ := io.ReadAll(file)
 				req.files = readTar(data)
@@ -112,6 +114,19 @@ func Test_KNVersionAccess(t *testing.T) {
 			So(v, ShouldResemble, &interfaces.KNVersioning{Enabled: true, RunningVersion: 3, PreviousVersion: 2,
 				Draft: interfaces.KNDraftState{BaseVersion: 3, HasChanges: true, Revision: 12, IndexReady: true,
 					Index: interfaces.KNDraftIndexState{Revision: 12, Status: "ready"}}})
+		})
+
+		Convey("GetVersioningAs reads it through the internal API as the account, with no sign-in\n", func() {
+			respBody = `{"enabled":true,"draft":{"revision":12,"index_ready":true}}`
+
+			v, err := bba.GetVersioningAs(ctx, interfaces.AccountInfo{ID: "user-1", Type: "user"}, "orders")
+
+			So(err, ShouldBeNil)
+			So(got[0].path, ShouldEqual, "/api/bkn-backend/in/v1/knowledge-networks/orders/versioning")
+			So(got[0].auth, ShouldBeEmpty)
+			So(got[0].account, ShouldEqual, "user-1")
+			So(got[0].accountType, ShouldEqual, "user")
+			So(v.Draft.Revision, ShouldEqual, 12)
 		})
 
 		Convey("ListVersions reads page after page until a short one\n", func() {

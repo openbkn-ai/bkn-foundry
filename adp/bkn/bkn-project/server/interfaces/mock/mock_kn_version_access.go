@@ -144,6 +144,21 @@ func (mr *MockKNVersionAccessMockRecorder) GetVersioning(ctx, token, knID any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVersioning", reflect.TypeOf((*MockKNVersionAccess)(nil).GetVersioning), ctx, token, knID)
 }
 
+// GetVersioningAs mocks base method.
+func (m *MockKNVersionAccess) GetVersioningAs(ctx context.Context, account interfaces.AccountInfo, knID string) (*interfaces.KNVersioning, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVersioningAs", ctx, account, knID)
+	ret0, _ := ret[0].(*interfaces.KNVersioning)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVersioningAs indicates an expected call of GetVersioningAs.
+func (mr *MockKNVersionAccessMockRecorder) GetVersioningAs(ctx, account, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVersioningAs", reflect.TypeOf((*MockKNVersionAccess)(nil).GetVersioningAs), ctx, account, knID)
+}
+
 // ListVersions mocks base method.
 func (m *MockKNVersionAccess) ListVersions(ctx context.Context, token, knID string) ([]*interfaces.KNVersion, error) {
 	m.ctrl.T.Helper()

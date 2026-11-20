@@ -970,8 +970,24 @@ func Test_RegressionService(t *testing.T) {
 			So(clientRequestID("r", 1, 1), ShouldNotEqual, clientRequestID("r", 2, 1))
 		})
 
-		Convey("Regressions a restart left running are failed as interrupted\n", func() {
+		Convey("Regressions a restart left running are failed as interrupted, and their credentials revoked\n", func() {
+			ra.EXPECT().ListRunning(gomock.Any()).Return([]*interfaces.Regression{{ProjectID: "p1", RunID: "run-1"},
+				{ProjectID: "p2", RunID: "run-2"}}, nil)
 			ra.EXPECT().FailRunning(gomock.Any(), interfaces.REGRESSION_ERROR_INTERRUPTED, gomock.Any()).Return(int64(2), nil)
+
+			So(svc.FailInterrupted(ctx), ShouldBeNil)
+
+			ga := pmock.NewMockExecutionGrantAccess(mockCtrl)
+			svc.ga = ga
+			ra.EXPECT().ListRunning(gomock.Any()).Return([]*interfaces.Regression{{ProjectID: "p1", RunID: "run-1"}}, nil)
+			ra.EXPECT().FailRunning(gomock.Any(), interfaces.REGRESSION_ERROR_INTERRUPTED, gomock.Any()).Return(int64(1), nil)
+			ga.EXPECT().Revoke(gomock.Any(), "run-1", "p1", "run-1").Return(errors.New("down"))
+
+			So(svc.FailInterrupted(ctx), ShouldBeNil)
+
+			// Not knowing which ran, they are still failed.
+			ra.EXPECT().ListRunning(gomock.Any()).Return(nil, errors.New("down"))
+			ra.EXPECT().FailRunning(gomock.Any(), interfaces.REGRESSION_ERROR_INTERRUPTED, gomock.Any()).Return(int64(1), nil)
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
 		})

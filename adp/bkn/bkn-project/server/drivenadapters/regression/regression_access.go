@@ -223,6 +223,41 @@ func (ra *regressionAccess) FailRunning(ctx context.Context, reason string, fini
 	return result.RowsAffected()
 }
 
+// ListRunning reads the release, project and run of every running regression.
+func (ra *regressionAccess) ListRunning(ctx context.Context) ([]*interfaces.Regression, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "ListRunningRegressions")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_release_id", "f_project_id", "f_run_id").From(REGRESSION_TABLE_NAME).
+		Where(sq.Eq{"f_status": interfaces.REGRESSION_STATUS_RUNNING}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	running := []*interfaces.Regression{}
+	for rows.Next() {
+		r := &interfaces.Regression{}
+		if err := rows.Scan(&r.ReleaseID, &r.ProjectID, &r.RunID); err != nil {
+			span.SetStatus(codes.Error, "Scan data failed")
+			return nil, err
+		}
+		running = append(running, r)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return running, nil
+}
+
 // writeJSON writes a list for a NOT NULL text column; no list is written as [].
 func writeJSON[T any](list []T) (string, error) {
 	if list == nil {
