@@ -984,6 +984,12 @@ func Test_RegressionService(t *testing.T) {
 			ga.EXPECT().Revoke(gomock.Any(), "run-1", "p1", "run-1").Return(errors.New("down"))
 
 			So(svc.FailInterrupted(ctx), ShouldBeNil)
+
+			// Not knowing which ran, they are still failed.
+			ra.EXPECT().ListRunning(gomock.Any()).Return(nil, errors.New("down"))
+			ra.EXPECT().FailRunning(gomock.Any(), interfaces.REGRESSION_ERROR_INTERRUPTED, gomock.Any()).Return(int64(1), nil)
+
+			So(svc.FailInterrupted(ctx), ShouldBeNil)
 		})
 	})
 }

@@ -129,9 +129,10 @@ func (s *regressionService) StartRegression(ctx context.Context, token string, r
 }
 
 func (s *regressionService) FailInterrupted(ctx context.Context) error {
+	// Read only to revoke their credentials: failing them does not wait on it.
 	running, err := s.ra.ListRunning(ctx)
 	if err != nil {
-		return err
+		otellog.LogWarn(ctx, fmt.Sprintf("List running regressions to revoke their credentials: %v", err))
 	}
 	n, err := s.ra.FailRunning(ctx, interfaces.REGRESSION_ERROR_INTERRUPTED, time.Now().UnixMilli())
 	if err != nil {
