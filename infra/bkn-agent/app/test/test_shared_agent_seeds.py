@@ -5348,6 +5348,35 @@ def test_naming_rules_upgrade_adds_only_the_naming_paragraph(case):
         assert "Translate object types, properties and value types faithfully" in content and "add no facts" in content
 
 
+# The rule 22 adds to pass draft, after the ids a question rests on, in each translation.
+ANSWER_CONCEPTS_RULE = (
+    " Its concepts are those of the records it is asked about and those of the records its answer returns:"
+    " a question that, given one record, lists the records of another kind related to it rests on the concepts of both kinds."
+    " When no listed concept is the records its answer returns, give that concept among concepts and rest the question on it."
+)
+ANSWER_CONCEPTS_RULE_ZH = (
+    "它依赖的概念包括问题所针对记录的概念，也包括答案返回记录的概念：例如给定某条记录、列出与它相关的另一类记录的问题，"
+    "同时依赖这两类记录的概念。消息列出的概念中没有答案返回的那类记录时，在 concepts 中给出这个概念，并让问题依赖它。"
+)
+
+
+def test_answer_concepts_upgrade_adds_only_its_rule():
+    path, _, prompt, old_version, new_version, state = ANSWER_CONCEPTS_UPGRADE
+    with database() as db:
+        state(db)
+        old = prompt_version(db, prompt, old_version)
+        apply(db, path)
+        new = prompt_version(db, prompt, new_version)
+    content, locales = new["f_content"], json.loads(new["f_localized_content"])
+    old_locales = json.loads(old["f_localized_content"])
+    assert content.isascii() and locales["en-US"] == content and new["f_source_language"] == "en-US"
+    for after, before, rule in ((content, old["f_content"], ANSWER_CONCEPTS_RULE),
+                                (locales["zh-CN"], old_locales["zh-CN"], ANSWER_CONCEPTS_RULE_ZH)):
+        assert after.count(rule) == 1 and rule not in before
+        # Without the rule, the body is v14 word for word.
+        assert after.replace(rule, "") == before
+
+
 @pytest.mark.parametrize("case", PROMPT_RULES_UPGRADES)
 def test_prompt_rules_upgrade_matches_fresh_install_and_keeps_history(case):
     path, agent, prompt, old_version, new_version, state, later = PROMPT_RULES_UPGRADES[case]
