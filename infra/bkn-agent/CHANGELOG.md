@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The BKN project Agents (`bkn-project-requirements`, `bkn-project-answer-judge`, `bkn-project-ontology-ask`, `bkn-project-draft-naming`) are seeded by the professional edition (openbkn-ee `bkn-project-ee migrate`) from 0.2.2 on. The 0.2.2 snapshot no longer seeds them and their 0.2.2 prompt deltas moved there; their ids are reserved for an edition like the knowledge-base Agents, so where present they stay built-in.
+
 ### Added
 
 - Public executions (start, read, cancel) accept a bkn-safe execution credential (`bex_`), verified at `{BKN_SAFE_BASE}/execution-grants/introspect`. It acts as the person who issued it, for the one knowledge network and Agent it is bound to: a different `context.kn_id` or `agent_id`, or metric design, returns 403 `BknAgent.Execution.Forbidden`. The verified grant id is recorded as the trace's delegation id. Agent settings and the metric designer refuse it (401). Sign-ins and AppKeys are unchanged.

@@ -14,7 +14,6 @@ BKN Engine is a subsystem of ADP, consisting of three Go microservices:
 |---------|------|---------|
 | `bkn-backend` | 13014 | BKN modeling, knowledge network management, CRUD operations |
 | `ontology-query` | 13018 | Graph queries, semantic search, data retrieval |
-| `bkn-project` | 13016 | Projects that build and publish knowledge networks; release lineage |
 
 ## Code Standards
 
