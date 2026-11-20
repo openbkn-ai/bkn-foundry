@@ -17,6 +17,9 @@ type ActionSchedulerService interface {
 	// CheckActionFacts verifies the published definition and one explicit target
 	// against current data without creating an execution or claiming a permit.
 	CheckActionFacts(ctx context.Context, req *ActionFactCheck) error
+	// ActionGovernanceDigest returns the SHA-256 of the current published
+	// definition snapshot so a caller can bind a governance plan to it.
+	ActionGovernanceDigest(ctx context.Context, knID, atID string) (string, error)
 
 	// ExecuteAction starts async action execution, returns execution_id immediately
 	ExecuteAction(ctx context.Context, req *ActionExecutionRequest) (*ActionExecutionResponse, error)

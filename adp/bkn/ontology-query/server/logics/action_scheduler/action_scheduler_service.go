@@ -286,7 +286,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		return nil, err
 	}
 	var governanceRequestID, governancePermitID, governancePlanDigest string
-	if s.managedActions.contains(req.KNID, req.ActionTypeID) {
+	if req.GovernanceRequestID != "" {
 		governanceRequestID = req.GovernanceRequestID
 		governancePermitID = req.GovernancePermitID
 		governancePlanDigest = req.GovernancePlanDigest

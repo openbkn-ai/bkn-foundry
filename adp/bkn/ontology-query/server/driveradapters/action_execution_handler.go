@@ -71,6 +71,42 @@ func (r *restHandler) CheckActionFactsByIn(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
 
+// GetActionGovernanceDigestByEx returns the published-definition digest a
+// caller needs to bind an action governance plan before execution.
+func (r *restHandler) GetActionGovernanceDigestByEx(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	visitor, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+
+	knID, atID := c.Param("kn_id"), c.Param("at_id")
+	span.SetAttributes(
+		attr.Key("kn_id").String(knID),
+		attr.Key("at_id").String(atID),
+	)
+
+	digest, err := r.ass.ActionGovernanceDigest(ctx, knID, atID)
+	if err != nil {
+		httpErr, ok := err.(*httperrors.HTTPError)
+		if !ok {
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]string{"definition_digest": digest})
+}
+
 // CheckActionExecutionByIn verifies the current internal caller against the
 // trusted action execution dependencies without reading or executing data.
 func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {

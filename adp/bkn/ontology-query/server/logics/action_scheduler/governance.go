@@ -20,6 +20,7 @@ import (
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
 
 // managedActionScopes is a rollout list, not a governance policy. A scope is
@@ -54,7 +55,17 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 	if s.governanceConfigError != nil {
 		return governanceUnavailable(ctx, s.governanceConfigError)
 	}
-	if !s.managedActions.contains(req.KNID, req.ActionTypeID) {
+	required := s.managedActions.contains(req.KNID, req.ActionTypeID)
+	if resolver, ok := s.governanceGate.(interfaces.ActionGovernanceScope); ok {
+		current, err := resolver.RequiresActionGovernance(ctx, req.KNID, req.ActionTypeID)
+		if err != nil {
+			return governanceUnavailable(ctx, err)
+		}
+		required = required || current
+	}
+	if !required {
+		// Client-supplied references are not trusted for an ungoverned execution.
+		req.GovernanceRequestID, req.GovernancePermitID, req.GovernancePlanDigest = "", "", ""
 		return nil
 	}
 	if s.governanceGate == nil {
@@ -111,6 +122,40 @@ func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req 
 		return governanceGateError(ctx, err)
 	}
 	return nil
+}
+
+// ActionGovernanceDigest hashes the current published definition snapshot with
+// the exact encoding used by claimActionGovernance, so a governance plan built
+// from it cannot drift from the definition the executor will enforce.
+func (s *actionSchedulerService) ActionGovernanceDigest(ctx context.Context, knID, atID string) (string, error) {
+	if s == nil || s.omAccess == nil {
+		return "", actionPermissionUnavailable(ctx, errors.New("ontology model access is not configured"))
+	}
+	if knID == "" || atID == "" {
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
+	}
+	// The digest is always bound to the published branch, even when the caller
+	// is previewing a draft definition elsewhere in the product.
+	_, snapshot, exists, err := s.omAccess.GetActionType(ctx, knID, interfaces.MAIN_BRANCH, atID)
+	if err != nil {
+		if versionErr, ok := logics.KNVersionError(ctx, err); ok {
+			return "", versionErr
+		}
+		return "", actionPermissionUnavailable(ctx, err)
+	}
+	if !exists || len(snapshot) == 0 {
+		return "", httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
+	}
+	snapshotBytes, err := json.Marshal(snapshot)
+	if err != nil {
+		return "", actionPermissionUnavailable(ctx, err)
+	}
+	digest := sha256.Sum256(snapshotBytes)
+	encoded := hex.EncodeToString(digest[:])
+	if !planDigestPattern.MatchString(encoded) {
+		return "", actionPermissionUnavailable(ctx, errors.New("published action snapshot digest is invalid"))
+	}
+	return encoded, nil
 }
 
 func governanceGateError(ctx context.Context, err error) error {

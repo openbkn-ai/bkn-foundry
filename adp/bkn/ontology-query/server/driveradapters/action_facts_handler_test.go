@@ -69,3 +69,25 @@ func TestActionFactCheckAcceptsOnlyTrustedApplication(t *testing.T) {
 		})
 	}
 }
+
+func TestActionGovernanceDigestUsesCallerPermissions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	auth := omock.NewMockAuthService(ctrl)
+	scheduler := omock.NewMockActionSchedulerService(ctrl)
+	auth.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{ID: "alice", Type: hydra.VisitorType_User}, nil)
+	scheduler.EXPECT().ActionGovernanceDigest(gomock.Any(), "kn", "pay").DoAndReturn(func(ctx context.Context, knID, atID string) (string, error) {
+		account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+		if account.ID != "alice" || account.Type != string(hydra.VisitorType_User) {
+			t.Errorf("digest did not use the caller's permissions: %+v", account)
+		}
+		return "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", nil
+	})
+	handler := &restHandler{as: auth, ass: scheduler}
+	engine := gin.New()
+	engine.GET("/knowledge-networks/:kn_id/action-types/:at_id/governance-digest", handler.GetActionGovernanceDigestByEx)
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/knowledge-networks/kn/action-types/pay/governance-digest", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"definition_digest"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}

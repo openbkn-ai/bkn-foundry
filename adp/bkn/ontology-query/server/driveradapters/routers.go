@@ -107,6 +107,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 		// Action execution APIs.
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_id/governance-digest", r.GetActionGovernanceDigestByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByEx)
