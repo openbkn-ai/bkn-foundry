@@ -224,6 +224,7 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 			return nil, err
 		}
 	case interfaces.ResourceCategoryAPI:
+		resource.SourceIdentifier = resource.ID
 		var err error
 		resource, err = PrepareAPIResourceCreate(ctx, resource, req)
 		if err != nil {
@@ -1663,7 +1664,6 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 			return false, invalidAPIResourceError(ctx, "logical-view fields are not accepted for API resources")
 		}
 		if req.IndexConfig != nil || req.Schema != "" && req.Schema != resource.Schema ||
-			req.SourceIdentifier != "" && req.SourceIdentifier != resource.SourceIdentifier ||
 			req.SourceMetadata != nil && !common.JSONNumbersEqual(req.SourceMetadata, resource.SourceMetadata) {
 			return false, invalidAPIResourceError(ctx, "API source metadata and local-index configuration cannot be changed")
 		}

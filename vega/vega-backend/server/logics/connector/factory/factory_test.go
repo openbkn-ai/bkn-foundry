@@ -118,6 +118,7 @@ func TestConnectorFactoryApplyPersistedConnectorTypes(t *testing.T) {
 func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 	connector := vmock.NewMockConnector(gomock.NewController(t))
 	connector.EXPECT().GetEnabled().Return(true)
+	connector.EXPECT().SupportDiscover().Return(true)
 	cf := &connectorFactory{
 		connectors: map[string]interfaces.Connector{
 			"registered": connector,
@@ -130,11 +131,11 @@ func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 	registered := cf.GetConnectorAvailability("registered")
 	assert.True(t, registered.Available)
 	assert.Empty(t, registered.RequiredEdition)
-	assert.False(t, registered.Disabled)
+	assert.True(t, registered.Enabled)
+	assert.True(t, registered.SupportDiscover)
 
 	missing := cf.GetConnectorAvailability("missing")
-	assert.False(t, missing.Available)
-	assert.Empty(t, missing.RequiredEdition)
+	assert.Equal(t, interfaces.ConnectorAvailability{}, missing)
 	t.Run("enabled state changes independently of edition availability", func(t *testing.T) {
 		connector := mariadb.NewMySQLConnector()
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"mysql": connector}}
@@ -142,7 +143,8 @@ func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 			cf.SetConnectorEnabled("mysql", enabled)
 			availability := cf.GetConnectorAvailability("mysql")
 			assert.True(t, availability.Available)
-			assert.Equal(t, !enabled, availability.Disabled)
+			assert.Equal(t, enabled, availability.Enabled)
+			assert.True(t, availability.SupportDiscover)
 		}
 	})
 }
@@ -150,6 +152,7 @@ func TestConnectorFactoryGetConnectorAvailability(t *testing.T) {
 func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 	connectorBuilder := vmock.NewMockConnector(gomock.NewController(t))
 	connectorBuilder.EXPECT().GetEnabled().Return(true).AnyTimes()
+	connectorBuilder.EXPECT().SupportDiscover().Return(true).AnyTimes()
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
 	t.Cleanup(entitlement.ResetForTest)
 
@@ -164,6 +167,8 @@ func TestConnectorFactoryPrivateConnectorUsesCurrentEntitlement(t *testing.T) {
 
 	availability := cf.GetConnectorAvailability("sqlserver")
 	assert.False(t, availability.Available)
+	assert.True(t, availability.Enabled)
+	assert.True(t, availability.SupportDiscover)
 	assert.Equal(t, licverify.EditionProfessional, availability.RequiredEdition)
 	connector, err := cf.CreateConnectorInstance(context.Background(), "sqlserver", nil)
 	require.Error(t, err)

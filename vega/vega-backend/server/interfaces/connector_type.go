@@ -55,6 +55,7 @@ type ConnectorType struct {
 
 	Available       bool              `json:"available"`                  // Whether the current binary contains the implementation of this connector
 	RequiredEdition licverify.Edition `json:"required_edition,omitempty"` // Minimum edition required by this connector implementation
+	SupportDiscover bool              `json:"support_discover"`           // Static discovery support, false if unknown
 
 	FieldConfig map[string]ConnectorFieldConfig `json:"field_config,omitempty"` // Custom runtime metadata keyed by field identifier
 

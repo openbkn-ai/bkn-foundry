@@ -398,6 +398,8 @@ components:
         available:
           description: Whether the running binary includes this connector implementation
           type: boolean
+        support_discover:
+          $ref: "#/components/schemas/ConnectorDiscoverySupport"
         required_edition:
           description: Minimum edition declared by a bundled local connector implementation; omitted for remote connectors and implementations not bundled in this binary.
           type: string
@@ -464,6 +466,8 @@ components:
         available:
           description: Whether the running binary includes this connector implementation
           type: boolean
+        support_discover:
+          $ref: "#/components/schemas/ConnectorDiscoverySupport"
         required_edition:
           description: Minimum edition declared by a bundled local connector implementation; omitted for remote connectors and implementations not bundled in this binary.
           type: string
@@ -474,6 +478,11 @@ components:
           items:
             type: string
             enum: [view_detail]
+    ConnectorDiscoverySupport:
+      description: Static discovery capability declared by the registered connector implementation, independent of enablement, edition, and Catalog permissions. Returned as false when the capability is unknown. Older servers may omit this field.
+      type: boolean
+      default: false
+      readOnly: true
     ConnectorTypeReq:
       description: |
         Request body for creating or updating a connector type.

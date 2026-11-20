@@ -149,7 +149,12 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 			"default":{"description":"rejected","schema":false}
 		}},
 		"success_rule":{"http_status":[200],"body_filter_condition":{"field":"optional","operation":"eq","value":null}},
-		"variables":{"sequence":{"value":"9007199254740993","sensitive":false},"empty":{"value":"","sensitive":false},"literal":{"value":"{{ timeout }}","sensitive":false}},
+		"variables":{
+			"sequence":{"value":"9007199254740993","sensitive":false},
+			"empty":{"value":"","sensitive":false},
+			"literal":{"value":"{{ timeout }}","sensitive":false},
+			"request_settings":{"value":{"limit":9007199254740993.123456789,"items":[null,false,0]},"sensitive":false}
+		},
 		"paging_rule":{"mode":"page","default_limit":2,"max_limit":5,"page_base":0}
 	}`
 	var input, original map[string]any
@@ -176,6 +181,10 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 	assert.False(t, decoded.Variables["sequence"].Sensitive)
 	assert.Equal(t, "", decoded.Variables["empty"].Value)
 	assert.Equal(t, "{{ timeout }}", decoded.Variables["literal"].Value)
+	assert.Equal(t, map[string]any{
+		"limit": json.Number("9007199254740993.123456789"),
+		"items": []any{nil, false, json.Number("0")},
+	}, decoded.Variables["request_settings"].Value)
 	assert.Contains(t, decoded.SuccessRule.BodyFilterCondition, "value")
 	assert.Nil(t, decoded.SuccessRule.BodyFilterCondition["value"])
 	require.NotNil(t, decoded.PagingRule.PageBase)
@@ -191,6 +200,7 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 	require.NoError(t, err)
 	var shape map[string]any
 	require.NoError(t, common.UnmarshalJSON(encoded, &shape))
+	assert.Equal(t, original["variables"], shape["variables"])
 	assert.NotContains(t, shape, "operation")
 	assert.NotContains(t, shape, "HTTPOperationDefinition")
 	assert.NotContains(t, shape, "future_api")

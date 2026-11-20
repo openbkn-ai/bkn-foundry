@@ -8,6 +8,7 @@ package connector_type
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -22,6 +23,58 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
+
+func TestConnectorTypeDiscoveryCapability(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		category  string
+		available bool
+		enabled   bool
+		supported bool
+		wantJSON  string
+	}{
+		{name: "API connector supports discovery", category: interfaces.ConnectorCategoryAPI, available: true, enabled: true, supported: true, wantJSON: "true"},
+		{name: "table connector does not support discovery", category: interfaces.ConnectorCategoryTable, available: true, enabled: true, wantJSON: "false"},
+		{name: "disabled and unavailable connector retains declared support", category: interfaces.ConnectorCategoryTable, supported: true, wantJSON: "true"},
+		{name: "unregistered connector reports false", category: interfaces.ConnectorCategoryAPI, enabled: true, wantJSON: "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, cta, _ := newTestConnectorTypeService(t)
+			connector := &interfaces.ConnectorType{Type: "custom", Category: tc.category, Enabled: tc.enabled}
+			factory := vmock.NewMockConnectorFactory(gomock.NewController(t))
+			service.cf = factory
+			factory.EXPECT().GetConnectorAvailability(connector.Type).
+				Return(interfaces.ConnectorAvailability{Available: tc.available, SupportDiscover: tc.supported}).Times(2)
+			if tc.available {
+				factory.EXPECT().GetConnectorFieldConfig(gomock.Any(), connector).Return(nil, nil)
+			}
+			params := interfaces.ConnectorTypesQueryParams{
+				PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
+			}
+			cta.EXPECT().List(gomock.Any(), params).Return([]*interfaces.ConnectorType{connector}, int64(1), nil)
+			cta.EXPECT().GetByType(gomock.Any(), connector.Type).Return(connector, nil)
+
+			ctx := context.Background()
+			types, total, err := service.List(ctx, params)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, total)
+			require.Len(t, types, 1)
+			assertCapability := func(got *interfaces.ConnectorType) {
+				t.Helper()
+				payload, err := json.Marshal(got)
+				require.NoError(t, err)
+				var fields map[string]json.RawMessage
+				require.NoError(t, json.Unmarshal(payload, &fields))
+				assert.Equal(t, tc.wantJSON, string(fields["support_discover"]))
+				assert.Equal(t, tc.enabled, got.Enabled)
+			}
+			assertCapability(types[0])
+			detail, err := service.GetByType(ctx, connector.Type)
+			require.NoError(t, err)
+			assertCapability(detail)
+		})
+	}
+}
 
 func newTestConnectorTypeService(t *testing.T) (*connectorTypeService, *vmock.MockConnectorTypeAccess, *vmock.MockPermissionService) {
 	t.Helper()

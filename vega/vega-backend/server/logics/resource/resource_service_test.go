@@ -1469,8 +1469,9 @@ func TestResourceServiceCreateLogicalViewPreparation(t *testing.T) {
 
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("API delegates preparation before the generic transaction", func(t *testing.T) {
-		for _, outcome := range []string{"success", "extension failure", "unavailable"} {
+		for _, outcome := range []string{"success", "explicit source identifier", "explicit resource ID", "extension failure", "unavailable"} {
 			t.Run(outcome, func(t *testing.T) {
+				success := outcome != "extension failure" && outcome != "unavailable"
 				rs, ra, ps, _, _, _, _ := newTestService(t)
 				cs := vmock.NewMockCatalogService(gomock.NewController(t))
 				rs.cs = cs
@@ -1478,7 +1479,14 @@ func TestResourceServiceCreate(t *testing.T) {
 				SetAPIResourceService(nil)
 				t.Cleanup(func() { SetAPIResourceService(previous) })
 				req := apiResourceLifecycleRequest()
-				req.ID = ""
+				if outcome != "explicit resource ID" {
+					req.ID = ""
+				} else {
+					ra.EXPECT().GetByID(gomock.Any(), nil, req.ID).Return(nil, nil)
+				}
+				if outcome == "explicit source identifier" || outcome == "explicit resource ID" {
+					req.SourceIdentifier = "client-source"
+				}
 				req.APIDefinition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "fixture-private-value", Sensitive: true}}
 				cs.EXPECT().CheckCatalogPermission(gomock.Any(), req.CatalogID, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).Return(true, apiResourceLifecycleCatalog(), nil)
 				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -1493,10 +1501,14 @@ func TestResourceServiceCreate(t *testing.T) {
 					extension.EXPECT().PrepareCreate(gomock.Any(), gomock.Any(), req).DoAndReturn(func(_ context.Context, candidate *interfaces.Resource, received *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 						assert.Same(t, req, received)
 						assert.NotEmpty(t, candidate.ID)
+						if req.ID != "" {
+							assert.Equal(t, req.ID, candidate.ID)
+						}
 						assert.Positive(t, candidate.CreateTime)
 						assert.Equal(t, candidate.CreateTime, candidate.UpdateTime)
 						assert.Equal(t, req.CatalogID, candidate.CatalogID)
 						assert.Nil(t, candidate.APIDefinition, "API definition preparation belongs to the extension")
+						assert.Equal(t, candidate.ID, candidate.SourceIdentifier)
 						if extensionErr != nil {
 							return nil, extensionErr
 						}
@@ -1506,14 +1518,14 @@ func TestResourceServiceCreate(t *testing.T) {
 						definition.Variables = map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:fixture-protected", Sensitive: true}}
 						prepared.APIDefinition = &definition
 						prepared.Status = interfaces.ResourceStatusActive
-						prepared.SourceIdentifier = candidate.ID
 						return prepared, nil
 					})
 				}
-				if outcome == "success" {
+				if success {
 					expectResourceServiceTransaction(t, rs, true)
 					ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, stored *interfaces.Resource) error {
 						assert.Same(t, prepared, stored)
+						assert.Equal(t, stored.ID, stored.SourceIdentifier)
 						assert.Nil(t, stored.IndexConfig)
 						assert.Equal(t, interfaces.APIEffectRead, stored.LogicType)
 						assert.Contains(t, stored.LogicDefinitionStr, "ENC:fixture-protected")
@@ -1524,8 +1536,9 @@ func TestResourceServiceCreate(t *testing.T) {
 					ra.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				}
 				got, err := rs.Create(t.Context(), req)
-				if outcome == "success" {
+				if success {
 					require.NoError(t, err)
+					assert.Equal(t, got.ID, got.SourceIdentifier)
 					assert.Nil(t, got.APIDefinition.Variables["credential"].Value)
 					assert.Empty(t, got.LogicDefinitionStr)
 					assert.Equal(t, "ENC:fixture-protected", prepared.APIDefinition.Variables["credential"].Value)
@@ -2608,6 +2621,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}
 				req.APIDefinition = nil
 				req.Name = "renamed"
+				if outcome == "metadata" {
+					raw.SourceIdentifier = "legacy-source"
+					req.SourceIdentifier = "client-source"
+				}
 				if outcome == "prepared definition" {
 					req.APIDefinition = apiResourceLifecycleRequest().APIDefinition
 					req.APIDefinition.Request.Path = "prepared"
@@ -2662,6 +2679,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 					cs.EXPECT().CheckExistByID(gomock.Any(), req.CatalogID).Return(true, nil)
 					ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42)).DoAndReturn(func(_ context.Context, _ *sql.Tx, prepared *interfaces.Resource, _ int64) (int64, error) {
 						assert.Nil(t, prepared.IndexConfig)
+						assert.Equal(t, raw.SourceIdentifier, prepared.SourceIdentifier)
 						assert.Equal(t, expectedRaw, prepared.LogicDefinitionStr, "Core must retain the extension's exact protected storage definition")
 						assert.Equal(t, interfaces.APIEffectRead, prepared.LogicType)
 						assert.Equal(t, "renamed", prepared.Name)
