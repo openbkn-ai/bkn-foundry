@@ -50,7 +50,13 @@ def _set_subject(request: Request, account: Account | None) -> None:
             application_principal_id=None,
             effective_subject_type=None,
             effective_subject_id=None,
-            delegation_id=None,
+            # The grant an execution credential was verified under, for the trace to
+            # tell work done for a person in a background run from their own.
+            delegation_id=(
+                account.delegation.delegation_id
+                if account and account.delegation
+                else None
+            ),
         )
         observability.set_context(ctx)
         request.state.bkn_trace_context = ctx
@@ -163,9 +169,6 @@ async def _verify(request: Request, *, delegated: bool) -> Account:
             (b"user_id", subject.encode()),
         ]
     )
-    if delegation is not None:
-        # Verified above: services downstream may attribute the work to it.
-        headers.append((b"x-bkn-delegation-id", delegation.delegation_id.encode()))
     request.scope["headers"] = headers
     # Request.headers was already read above; invalidate its cached view too.
     if hasattr(request, "_headers"):

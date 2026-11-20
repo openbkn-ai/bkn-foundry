@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
-from app import dao, public_auth
+from app import dao, observability, public_auth
 from app.auth import Account
 from app.core.context_loader import _MCP_RECEIPT_TRUST_TOKEN
 from app.core.public_chat import PublicChat, project
@@ -3063,12 +3063,19 @@ def test_an_execution_credential_resolves_to_its_delegator_with_its_scope(monkey
                 ],
             }
         )
-        account = await public_auth.get_execution_account(request)
+        token = observability.set_context(observability.TraceContext(trace_id="t" * 32, request_id="r", traceparent="00-" + "t" * 32 + "-" + "s" * 16 + "-01", entry_boundary="public"))
+        try:
+            account = await public_auth.get_execution_account(request)
+            # The trace records the grant the run acts under, not a header a caller sent.
+            assert observability.current_context().delegation_id == "run-1"
+            assert observability.current_context().account_id == "user-1"
+        finally:
+            observability.reset_context(token)
         assert (account.account_id, account.account_type) == ("user-1", "user")
         assert account.delegation.kn_id == BODY["context"]["kn_id"]
         headers = dict(request.scope["headers"])
         assert headers[b"x-account-id"] == b"user-1"
-        assert headers[b"x-bkn-delegation-id"] == b"run-1"
+        assert b"x-bkn-delegation-id" not in headers
         # The same credential is no sign-in for any other route.
         with pytest.raises(HTTPException) as error:
             await public_auth.get_public_account(
