@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +57,9 @@ var (
 )
 
 const maxSkillReleaseHistoryVersions = 10
+
+// snapshotDigestLength is how many hex digits of the snapshot digest name its sandbox directory.
+const snapshotDigestLength = 32
 
 // NewSkillRegistry creates a skill register.
 func NewSkillRegistry() interfaces.SkillRegistry {
@@ -722,7 +726,7 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 		err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonOperationForbidden, nil)
 		return
 	}
-	skill, fileName, archive, err := r.buildSkillArchive(ctx, req.SkillID)
+	skill, fileName, archive, _, err := r.buildSkillArchive(ctx, req.SkillID)
 	if err != nil {
 		return nil, err
 	}
@@ -760,7 +764,7 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	if err != nil {
 		return nil, err
 	}
-	skill, fileName, archive, err := r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
+	skill, fileName, archive, snapshot, err := r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
 	if err != nil {
 		return nil, err
 	}
@@ -771,7 +775,11 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	}
 	defer r.sessionPool.ReleaseSession(sessionID)
 
-	uploadWorkDir := path.Join("skills", req.SkillID)
+	// Sessions are pooled and keep their workspace, and the sandbox extracts without overwriting.
+	// Each snapshot therefore gets a directory named after its content: a new or rolled-back
+	// version never lands on the files of another, and the files a directory already holds are
+	// the same as the ones skipped.
+	uploadWorkDir := path.Join("skills", req.SkillID, snapshot)
 
 	uploadResp, err := r.sandboxClient.UploadSkillArchive(ctx, sessionID, &interfaces.UploadSkillArchiveReq{
 		WorkDir:  uploadWorkDir,
@@ -780,6 +788,18 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	})
 	if err != nil {
 		return nil, err
+	}
+	// Refuse to run a directory the sandbox did not account for file by file.
+	if placed := uploadResp.ExtractedFileCount + uploadResp.SkippedFileCount; placed != len(files) {
+		r.Logger.WithContext(ctx).Errorf("skill %s snapshot %s: sandbox placed %d of %d files in %s",
+			req.SkillID, snapshot, placed, len(files), uploadResp.WorkDir)
+		return nil, errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtSandboxControlPlaneFailed, map[string]any{
+			"error":          "skill package was not fully placed in the sandbox",
+			"expected_files": len(files),
+			"extracted":      uploadResp.ExtractedFileCount,
+			"skipped":        uploadResp.SkippedFileCount,
+			"work_dir":       uploadResp.WorkDir,
+		})
 	}
 	execResp, err := r.sandboxClient.ExecuteShell(ctx, sessionID, &interfaces.ExecuteShellReq{
 		WorkDir: uploadResp.WorkDir,
@@ -805,10 +825,10 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	}, nil
 }
 
-func (r *skillRegistry) buildSkillArchive(ctx context.Context, skillID string) (*model.SkillRepositoryDB, string, []byte, error) {
+func (r *skillRegistry) buildSkillArchive(ctx context.Context, skillID string) (*model.SkillRepositoryDB, string, []byte, string, error) {
 	skillDB, files, err := r.selectSkillSnapshot(ctx, skillID)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, "", err
 	}
 	return r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
 }
@@ -829,8 +849,12 @@ func (r *skillRegistry) selectSkillSnapshot(ctx context.Context, skillID string)
 	return skillDB, files, nil
 }
 
+// buildSkillArchiveFromSnapshot zips the files of a snapshot and names the snapshot after what
+// it holds: a digest of every file path and the SHA-256 of the content read from storage, so two
+// snapshots share a name only when they hold the same files with the same bytes, whatever their
+// version strings say.
 func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill *model.SkillRepositoryDB,
-	files []*model.SkillFileIndexDB) (*model.SkillRepositoryDB, string, []byte, error) {
+	files []*model.SkillFileIndexDB) (*model.SkillRepositoryDB, string, []byte, string, error) {
 	var buf bytes.Buffer
 	var err error
 	zw := zip.NewWriter(&buf)
@@ -843,6 +867,7 @@ func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill
 		return writeErr
 	}
 
+	manifest := make([]string, 0, len(files))
 	for _, file := range files {
 		content, readErr := r.assetStore.Download(ctx, &interfaces.OssObject{
 			StorageID:  file.StorageID,
@@ -850,18 +875,26 @@ func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill
 		})
 		if readErr != nil {
 			_ = zw.Close()
-			return nil, "", nil, readErr
+			return nil, "", nil, "", readErr
 		}
 		if err = writeFile(file.RelPath, content); err != nil {
 			_ = zw.Close()
-			return nil, "", nil, err
+			return nil, "", nil, "", err
 		}
+		manifest = append(manifest, file.RelPath+"\x00"+checksumSHA256(content))
 	}
 	if err = zw.Close(); err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, "", err
 	}
 
-	return skill, fmt.Sprintf("%s.zip", skill.Name), buf.Bytes(), nil
+	return skill, fmt.Sprintf("%s.zip", skill.Name), buf.Bytes(), snapshotDigest(manifest), nil
+}
+
+// snapshotDigest names a snapshot from its "path NUL content-sha256" entries, in any order.
+func snapshotDigest(manifest []string) string {
+	sorted := append([]string(nil), manifest...)
+	sort.Strings(sorted)
+	return checksumSHA256([]byte(strings.Join(sorted, "\n")))[:snapshotDigestLength]
 }
 
 // QuerySkillList Query skills list (management interface)
