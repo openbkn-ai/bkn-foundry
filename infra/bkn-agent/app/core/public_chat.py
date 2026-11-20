@@ -386,7 +386,11 @@ class PublicChat:
                         )
                     for name, value in pinned.items():
                         if name == "kn_id":
-                            same = kwargs.get(name, value) == value
+                            # The run names its network; the call goes there
+                            # whatever the model wrote. A model copying the id
+                            # can get a character wrong, and refusing that
+                            # would only have it send the same id again.
+                            same = True
                         else:
                             # A version may come as "3" or 3; an explicit
                             # null is replaced by the pinned value. Without a

@@ -510,7 +510,7 @@ def test_credential_identity_contract(monkeypatch, kind, info, expected):
     asyncio.run(run())
 
 
-def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
+def test_tool_scope_keeps_calls_on_the_run_network_and_drops_unscoped_code(monkeypatch):
     async def run():
         calls = []
 
@@ -542,8 +542,10 @@ def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
         # Tools that cannot enforce the network are never offered to the model.
         assert [tool.name for tool in guarded] == ["query"]
         assert await guarded[0].ainvoke({"kn_id": "network-1"}) == "ok"
-        assert "ToolScopeMismatch" in await guarded[0].ainvoke({"kn_id": "network-2"})
-        assert calls == [{"kn_id": "network-1"}]
+        # Another network, as a model miscopying the id writes it, is the run's
+        # network all the same: the call never leaves it.
+        assert await guarded[0].ainvoke({"kn_id": "network-2"}) == "ok"
+        assert calls == [{"kn_id": "network-1"}, {"kn_id": "network-1"}]
 
     asyncio.run(run())
 
@@ -1502,7 +1504,7 @@ def test_public_tool_error_and_failure_details_follow_request_language(
 
             async def blocked(session, agent, req, account_id, account_type, *, public):
                 async def query(**kwargs):
-                    pytest.fail("a foreign network must not be queried")
+                    pytest.fail("a draft the run did not ask for must not be read")
 
                 tool = StructuredTool.from_function(
                     coroutine=query,
@@ -1510,7 +1512,10 @@ def test_public_tool_error_and_failure_details_follow_request_language(
                     description="Query",
                     args_schema={
                         "type": "object",
-                        "properties": {"kn_id": {"type": "string"}},
+                        "properties": {
+                            "kn_id": {"type": "string"},
+                            "branch": {"type": "string"},
+                        },
                     },
                     metadata={
                         "bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN
@@ -1519,7 +1524,7 @@ def test_public_tool_error_and_failure_details_follow_request_language(
                 guarded = public.guard_tools([tool])[0]
 
                 async def events():
-                    result = await guarded.ainvoke({"kn_id": "network-2"})
+                    result = await guarded.ainvoke({"kn_id": "network-1", "branch": "draft"})
                     message = ToolMessage(
                         content=result,
                         tool_call_id="blocked",
@@ -2774,10 +2779,12 @@ def test_tool_scope_pins_network_version_like_kn_id():
             {"kn_version": "running"},
             {"kn_version": "3"},
             {"draft_revision": 6},
-            {"kn_id": "network-2"},
         ):
             assert "ToolScopeMismatch" in await guarded.ainvoke(rewrite)
         assert len(calls) == 3
+        # The network is the run's whatever the model wrote.
+        assert await guarded.ainvoke({"kn_id": "network-2"}) == "ok"
+        assert calls[-1] == pinned
 
     asyncio.run(run())
 
