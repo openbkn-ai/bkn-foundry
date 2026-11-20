@@ -150,6 +150,10 @@ type TokenInfo struct {
 	VisitorName string      // Anonymous external links, visitor’s nickname.
 	MAC         string      // MAC address.
 	UserAgent   string      // Agent information.
+	// Set only for an execution credential: the grant it was issued under and the one
+	// knowledge network it may act on.
+	DelegationID  string
+	DelegatedKnID string
 }
 
 // Hydra authorization service interface.
@@ -161,6 +165,16 @@ type Hydra interface {
 // AppKeyPrefix identifies the AppKey (API Key) credential issued by the user self-service.
 // The public authentication middleware is divided according to this prefix: the ones with this prefix are verified by bkn-safe, and the other bearer tokens are verified by hydra introspection.
 const AppKeyPrefix = "bak_"
+
+// ExecutionGrantPrefix identifies an execution credential bkn-safe issued to a background run,
+// such as a scenario regression, to act for the person who started it on one knowledge network.
+// It is verified by bkn-safe like an AppKey and resolves to that person. The public routes accept
+// it only for the Functions, tools, MCP proxies and Skills an answer uses, with the network named
+// in HeaderKnID equal to the credential's.
+const ExecutionGrantPrefix = "bex_"
+
+// HeaderKnID names the knowledge network a request made with an execution credential acts on.
+const HeaderKnID = "X-Kn-ID"
 
 // AppKeyVerifier parses AppKey into the holder's TokenInfo, and bkn-safe completes the verification.
 // The return value is isomorphic to Hydra.Introspect, so the middleware can treat AppKey and OAuth tokens equivalently.

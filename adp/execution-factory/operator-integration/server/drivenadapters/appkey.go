@@ -10,6 +10,7 @@ package drivenadapters
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
@@ -25,6 +26,9 @@ import (
 // Response structure alignment OAuth2 introspection.
 const appKeyIntrospectURI = "/api/safe/v1/api-keys/introspect"
 
+// executionGrantIntrospectURI verifies an execution credential the same way.
+const executionGrantIntrospectURI = "/api/safe/v1/execution-grants/introspect"
+
 // appKeyIntrospectTimeout limits the time taken for verification requests.
 // The default timeout of rest.NewHTTPClient() is 600 seconds, which used on the authentication path means that once bkn-safe hangs,
 // A single request will tie up the connection for 10 minutes. Authentication must fail quickly, so it is the same as authorization_safe.go vs. bkn-safe.
@@ -32,9 +36,10 @@ const appKeyIntrospectURI = "/api/safe/v1/api-keys/introspect"
 const appKeyIntrospectTimeout = 5
 
 type appKeyVerifier struct {
-	introspectURL string
-	logger        interfaces.Logger
-	httpClient    interfaces.HTTPClient
+	introspectURL          string
+	executionIntrospectURL string
+	logger                 interfaces.Logger
+	httpClient             interfaces.HTTPClient
 }
 
 var (
@@ -49,6 +54,9 @@ type appKeyIntrospectResp struct {
 	Sub         string `json:"sub"`          // holder accessor id.
 	AccountType string `json:"account_type"` // The account_type of the holder in bkn-safe.
 	KeyID       string `json:"key_id"`
+	// An execution credential's grant and the network it is bound to.
+	DelegationID string `json:"delegation_id"`
+	KnID         string `json:"kn_id"`
 }
 
 // NewAppKeyVerifier constructs an AppKey verifier supported by bkn-safe.
@@ -56,9 +64,10 @@ func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 	appKeyOnce.Do(func() {
 		baseURL := mustBknSafeURL()
 		appKeyInst = &appKeyVerifier{
-			introspectURL: baseURL + appKeyIntrospectURI,
-			logger:        config.NewConfigLoader().GetLogger(),
-			httpClient:    rest.NewHTTPClientWithOptions(rest.HTTPClientOptions{TimeOut: appKeyIntrospectTimeout}),
+			introspectURL:          baseURL + appKeyIntrospectURI,
+			executionIntrospectURL: baseURL + executionGrantIntrospectURI,
+			logger:                 config.NewConfigLoader().GetLogger(),
+			httpClient:             rest.NewHTTPClientWithOptions(rest.HTTPClientOptions{TimeOut: appKeyIntrospectTimeout}),
 		}
 	})
 	return appKeyInst
@@ -69,7 +78,11 @@ func NewAppKeyVerifier() interfaces.AppKeyVerifier {
 // Therefore the downstream AccountAuthContext and all authorization decisions are not affected by the credential type.
 func (v *appKeyVerifier) Verify(ctx context.Context, key string) (*interfaces.TokenInfo, error) {
 	header := map[string]string{"Content-Type": "application/json"}
-	_, resp, err := v.httpClient.Post(ctx, v.introspectURL, header, map[string]string{"token": key})
+	url, execution := v.introspectURL, strings.HasPrefix(key, interfaces.ExecutionGrantPrefix)
+	if execution {
+		url = v.executionIntrospectURL
+	}
+	_, resp, err := v.httpClient.Post(ctx, url, header, map[string]string{"token": key})
 	if err != nil {
 		v.logger.WithContext(ctx).Errorf("AppKey introspect request failed: %v", err)
 		return nil, errors.DefaultHTTPError(ctx, http.StatusUnauthorized, "api key is invalid")
@@ -83,13 +96,21 @@ func (v *appKeyVerifier) Verify(ctx context.Context, key string) (*interfaces.To
 	if !introspect.Active {
 		return nil, errors.DefaultHTTPError(ctx, http.StatusUnauthorized, "api key is invalid")
 	}
+	// An execution credential that names no network or grant, or acts for an application, is not one.
+	if execution && (introspect.KnID == "" || introspect.DelegationID == "" || introspect.AccountType == "app") {
+		return nil, errors.DefaultHTTPError(ctx, http.StatusUnauthorized, "api key is invalid")
+	}
 
-	return &interfaces.TokenInfo{
+	info := &interfaces.TokenInfo{
 		Active:     true,
 		VisitorID:  introspect.Sub,
 		VisitorTyp: appKeyVisitorType(introspect.AccountType),
 		AccountTyp: appKeyAccountType(introspect.AccountType),
-	}, nil
+	}
+	if execution {
+		info.DelegationID, info.DelegatedKnID = introspect.DelegationID, introspect.KnID
+	}
+	return info, nil
 }
 
 // appKeyVisitorType maps bkn-safe's account_type to the visitor type.

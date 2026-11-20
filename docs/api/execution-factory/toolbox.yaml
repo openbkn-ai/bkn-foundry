@@ -24,6 +24,9 @@ info:
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。
+    后台运行（例如场景回归）还可以带 bkn-safe 签发的 `bex_` 执行凭据，代表发起人本人；
+    它只在本服务回答问题时会用到的执行、列出和读取接口上有效，请求必须用 `X-Kn-ID`
+    写明凭据绑定的知识网络，其他网络或其他接口一律拒绝。
 
     **检索入口在内部面**：`POST /internal-v1/tool-box/tools/search`，请求体
     `{ query, tool_refs, top_k }`，出参每项带 `matched_by` 与 `score`。

@@ -192,8 +192,12 @@ func executionAuditActorType(auth *interfaces.AccountAuthContext) string {
 }
 
 func executionAuditAuthMethod(authorization string) string {
-	if strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer ")), interfaces.AppKeyPrefix) {
+	credential := strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer "))
+	switch {
+	case strings.HasPrefix(credential, interfaces.AppKeyPrefix):
 		return "api_key"
+	case strings.HasPrefix(credential, interfaces.ExecutionGrantPrefix):
+		return "execution_grant"
 	}
 	return "oauth"
 }
