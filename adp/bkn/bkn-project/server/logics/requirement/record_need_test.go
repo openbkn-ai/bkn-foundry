@@ -72,6 +72,20 @@ func Test_RecordNeed(t *testing.T) {
 				linking("return_contract", "return", "contract", "contract_number", "number"))
 			So(businessNeeds(spec, q, draft), ShouldResemble, []interfaces.RequirementItemRef{ref("material"), ref("contract")})
 		})
+		Convey("a knowledge base's evidence object that also holds the values is never the record\n", func() {
+			draft.Items.ObjectTypes = append(draft.Items.ObjectTypes, &interfaces.DraftObjectType{ID: "block", Adopted: true,
+				Document:   &interfaces.DraftDocumentModel{Role: "evidence_block"},
+				Properties: []*interfaces.DraftProperty{prop("material_code"), prop("contract_number")}})
+			draft.Items.RelationTypes = append(draft.Items.RelationTypes,
+				linking("block_material", "block", "material", "material_code", "code"),
+				linking("block_contract", "block", "contract", "contract_number", "number"))
+			// The line is still found beside it, for the needs and for filling the template alike.
+			So(businessNeeds(spec, q, draft), ShouldResemble, []interfaces.RequirementItemRef{ref("material"), ref("contract"), ref("line")})
+			carrier, _ := recordCarrier(draft, []*slotField{
+				{objectType: draft.Items.ObjectTypes[0], field: "code"}, {objectType: draft.Items.ObjectTypes[1], field: "number"}})
+			So(carrier, ShouldNotBeNil)
+			So(carrier.ID, ShouldEqual, "line")
+		})
 		Convey("what a person said a question needs is kept\n", func() {
 			person := *q
 			person.NeedsSource = interfaces.REQUIREMENT_NEEDS_FROM_PERSON
