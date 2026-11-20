@@ -8,6 +8,7 @@
 
 ### Added
 
+- `POST /chat` honours `x-bkn-agent-thinking-mode` (`enabled` / `disabled`) as the task routes do, for the whole turn: a caller with a small output budget can turn the model's reasoning off so it cannot spend the budget before the answer.
 - Public executions (start, read, cancel) accept a bkn-safe execution credential (`bex_`), verified at `{BKN_SAFE_BASE}/execution-grants/introspect`. It acts as the person who issued it, for the one knowledge network and Agent it is bound to: a different `context.kn_id` or `agent_id`, or metric design, returns 403 `BknAgent.Execution.Forbidden`. The verified grant id is recorded as the trace's delegation id. Agent settings and the metric designer refuse it (401). Sign-ins and AppKeys are unchanged.
 
 - The graph explorer's `configure_analysis` draws an industry or supply chain (`kind: chain`, one type along a relation from that type to itself in `chainRelByOt`, lanes by `propertyByOt`); a relation that does not link the type to itself is refused. In an analysis, the instructions route industry-chain, supply-chain and upstream/downstream questions to one Cypher query and this chart instead of drawing the chain node batch by node batch.
