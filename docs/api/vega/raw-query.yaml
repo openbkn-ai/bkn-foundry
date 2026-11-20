@@ -89,7 +89,9 @@ info:
     权限撤销或版本改变会关闭 cursor，版本改变返回
     HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
     临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
-    到期会释放 Rows 与连接。need_total 的 COUNT 仍独立执行，不保证与数据查询共享同一快照或 NOW() 等时间函数的时间基准。
+    到期会释放结果集、事务与连接。PostgreSQL、MySQL/MariaDB 的 InnoDB 数据和 HANA 使用显式只读
+    REPEATABLE READ，Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SERIALIZABLE。开启 need_total 时，
+    先在同一事务内执行 COUNT，再打开数据结果集。单页查询及 Doris 等未接入事务读会话的连接器独立执行 COUNT。
 
     每个未读完的 Builder cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
     仅控制会话回收，不保证源库连接在租约内持续可用。大结果集在客户端暂停读取时可能使源端写入
@@ -161,9 +163,15 @@ paths:
         `ctid`、`tableoid`、`xmin` 等不在资源 schema 中的 PostgreSQL 系统列不受支持，
         重新探查也不会将这些系统列加入资源 schema。
 
+        OpenSearch DSL 搜索要求所有分片成功。分片失败或搜索超时时返回错误。
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
         `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
         包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
+        服务端为查询指定的索引开启 PIT，并在后续页复用该快照。此模式要求 OpenSearch
+        2.4 或更高版本及源端账号的 PIT 创建、搜索、删除权限。`pit` 和 `terminate_after`
+        由服务端管理，cursor 请求不得传入。PIT 失效时返回 404，需重新发起查询。
+        单页与 cursor 均使用 Resource 的源标识定位索引，并按 Resource 的 schema 解码字段。
+        cursor 续页使用打开会话时的 schema。
 
         OpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将
         metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`；
@@ -305,7 +313,7 @@ components:
         `per-account cursor session limit reached` 或 `global cursor session limit reached`。
         单账号默认上限 100，全局默认上限 1000；可分别通过
         `query.cursorMaxSessionsPerAccount`、`query.cursorMaxSessions` 配置。
-        达到上限后可关闭不再需要的 cursor，或等待其空闲租约到期。
+        达到上限后可关闭仍有效且不再需要的 cursor，或等待过期会话被后台回收后重试。
       content:
         application/json:
           schema:
@@ -443,7 +451,7 @@ components:
             查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）。
             所有数据源的 json 字段以普通字符串返回，内容不作 JSON 解析或校验；
             类型元数据仍为 json，SQL NULL 返回 null。原先消费对象或数组的调用方需自行解析字符串。
-            OpenSearch 别名或通配符按实际索引合并字段类型；同名字段映射为不同 Vega 类型时查询失败。
+            OpenSearch 按 Resource 的 schema 确定字段类型，schema 中未声明的字段保留源端返回值。
           type: array
           items:
             type: object

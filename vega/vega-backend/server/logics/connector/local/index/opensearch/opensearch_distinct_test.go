@@ -228,8 +228,8 @@ func TestOpenSearchConnectorExecuteExactDistinct(t *testing.T) {
 		{name: "second-page failure publishes no prefix", pages: []string{
 			`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"value":1},"doc_count":3}],"after_key":{"value":1}}}}`,
 			`{"timed_out":true}`}, wantError: "budget exceeded"},
-		{name: "failed shard", pages: []string{`{"timed_out":false,"_shards":{"total":2,"successful":1,"failed":1}}`}, wantError: "all shards"},
-		{name: "missing shard metadata", pages: []string{`{"aggregations":{"__distinct":{"buckets":[]}}}`}, wantError: "shard completion"},
+		{name: "failed shard", pages: []string{`{"timed_out":false,"_shards":{"total":2,"successful":1,"failed":1}}`}, wantError: "incomplete index search"},
+		{name: "missing shard metadata", pages: []string{`{"aggregations":{"__distinct":{"buckets":[]}}}`}, wantError: "incomplete index search"},
 		{name: "missing buckets", pages: []string{`{` + complete + `,"aggregations":{}}`}, wantError: "composite buckets"},
 		{name: "missing continuation", pages: []string{`{` + complete + `,"aggregations":{"__distinct":{"buckets":[{"key":{"value":1},"doc_count":3}]}}}`}, wantError: "continuation"},
 		{name: "repeated continuation", pages: []string{
@@ -383,7 +383,7 @@ func TestOpenSearchConnectorExactDistinctUsesSchema(t *testing.T) {
 						if tc.wantEngineError {
 							return &http.Response{StatusCode: 400, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":"unsupported aggregation"}`))}, nil
 						}
-						body = `{"_shards":{"total":1,"successful":1,"failed":0},"aggregations":{"__distinct":{"buckets":[]}}}`
+						body = `{` + completeSearchMetadata + `,"aggregations":{"__distinct":{"buckets":[]}}}`
 					}
 					if req.Method == http.MethodDelete {
 						closes++

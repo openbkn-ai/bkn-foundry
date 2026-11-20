@@ -410,8 +410,7 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
-		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
-			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
+		rs.EXPECT().InternalPublishLocalIndex(gomock.Any(), txMatcher, "r1", "new-index", mark, resource.UpdateTime).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(true, nil)
 		mock.ExpectCommit()
 
@@ -444,11 +443,10 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
-		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
-			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
+		rs.EXPECT().InternalPublishLocalIndex(gomock.Any(), txMatcher, "r1", "new-index", mark, resource.UpdateTime).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(false, nil)
 		mock.ExpectRollback()
-		ts.EXPECT().InternalMarkStopped(gomock.Any(), nil, "t1").Return(true, nil)
+		ts.EXPECT().InternalMarkStopped(gomock.Any(), nil, "t1", nil).Return(true, nil)
 
 		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(context.Background(), resource, task, "new-index", mark)
 
@@ -465,6 +463,7 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		staleBuildResource.Description = "old description"
 		current := workerTestResource()
 		current.Description = "new description"
+		current.UpdateTime = 42
 		task := workerTestFullTask(t, current)
 		mark := `{"mode":"batch","cursor":[]}`
 
@@ -478,8 +477,7 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(current, nil)
-		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
-			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
+		rs.EXPECT().InternalPublishLocalIndex(gomock.Any(), txMatcher, "r1", "new-index", mark, current.UpdateTime).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "build-task-1").Return(true, nil)
 		mock.ExpectCommit()
 
@@ -509,13 +507,50 @@ func TestCompleteFullBuildTask(t *testing.T) {
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
-		ts.EXPECT().InternalMarkFailed(gomock.Any(), txMatcher, "t1", gomock.Any()).Return(true, nil)
+		ts.EXPECT().InternalMarkFailed(gomock.Any(), txMatcher, "t1", gomock.Any(), []string{interfaces.BuildTaskStatusRunning}).Return(true, nil)
 		mock.ExpectCommit()
 
 		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(
 			context.Background(), resource, task, "new-index", `{"mode":"batch","cursor":[]}`)
 
 		require.ErrorIs(t, err, errBuildTaskMarkedFailed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rolls back if discovery changes the resource before publication", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ts := vmock.NewMockBuildTaskService(ctrl)
+		resource := workerTestResource()
+		resource.UpdateTime = 42
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusReadOnly
+		resource.LocalIndexName = "old-index"
+		task := workerTestFullTask(t, resource)
+		mark := `{"mode":"batch","cursor":[]}`
+
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		oldDB := logics.DB
+		logics.DB = db
+		t.Cleanup(func() {
+			logics.DB = oldDB
+			_ = db.Close()
+		})
+		mock.ExpectBegin()
+		mock.ExpectRollback()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		gomock.InOrder(
+			rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil),
+			rs.EXPECT().InternalPublishLocalIndex(gomock.Any(), txMatcher, resource.ID,
+				"new-index", mark, resource.UpdateTime).Return(false, nil),
+		)
+
+		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(t.Context(), resource, task, "new-index", mark)
+
+		require.ErrorContains(t, err, "resource changed")
+		assert.Equal(t, interfaces.ResourceLocalIndexStatusReadOnly, resource.LocalIndexStatus)
+		assert.Equal(t, "old-index", resource.LocalIndexName)
+		assert.Empty(t, resource.SyncMark)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

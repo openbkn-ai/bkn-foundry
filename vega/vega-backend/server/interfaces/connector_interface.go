@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
@@ -116,6 +117,30 @@ type TableConnector interface {
 	ScanSQLBuilderRow(*sql.Rows, []ColumnInfo) (map[string]any, error)
 }
 
+// TableReadSessionConnector opens a result set in a source transaction for reading.
+// Query options (including filtering and offset) are fixed when the session
+// opens. Callers must close the session and its connector.
+type TableReadSessionConnector interface {
+	// BeginReadTx 为计数和数据查询开启同一个读事务，由调用方回滚。
+	BeginReadTx(ctx context.Context) (*sql.Tx, error)
+
+	OpenTableRead(context.Context, *Resource, *ResourceDataQueryParams) (QueryPageSession, error)
+	// countQuery is optional and, when present, returns a single count value.
+	OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder) (QueryPageSession, error)
+	// ScanTableReadRow 按会话投影推进并解码一行，结束时返回 (nil, nil)。
+	// 扫描错误由会话统一归类。
+	ScanTableReadRow(rows *sql.Rows, columns []ColumnInfo, fields map[string]*Property,
+		binaryMode *string, binaryContentColumns map[string]bool) (map[string]any, error)
+	// ClassifyQueryError 将可识别的驱动错误转换为查询错误，并保留原始错误链。
+	ClassifyQueryError(err error) error
+}
+
+// IndexReadSessionConnector opens snapshot read sessions for structured and raw index queries.
+type IndexReadSessionConnector interface {
+	OpenIndexRead(context.Context, string, *Resource, *ResourceDataQueryParams, time.Duration) (QueryPageSession, error)
+	OpenRawIndexRead(context.Context, *Resource, map[string]any, time.Duration) (QueryPageSession, error)
+}
+
 // FileConnector defines the interface for file/document storage connectors.
 // Implementations: s3, hdfs, minio, feishu, notion, etc.
 type FileConnector interface {
@@ -173,10 +198,10 @@ type IndexConnector interface {
 
 	// ExecuteQuery queries indexName using the resource field definitions and query parameters.
 	ExecuteQuery(ctx context.Context, indexName string, resource *Resource, params *ResourceDataQueryParams) (*ResourceDataQueryResult, error)
-	// ExecuteQueryWithDsl executes source-native DSL against the index identified by resourceName and returns the query result.
-	ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*ResourceDataQueryResult, error)
-	// ExecuteRawQuery executes a native query against indexName, returning column information, data, and a count.
-	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
+	// ExecuteQueryWithDsl runs source-native DSL using the Resource's index and schema.
+	ExecuteQueryWithDsl(ctx context.Context, resource *Resource, dsl string) (*ResourceDataQueryResult, error)
+	// ExecuteRawQuery runs a native query using the Resource's index and schema.
+	ExecuteRawQuery(ctx context.Context, resource *Resource, query map[string]any) (*RawQueryResponse, error)
 
 	// ConvertFilterCondition 使用索引字段定义转换完整条件树，不连接源端。
 	ConvertFilterCondition(filter FilterCondition, properties []*Property) (map[string]any, error)

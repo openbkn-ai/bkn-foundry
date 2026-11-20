@@ -9,7 +9,8 @@ info:
   version: 0.2.2
   description: 'BuildSchedule 为一个 table Resource 定期创建新的 batch BuildTask。每个 Resource 可有多个计划。
 
-    计划与执行历史分离；full/incremental 显式选择，每次触发使用计划创建者身份重新检查权限及资源可用性，复用当前 Resource 配置快照和构建校验。增量基线不足不退化为全量。
+    计划与执行历史分离；full/incremental 显式选择，每次触发使用计划创建者身份重新检查权限及资源可用性，复用当前 Resource 配置快照和构建校验。
+    可用的已发布索引缺少基线时，增量任务可以入队。worker 尝试恢复基线，恢复失败通过构建任务状态和错误原因查看。增量基线不足不退化为全量。
 
     启动及每分钟扫描数据库；先通过条件更新抢占并推进 last_run/next_run，再创建任务。遇到 pending/running/stopping 构建任务跳过本次。失败不重试、不排队、不历史回填；停机恢复最多尝试一次并遵守有效期。抢占后进程退出可能丢失本次任务创建，不承诺
     exactly-once。

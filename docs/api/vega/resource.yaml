@@ -932,11 +932,15 @@ components:
         index_config:
           $ref: "#/components/schemas/ResourceIndexConfig"
         local_status:
-          description: 本地索引状态；只有 `available` 且 `index_name` 非空时本地索引可用于查询
+          description: |
+            本地索引状态。`available` 和 `readonly` 在 `index_name` 非空时可用于查询。
+            `readonly` 表示主键变化后旧索引只读，须全量重建后才能继续增量。
+            `stale` 表示旧索引与当前查询配置不兼容，`unavailable` 表示没有已发布索引。
           type: string
           enum:
             - unavailable
             - available
+            - readonly
             - stale
         index_name:
           description: 关联索引名（由构建任务填充）
@@ -1418,12 +1422,14 @@ components:
           maximum: 8191
           default: 256
         primary_key_fields:
-          description: Must identify a unique source row. Fields absent from incremental_fields are appended to the internal batch cursor.
+          description: Required for full and incremental builds. The fields must identify a unique source row. Fields absent from incremental_fields are appended to the internal batch cursor.
           type: array
           items:
             type: string
         incremental_fields:
-          description: Ordered incremental cursor fields. The service appends any missing primary_key_fields internally for batch pagination.
+          description: |
+            Ordered cursor fields. Required for incremental builds. A full build with these fields establishes an incremental baseline when it publishes the index, including when the source is empty.
+            A full build without them clears any existing incremental baseline when it publishes the index and uses the primary key for its task checkpoints.
           type: array
           items:
             type: string
@@ -1503,9 +1509,9 @@ components:
             其他资源使用既有源端标识。
           type: string
         local_status:
-          description: 本地索引状态
+          description: 本地索引状态，`available` 可查询及增量构建，`readonly` 可查询但需全量重建后才能增量，`stale` 和 `unavailable` 不用于本地查询
           type: string
-          enum: [unavailable, available, stale]
+          enum: [unavailable, available, readonly, stale]
         index_name:
           description: 关联索引名
           type: string

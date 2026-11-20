@@ -205,6 +205,21 @@ func (mr *MockResourceServiceMockRecorder) InternalList(ctx, params any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockResourceService)(nil).InternalList), ctx, params)
 }
 
+// InternalPublishLocalIndex mocks base method.
+func (m *MockResourceService) InternalPublishLocalIndex(ctx context.Context, tx *sql.Tx, id, indexName, syncMark string, expectedUpdateTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalPublishLocalIndex", ctx, tx, id, indexName, syncMark, expectedUpdateTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalPublishLocalIndex indicates an expected call of InternalPublishLocalIndex.
+func (mr *MockResourceServiceMockRecorder) InternalPublishLocalIndex(ctx, tx, id, indexName, syncMark, expectedUpdateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalPublishLocalIndex", reflect.TypeOf((*MockResourceService)(nil).InternalPublishLocalIndex), ctx, tx, id, indexName, syncMark, expectedUpdateTime)
+}
+
 // InternalUpdateDiscoveryMetadata mocks base method.
 func (m *MockResourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) error {
 	m.ctrl.T.Helper()
@@ -231,21 +246,6 @@ func (m *MockResourceService) InternalUpdateLocalIndexName(ctx context.Context, 
 func (mr *MockResourceServiceMockRecorder) InternalUpdateLocalIndexName(ctx, tx, id, localIndexName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateLocalIndexName", reflect.TypeOf((*MockResourceService)(nil).InternalUpdateLocalIndexName), ctx, tx, id, localIndexName)
-}
-
-// InternalUpdateLocalIndexState mocks base method.
-func (m *MockResourceService) InternalUpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id, localIndexStatus, localIndexName, syncMark string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalUpdateLocalIndexState", ctx, tx, id, localIndexStatus, localIndexName, syncMark)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// InternalUpdateLocalIndexState indicates an expected call of InternalUpdateLocalIndexState.
-func (mr *MockResourceServiceMockRecorder) InternalUpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalUpdateLocalIndexState", reflect.TypeOf((*MockResourceService)(nil).InternalUpdateLocalIndexState), ctx, tx, id, localIndexStatus, localIndexName, syncMark)
 }
 
 // InternalUpdateRowCount mocks base method.

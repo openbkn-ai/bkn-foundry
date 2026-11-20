@@ -178,18 +178,12 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 					},
 				},
 			}
-			response, err := c.distinctRequest(ctx, http.MethodPost, "/_search?allow_partial_search_results=false", body)
-			if err != nil {
-				return nil, err
-			}
+			response, err := c.distinctRequest(ctx, http.MethodPost, "/_search", body)
 			if id, ok := response["pit_id"].(string); ok && id != "" {
 				pit = id
 			}
-			if err := validateCompleteAggregationResponse(response); err != nil {
+			if err != nil {
 				return nil, err
-			}
-			if _, ok := response["_shards"].(map[string]any); !ok {
-				return nil, fmt.Errorf("exact distinct search is missing shard completion metadata")
 			}
 			if needTotal {
 				hits, _ := response["hits"].(map[string]any)
@@ -376,6 +370,12 @@ func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	search := request.URL.Path == "/_search"
+	if search {
+		params := request.URL.Query()
+		params.Set("allow_partial_search_results", "false")
+		request.URL.RawQuery = params.Encode()
+	}
 
 	response, err := c.client.Perform(request)
 	if err != nil {
@@ -420,6 +420,14 @@ func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
 	var result map[string]any
 	if err := common.UnmarshalJSON(encoded, &result); err != nil {
 		return nil, fmt.Errorf("decode aggregation response failed")
+	}
+	if search {
+		err := validateSearchResponse(encoded, true)
+		if errors.Is(err, errSearchTimedOut) {
+			err = interfaces.NewQueryExecutionBudgetError("aggregation_time", nil)
+		}
+		// The caller may need the latest PIT ID to close the snapshot on failure.
+		return result, err
 	}
 	return result, nil
 }

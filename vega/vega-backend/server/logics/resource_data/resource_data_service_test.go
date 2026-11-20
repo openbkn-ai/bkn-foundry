@@ -1711,11 +1711,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
-		_, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		_, err := rds.queryWithCursor(context.Background(), resource, &interfaces.ResourceDataQueryParams{}, nil)
 		assertCatalogDisabledError(t, err)
 	})
 
-	t.Run("query table with local index uses local index manager", func(t *testing.T) {
+	t.Run("query table with a read-only local index uses local index manager", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLIM := newResourceDataLocalIndexManagerMock(ctrl)
@@ -1725,7 +1725,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			Enabled:          true,
 			CatalogID:        "catalog-1",
 			Category:         interfaces.ResourceCategoryTable,
-			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
 			LocalIndexName:   "vega-build-resource-1-task-1",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name"},
@@ -1905,7 +1905,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, downstream)
 
-		_, err := rds.query(context.Background(), resource, params)
+		_, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -1952,7 +1952,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: int64(1)}, nil
 			})
 
-		rowsResult12, err := rds.query(context.Background(), resource, params)
+		rowsResult12, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var rows []map[string]any
 		var total int64
 		if rowsResult12 != nil {
@@ -1999,7 +1999,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1, Paging: &interfaces.PagingResponse{}}, nil
 			})
 
-		rowsResult13, err := rds.query(context.Background(), resource, params)
+		rowsResult13, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var rows []map[string]any
 		var total int64
 		if rowsResult13 != nil {
@@ -2031,7 +2031,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, downstream)
 
-		_, err := rds.query(context.Background(), resource, params)
+		_, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -2168,11 +2168,210 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 }
 
-func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
+type streamTableConnector struct {
+	*mock_interfaces.MockTableConnector
+	*mock_interfaces.MockTableReadSessionConnector
+}
+
+func TestTableSourceCursorRetainsReadSession(t *testing.T) {
+	for _, scenario := range []string{"normal", "catalog changed", "rate limited", "catalog temporarily unavailable", "invalid data after reading"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			rds := &resourceDataService{cs: cs, cf: cf}
+			if scenario == "rate limited" {
+				rds.cl = rate.NewConcurrencyLimiter(rate.ConcurrencyConfig{
+					Enabled: true,
+					Global:  rate.GlobalConcurrencyConfig{MaxConcurrentQueries: 1},
+				})
+			}
+			resource := &interfaces.Resource{
+				ID: "table-1", CatalogID: "catalog-1", Enabled: true, Category: interfaces.ResourceCategoryTable,
+				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
+			}
+			if scenario == "invalid data after reading" {
+				resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Binary})
+			}
+			catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, ConnectorType: "mysql", UpdateTime: 1}
+			nextCatalog := *catalog
+			if scenario == "catalog changed" {
+				nextCatalog.UpdateTime++
+			}
+			base := mock_interfaces.NewMockTableConnector(ctrl)
+			opener := mock_interfaces.NewMockTableReadSessionConnector(ctrl)
+			connector := &streamTableConnector{base, opener}
+			stream := mock_interfaces.NewMockQueryPageSession(ctrl)
+			total := int64(9)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
+			gomock.InOrder(
+				cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(catalog, nil),
+				base.EXPECT().Connect(gomock.Any()).Return(nil),
+				opener.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+					func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+						assert.Equal(t, 7, params.Paging.Offset)
+						assert.True(t, params.NeedTotal)
+						return stream, nil
+					}),
+				stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+					Entries: []map[string]any{{"id": int64(8)}}, Columns: []interfaces.ColumnInfo{{Name: "id"}}, TotalCount: &total, HasMore: true,
+				}, nil),
+			)
+			if scenario == "catalog temporarily unavailable" {
+				cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(nil, errors.New("catalog unavailable"))
+			}
+			reload := cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(&nextCatalog, nil)
+			if scenario == "rate limited" {
+				reload.Times(2)
+			}
+			if scenario != "catalog changed" {
+				lastRow := map[string]any{"id": int64(9)}
+				if scenario == "invalid data after reading" {
+					lastRow["payload"] = "not a byte length"
+				}
+				gomock.InOrder(
+					stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+						Entries: []map[string]any{lastRow}, Columns: []interfaces.ColumnInfo{{Name: "id"}}, TotalCount: &total,
+					}, nil),
+					stream.EXPECT().Close().Return(nil),
+					base.EXPECT().Close(gomock.Any()).Return(nil),
+				)
+			} else {
+				gomock.InOrder(stream.EXPECT().Close().Return(nil), base.EXPECT().Close(gomock.Any()).Return(nil))
+			}
+			ctx := interfaces.WithTrustedProxyRead(t.Context())
+			firstCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			first, err := rds.QueryWithPaging(firstCtx, resource, &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1, Offset: 7}, NeedTotal: true,
+				Sort: []*interfaces.SortField{{Field: "id", Direction: interfaces.ASC_DIRECTION}},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"id": int64(8)}}, first.Entries)
+			require.NotNil(t, first.Paging.NextCursor)
+			assert.EqualValues(t, 9, first.TotalCount)
+			cancel()
+			next := &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
+			}
+			if scenario == "rate limited" {
+				release, err := rds.cl.Acquire(rate.AcquireParams{CatalogID: catalog.ID})
+				require.NoError(t, err)
+				_, limited := rds.QueryWithPaging(ctx, resource, next)
+				release()
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, limited, &httpErr)
+				assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
+			}
+			if scenario == "catalog temporarily unavailable" {
+				_, unavailable := rds.QueryWithPaging(ctx, resource, next)
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, unavailable, &httpErr)
+				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			}
+			second, err := rds.QueryWithPaging(ctx, resource, next)
+			if scenario == "catalog changed" {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, verrors.VegaBackend_Query_CursorResourceChanged, httpErr.ErrorCode)
+				return
+			}
+			if scenario == "invalid data after reading" {
+				var httpErr *httperrors.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+				_, expired := rds.QueryWithPaging(ctx, resource, next)
+				require.ErrorAs(t, expired, &httpErr)
+				assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, []map[string]any{{"id": int64(9)}}, second.Entries)
+			assert.EqualValues(t, 9, second.TotalCount)
+			assert.Nil(t, second.Paging.NextCursor)
+		})
+	}
+}
+
+type cursorIndexConnector struct {
+	*mock_interfaces.MockIndexConnector
+	*mock_interfaces.MockIndexReadSessionConnector
+}
+
+func TestIndexCursorRetainsReadSession(t *testing.T) {
+	for _, target := range []string{"source index", "table index", "dataset index"} {
+		t.Run(target, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			manager := newResourceDataLocalIndexManagerMock(ctrl)
+			stream := mock_interfaces.NewMockQueryPageSession(ctrl)
+			rds := &resourceDataService{cs: cs, cf: cf, lim: manager}
+			resource := &interfaces.Resource{
+				ID: "resource", CatalogID: "catalog", Enabled: true,
+				SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
+			}
+			catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, ConnectorType: "opensearch"}
+			cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(catalog, nil).Times(2)
+			var open *gomock.Call
+			switch target {
+			case "source index":
+				resource.Category = interfaces.ResourceCategoryIndex
+				resource.SourceIdentifier = "events"
+				base := mock_interfaces.NewMockIndexConnector(ctrl)
+				reader := mock_interfaces.NewMockIndexReadSessionConnector(ctrl)
+				cf.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).
+					Return(&cursorIndexConnector{base, reader}, nil)
+				base.EXPECT().Connect(gomock.Any()).Return(nil)
+				base.EXPECT().Close(gomock.Any()).Return(nil)
+				open = reader.EXPECT().OpenIndexRead(gomock.Any(), "events", resource, gomock.Any(), 60*time.Second).Return(stream, nil)
+			case "table index":
+				resource.Category = interfaces.ResourceCategoryTable
+				resource.LocalIndexName = "events"
+				resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+			case "dataset index":
+				resource.Category = interfaces.ResourceCategoryDataset
+				resource.LocalIndexName = "events"
+				resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+			}
+			if open == nil {
+				open = manager.EXPECT().OpenDocumentRead(gomock.Any(), "events", resource, gomock.Any(), 60*time.Second).Return(stream, nil)
+			}
+			total := int64(2)
+			gomock.InOrder(
+				open,
+				stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+					Entries: []map[string]any{{"id": int64(1)}}, TotalCount: &total, HasMore: true,
+				}, nil),
+				stream.EXPECT().ReadPage(gomock.Any(), 1).Return(nil, interfaces.ErrQueryPageSessionExpired),
+				stream.EXPECT().Close().Return(nil),
+			)
+			ctx := interfaces.WithTrustedProxyRead(t.Context())
+			first, err := rds.QueryWithPaging(ctx, resource, &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1, KeepAliveSec: 60}, NeedTotal: true,
+				Sort: []*interfaces.SortField{{Field: "id", Direction: interfaces.ASC_DIRECTION}},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, first.Paging.NextCursor)
+			assert.EqualValues(t, 2, first.TotalCount)
+			next := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}}
+			_, err = rds.QueryWithPaging(ctx, resource, next)
+			var httpErr *httperrors.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+			_, err = rds.QueryWithPaging(ctx, resource, next)
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+		})
+	}
+}
+
+func TestDatasetCursorUsesDocumentReadSession(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
-	rds := &resourceDataService{cs: mockCS, ds: mockDS, lim: newResourceDataLocalIndexManagerMock(ctrl)}
+	manager := newResourceDataLocalIndexManagerMock(ctrl)
+	stream := mock_interfaces.NewMockQueryPageSession(ctrl)
+	rds := &resourceDataService{cs: mockCS, lim: manager}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
 		Enabled:          true,
@@ -2187,29 +2386,22 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	}
 	mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Times(2).
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	firstPage := true
-	mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Times(2).
-		DoAndReturn(func(_ context.Context, _ *interfaces.Resource, pageParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-			var resultSearchAfter2 []any
-
-			assert.Equal(t, 1, pageParams.Paging.Limit)
-			if firstPage {
-				firstPage = false
-				assert.Empty(t, pageParams.SearchAfter)
-				resultSearchAfter2 = []any{"sort-1"}
-				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}}, TotalCount: 0, SearchAfter: resultSearchAfter2}, nil
-			}
-			assert.Equal(t, []any{"sort-1"}, pageParams.SearchAfter)
-			return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: 0, SearchAfter: resultSearchAfter2}, nil
-		})
+	gomock.InOrder(
+		manager.EXPECT().OpenDocumentRead(gomock.Any(), resource.LocalIndexName, resource, gomock.Any(), gomock.Any()).Return(stream, nil),
+		stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{Entries: []map[string]any{{"id": 1}}, HasMore: true}, nil),
+		stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{Entries: []map[string]any{{"id": 2}}}, nil),
+		stream.EXPECT().Close().Return(nil),
+	)
 
 	first, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, params)
 	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": 1}}, first.Entries)
 	require.NotNil(t, first.Paging.NextCursor)
 	final, err := rds.QueryWithPaging(interfaces.WithTrustedProxyRead(context.Background()), resource, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
 	})
 	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": 2}}, final.Entries)
 	assert.Nil(t, final.Paging.NextCursor)
 }
 
@@ -2322,7 +2514,11 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 							index := newResourceDataLocalIndexManagerMock(ctrl)
 							resource.LocalIndexName = "index"
 							resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
-							index.EXPECT().ListDocuments(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
+							if mode == interfaces.PagingModeCursor {
+								index.EXPECT().OpenDocumentRead(gomock.Any(), "index", resource, gomock.Any(), gomock.Any()).Return(nil, wrapped)
+							} else {
+								index.EXPECT().ListDocuments(gomock.Any(), "index", resource, gomock.Any()).Return(nil, wrapped)
+							}
 							service.lim = index
 						}
 						params := &interfaces.ResourceDataQueryParams{}
@@ -3087,7 +3283,7 @@ func TestResourceDataServiceExecuteSourceQuery(t *testing.T) {
 			require.NoError(t, err)
 			defer release()
 			service := &resourceDataService{cf: factory, cl: limiter}
-			result, err := service.executeSourceQuery(t.Context(), &interfaces.Catalog{ID: "catalog", ConnectorType: "http"}, resource, params)
+			result, err := service.executeSourceQueryWithCursor(t.Context(), &interfaces.Catalog{ID: "catalog", ConnectorType: "http"}, resource, params, nil)
 			if available {
 				require.NoError(t, err)
 				assert.Same(t, want, result)

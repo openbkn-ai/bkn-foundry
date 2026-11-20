@@ -126,6 +126,8 @@ type IndexMeta struct {
 	Properties   map[string]any            `json:"properties"`
 	Mapping      map[string]IndexFieldMeta `json:"mapping"`
 	MappingMeta  map[string]any            `json:"mapping_meta"`
+	// ObjectFields 记录展开后的 Mapping 未包含的顶层对象名。
+	ObjectFields []string `json:"object_fields,omitempty"`
 }
 
 // IndexFieldMeta represents index field metadata.

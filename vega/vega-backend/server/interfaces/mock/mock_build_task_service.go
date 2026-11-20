@@ -191,18 +191,18 @@ func (mr *MockBuildTaskServiceMockRecorder) InternalMarkCompleted(ctx, tx, id an
 }
 
 // InternalMarkFailed mocks base method.
-func (m *MockBuildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error) {
+func (m *MockBuildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, allowedStatuses []string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkFailed", ctx, tx, id, detail)
+	ret := m.ctrl.Call(m, "InternalMarkFailed", ctx, tx, id, detail, allowedStatuses)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalMarkFailed indicates an expected call of InternalMarkFailed.
-func (mr *MockBuildTaskServiceMockRecorder) InternalMarkFailed(ctx, tx, id, detail any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) InternalMarkFailed(ctx, tx, id, detail, allowedStatuses any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkFailed", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkFailed), ctx, tx, id, detail)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkFailed", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkFailed), ctx, tx, id, detail, allowedStatuses)
 }
 
 // InternalMarkRunning mocks base method.
@@ -221,33 +221,33 @@ func (mr *MockBuildTaskServiceMockRecorder) InternalMarkRunning(ctx, tx, id any)
 }
 
 // InternalMarkStopped mocks base method.
-func (m *MockBuildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+func (m *MockBuildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string, allowedStatuses []string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkStopped", ctx, tx, id)
+	ret := m.ctrl.Call(m, "InternalMarkStopped", ctx, tx, id, allowedStatuses)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalMarkStopped indicates an expected call of InternalMarkStopped.
-func (mr *MockBuildTaskServiceMockRecorder) InternalMarkStopped(ctx, tx, id any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) InternalMarkStopped(ctx, tx, id, allowedStatuses any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkStopped", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkStopped), ctx, tx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkStopped", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkStopped), ctx, tx, id, allowedStatuses)
 }
 
 // InternalSetProgress mocks base method.
-func (m *MockBuildTaskService) InternalSetProgress(ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress) (bool, error) {
+func (m *MockBuildTaskService) InternalSetProgress(ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, allowedStatuses []string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalSetProgress", ctx, tx, id, progress)
+	ret := m.ctrl.Call(m, "InternalSetProgress", ctx, tx, id, progress, allowedStatuses)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalSetProgress indicates an expected call of InternalSetProgress.
-func (mr *MockBuildTaskServiceMockRecorder) InternalSetProgress(ctx, tx, id, progress any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) InternalSetProgress(ctx, tx, id, progress, allowedStatuses any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalSetProgress", reflect.TypeOf((*MockBuildTaskService)(nil).InternalSetProgress), ctx, tx, id, progress)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalSetProgress", reflect.TypeOf((*MockBuildTaskService)(nil).InternalSetProgress), ctx, tx, id, progress, allowedStatuses)
 }
 
 // List mocks base method.

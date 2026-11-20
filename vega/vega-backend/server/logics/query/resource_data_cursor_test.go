@@ -326,8 +326,8 @@ func TestExecuteInitialResourceDataCursor(t *testing.T) {
 		manager.mu.Unlock()
 		require.NotNil(t, session)
 		atomic.StoreInt64(&session.ExpiresAtSec, time.Now().Add(-time.Second).Unix())
+		manager.closeExpiredSessions(time.Now().Unix())
 		manager.mu.Lock()
-		manager.removeExpiredLocked(time.Now().Unix())
 		_, ok := manager.sessions[session.ID]
 		manager.mu.Unlock()
 		assert.True(t, ok)

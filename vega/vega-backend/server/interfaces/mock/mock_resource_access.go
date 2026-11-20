@@ -57,6 +57,21 @@ func (mr *MockResourceAccessMockRecorder) CheckExistByCategories(ctx, catalogID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByCategories", reflect.TypeOf((*MockResourceAccess)(nil).CheckExistByCategories), ctx, catalogID, categories)
 }
 
+// CompareAndSetSyncMark mocks base method.
+func (m *MockResourceAccess) CompareAndSetSyncMark(ctx context.Context, tx *sql.Tx, id, indexName, indexStatus, previous, next string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompareAndSetSyncMark", ctx, tx, id, indexName, indexStatus, previous, next)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompareAndSetSyncMark indicates an expected call of CompareAndSetSyncMark.
+func (mr *MockResourceAccessMockRecorder) CompareAndSetSyncMark(ctx, tx, id, indexName, indexStatus, previous, next any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompareAndSetSyncMark", reflect.TypeOf((*MockResourceAccess)(nil).CompareAndSetSyncMark), ctx, tx, id, indexName, indexStatus, previous, next)
+}
+
 // Create mocks base method.
 func (m *MockResourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
 	m.ctrl.T.Helper()
@@ -295,18 +310,18 @@ func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexName(ctx, tx, id, loca
 }
 
 // UpdateLocalIndexState mocks base method.
-func (m *MockResourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id, localIndexStatus, localIndexName, syncMark string) (bool, error) {
+func (m *MockResourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id, localIndexStatus, localIndexName, syncMark string, expectedUpdateTime, updateTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateLocalIndexState", ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+	ret := m.ctrl.Call(m, "UpdateLocalIndexState", ctx, tx, id, localIndexStatus, localIndexName, syncMark, expectedUpdateTime, updateTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateLocalIndexState indicates an expected call of UpdateLocalIndexState.
-func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark, expectedUpdateTime, updateTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexState", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexState), ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexState", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexState), ctx, tx, id, localIndexStatus, localIndexName, syncMark, expectedUpdateTime, updateTime)
 }
 
 // UpdateRowCount mocks base method.

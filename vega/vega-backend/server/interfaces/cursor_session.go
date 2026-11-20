@@ -28,12 +28,18 @@ type CursorSession struct {
 	ResourceIDs  []string
 
 	// Builder 通道保存结构化查询；物理名称、目标类型及版本在每次续页前复核。
-	SQLQuery             *sqlbuilder.SelectBuilder
-	SQLResourceVersions  map[string]int64
-	SQLSourceValidator   SQLQueryCursorValidator
-	SQLCatalogUpdateTime int64
-	SQLConnectorType     string
-	// Builder cursor 保留首次执行的结果集和连接，续页只继续读取。
+	SQLQuery            *sqlbuilder.SelectBuilder
+	SQLResourceVersions map[string]int64
+	SQLSourceValidator  SQLQueryCursorValidator
+	CatalogUpdateTime   int64
+	ConnectorType       string
+	// 阅读会话保存源快照，游标只保存对会话的引用。
+	ReadSession            QueryPageSession
+	ReadConnector          Connector
+	ReadHasMore            bool
+	ReadIndexName          string
+	ReadResourceUpdateTime int64
+	// 扩展连接器可继续使用 SQLRows。
 	SQLRows       *sql.Rows
 	SQLColumns    []ColumnInfo
 	SQLPendingRow map[string]any

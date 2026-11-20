@@ -36,7 +36,7 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		newIndexCleanupWorkerForTest(lim, rs, bts, true).runOnce(context.Background())
 	})
 
-	t.Run("rechecks before deleting and protects a newly referenced index", func(t *testing.T) {
+	t.Run("rechecks before deleting and protects a newly referenced read-only index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
@@ -48,9 +48,25 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		})
 		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1"}}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly}, nil)
 
 		newIndexCleanupWorkerForTest(lim, rs, bts, false).runOnce(context.Background())
+	})
+
+	t.Run("protects a referenced read-only index in the scan", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		lim.EXPECT().GetIndexMeta(gomock.Any(), oldIndex).DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
+			index.MappingMeta = map[string]any{"resource_id": "r1", "build_task_id": "t1"}
+			return nil
+		})
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).
+			Return([]*interfaces.ResourceSummary{{ID: "r1", LocalIndexName: oldIndex.Name, LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly}}, nil)
+
+		newIndexCleanupWorkerForTest(lim, rs, bts, false).runOnce(t.Context())
 	})
 
 	t.Run("deletes stale index after successful recheck", func(t *testing.T) {

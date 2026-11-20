@@ -27,6 +27,11 @@ import (
 
 const defaultBulkRequestMaxBytes = 32 * 1024 * 1024
 
+var (
+	_ interfaces.IndexConnector            = (*OpenSearchConnector)(nil)
+	_ interfaces.IndexReadSessionConnector = (*OpenSearchConnector)(nil)
+)
+
 type bulkRequestError struct {
 	statusCode int
 	detail     string

@@ -210,19 +210,18 @@ func (icw *IndexCleanupWorker) runOnce(ctx context.Context) {
 }
 
 func (icw *IndexCleanupWorker) recheckCandidate(ctx context.Context, candidate indexCleanupCandidate) bool {
-	resource, err := icw.rs.InternalGetByID(ctx, nil, candidate.resourceID)
+	current, err := icw.rs.InternalGetByID(ctx, nil, candidate.resourceID)
 	if err != nil {
 		logger.Errorf("Index cleanup recheck failed: index=%s, resource_id=%s, error=%v", candidate.index.Name, candidate.resourceID, err)
 		return false
 	}
-	if resource != nil && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable &&
-		resource.LocalIndexName == candidate.index.Name {
+	if resource.HasAvailableLocalIndex(current) && current.LocalIndexName == candidate.index.Name {
 		return false
 	}
 	if candidate.dataset {
-		return resource == nil && time.Since(time.UnixMilli(candidate.index.CreationTime)) >= icw.protectionPeriod
+		return current == nil && time.Since(time.UnixMilli(candidate.index.CreationTime)) >= icw.protectionPeriod
 	}
-	candidateOK, _, err := icw.classifyOwnership(ctx, resource != nil, candidate.resourceID, candidate.taskID)
+	candidateOK, _, err := icw.classifyOwnership(ctx, current != nil, candidate.resourceID, candidate.taskID)
 	if err != nil || !candidateOK {
 		return false
 	}
@@ -238,10 +237,10 @@ func (icw *IndexCleanupWorker) currentReferences(ctx context.Context) (*resource
 		byID:       make(map[string]*interfaces.ResourceSummary, len(resources)),
 		references: make(map[string]struct{}, len(resources)),
 	}
-	for _, resource := range resources {
-		snapshot.byID[resource.ID] = resource
-		if resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable && resource.LocalIndexName != "" {
-			snapshot.references[resource.LocalIndexName] = struct{}{}
+	for _, summary := range resources {
+		snapshot.byID[summary.ID] = summary
+		if summary.LocalIndexName != "" && resource.IsReadableLocalIndexStatus(summary.LocalIndexStatus) {
+			snapshot.references[summary.LocalIndexName] = struct{}{}
 		}
 	}
 	return snapshot, nil

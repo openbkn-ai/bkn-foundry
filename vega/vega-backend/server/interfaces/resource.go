@@ -27,6 +27,7 @@ const (
 
 	ResourceLocalIndexStatusUnavailable string = "unavailable"
 	ResourceLocalIndexStatusAvailable   string = "available"
+	ResourceLocalIndexStatusReadOnly    string = "readonly"
 	ResourceLocalIndexStatusStale       string = "stale"
 
 	DiscoverStatusNew       string = "new"

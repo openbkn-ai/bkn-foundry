@@ -2562,18 +2562,16 @@ func setObjectTypeIndexStatus(objectType *interfaces.ObjectType, state, sourceSt
 
 func indexStateForVegaResource(resource *interfaces.VegaResource) string {
 	switch resource.LocalIndexStatus {
-	case interfaces.ResourceLocalIndexStatusAvailable:
+	case interfaces.ResourceLocalIndexStatusAvailable, interfaces.ResourceLocalIndexStatusReadOnly:
 		return interfaces.ObjectTypeIndexStateAvailable
-	case interfaces.ResourceLocalIndexStatusUnavailable, "stale":
+	case interfaces.ResourceLocalIndexStatusUnavailable, interfaces.ResourceLocalIndexStatusStale:
 		return interfaces.ObjectTypeIndexStateUnavailable
 	default:
 		return interfaces.ObjectTypeIndexStateUnknown
 	}
 }
 
-// configuredIndexFeatures reads configuration rather than capabilities: VegaResourceIndexCaps
-// intentionally hides declared features until an index is available, while this projection needs
-// to show users what they configured even while a build is pending or stale.
+// configuredIndexFeatures also displays configured features while the local index is unavailable.
 func configuredIndexFeatures(resource *interfaces.VegaResource, indexState string) map[string][]interfaces.ObjectTypeIndexFeature {
 	featuresByField := make(map[string][]interfaces.ObjectTypeIndexFeature)
 	if resource == nil {

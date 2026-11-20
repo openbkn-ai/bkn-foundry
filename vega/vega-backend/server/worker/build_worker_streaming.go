@@ -123,7 +123,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	}
 	if !catalog.Enabled {
 		logger.Errorf("Catalog is disabled for task %s, catalogID: %s", buildTaskInfo.ID, resource.CatalogID)
-		_, err = sbw.bts.InternalMarkFailed(ctx, nil, buildTaskInfo.ID, "catalog is disabled")
+		_, err = sbw.bts.InternalMarkFailed(ctx, nil, buildTaskInfo.ID, "catalog is disabled", nil)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -131,7 +131,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	}
 	if catalog.ConnectorType != "mysql" && catalog.ConnectorType != "postgresql" {
 		logger.Errorf("Streaming build only supports MySQL and PostgreSQL connectors. Unsupported connector type: %s", catalog.ConnectorType)
-		_, err = sbw.bts.InternalMarkFailed(ctx, nil, buildTaskInfo.ID, "unsupported connector type")
+		_, err = sbw.bts.InternalMarkFailed(ctx, nil, buildTaskInfo.ID, "unsupported connector type", nil)
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
@@ -142,7 +142,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	database, err := streamingDatabase(catalog)
 	if err != nil {
 		logger.Errorf("Invalid streaming connector configuration for task %s: %v", taskID, err)
-		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error()); updateErr != nil {
+		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error(), nil); updateErr != nil {
 			return fmt.Errorf("update build task status failed: %w", updateErr)
 		}
 		return nil
@@ -150,7 +150,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 
 	tableName, err := sbw.buildTableName(ctx, catalog, resource)
 	if err != nil {
-		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error()); updateErr != nil {
+		if _, updateErr := sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error(), nil); updateErr != nil {
 			return fmt.Errorf("update build task status failed: %w", updateErr)
 		}
 		return nil
@@ -164,7 +164,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	// Execute build
 	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, tableName)
 	if err != nil {
-		_, _ = sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error())
+		_, _ = sbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error(), nil)
 		return err
 	}
 
@@ -250,10 +250,10 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			}
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
-			if _, err = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+			if _, err = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses); err != nil {
 				return fmt.Errorf("update build task progress failed: %w", err)
 			}
-			_, err = sbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID)
+			_, err = sbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID, nil)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -265,7 +265,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		case <-ctx.Done():
 			logger.Infof("Kafka subscription context canceled, exiting")
 			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
-			_, err = sbw.bts.InternalSetProgress(context.Background(), nil, buildTaskInfo.ID, progress)
+			_, err = sbw.bts.InternalSetProgress(context.Background(), nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
@@ -281,7 +281,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					// If it times out, check if the task status needs to be updated
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
 						progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
-						_, _ = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
+						_, _ = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses)
 						buildTaskInfo.SyncedCount = syncedCount
 						lastUpdateTime = time.Now()
 					}

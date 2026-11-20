@@ -31,6 +31,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+const completeSearchMetadata = `"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0}`
+
 func TestOpenSearchQueryScoreAndSearchAfter(t *testing.T) {
 	for _, scoreSort := range []bool{true, false} {
 		name := "explicit primary key sort"
@@ -52,7 +54,7 @@ func TestOpenSearchQueryScoreAndSearchAfter(t *testing.T) {
 						wantSort = append([]any{map[string]any{"_score": map[string]any{"order": "desc"}}}, wantSort...)
 					}
 					assert.Equal(t, wantSort, body["sort"])
-					response := `{"hits":{"total":{"value":3},"hits":[{"_id":"1","_score":0.875,"_source":{"id":1},"sort":[0.875,1]},{"_id":"2","_score":0.875,"_source":{"id":2},"sort":[0.875,2]}]}}`
+					response := `{` + completeSearchMetadata + `,"hits":{"total":{"value":3,"relation":"eq"},"hits":[{"_id":"1","_score":0.875,"_source":{"id":1},"sort":[0.875,1]},{"_id":"2","_score":0.875,"_source":{"id":2},"sort":[0.875,2]}]}}`
 					if requests == 0 {
 						assert.NotContains(t, body, "search_after")
 					} else {
@@ -61,7 +63,7 @@ func TestOpenSearchQueryScoreAndSearchAfter(t *testing.T) {
 							wantAfter = []any{0.875, float64(2)}
 						}
 						assert.Equal(t, wantAfter, body["search_after"])
-						response = `{"hits":{"total":{"value":3},"hits":[{"_id":"3","_score":0.5,"_source":{"id":3},"sort":[0.5,3]}]}}`
+						response = `{` + completeSearchMetadata + `,"hits":{"total":{"value":3,"relation":"eq"},"hits":[{"_id":"3","_score":0.5,"_source":{"id":3},"sort":[0.5,3]}]}}`
 					}
 					if !scoreSort {
 						response = strings.ReplaceAll(response, `"sort":[0.875,1]`, `"sort":[1]`)
@@ -157,9 +159,9 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 		queries <- query
 		requestCount++
 		w.Header().Set("Content-Type", "application/json")
-		response := `{"hits":{"total":{"value":0},"hits":[]}}`
+		response := `{` + completeSearchMetadata + `,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`
 		if requestCount == 3 {
-			response = `{"hits":{"total":{"value":4},"hits":[]},"aggregations":{"count":{"value":4}}}`
+			response = `{` + completeSearchMetadata + `,"hits":{"total":{"value":4,"relation":"eq"},"hits":[]},"aggregations":{"count":{"value":4}}}`
 		}
 		_, err = w.Write([]byte(response))
 		require.NoError(t, err)
@@ -203,7 +205,7 @@ func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
 				require.NoError(t, sonic.Unmarshal(body, &query))
 				queries <- query
 				w.Header().Set("Content-Type", "application/json")
-				_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]},"group_by_body_alias":{"buckets":[]}}}`))
+				_, err = w.Write([]byte(`{` + completeSearchMetadata + `,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]},"group_by_body_alias":{"buckets":[]}}}`))
 				require.NoError(t, err)
 			}))
 			t.Cleanup(server.Close)
@@ -274,9 +276,11 @@ func TestOpenSearchQueryRejectsTextSortWithoutKeyword(t *testing.T) {
 }
 
 func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"hits":{"total":{"value":1},"hits":[{"_id":"doc-1","_score":1.5,"_source":{"identifier":110101199001152345}}]}}`))
+		assert.Equal(t, "/events/_search", r.URL.Path)
+		response := `{` + completeSearchMetadata + `,"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"doc-1","_score":1.5,"_source":{"identifier":110101199001152345}}]}}`
+		_, err := io.WriteString(w, response)
 		require.NoError(t, err)
 	}))
 	t.Cleanup(server.Close)
@@ -289,7 +293,7 @@ func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}, enabled: true}
 
-	result, err := connector.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+	result, err := connector.ExecuteQueryWithDsl(context.Background(), &interfaces.Resource{SourceIdentifier: "events"}, `{"query":{"match_all":{}}}`)
 	require.NoError(t, err)
 	require.Len(t, result.Entries, 1)
 	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
@@ -398,8 +402,8 @@ func TestValidateAnalyzerReturnsDependencyErrorForUnrelatedBadRequest(t *testing
 func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{
-			"hits":{"total":{"value":4},"hits":[]},
+		_, err := w.Write([]byte(`{` + completeSearchMetadata + `,
+			"hits":{"total":{"value":4,"relation":"eq"},"hits":[]},
 			"aggregations":{"by_status":{"buckets":[{"key":"open","doc_count":3}]}}
 		}`))
 		require.NoError(t, err)
@@ -414,7 +418,7 @@ func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
 
-	result, err := connector.ExecuteRawQuery(context.Background(), "events", map[string]any{
+	result, err := connector.ExecuteRawQuery(context.Background(), &interfaces.Resource{SourceIdentifier: "events"}, map[string]any{
 		"size": 0,
 		"aggs": map[string]any{"by_status": map[string]any{"terms": map[string]any{"field": "status"}}},
 	})
@@ -425,9 +429,14 @@ func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 }
 
 func TestExecuteRawQueryPreservesLargeIntegerSourceField(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/events/_search" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"hits":{"total":{"value":1},"hits":[{"_source":{"identifier":110101199001152345},"sort":[110101199001152345]}]}}`))
+		response := `{` + completeSearchMetadata + `,"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_source":{"identifier":110101199001152345},"sort":[110101199001152345]}]}}`
+		_, err := io.WriteString(w, response)
 		require.NoError(t, err)
 	}))
 	t.Cleanup(server.Close)
@@ -440,7 +449,7 @@ func TestExecuteRawQueryPreservesLargeIntegerSourceField(t *testing.T) {
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
 
-	result, err := connector.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+	result, err := connector.ExecuteRawQuery(context.Background(), &interfaces.Resource{SourceIdentifier: "events"}, map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
 	require.NoError(t, err)
 	require.Len(t, result.Entries, 1)
 	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
@@ -609,20 +618,22 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 			client, err := osclient.NewClient(osclient.Config{
 				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
 				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
-					body := `{"hits":{"total":{"value":1},"hits":[{"_id":"1","_source":{"object":{"n":9007199254740993},"array":[1,true],"text":"{incomplete","empty":"","nothing":null,"number":9007199254740993,"boolean":true,"null_text":"null","id":42,"vector":[1,2]}}]}}`
-					if strings.HasSuffix(request.URL.Path, "/_mapping") {
-						body = `{"events":{"mappings":{"properties":{"object":{"properties":{"n":{"type":"long"}}},"array":{"type":"nested"},"text":{"type":"object","enabled":false},"empty":{"type":"object","enabled":false},"nothing":{"type":"object"},"number":{"type":"object","enabled":false},"boolean":{"type":"object","enabled":false},"null_text":{"type":"object","enabled":false},"id":{"type":"long"},"vector":{"type":"knn_vector"}}}}}`
-					}
+					body := `{` + completeSearchMetadata + `,"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"1","_source":{"object":{"n":9007199254740993},"disabled":[{"n":1},{"n":2}],"array":[1,true],"text":"{incomplete","empty":"","nothing":null,"number":9007199254740993,"boolean":true,"null_text":"null","id":42,"vector":[1,2],"unknown":{"n":3}}}]}}`
+					assert.Equal(t, "/events/_search", request.URL.Path)
 					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 				}),
 			})
 			require.NoError(t, err)
 			c := &OpenSearchConnector{client: client, enabled: true}
-			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+			resource := &interfaces.Resource{SourceIdentifier: "events", SchemaDefinition: []*interfaces.Property{
 				{Name: "object", Type: interfaces.DataType_Json}, {Name: "array", Type: interfaces.DataType_Json},
 				{Name: "text", Type: interfaces.DataType_Json}, {Name: "empty", Type: interfaces.DataType_Json}, {Name: "nothing", Type: interfaces.DataType_Json}, {Name: "number", Type: interfaces.DataType_Json}, {Name: "boolean", Type: interfaces.DataType_Json}, {Name: "null_text", Type: interfaces.DataType_Json},
 				{Name: "id", Type: interfaces.DataType_Integer}, {Name: "vector", Type: interfaces.DataType_Vector},
 			}}
+			if mode != "structured" {
+				resource.SchemaDefinition[0] = &interfaces.Property{Name: "object.n", Type: interfaces.DataType_Integer}
+				resource.SourceMetadata = map[string]any{"object_fields": []any{"disabled", "object", "id"}}
+			}
 			var entries []map[string]any
 			switch mode {
 			case "structured":
@@ -630,16 +641,22 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 				require.NoError(t, err)
 				entries = got.Entries
 			case "raw":
-				got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+				got, err := c.ExecuteRawQuery(context.Background(), resource, map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
 				require.NoError(t, err)
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "object", Type: interfaces.DataType_Json})
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "disabled", Type: interfaces.DataType_Json})
+				assert.Contains(t, got.Columns, interfaces.ColumnInfo{Name: "id", Type: interfaces.DataType_Integer})
 				entries = got.Entries
 			case "dsl":
-				got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+				got, err := c.ExecuteQueryWithDsl(context.Background(), resource, `{"query":{"match_all":{}}}`)
 				require.NoError(t, err)
 				entries = got.Entries
 			}
 			require.Len(t, entries, 1)
 			assert.Equal(t, `{"n":9007199254740993}`, entries[0]["object"])
+			if mode != "structured" {
+				assert.Equal(t, `[{"n":1},{"n":2}]`, entries[0]["disabled"])
+			}
 			assert.Equal(t, `[1,true]`, entries[0]["array"])
 			assert.Equal(t, "{incomplete", entries[0]["text"])
 			assert.Equal(t, "", entries[0]["empty"])
@@ -649,34 +666,7 @@ func TestOpenSearchJSONQueryResults(t *testing.T) {
 			assert.Equal(t, "null", entries[0]["null_text"])
 			assert.Equal(t, json.Number("42"), entries[0]["id"])
 			assert.Equal(t, []any{json.Number("1"), json.Number("2")}, entries[0]["vector"])
-		})
-	}
-}
-
-func TestOpenSearchJSONQueryMappingFailure(t *testing.T) {
-	for _, mode := range []string{"raw", "dsl"} {
-		t.Run(mode, func(t *testing.T) {
-			client, err := osclient.NewClient(osclient.Config{
-				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
-				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
-					status, body := http.StatusOK, `{"hits":{"total":{"value":1},"hits":[{"_source":{"payload":{"n":1}}}]}}`
-					if strings.HasSuffix(request.URL.Path, "/_mapping") {
-						status, body = http.StatusForbidden, `{}`
-					}
-					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
-				}),
-			})
-			require.NoError(t, err)
-			c := &OpenSearchConnector{client: client, enabled: true}
-			if mode == "raw" {
-				got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
-				require.ErrorContains(t, err, "failed to read JSON field types")
-				assert.Nil(t, got)
-			} else {
-				got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
-				require.ErrorContains(t, err, "failed to read JSON field types")
-				assert.Nil(t, got)
-			}
+			assert.Equal(t, map[string]any{"n": json.Number("3")}, entries[0]["unknown"])
 		})
 	}
 }
@@ -719,49 +709,110 @@ func TestStringifyJSONQueryFields(t *testing.T) {
 	})
 }
 
-func TestOpenSearchJSONAliasQueries(t *testing.T) {
-	for _, mode := range []string{"raw", "dsl"} {
-		for caseIndex, mapping := range []string{
-			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}}}`,
-			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}},"events-000002":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}}}`,
-			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}},"events-000002":{"mappings":{"properties":{"payload":{"type":"keyword"}}}}}`,
-		} {
-			t.Run(mode+"/"+[]string{"single index alias", "multiple compatible indices", "conflicting types"}[caseIndex], func(t *testing.T) {
-				conflict := strings.Contains(mapping, "keyword")
-				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true, Transport: countRowsTransport(func(r *http.Request) (*http.Response, error) {
-					body := `{"hits":{"total":{"value":1},"hits":[{"_source":{"payload":{"n":9007199254740993}}}]}}`
-					if strings.HasSuffix(r.URL.Path, "/_mapping") {
-						body = mapping
-					}
-					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
-				})})
-				require.NoError(t, err)
-				c := &OpenSearchConnector{client: client, enabled: true}
-				var entries []map[string]any
-				if mode == "raw" {
-					got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
-					if conflict {
-						require.ErrorContains(t, err, "conflicting mapping types")
-						assert.Nil(t, got)
-						return
-					}
-					require.NoError(t, err)
-					entries = got.Entries
-					assert.Equal(t, interfaces.DataType_Json, got.Columns[0].Type)
-				} else {
-					got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
-					if conflict {
-						require.ErrorContains(t, err, "conflicting mapping types")
-						assert.Nil(t, got)
-						return
-					}
-					require.NoError(t, err)
-					entries = got.Entries
-				}
-				require.Len(t, entries, 1)
-				assert.Equal(t, `{"n":9007199254740993}`, entries[0]["payload"])
+func TestOpenSearchConnectorExecuteQueryRequiresCompleteShards(t *testing.T) {
+	const valid = `{"timed_out":false,"_shards":{"total":2,"successful":2,"failed":0},"hits":{"total":{"value":9,"relation":"eq"},"hits":[{"_source":{"id":9007199254740993}}]}}`
+	const empty = `{"timed_out":false,"_shards":{"total":2,"successful":2,"failed":0},"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`
+	for _, tc := range []struct {
+		name    string
+		body    string
+		total   int64
+		wantErr string
+	}{
+		{name: "returns the selected document", body: valid, total: 9},
+		{name: "accepts shards skipped by prefiltering", body: strings.Replace(valid, `"failed":0`, `"skipped":1,"failed":0`, 1), total: 9},
+		{name: "accepts a confirmed empty index", body: empty},
+		{name: "rejects timeout", body: strings.Replace(empty, `"timed_out":false`, `"timed_out":true`, 1), wantErr: "index search timed out"},
+		{name: "rejects premature termination when exact total is requested", body: strings.Replace(empty, `"timed_out":false`, `"timed_out":false,"terminated_early":true`, 1), wantErr: "terminated before completion"},
+		{name: "rejects failed shards", body: strings.Replace(empty, `"failed":0`, `"failed":1`, 1), wantErr: "incomplete index search"},
+		{name: "rejects unavailable shards", body: strings.Replace(empty, `"successful":2`, `"successful":1`, 1), wantErr: "incomplete index search"},
+		{name: "rejects a missing successful shard count", body: strings.Replace(empty, `"successful":2,`, "", 1), wantErr: "incomplete index search"},
+		{name: "rejects a missing failed shard count", body: strings.Replace(empty, `,"failed":0`, "", 1), wantErr: "incomplete index search"},
+		{name: "rejects missing shard status", body: `{"timed_out":false,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`, wantErr: "incomplete index search"},
+		{name: "rejects inexact total", body: strings.Replace(empty, `"relation":"eq"`, `"relation":"gte"`, 1), wantErr: "no exact total"},
+		{name: "rejects missing exact total", body: strings.Replace(empty, `"total":{"value":0,"relation":"eq"},`, "", 1), wantErr: "no exact total"},
+		{name: "rejects a missing document list", body: strings.Replace(empty, `,"hits":[]`, "", 1), wantErr: "no document list"},
+		{name: "rejects an inconsistent empty total", body: strings.Replace(valid, `"value":9`, `"value":0`, 1), wantErr: "more documents than its exact total"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(req *http.Request) (*http.Response, error) {
+					requests++
+					require.Equal(t, "/published-index/_search", req.URL.Path)
+					assert.Equal(t, "false", req.URL.Query().Get("allow_partial_search_results"))
+					var body map[string]any
+					require.NoError(t, json.NewDecoder(req.Body).Decode(&body))
+					assert.NotContains(t, body, "pit")
+					assert.Equal(t, float64(1), body["size"])
+					assert.Equal(t, true, body["track_total_hits"])
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+				}),
 			})
-		}
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+			params := &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.PagingRequest{Limit: 1}, NeedTotal: true,
+			}
+
+			result, err := connector.ExecuteQuery(t.Context(), "published-index", resource, params)
+			assert.Equal(t, 1, requests)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.total, result.TotalCount)
+			if tc.total == 0 {
+				require.Empty(t, result.Entries)
+			} else {
+				require.Len(t, result.Entries, 1)
+				require.Equal(t, json.Number("9007199254740993"), result.Entries[0]["id"])
+			}
+		})
+	}
+}
+
+func TestOpenSearchSearchEntryPointsRejectPartialShards(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+	for _, tc := range []struct {
+		name string
+		run  func(context.Context, *OpenSearchConnector) error
+	}{
+		{name: "structured without total", run: func(ctx context.Context, c *OpenSearchConnector) error {
+			_, err := c.ExecuteQuery(ctx, "events", resource, &interfaces.ResourceDataQueryParams{})
+			return err
+		}},
+		{name: "raw DSL", run: func(ctx context.Context, c *OpenSearchConnector) error {
+			_, err := c.ExecuteRawQuery(ctx, &interfaces.Resource{SourceIdentifier: "events"}, map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+			return err
+		}},
+		{name: "legacy DSL", run: func(ctx context.Context, c *OpenSearchConnector) error {
+			_, err := c.ExecuteQueryWithDsl(ctx, &interfaces.Resource{SourceIdentifier: "events"}, `{"query":{"match_all":{}}}`)
+			return err
+		}},
+		{name: "single metric aggregation", run: func(ctx context.Context, c *OpenSearchConnector) error {
+			_, err := c.ExecuteQuery(ctx, "events", resource, &interfaces.ResourceDataQueryParams{
+				Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "sum"},
+			})
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const body = `{"timed_out":false,"_shards":{"total":2,"successful":1,"failed":0},"hits":{"hits":[]},"aggregations":{}}`
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(req *http.Request) (*http.Response, error) {
+					assert.Equal(t, "/events/_search", req.URL.Path)
+					assert.Equal(t, "false", req.URL.Query().Get("allow_partial_search_results"))
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			require.ErrorContains(t, tc.run(t.Context(), &OpenSearchConnector{client: client, enabled: true}), "incomplete index search")
+		})
 	}
 }
 
@@ -827,7 +878,7 @@ func TestOpenSearchConnectorExecuteQueryMultiMatchPhysicalFields(t *testing.T) {
 							"query": "example", "fields": []any{tc.wantPhysical}, "type": "phrase",
 						}}, body["query"])
 						return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
-							Body: io.NopCloser(strings.NewReader(`{"hits":{"total":{"value":0},"hits":[]},"aggregations":{"__value":{"value":0}}}`))}, nil
+							Body: io.NopCloser(strings.NewReader(`{` + completeSearchMetadata + `,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]},"aggregations":{"__value":{"value":0}}}`))}, nil
 					})})
 				require.NoError(t, err)
 				fields := map[string]*interfaces.Property{tc.field.Name: tc.field}
@@ -887,7 +938,7 @@ func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 						} else {
 							assert.NotContains(t, selector, "gap_policy")
 						}
-						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"aggregations":{"__vega_single_group":{"buckets":{}}}}`))}, nil
+						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{` + completeSearchMetadata + `,"aggregations":{"__vega_single_group":{"buckets":{}}}}`))}, nil
 					}),
 				})
 				require.NoError(t, err)
@@ -922,9 +973,9 @@ func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
 					if retained {
 						buckets["all"] = map[string]any{"doc_count": 3, "min_created": map[string]any{"value": 1792339200000}}
 					}
-					data, err := json.Marshal(map[string]any{"aggregations": map[string]any{singleHavingGroup: map[string]any{"buckets": buckets}}})
+					data, err := json.Marshal(map[string]any{singleHavingGroup: map[string]any{"buckets": buckets}})
 					require.NoError(t, err)
-					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(data)))}, nil
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{` + completeSearchMetadata + `,"aggregations":` + string(data) + `}`))}, nil
 				})})
 			require.NoError(t, err)
 			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "created", Type: interfaces.DataType_Datetime}}}

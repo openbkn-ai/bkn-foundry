@@ -35,7 +35,8 @@ const (
 )
 
 var (
-	_ interfaces.TableConnector = (*MariaDBConnector)(nil)
+	_ interfaces.TableConnector            = (*MariaDBConnector)(nil)
+	_ interfaces.TableReadSessionConnector = (*MariaDBConnector)(nil)
 
 	// SYSTEM_DBS are excluded from discovery when no databases are configured.
 	SYSTEM_DBS = []string{
@@ -279,6 +280,14 @@ func (c *MariaDBConnector) connectionString() string {
 // A failed ping closes the candidate pool before returning the error.
 func (c *MariaDBConnector) Connect(ctx context.Context) error {
 	return c.connect(ctx, 0)
+}
+
+// BeginReadTx 为流式查询建立只读的可重复读事务。
+func (c *MariaDBConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 }
 
 func (c *MariaDBConnector) connect(ctx context.Context, pingTimeout time.Duration) error {

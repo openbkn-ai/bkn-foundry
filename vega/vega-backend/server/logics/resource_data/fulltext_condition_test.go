@@ -64,7 +64,15 @@ func Test_validateFulltextConditions(t *testing.T) {
 		}
 	})
 
-	t.Run("过时索引不允许全文检索", func(t *testing.T) {
+	t.Run("只读索引允许全文检索", func(t *testing.T) {
+		resource := tableResource("vega-build-res-task")
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusReadOnly
+		if err := validateFulltextConditions(resource, matchCond, false); err != nil {
+			t.Fatalf("expected read-only local index to support full-text search, got %v", err)
+		}
+	})
+
+	t.Run("陈旧索引不允许全文检索", func(t *testing.T) {
 		resource := tableResource("vega-build-res-task")
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
 		if err := validateFulltextConditions(resource, matchCond, false); err == nil {

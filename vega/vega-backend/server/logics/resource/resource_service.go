@@ -883,7 +883,15 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 	previousFingerprint := ""
-	keyFieldsChanged := req.IndexConfig != nil && indexConfigKeyFieldsChanged(resource.IndexConfig, req.IndexConfig)
+	var primaryKeysChanged, incrementalKeysChanged bool
+	if req.IndexConfig != nil {
+		var previousConfig interfaces.ResourceIndexConfig
+		if resource.IndexConfig != nil {
+			previousConfig = *resource.IndexConfig
+		}
+		primaryKeysChanged = !slices.Equal(previousConfig.PrimaryKeyFields, req.IndexConfig.PrimaryKeyFields)
+		incrementalKeysChanged = !slices.Equal(previousConfig.IncrementalFields, req.IndexConfig.IncrementalFields)
+	}
 	if buildRelevantChanged {
 		previousFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
@@ -1023,30 +1031,28 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			return err
 		}
 	}
-	indexContractChanged := buildRelevantChanged && previousFingerprint != currentFingerprint &&
-		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable
-	if indexContractChanged {
-		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-			interfaces.ResourceLocalIndexStatusStale, resource.LocalIndexName, "")
+	nextIndexStatus := resource.LocalIndexStatus
+	if HasAvailableLocalIndex(resource) {
+		switch {
+		case buildRelevantChanged && previousFingerprint != currentFingerprint:
+			nextIndexStatus = interfaces.ResourceLocalIndexStatusStale
+		case resource.Category == interfaces.ResourceCategoryTable && primaryKeysChanged:
+			nextIndexStatus = interfaces.ResourceLocalIndexStatusReadOnly
+		}
+	}
+	clearCheckpoint := resource.SyncMark != "" && (primaryKeysChanged || incrementalKeysChanged)
+	if nextIndexStatus != resource.LocalIndexStatus || clearCheckpoint {
+		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID, nextIndexStatus, resource.LocalIndexName, "",
+			resource.UpdateTime, resource.UpdateTime)
 		if err != nil || !updated {
-			span.SetStatus(codes.Error, "Mark resource local index stale failed")
+			span.SetStatus(codes.Error, "Update resource local index state failed")
 			if err != nil {
-				otellog.LogError(ctx, "Mark resource local index stale failed", err)
+				otellog.LogError(ctx, "Update resource local index state failed", err)
 			}
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails("failed to mark resource local index stale")
+				WithErrorDetails("failed to update resource local index state")
 		}
-		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
-		resource.SyncMark = ""
-	} else if keyFieldsChanged {
-		if resource.SyncMark != "" {
-			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-				resource.LocalIndexStatus, resource.LocalIndexName, "")
-			if err != nil || !updated {
-				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-					WithErrorDetails("failed to clear resource incremental checkpoint")
-			}
-		}
+		resource.LocalIndexStatus = nextIndexStatus
 		resource.SyncMark = ""
 	}
 	if err := tx.Commit(); err != nil {
@@ -1088,17 +1094,6 @@ func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
 		}
 	}
 	return false
-}
-
-func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexConfig) bool {
-	if requested == nil {
-		return false
-	}
-	if current == nil {
-		return len(requested.PrimaryKeyFields) > 0 || len(requested.IncrementalFields) > 0
-	}
-	return !slices.Equal(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
-		!slices.Equal(current.IncrementalFields, requested.IncrementalFields)
 }
 
 func resourceLocalIndexMappingFingerprint(resource *interfaces.Resource) (string, error) {
@@ -1399,12 +1394,16 @@ func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx 
 	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
 }
 
-func (rs *resourceService) InternalUpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-	localIndexStatus string, localIndexName string, syncMark string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateLocalIndexState")
+func (rs *resourceService) InternalPublishLocalIndex(ctx context.Context, tx *sql.Tx, id, indexName, syncMark string,
+	expectedUpdateTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalPublishLocalIndex")
 	defer span.End()
 
-	return rs.ra.UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+	// Discovery also uses this version. Advance it so a scan based on the
+	// previously published index cannot commit after the replacement.
+	updateTime := max(time.Now().UnixMilli(), expectedUpdateTime+1)
+	return rs.ra.UpdateLocalIndexState(ctx, tx, id, interfaces.ResourceLocalIndexStatusAvailable,
+		indexName, syncMark, expectedUpdateTime, updateTime)
 }
 
 func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
@@ -1489,6 +1488,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 			WithErrorDetails(fmt.Sprintf("invalid discovered resource index configuration: %v", err))
 	}
 
+	resource.UpdateTime = max(resource.UpdateTime, expectedUpdateTime+1)
 	rowsAffected, err := rs.ra.UpdateDiscoveryMetadata(ctx, tx, resource, expectedUpdateTime)
 	if err != nil {
 		return err
@@ -1496,9 +1496,9 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	if rowsAffected == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if (previousFingerprintErr != nil || previousFingerprint != currentFingerprint) && current.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
+	if (previousFingerprintErr != nil || previousFingerprint != currentFingerprint) && HasAvailableLocalIndex(current) {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, current.ID,
-			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "")
+			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "", resource.UpdateTime, resource.UpdateTime)
 		if err != nil || !updated {
 			span.SetStatus(codes.Error, "Mark discovered resource local index stale failed")
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,

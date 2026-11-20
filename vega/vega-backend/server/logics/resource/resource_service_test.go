@@ -119,23 +119,25 @@ func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 	mockRA := vmock.NewMockResourceAccess(ctrl)
 	service := &resourceService{ra: mockRA}
 	tx := &sql.Tx{}
-	resource := &interfaces.Resource{ID: "resource-1"}
+	resource := &interfaces.Resource{ID: "resource-1", UpdateTime: 42}
 	mockRA.EXPECT().GetByID(gomock.Any(), tx, "resource-1").Return(resource, nil)
 	mockRA.EXPECT().UpdateLocalIndexState(
 		gomock.Any(), tx, "resource-1",
 		interfaces.ResourceLocalIndexStatusAvailable,
 		"index-v1",
 		`{"mode":"batch","cursor":[10]}`,
+		resource.UpdateTime,
+		gomock.Cond(func(version int64) bool { return version > resource.UpdateTime }),
 	).Return(true, nil)
 
 	got, err := service.InternalGetByID(context.Background(), tx, "resource-1")
 	require.NoError(t, err)
 	assert.Same(t, resource, got)
-	updated, err := service.InternalUpdateLocalIndexState(
+	updated, err := service.InternalPublishLocalIndex(
 		context.Background(), tx, "resource-1",
-		interfaces.ResourceLocalIndexStatusAvailable,
 		"index-v1",
 		`{"mode":"batch","cursor":[10]}`,
+		resource.UpdateTime,
 	)
 	require.NoError(t, err)
 	assert.True(t, updated)
@@ -3379,6 +3381,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return nil, nil
 			})
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+		var version int64
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
 				if got.LocalIndexName != "vega-build-r1-task-1" {
@@ -3387,13 +3390,19 @@ func TestResourceServiceUpdate(t *testing.T) {
 				if len(got.SchemaDefinition) != 1 || len(got.SchemaDefinition[0].Features) != 2 {
 					t.Fatalf("expected updated schema features, got %#v", got.SchemaDefinition)
 				}
+				version = got.UpdateTime
 				return 1, nil
 			})
 		mockRA.EXPECT().UpdateLocalIndexState(
 			gomock.Any(), gomock.Not(nil), "r1",
 			interfaces.ResourceLocalIndexStatusStale,
-			"vega-build-r1-task-1", "",
-		).Return(true, nil)
+			"vega-build-r1-task-1", "", gomock.Any(), gomock.Any(),
+		).DoAndReturn(func(_ context.Context, _ *sql.Tx, _, _, _, _ string, expected, updated int64) (bool, error) {
+			assert.Positive(t, version)
+			assert.Equal(t, version, expected)
+			assert.Equal(t, version, updated)
+			return true, nil
+		})
 		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
@@ -3425,7 +3434,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	t.Run("update marks local index stale when key fields and schema features both change", func(t *testing.T) {
+	t.Run("update invalidates a read-only local index when key fields and schema features both change", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -3435,7 +3444,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockRA.EXPECT().UpdateLocalIndexState(
 			gomock.Any(), gomock.Not(nil), "r1",
 			interfaces.ResourceLocalIndexStatusStale,
-			"vega-build-r1-task-1", "",
+			"vega-build-r1-task-1", "", gomock.Any(), gomock.Any(),
 		).Return(true, nil)
 
 		err := updateResourceForTest(t, rs, &interfaces.Resource{
@@ -3443,7 +3452,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
-			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
 			LocalIndexName:   "vega-build-r1-task-1",
 			SyncMark:         `{"mode":"batch","cursor":[1]}`,
 			SourceIdentifier: "public.orders",
@@ -3467,6 +3476,48 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+	})
+	t.Run("update distinguishes primary keys from incremental keys", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, status, previousMark, wantStatus string
+			primary, incremental                   []string
+			writeState                             bool
+		}{
+			{"new primary key makes a published index read-only even without a checkpoint", "available", "", "readonly", []string{"new_id"}, nil, true},
+			{"new incremental key clears the checkpoint while keeping the index writable", "available", "previous", "available", []string{"id"}, []string{"new_id"}, true},
+			{"new incremental key cannot make a read-only index writable", "readonly", "", "readonly", []string{"id"}, []string{"new_id"}, false},
+			{"changing keys on an unavailable index keeps it unavailable", "unavailable", "", "unavailable", []string{"new_id"}, nil, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				rs, ra, ps, _, _, cs, bta := newTestService(t)
+				expectResourceServiceTransaction(t, rs, true)
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+				cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+				ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
+				if tc.writeState {
+					ra.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1",
+						tc.wantStatus, "old-index", "", gomock.Any(), gomock.Any()).Return(true, nil)
+				}
+				resource := &interfaces.Resource{
+					ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "table",
+					LocalIndexStatus: tc.status, LocalIndexName: "old-index", SyncMark: tc.previousMark,
+					SourceIdentifier: "public.orders",
+					SchemaDefinition: []*interfaces.Property{
+						{Name: "id", Type: interfaces.DataType_Integer}, {Name: "new_id", Type: interfaces.DataType_Integer},
+					},
+					IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"id"}},
+				}
+				err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
+					CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "table", SourceIdentifier: "public.orders",
+					IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: tc.primary, IncrementalFields: tc.incremental},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantStatus, resource.LocalIndexStatus)
+				assert.Equal(t, "old-index", resource.LocalIndexName)
+				assert.Empty(t, resource.SyncMark)
+			})
+		}
 	})
 	t.Run("update rejects index config change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
@@ -3533,7 +3584,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return 1, nil
 			})
 		mockRA.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1",
-			interfaces.ResourceLocalIndexStatusAvailable, "vega-build-r1-task-1", "").Return(true, nil)
+			interfaces.ResourceLocalIndexStatusAvailable, "vega-build-r1-task-1", "", gomock.Any(), gomock.Any()).Return(true, nil)
 		err := updateResourceForTest(t, rs, &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
@@ -4154,6 +4205,30 @@ func TestResourceServiceDiscoveryDoesNotSaveStatistics(t *testing.T) {
 }
 
 func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
+	t.Run("discovery based on a superseded version cannot invalidate a newly published index", func(t *testing.T) {
+		rs, ra, _, _, _, _, _ := newTestService(t)
+		expectResourceServiceTransaction(t, rs, false)
+		current := &interfaces.Resource{
+			ID: "r1", UpdateTime: 42, LocalIndexName: "old-index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}},
+		}
+		refreshed := &interfaces.Resource{
+			ID: current.ID, UpdateTime: 42, LocalIndexName: current.LocalIndexName, LocalIndexStatus: current.LocalIndexStatus,
+			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
+		}
+		gomock.InOrder(
+			ra.EXPECT().GetByID(gomock.Any(), gomock.Not(nil), current.ID).Return(current, nil),
+			// A full build advances the version after the discovery read.
+			ra.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), gomock.Not(nil), refreshed, current.UpdateTime).Return(int64(0), nil),
+		)
+
+		err := rs.InternalUpdateDiscoveryMetadata(t.Context(), nil, refreshed, current.UpdateTime)
+
+		failure := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
+		assert.Equal(t, http.StatusConflict, failure.HTTPCode)
+		assert.Equal(t, int64(43), refreshed.UpdateTime)
+	})
+
 	t.Run("API resources are not updated by discovery", func(t *testing.T) {
 		rs, ra, _, _, _, _, _ := newTestService(t)
 		ra.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -4171,9 +4246,10 @@ func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
 			{"invalid shape", "corrupt-old-columns"}, {"explicit null", nil},
 			{"typed nil", []interfaces.TableColumnMeta(nil)}, {"JSON null", json.RawMessage("null")},
 		} {
-			for _, available := range []bool{false, true} {
+			for _, status := range []string{interfaces.ResourceLocalIndexStatusUnavailable, interfaces.ResourceLocalIndexStatusAvailable, interfaces.ResourceLocalIndexStatusReadOnly} {
+				readable := status != interfaces.ResourceLocalIndexStatusUnavailable
 				for _, owned := range []bool{false, true} {
-					t.Run(fmt.Sprintf("%s/available=%t/owned=%t", raw.name, available, owned), func(t *testing.T) {
+					t.Run(fmt.Sprintf("%s/status=%s/owned=%t", raw.name, status, owned), func(t *testing.T) {
 						service, access, _, _, _, _, _ := newTestService(t)
 						var tx *sql.Tx
 						var txMatcher any
@@ -4183,10 +4259,6 @@ func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
 						} else {
 							tx = &sql.Tx{}
 							txMatcher = tx
-						}
-						status := interfaces.ResourceLocalIndexStatusUnavailable
-						if available {
-							status = interfaces.ResourceLocalIndexStatusAvailable
 						}
 						current := &interfaces.Resource{ID: "r1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: status, LocalIndexName: "index-r1", SyncMark: "old-checkpoint",
 							SourceMetadata: map[string]any{"columns": raw.value}, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", OriginalType: "int", Type: interfaces.DataType_Integer, Filterable: new(false)}},
@@ -4204,11 +4276,12 @@ func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
 							assert.Equal(t, "int", columns[0].Type)
 							return 1, nil
 						})
-						if available {
-							access.EXPECT().UpdateLocalIndexState(gomock.Any(), txMatcher, "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(true, nil)
+						if readable {
+							access.EXPECT().UpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
+								interfaces.ResourceLocalIndexStatusStale, "index-r1", "", int64(43), int64(43)).Return(true, nil)
 						}
 						require.NoError(t, service.InternalUpdateDiscoveryMetadata(t.Context(), tx, refreshed, 42))
-						if available {
+						if readable {
 							assert.Equal(t, interfaces.ResourceLocalIndexStatusStale, refreshed.LocalIndexStatus)
 							assert.Empty(t, refreshed.SyncMark)
 						} else {
@@ -4251,7 +4324,8 @@ func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
 		refreshed := &interfaces.Resource{ID: "r1", SourceMetadata: map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}}, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
 		access.EXPECT().GetByID(gomock.Any(), gomock.Not(nil), "r1").Return(current, nil)
 		access.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), gomock.Not(nil), refreshed, int64(42)).Return(int64(1), nil)
-		access.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(false, errors.New("state write failed"))
+		access.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1",
+			interfaces.ResourceLocalIndexStatusStale, "index-r1", "", int64(43), int64(43)).Return(false, errors.New("state write failed"))
 		err := service.InternalUpdateDiscoveryMetadata(t.Context(), nil, refreshed, 42)
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
@@ -4300,7 +4374,8 @@ func TestResourceServiceInternalUpdateDiscoveryMetadata(t *testing.T) {
 					return 1, nil
 				})
 			if addFields {
-				ra.EXPECT().UpdateLocalIndexState(gomock.Any(), tx, "r1", interfaces.ResourceLocalIndexStatusStale, "index-r1", "").Return(true, nil)
+				ra.EXPECT().UpdateLocalIndexState(gomock.Any(), tx, "r1",
+					interfaces.ResourceLocalIndexStatusStale, "index-r1", "", int64(43), int64(43)).Return(true, nil)
 			}
 			require.NoError(t, rs.InternalUpdateDiscoveryMetadata(t.Context(), tx, refreshed, 42))
 			if addFields {

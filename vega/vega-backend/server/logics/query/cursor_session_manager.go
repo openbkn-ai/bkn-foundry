@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,7 @@ import (
 type cursorSessionManager struct {
 	mu                    sync.Mutex
 	sessions              map[string]*interfaces.CursorSession
+	reclaimRequested      chan struct{}
 	maxSessions           int
 	maxSessionsPerAccount int
 }
@@ -47,11 +49,14 @@ func ConfigureCursorSessions(maxSessions, maxSessionsPerAccount int) {
 }
 
 func init() {
-	go rawQueryCursorSessions.reclaimExpired()
+	go rawQueryCursorSessions.reclaimExpired(context.Background())
 }
 
 func newCursorSessionManager(maxSessions, maxSessionsPerAccount int) *cursorSessionManager {
-	m := &cursorSessionManager{sessions: make(map[string]*interfaces.CursorSession)}
+	m := &cursorSessionManager{
+		sessions:         make(map[string]*interfaces.CursorSession),
+		reclaimRequested: make(chan struct{}, 1),
+	}
 	m.configure(maxSessions, maxSessionsPerAccount)
 	return m
 }
@@ -73,20 +78,34 @@ func (m *cursorSessionManager) configure(maxSessions, perAccount int) {
 	m.mu.Unlock()
 }
 
-func (m *cursorSessionManager) capacityErrorLocked(quotaOwnerID string) error {
+func (m *cursorSessionManager) register(session *interfaces.CursorSession) (int, error) {
+	const reclaimThreshold = 0.8
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if len(m.sessions) >= m.maxSessions {
-		return errCursorSessionLimitReached
+		m.requestReclaim()
+		return 0, errCursorSessionLimitReached
 	}
-	count := 0
-	for _, session := range m.sessions {
-		if session.QuotaOwnerID == quotaOwnerID {
-			count++
+	accountCount := 0
+	for _, existing := range m.sessions {
+		if existing.QuotaOwnerID == session.QuotaOwnerID {
+			accountCount++
 		}
 	}
-	if count >= m.maxSessionsPerAccount {
-		return errCursorAccountLimitReached
+	if accountCount >= m.maxSessionsPerAccount {
+		m.requestReclaim()
+		return 0, errCursorAccountLimitReached
 	}
-	return nil
+
+	m.sessions[session.ID] = session
+	globalThreshold := int(math.Ceil(float64(m.maxSessions) * reclaimThreshold))
+	accountThreshold := int(math.Ceil(float64(m.maxSessionsPerAccount) * reclaimThreshold))
+	if len(m.sessions) >= globalThreshold || accountCount+1 >= accountThreshold {
+		m.requestReclaim()
+	}
+	return len(m.sessions), nil
 }
 
 func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs []string, limit, keepAliveSec, queryTimeoutSec int) (*interfaces.CursorSession, error) {
@@ -111,17 +130,10 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		CreatedAtSec:    now,
 		ExpiresAtSec:    now + int64(keepAliveSec),
 	}
-	m.mu.Lock()
-	expired := m.removeExpiredLocked(time.Now().Unix())
-	if err := m.capacityErrorLocked(accountID); err != nil {
-		m.mu.Unlock()
-		closeSQLCursorResources(expired...)
+	activeSessionsLen, err := m.register(session)
+	if err != nil {
 		return nil, err
 	}
-	m.sessions[session.ID] = session
-	activeSessionsLen := len(m.sessions)
-	m.mu.Unlock()
-	closeSQLCursorResources(expired...)
 	logger.Debugf("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
 	return session, nil
 }
@@ -151,17 +163,10 @@ func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string
 		CreatedAtSec:           now,
 		ExpiresAtSec:           now + int64(keepAliveSec),
 	}
-	m.mu.Lock()
-	expired := m.removeExpiredLocked(now)
-	if err := m.capacityErrorLocked(quotaOwnerID); err != nil {
-		m.mu.Unlock()
-		closeSQLCursorResources(expired...)
+	activeSessionsLen, err := m.register(session)
+	if err != nil {
 		return nil, err
 	}
-	m.sessions[session.ID] = session
-	activeSessionsLen := len(m.sessions)
-	m.mu.Unlock()
-	closeSQLCursorResources(expired...)
 	logger.Debugf("Cursor session created: catalog_id=%s, query_format=resource_data, active_sessions_len=%d", session.CatalogID, activeSessionsLen)
 	return session, nil
 }
@@ -174,16 +179,25 @@ func cloneResourceDataQueryParams(params *interfaces.ResourceDataQueryParams) *i
 	return &copy
 }
 
-// reclaimExpired bounds memory usage for cursors that are never continued.
-// get also checks expiry, so the periodic reclaim is only best-effort cleanup.
-func (m *cursorSessionManager) reclaimExpired() {
+// reclaimExpired runs a single sweep after a wake-up or periodic tick.
+func (m *cursorSessionManager) reclaimExpired(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	for now := range ticker.C {
-		m.mu.Lock()
-		expired := m.removeExpiredLocked(now.Unix())
-		m.mu.Unlock()
-		closeSQLCursorResources(expired...)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		case <-m.reclaimRequested:
+		}
+		m.closeExpiredSessions(time.Now().Unix())
+	}
+}
+
+func (m *cursorSessionManager) requestReclaim() {
+	select {
+	case m.reclaimRequested <- struct{}{}:
+	default:
 	}
 }
 
@@ -198,12 +212,9 @@ func (m *cursorSessionManager) acquire(cursor string) (*interfaces.CursorSession
 		return nil, false
 	}
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
-		m.removeLocked(cursor)
-		activeSessions := len(m.sessions)
-		m.mu.Unlock()
-		closeSQLCursorResources(session)
+		m.requestReclaim()
 		session.Unlock()
-		logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
+		m.mu.Unlock()
 		return nil, false
 	}
 	m.mu.Unlock()
@@ -249,29 +260,37 @@ func (m *cursorSessionManager) closeForAccount(accountID, cursor string) error {
 		m.mu.Unlock()
 		return errCursorSessionBusy
 	}
+	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
+		m.requestReclaim()
+		session.Unlock()
+		m.mu.Unlock()
+		return errCursorSessionNotFound
+	}
 	defer session.Unlock()
-	expired := time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec)
 	m.removeLocked(cursor)
 	m.mu.Unlock()
 	closeSQLCursorResources(session)
-	if expired {
-		return errCursorSessionNotFound
-	}
 	return nil
 }
 
 // closeSQLCursorResources 在移除会话后调用；网络资源清理不持有会话管理器的全局锁。
-func closeSQLCursorResources(sessions ...*interfaces.CursorSession) {
-	for _, session := range sessions {
-		if session.SQLCancel != nil {
-			session.SQLCancel()
+func closeSQLCursorResources(session *interfaces.CursorSession) {
+	if session.ReadSession != nil {
+		if err := session.ReadSession.Close(); err != nil {
+			logger.Warnf("Failed to close source query page session")
 		}
-		if session.SQLRows != nil {
-			_ = session.SQLRows.Close()
-		}
-		if session.SQLConnector != nil {
-			_ = session.SQLConnector.Close(context.Background())
-		}
+	}
+	if session.ReadConnector != nil {
+		_ = session.ReadConnector.Close(context.Background())
+	}
+	if session.SQLCancel != nil {
+		session.SQLCancel()
+	}
+	if session.SQLRows != nil {
+		_ = session.SQLRows.Close()
+	}
+	if session.SQLConnector != nil {
+		_ = session.SQLConnector.Close(context.Background())
 	}
 }
 
@@ -307,23 +326,27 @@ func (m *cursorSessionManager) removeLocked(cursor string) (*interfaces.CursorSe
 	return session, true
 }
 
-func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) []*interfaces.CursorSession {
-	var removed []*interfaces.CursorSession
+func (m *cursorSessionManager) closeExpiredSessions(nowSec int64) {
+	var expired []*interfaces.CursorSession
+	m.mu.Lock()
 	for id, session := range m.sessions {
 		// A page execution holds the session lock. Do not remove a session until that
 		// execution finishes, otherwise it can return an unresolvable cursor.
 		if !session.TryLock() {
 			continue
 		}
-		expired := nowSec >= atomic.LoadInt64(&session.ExpiresAtSec)
-		session.Unlock()
-		if expired {
-			m.removeLocked(id)
-			removed = append(removed, session)
+		if nowSec >= atomic.LoadInt64(&session.ExpiresAtSec) {
+			delete(m.sessions, id)
+			expired = append(expired, session)
 			logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
 		}
+		session.Unlock()
 	}
-	return removed
+	m.mu.Unlock()
+
+	for _, session := range expired {
+		closeSQLCursorResources(session)
+	}
 }
 
 func cursorPagingResponse(session *interfaces.CursorSession) *interfaces.PagingResponse {

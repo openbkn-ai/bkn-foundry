@@ -739,11 +739,12 @@ func TestMariaDBConvertValue(t *testing.T) {
 	})
 }
 
-func TestMariadbQueryError(t *testing.T) {
+func TestMariaDBConnectorClassifyQueryError(t *testing.T) {
+	connector := &MariaDBConnector{}
 	for _, code := range []uint16{1052, 1054, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1222, 1241, 1271, 1473, 1582, 1583, 1584, 3028, 3029, 3065} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			cause := &mysql.MySQLError{Number: code, Message: "private source SQL and values"}
-			err := mariadbQueryError(fmt.Errorf("query failed: %w", cause))
+			err := connector.ClassifyQueryError(fmt.Errorf("query failed: %w", cause))
 			var failure *interfaces.SourceQueryInvalidParameterError
 			require.ErrorAs(t, err, &failure)
 			assert.ErrorIs(t, err, cause)
@@ -759,7 +760,7 @@ func TestMariadbQueryError(t *testing.T) {
 		})
 	}
 	for _, cause := range []error{context.Canceled, driver.ErrBadConn, &mysql.MySQLError{Number: 1040, Message: "connection limit"}, &mysql.MySQLError{Number: 1146, Message: "missing physical table"}, &mysql.MySQLError{Number: 1205, Message: "lock timeout"}} {
-		err := mariadbQueryError(cause)
+		err := connector.ClassifyQueryError(cause)
 		assert.ErrorIs(t, err, cause)
 		_, ok := interfaces.RequestSideQueryError(err)
 		assert.False(t, ok)
@@ -1420,6 +1421,42 @@ func TestSQLBuilderArguments(t *testing.T) {
 	assert.Equal(t, json.Number("1"), args[0])
 	_, err = sqlBuilderArguments([]any{json.Number("1e10000")})
 	require.Error(t, err)
+}
+
+func TestMariaDBConnectorOpenTableRead(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		assert.NoError(t, db.Close())
+	})
+	connector := &MariaDBConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "data", Type: interfaces.DataType_Json},
+			{Name: "payload", Type: interfaces.DataType_Binary},
+		},
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"data", "payload"}).AddRow([]byte("null"), nil)).
+		RowsWillBeClosed()
+	mock.ExpectRollback()
+
+	session, err := connector.OpenTableRead(t.Context(), resource, &interfaces.ResourceDataQueryParams{})
+	require.NoError(t, err)
+	defer func() { _ = session.Close() }()
+	page, err := session.ReadPage(t.Context(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{
+		"data": nil,
+		"payload": interfaces.ResourceValue{
+			Mode:   interfaces.ResourceValueModeUnavailable,
+			Reason: interfaces.ResourceValueReasonNotRequested,
+		},
+	}}, page.Entries)
+	require.NoError(t, session.Close())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestMariaDBConnectorOpenSQLBuilder(t *testing.T) {
