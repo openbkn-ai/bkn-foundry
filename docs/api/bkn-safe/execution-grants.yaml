@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Background execution delegation (internal)
+  version: 0.1.0
+  description: >-
+    ClusterIP-only. A service that runs a background execution for a person,
+    such as a scenario regression, issues a short-lived credential while that
+    person's own sign-in is still valid. The credential is bound to one
+    knowledge network, one Agent and one run. It resolves to the delegator and
+    holds no permission of its own: every verification rechecks that the
+    delegator is enabled and may still view_detail the network, and services
+    downstream check the delegator's live permissions as usual. Only the
+    secret's hash is stored. Never route these paths through the gateway.
+paths:
+  /api/safe/in/v1/execution-grants:
+    post:
+      summary: Issue a credential for one run
+      description: >-
+        The credential is returned once. A run has one grant: an id or a
+        (project_id, run_id) already issued for, revoked included, returns 409,
+        so a caller that lost the answer goes on without one or issues for a new
+        run. Grant ids carry no underscore.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Issue'
+      responses:
+        '201':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issued'
+        '400': {description: Invalid request, or a lifetime over six hours}
+        '403': {description: Delegator unknown, disabled, not a person, or may not view the network}
+        '409': {description: The id or the run already has a grant, or was revoked before issue}
+        '503': {description: Authorization or storage dependency unavailable}
+  /api/safe/in/v1/execution-grants/{id}:
+    delete:
+      summary: Revoke a grant at once
+      description: >-
+        Idempotent. Revoking an id not issued yet leaves a tombstone, so a late
+        issue cannot bring it back.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, run_id]
+              properties:
+                project_id: {type: string}
+                run_id: {type: string}
+      responses:
+        '204': {description: Revoked}
+        '400': {description: Invalid request}
+        '409': {description: The grant belongs to another project or run}
+  /api/safe/v1/execution-grants/introspect:
+    post:
+      summary: Verify a credential
+      description: >-
+        Mirrors OAuth2 introspection: 200 with active false on any failure and
+        no reason. A caller must hold the request to the returned kn_id and
+        agent_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: {type: string, description: 'bex_<grant id>_<secret>'}
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active]
+                properties:
+                  active: {type: boolean}
+                  sub: {type: string, description: The delegator}
+                  subject_name: {type: string}
+                  account_type: {type: string}
+                  delegation_id: {type: string, description: The grant id, for audit and trace}
+                  project_id: {type: string}
+                  run_id: {type: string}
+                  kn_id: {type: string}
+                  agent_id: {type: string}
+components:
+  schemas:
+    Issue:
+      type: object
+      required: [id, project_id, run_id, delegator_id, kn_id, agent_id, ttl_seconds]
+      properties:
+        id: {type: string, maxLength: 64, pattern: '^[A-Za-z0-9.:-]+$'}
+        project_id: {type: string, maxLength: 128}
+        run_id: {type: string, maxLength: 128}
+        delegator_id: {type: string, maxLength: 64}
+        kn_id: {type: string, maxLength: 128}
+        agent_id: {type: string, maxLength: 128}
+        ttl_seconds: {type: integer, minimum: 1, maximum: 21600}
+    Issued:
+      type: object
+      properties:
+        id: {type: string}
+        credential: {type: string, description: 'bex_<id>_<secret>, shown once'}
+        expires_at: {type: string, format: date-time}

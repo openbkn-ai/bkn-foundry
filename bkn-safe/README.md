@@ -317,6 +317,23 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 bootstrap Secret 的 bkn-agent Chart/镜像；不要单独删库或回滚到会重新创建
 账户的旧版 Safe。旧 Helm keep Secret 可留存，不再被新版本引用。
 
+## Background execution delegation
+
+The internal [execution-grant API](../docs/api/bkn-safe/execution-grants.yaml)
+lets a service run a background execution for a person after that person's own
+sign-in has lapsed, for example a scenario regression that outlasts the access
+token. While the person's token is still valid, the service issues a short-lived
+`bex_` credential bound to one knowledge network, one Agent and one run (at most
+six hours). The credential resolves to the delegator and holds no permission of
+its own: every introspection rechecks that the delegator is an enabled person who
+may still `view_detail` the network, and the services it reaches check the
+delegator's live permissions as usual. Only the secret's hash is stored; revoking
+clears it and leaves a tombstone, so a late issue cannot restore the grant.
+Callers that accept the credential must hold each request to the returned
+`kn_id` and `agent_id`. The `execution_grants` table is created at startup;
+[`20261120-execution-grants.sql`](server/migrations/20261120-execution-grants.sql)
+applies the same schema by hand.
+
 ## Project build delegation (K4)
 
 The internal [build-grant API](../docs/api/bkn-safe/build-grants.yaml) provides

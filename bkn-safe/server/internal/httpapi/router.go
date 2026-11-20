@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/buildgrant"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/decisionlog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/executiongrant"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/oauthorigin"
@@ -140,6 +141,7 @@ func New(deps Deps) *gin.Engine {
 		if deps.Enforcer != nil {
 			registerProxyGrantSources(r, proxygrant.New(deps.DB, deps.Enforcer))
 			registerBuildGrants(r, buildgrant.New(deps.DB, deps.Enforcer))
+			registerExecutionGrants(r, executiongrant.New(deps.DB, deps.Enforcer))
 			permissionRequests = permissionrequest.New(deps.DB, deps.Enforcer, deps.PermissionRequestResources)
 		}
 	}
