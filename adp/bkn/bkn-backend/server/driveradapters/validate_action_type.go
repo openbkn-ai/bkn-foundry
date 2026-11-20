@@ -110,8 +110,9 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 
 	// Validate conditions and parameters according to the object type binding.
 	if actionType.ObjectTypeID == "" && strictMode {
-		// Conditions must be empty when no object type is bound.
-		if actionType.Condition != nil {
+		// Tool actions stay unbound; their optional condition must declare the
+		// object type it guards instead of relying on the action binding.
+		if actionType.Condition != nil && actionType.Condition.ObjectTypeID == "" {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType", nil)
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)

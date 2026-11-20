@@ -84,6 +84,24 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context, quer
 		response.Actions, response.TotalCount = []interfaces.ActionParam{definition}, 1
 		return response, nil
 	}
+	if action.OperationConfig.Type == "tool" && action.Condition != nil &&
+		len(query.InstanceIdentities) > 0 && query.RelationTarget == nil && len(query.ObjectInput) == 0 {
+		// A conditioned tool schema requires explicit identities. Preview echoes
+		// them without evaluating applicability, exactly as object previews skip
+		// their condition; enforcement stays at execution. Tool parameters never
+		// read instance data, so no target lookup is needed here.
+		response.Actions = make([]interfaces.ActionParam, 0, len(query.InstanceIdentities))
+		for _, identity := range query.InstanceIdentities {
+			item, err := buildActionFromInstanceData(nil, &action, query.DynamicParams)
+			if err != nil {
+				return response, err
+			}
+			item.InstanceIdentity = identity
+			response.Actions = append(response.Actions, item)
+		}
+		response.TotalCount = len(response.Actions)
+		return response, nil
+	}
 	// A preview may load explicit targets, but input-dependent applicability is
 	// enforced only at execution, after the caller has received the schema.
 	preview := action

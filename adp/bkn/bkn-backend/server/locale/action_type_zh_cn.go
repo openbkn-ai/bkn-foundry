@@ -27,7 +27,7 @@ var actionTypeZhCN = i18n.I18nMessages{
 		"BknBackend.ActionType.InternalError.CheckActionTypeIfExistFailed":                      "检查行动类名称是否存在失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"BknBackend.ActionType.InternalError.GetActionTypesByIDsFailed":                         "按ID获取行动类失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"BknBackend.ActionType.InternalError.InsertOpenSearchDataFailed":                        "行动类概念索引插入失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
-		"BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType":             "未绑定对象类的行动类不能包含行动条件。",
+		"BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType":             "未绑定对象类的行动条件必须声明条件自身的对象类。",
 		"BknBackend.ActionType.InvalidParameter.Detail.PropertyValueRequiresObjectType":         "未绑定对象类的行动类不能从数据属性获取参数值。",
 		"BknBackend.ActionType.InvalidParameter.Detail.ParameterNameRequired":                   "行动类 {{.actionType}} 存在未命名的行动资源参数。",
 		"BknBackend.ActionType.InvalidParameter.Detail.ConditionOperationRequired":              "行动条件必须指定操作符。",
