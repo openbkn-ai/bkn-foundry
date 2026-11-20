@@ -3031,6 +3031,14 @@ def test_an_execution_credential_runs_for_its_delegator_on_its_network_only(monk
             other_agent = {**BODY, "agent_id": "eval_assistant"}
             assert (await client.post(URL, json=other_agent, headers=DELEGATED)).status_code == 403
             assert len(calls) == 1
+            # A run of the same person on another network is not reached with it,
+            # neither read nor cancelled; the person's own sign-in reaches it.
+            elsewhere = {**other_network, "client_request_id": "request-2"}
+            response = await client.post(URL, json=elsewhere, headers=AUTH)
+            other_run = parse_sse(response.text)[0][1]["run_id"]
+            assert (await client.get(f"{URL}/{other_run}", headers=DELEGATED)).status_code == 404
+            assert (await client.post(f"{URL}/{other_run}/cancel", headers=DELEGATED)).status_code == 404
+            assert (await client.get(f"{URL}/{other_run}", headers=AUTH)).status_code == 200
 
     asyncio.run(run())
 

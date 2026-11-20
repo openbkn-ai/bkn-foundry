@@ -116,6 +116,14 @@ async def _owned(session, run_id, account):
     ):
         raise not_found("task", run_id)
     kn_id = info["request"]["context"]["kn_id"]
+    # An execution credential reaches only runs on its network and Agent: any
+    # other run of the same person is not there for it.
+    if account.delegation is not None and (
+        info["protocol"] != _PROTOCOL
+        or kn_id != account.delegation.kn_id
+        or task.agent_id != account.delegation.agent_id
+    ):
+        raise not_found("task", run_id)
     if info["protocol"] == METRIC_PROTOCOL:
         if task.agent_id != METRIC_AGENT_ID or not info.get("metric_request"):
             raise not_found("task", run_id)
