@@ -97,7 +97,7 @@ func judgeResponseFormat() map[string]any {
 // judgeAnswer asks the judge, as the runner, whether answer answers question, and waits for it
 // until the deadline. It returns the judgement, or the code of why there is none: the judge could
 // not be run, failed or did not finish (judge_unavailable), or said what its schema does not allow
-// or named a need it was not given (judge_invalid).
+// (judge_invalid).
 func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.AccountInfo, question string,
 	expect string, answer string, uses []interfaces.BknAgentToolUse, needs []interfaces.ReleaseItem, names []judgeName,
 	language string) (*judgeOutput, string) {
@@ -140,11 +140,11 @@ func (s *regressionService) judgeAnswer(ctx context.Context, runner interfaces.A
 	if err := json.Unmarshal([]byte(task.Output), &out); err != nil || !slices.Contains(verdicts, out.Verdict) {
 		return nil, interfaces.REGRESSION_CODE_JUDGE_INVALID
 	}
-	for _, used := range out.UsedNeeds {
-		if !slices.ContainsFunc(needs, func(n interfaces.ReleaseItem) bool { return n.Kind == used.Kind && n.ID == used.ID }) {
-			return nil, interfaces.REGRESSION_CODE_JUDGE_INVALID
-		}
-	}
+	// An answer may rest on more than the question lists, as a contract's invoices rest on the
+	// invoices: that leaves the verdict standing, and only the needs it was given are kept.
+	out.UsedNeeds = slices.DeleteFunc(out.UsedNeeds, func(used interfaces.RequirementItemRef) bool {
+		return !slices.ContainsFunc(needs, func(n interfaces.ReleaseItem) bool { return n.Kind == used.Kind && n.ID == used.ID })
+	})
 	return &out, ""
 }
 
