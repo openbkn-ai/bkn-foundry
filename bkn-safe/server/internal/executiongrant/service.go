@@ -147,9 +147,10 @@ func (s *Service) delegator(ctx context.Context, id, kn string) (*model.User, er
 	return &user, nil
 }
 
-// Issue creates a grant and returns its credential once. An id already used,
-// revoked included, is a conflict: the credential cannot be shown again, so a
-// caller that lost the answer issues under a new id.
+// Issue creates a grant and returns its credential once. A run has one grant:
+// an id or a run already issued for, revoked included, is a conflict, since the
+// credential cannot be shown again. A caller that lost the answer goes on
+// without one, or issues for a new run.
 func (s *Service) Issue(ctx context.Context, r IssueRequest) (*Issued, error) {
 	if len(r.ID) == 0 || len(r.ID) > 64 || !grantIDPattern.MatchString(r.ID) || !valid(r.ProjectID, 128) || !valid(r.RunID, 128) ||
 		!valid(r.DelegatorID, 64) || !valid(r.KnID, 128) || !valid(r.AgentID, 128) ||

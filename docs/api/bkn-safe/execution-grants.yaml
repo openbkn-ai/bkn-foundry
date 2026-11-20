@@ -16,8 +16,10 @@ paths:
     post:
       summary: Issue a credential for one run
       description: >-
-        The credential is returned once. An id already used, revoked included,
-        returns 409; issue under a new id. Grant ids carry no underscore.
+        The credential is returned once. A run has one grant: an id or a
+        (project_id, run_id) already issued for, revoked included, returns 409,
+        so a caller that lost the answer goes on without one or issues for a new
+        run. Grant ids carry no underscore.
       requestBody:
         required: true
         content:
@@ -33,7 +35,7 @@ paths:
                 $ref: '#/components/schemas/Issued'
         '400': {description: Invalid request, or a lifetime over six hours}
         '403': {description: Delegator unknown, disabled, not a person, or may not view the network}
-        '409': {description: Id or run already used, or revoked before issue}
+        '409': {description: The id or the run already has a grant, or was revoked before issue}
         '503': {description: Authorization or storage dependency unavailable}
   /api/safe/in/v1/execution-grants/{id}:
     delete:

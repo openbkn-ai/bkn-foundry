@@ -187,6 +187,12 @@ func TestIssueChecksTheDelegatorAndTheRequest(t *testing.T) {
 	if _, err := s.Issue(t.Context(), r); !errors.Is(err, ErrConflict) {
 		t.Fatal("issued twice", err)
 	}
+	// A run has one grant: a new id for the same run is refused too.
+	again := r
+	again.ID = "0195-run-1b"
+	if _, err := s.Issue(t.Context(), again); !errors.Is(err, ErrConflict) {
+		t.Fatal("issued a second grant for one run", err)
+	}
 }
 
 func TestRevokeEndsACredentialAndFencesALateIssue(t *testing.T) {
