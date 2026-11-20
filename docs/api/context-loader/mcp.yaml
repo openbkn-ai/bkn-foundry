@@ -26,7 +26,10 @@ info:
     **接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，
     协议流程 `initialize` → `tools/list` → `tools/call`（JSON-RPC 2.0）。
     鉴权与 REST 一致：`Authorization: Bearer <token>`，OAuth access token 或
-    `bak_` 前缀的 AppKey。宿主适配器可选使用
+    `bak_` 前缀的 AppKey。MCP 端点还接受 `bex_` 前缀的执行凭据：它由 bkn-safe
+    签发给后台运行（例如场景回归），代表发起人本人；每次工具调用都只能针对签发时
+    绑定的那个知识网络，`list_knowledge_networks` 会被拒绝，其他路由一律不接受。
+    宿主适配器可选使用
     `X-OpenBKN-Host-Conversation-Key` 和 `X-OpenBKN-Client-Invocation-Id`，或对应的
     `openbkn.ai/host-conversation-key`、`openbkn.ai/client-invocation-id` MCP `_meta`
     提示会话关联与调用幂等；`client-invocation-id` 可用于 start 和每一次业务工具调用，
