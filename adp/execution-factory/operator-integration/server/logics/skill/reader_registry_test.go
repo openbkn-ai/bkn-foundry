@@ -2292,6 +2292,11 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 		mockSandbox := mocks.NewMockSandBoxControlPlane(ctrl)
 		callOrder := []string{}
+		snapshotDir := "skills/skill-exec-1/" + snapshotDigest([]string{
+			SkillMD + "\x00" + checksumSHA256([]byte(validSkillMarkdown())),
+			"refs/guide.md\x00" + checksumSHA256([]byte("guide body")),
+			"scripts/run.py\x00" + checksumSHA256([]byte("print('ok')")),
+		})
 		sessionPool := &fakeSessionPool{
 			acquireFunc: func(ctx context.Context) (string, error) {
 				callOrder = append(callOrder, "acquire")
@@ -2347,7 +2352,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 			func(_ context.Context, sessionID string, req *interfaces.UploadSkillArchiveReq) (*interfaces.UploadSkillArchiveResp, error) {
 				callOrder = append(callOrder, "upload")
 				So(sessionID, ShouldEqual, "sess_aoi_0")
-				So(req.WorkDir, ShouldEqual, "skills/skill-exec-1")
+				So(req.WorkDir, ShouldEqual, snapshotDir)
 				So(req.FileName, ShouldEqual, "demo-skill.zip")
 
 				zr, zipErr := zip.NewReader(bytes.NewReader(req.Content), int64(len(req.Content)))
@@ -2365,10 +2370,11 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 				So(entries["refs/guide.md"], ShouldEqual, "guide body")
 				return &interfaces.UploadSkillArchiveResp{
 					SessionID:    sessionID,
-					WorkDir:      "skills/skill-exec-1",
-					FileName:     req.FileName,
-					UploadedPath: "skills/skill-exec-1",
-					Mocked:       true,
+					WorkDir:            req.WorkDir,
+					FileName:           req.FileName,
+					UploadedPath:       req.WorkDir,
+					ExtractedFileCount: 3,
+					Mocked:             true,
 				}, nil
 			},
 		)
@@ -2376,7 +2382,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 			func(_ context.Context, sessionID string, req *interfaces.ExecuteShellReq) (*interfaces.ExecuteShellResp, error) {
 				callOrder = append(callOrder, "exec")
 				So(sessionID, ShouldEqual, "sess_aoi_0")
-				So(req.WorkDir, ShouldEqual, "skills/skill-exec-1")
+				So(req.WorkDir, ShouldEqual, snapshotDir)
 				So(req.Command, ShouldEqual, `python3 'scripts/run.py' '--name' 'a b' 'it'\''s'`)
 				So(req.Timeout, ShouldEqual, 15)
 				return &interfaces.ExecuteShellResp{
@@ -2402,8 +2408,8 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp, ShouldNotBeNil)
 		So(resp.SessionID, ShouldEqual, "sess_aoi_0")
-		So(resp.WorkDir, ShouldEqual, "skills/skill-exec-1")
-		So(resp.UploadedPath, ShouldEqual, "skills/skill-exec-1")
+		So(resp.WorkDir, ShouldEqual, snapshotDir)
+		So(resp.UploadedPath, ShouldEqual, snapshotDir)
 		So(resp.Command, ShouldEqual, `python3 'scripts/run.py' '--name' 'a b' 'it'\''s'`)
 		So(resp.Stdout, ShouldEqual, "ok")
 		So(callOrder, ShouldResemble, []string{"acquire", "upload", "exec", "release"})
