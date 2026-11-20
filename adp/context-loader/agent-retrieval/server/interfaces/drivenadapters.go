@@ -185,8 +185,12 @@ type TokenInfo struct {
 	VisitorName    string      // Nickname for anonymous visitors
 	CredentialID   string      // Verified credential id when one exists (for example AppKey id)
 	CredentialName string      // Verified credential display name when one exists
-	MAC            string      // MAC address
-	UserAgent      string      // User agent info
+	// Set only for an execution credential: the grant it was issued under, and
+	// the one knowledge network it may act on.
+	DelegationID  string
+	DelegatedKnID string
+	MAC           string // MAC address
+	UserAgent     string // User agent info
 }
 
 // Hydra Authorization service interface
@@ -198,6 +202,12 @@ type Hydra interface {
 // auth middleware branches on this prefix: keys are verified by bkn-safe, all
 // other bearer tokens by hydra introspection.
 const AppKeyPrefix = "bak_"
+
+// ExecutionGrantPrefix marks an execution credential bkn-safe issued for a
+// background run, such as a scenario regression, to act for the person who
+// started it on one knowledge network. It is verified by bkn-safe like an
+// AppKey, resolves to that person, and is accepted on the MCP routes only.
+const ExecutionGrantPrefix = "bex_"
 
 // AppKeyVerifier resolves a user-issued AppKey to the owner's TokenInfo by asking
 // bkn-safe. It mirrors Hydra.Introspect's contract (same TokenInfo result) so the
@@ -213,17 +223,17 @@ type KnDataSourceConfig struct {
 
 // ConceptRetrievalConfig concept recall configuration.
 type ConceptRetrievalConfig struct {
-	ConceptGroups          []string `json:"concept_groups,omitempty"`
-	ObjectTypes            []string `json:"object_types,omitempty"`              // Recall only these object type ids.
-	ExcludeObjectTypes     []string `json:"exclude_object_types,omitempty"`      // Drop these object type ids from recall.
-	TopK                   int      `json:"top_k,omitempty"`                     // Default is 10.
-	IncludeSampleData      bool     `json:"include_sample_data,omitempty"`       // Default is false.
-	SchemaBrief            bool     `json:"schema_brief,omitempty"`              // Default is false.
-	PerObjectPropertyTopK  int      `json:"per_object_property_top_k,omitempty"` // Default8.
-	GlobalPropertyTopK     int      `json:"global_property_top_k,omitempty"`     // Default30.
-	EnablePropertyBrief    bool     `json:"enable_property_brief,omitempty"`     // Default is true.
-	CoarseObjectLimit      int      `json:"coarse_object_limit,omitempty"`       // Default2000.
-	CoarseRelationLimit    int      `json:"coarse_relation_limit,omitempty"`     // Default300.
+	ConceptGroups         []string `json:"concept_groups,omitempty"`
+	ObjectTypes           []string `json:"object_types,omitempty"`              // Recall only these object type ids.
+	ExcludeObjectTypes    []string `json:"exclude_object_types,omitempty"`      // Drop these object type ids from recall.
+	TopK                  int      `json:"top_k,omitempty"`                     // Default is 10.
+	IncludeSampleData     bool     `json:"include_sample_data,omitempty"`       // Default is false.
+	SchemaBrief           bool     `json:"schema_brief,omitempty"`              // Default is false.
+	PerObjectPropertyTopK int      `json:"per_object_property_top_k,omitempty"` // Default8.
+	GlobalPropertyTopK    int      `json:"global_property_top_k,omitempty"`     // Default30.
+	EnablePropertyBrief   bool     `json:"enable_property_brief,omitempty"`     // Default is true.
+	CoarseObjectLimit     int      `json:"coarse_object_limit,omitempty"`       // Default2000.
+	CoarseRelationLimit   int      `json:"coarse_relation_limit,omitempty"`     // Default300.
 }
 
 // PropertyFilterConfig propertyfilterconfiguration.

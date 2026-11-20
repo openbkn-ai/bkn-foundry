@@ -122,7 +122,8 @@ func (e *nativeExecutor) handle(ctx context.Context, req mcp.CallToolRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	result, err := e.wrap(server.ToolHandlerFunc(target.handler))(ctx, inner)
+	// The call it runs is held to an execution credential's network as a direct call is.
+	result, err := delegationScopeMiddleware()(e.wrap(server.ToolHandlerFunc(target.handler)))(ctx, inner)
 	if err == nil && result != nil && rewritten {
 		if result.Meta == nil {
 			result.Meta = &mcp.Meta{}

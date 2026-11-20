@@ -44,9 +44,22 @@ def reset_caller_token(token) -> None:
 
 
 @dataclass(frozen=True)
+class Delegation:
+    """What an execution credential from bkn-safe is bound to: the account
+    acts for the person who issued it, on this network and Agent only."""
+
+    delegation_id: str
+    kn_id: str
+    agent_id: str
+
+
+@dataclass(frozen=True)
 class Account:
     account_id: str
     account_type: str
+    # Set only when the caller is an execution credential, never for a sign-in
+    # or an AppKey.
+    delegation: Delegation | None = None
 
 
 def get_account(request: Request) -> Account:

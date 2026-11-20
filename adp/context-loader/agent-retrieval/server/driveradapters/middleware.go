@@ -65,9 +65,25 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		authMethod := "oauth"
 		var tokenInfo *interfaces.TokenInfo
 		var err error
-		if appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix) {
+		delegated := strings.HasPrefix(token, interfaces.ExecutionGrantPrefix)
+		if delegated && !executionRoute(c.FullPath()) {
+			// An execution credential acts through the MCP tools only.
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"execution credentials are accepted on the MCP routes only"))
+			c.Abort()
+			return
+		}
+		if appKeys != nil && (delegated || strings.HasPrefix(token, interfaces.AppKeyPrefix)) {
 			authMethod = "api_key"
+			if delegated {
+				authMethod = "execution_grant"
+			}
 			tokenInfo, err = appKeys.Verify(ctx, token)
+		} else if delegated {
+			rest.ReplyError(c, aerrors.DefaultHTTPError(ctx, http.StatusUnauthorized,
+				"execution credentials are not accepted"))
+			c.Abort()
+			return
 		} else {
 			tokenInfo, err = hydra.Introspect(ctx, token)
 		}
@@ -119,6 +135,17 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		c.Request.Header.Set(string(interfaces.IsPublic), "true")
 		c.Next()
 	}
+}
+
+// executionRoute tells whether a public route takes an execution credential:
+// the MCP endpoints, where each tool call is held to the credential's network.
+func executionRoute(route string) bool {
+	for _, suffix := range []string{"/mcp", "/mcp/*path", "/mcp-compact", "/mcp-compact/*path"} {
+		if strings.HasSuffix(route, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Internal interface Header authentication account information processing middleware.

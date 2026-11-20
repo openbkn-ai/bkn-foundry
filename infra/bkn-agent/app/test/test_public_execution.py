@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
-from app import dao, public_auth
+from app import dao, observability, public_auth
 from app.auth import Account
 from app.core.context_loader import _MCP_RECEIPT_TRUST_TOKEN
 from app.core.public_chat import PublicChat, project
@@ -2985,5 +2985,110 @@ def test_public_run_opens_context_loader_on_the_requested_version(monkeypatch, b
             assert len(opened) == 1
             versions = {k: opened[0][k] for k in ("kn_version", "draft_revision") if k in opened[0]}
             assert versions == expected
+
+    asyncio.run(run())
+
+
+def _with_execution_grants(monkeypatch, active=True):
+    """bkn-safe answers execution credentials issued for user-1 on kn-1."""
+    old = public_auth._post
+
+    async def post(url, **kwargs):
+        if url.endswith("/execution-grants/introspect"):
+            token = kwargs["json"]["token"]
+            if not active or token != "bex_run-1_secret":
+                return {"active": False}
+            return {
+                "active": True,
+                "sub": "user-1",
+                "account_type": "other",
+                "delegation_id": "run-1",
+                "kn_id": BODY["context"]["kn_id"],
+                "agent_id": "studio_smart_qa",
+            }
+        return await old(url, **kwargs)
+
+    monkeypatch.setattr(public_auth, "_post", post)
+
+
+DELEGATED = {"Authorization": "Bearer bex_run-1_secret", "Accept-Language": "en-US"}
+
+
+def test_an_execution_credential_runs_for_its_delegator_on_its_network_only(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, calls):
+            _with_execution_grants(monkeypatch)
+            response = await client.post(URL, json=BODY, headers=DELEGATED)
+            assert response.status_code == 200
+            run_id = parse_sse(response.text)[0][1]["run_id"]
+            assert len(calls) == 1
+            # The run is the delegator's: a sign-in of the same person reads it.
+            assert (await client.get(f"{URL}/{run_id}", headers=AUTH)).status_code == 200
+            assert (await client.get(f"{URL}/{run_id}", headers=DELEGATED)).status_code == 200
+            # Another network or another Agent is refused before anything runs.
+            other_network = {**BODY, "context": {**BODY["context"], "kn_id": "kn-other"}}
+            assert (await client.post(URL, json=other_network, headers=DELEGATED)).status_code == 403
+            other_agent = {**BODY, "agent_id": "eval_assistant"}
+            assert (await client.post(URL, json=other_agent, headers=DELEGATED)).status_code == 403
+            assert len(calls) == 1
+            # A run of the same person on another network is not reached with it,
+            # neither read nor cancelled; the person's own sign-in reaches it.
+            elsewhere = {**other_network, "client_request_id": "request-2"}
+            response = await client.post(URL, json=elsewhere, headers=AUTH)
+            other_run = parse_sse(response.text)[0][1]["run_id"]
+            assert (await client.get(f"{URL}/{other_run}", headers=DELEGATED)).status_code == 404
+            assert (await client.post(f"{URL}/{other_run}/cancel", headers=DELEGATED)).status_code == 404
+            assert (await client.get(f"{URL}/{other_run}", headers=AUTH)).status_code == 200
+
+    asyncio.run(run())
+
+
+def test_an_execution_credential_is_refused_when_inactive_or_off_the_execution_routes(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, calls):
+            _with_execution_grants(monkeypatch, active=False)
+            assert (await client.post(URL, json=BODY, headers=DELEGATED)).status_code == 401
+            _with_execution_grants(monkeypatch)
+            # Agent settings and the metric designer take no execution credential.
+            assert (
+                await client.get("/api/bkn-agent/v1/me/agents/studio_smart_qa/setting", headers=DELEGATED)
+            ).status_code == 401
+            assert not calls
+
+    asyncio.run(run())
+
+
+def test_an_execution_credential_resolves_to_its_delegator_with_its_scope(monkeypatch):
+    async def run():
+        _with_execution_grants(monkeypatch)
+        request = Request(
+            {
+                "type": "http",
+                "headers": [
+                    (b"authorization", b"Bearer bex_run-1_secret"),
+                    (b"x-account-id", b"spoof"),
+                    (b"x-bkn-delegation-id", b"spoof"),
+                ],
+            }
+        )
+        token = observability.set_context(observability.TraceContext(trace_id="t" * 32, request_id="r", traceparent="00-" + "t" * 32 + "-" + "s" * 16 + "-01", entry_boundary="public"))
+        try:
+            account = await public_auth.get_execution_account(request)
+            # The trace records the grant the run acts under, not a header a caller sent.
+            assert observability.current_context().delegation_id == "run-1"
+            assert observability.current_context().account_id == "user-1"
+        finally:
+            observability.reset_context(token)
+        assert (account.account_id, account.account_type) == ("user-1", "user")
+        assert account.delegation.kn_id == BODY["context"]["kn_id"]
+        headers = dict(request.scope["headers"])
+        assert headers[b"x-account-id"] == b"user-1"
+        assert b"x-bkn-delegation-id" not in headers
+        # The same credential is no sign-in for any other route.
+        with pytest.raises(HTTPException) as error:
+            await public_auth.get_public_account(
+                Request({"type": "http", "headers": [(b"authorization", b"Bearer bex_run-1_secret")]})
+            )
+        assert error.value.status_code == 401
 
     asyncio.run(run())
