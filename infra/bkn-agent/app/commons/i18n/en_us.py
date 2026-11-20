@@ -26,9 +26,9 @@ error_messages = {
     },
     "BknAgent.Execution.ToolScopeMismatch": {
         "code": "BknAgent.Execution.ToolScopeMismatch",
-        "description": "The tool requested a different knowledge network; the call was rejected.",
-        "detail": "The tool requested a different knowledge network; the call was rejected.",
-        "solution": "Query only the selected knowledge network.",
+        "description": "The tool requested a network version or draft this run did not specify; the call was rejected.",
+        "detail": "The tool requested a network version or draft this run did not specify; the call was rejected.",
+        "solution": "Call the tool again without kn_version, draft_revision or branch; the run supplies them.",
     },
     "BknAgent.Auth.TokenRequired": {
         "code": "BknAgent.Auth.TokenRequired",
