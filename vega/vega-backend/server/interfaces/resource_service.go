@@ -59,9 +59,9 @@ type ResourceService interface {
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
 	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
-	// InternalUpdateLocalIndexState atomically updates Resource-owned index state.
-	InternalUpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-		localIndexStatus, localIndexName, syncMark string) (bool, error)
+	// InternalPublishLocalIndex publishes a full build only if the Resource version still matches.
+	InternalPublishLocalIndex(ctx context.Context, tx *sql.Tx, id, indexName, syncMark string,
+		expectedUpdateTime int64) (bool, error)
 	// InternalUpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
 	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
 	// InternalUpdateDiscoveryMetadata 仅保存发现元数据。

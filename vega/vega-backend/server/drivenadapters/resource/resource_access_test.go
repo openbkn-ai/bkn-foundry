@@ -642,18 +642,23 @@ func TestResourceAccessUpdateLocalIndexName(t *testing.T) {
 }
 
 func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
-	t.Run("updates all state fields in transaction", func(t *testing.T) {
+	const query = "UPDATE t_resource SET f_local_status = ?, f_local_index_name = ?, f_sync_mark = ?," +
+		" f_update_time = ? WHERE f_id = ? AND f_update_time = ?"
+
+	t.Run("updates the index state at the version already written by the transaction", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		mock.ExpectBegin()
 		tx, err := access.db.BeginTx(context.Background(), nil)
 		require.NoError(t, err)
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_local_status = ?, f_local_index_name = ?, f_sync_mark = ? WHERE f_id = ?")).
+		mock.ExpectExec("^"+regexp.QuoteMeta(query)+"$").
 			WithArgs(
 				interfaces.ResourceLocalIndexStatusAvailable,
 				"index-v2",
 				`{"mode":"batch","cursor":[20]}`,
+				int64(43),
 				"resource-1",
+				int64(43),
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -664,6 +669,7 @@ func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
 			interfaces.ResourceLocalIndexStatusAvailable,
 			"index-v2",
 			`{"mode":"batch","cursor":[20]}`,
+			43, 43,
 		)
 
 		require.NoError(t, err)
@@ -676,7 +682,8 @@ func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
 	t.Run("returns false when resource does not exist", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
-		mock.ExpectExec("UPDATE t_resource SET .* WHERE f_id = \\?").
+		mock.ExpectExec("^"+regexp.QuoteMeta(query)+"$").
+			WithArgs(interfaces.ResourceLocalIndexStatusUnavailable, "", "", int64(43), "missing", int64(42)).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		updated, err := access.UpdateLocalIndexState(
@@ -686,12 +693,70 @@ func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
 			interfaces.ResourceLocalIndexStatusUnavailable,
 			"",
 			"",
+			42, 43,
 		)
 
 		require.NoError(t, err)
 		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	for _, tc := range []struct {
+		name string
+		rows int64
+	}{
+		{name: "advances the matching version", rows: 1},
+		{name: "discovery already changed the version"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			access, mock, cleanup := newResourceAccessMock(t)
+			defer cleanup()
+			mock.ExpectBegin()
+			tx, err := access.db.BeginTx(t.Context(), nil)
+			require.NoError(t, err)
+			defer func() { _ = tx.Rollback() }()
+			status := interfaces.ResourceLocalIndexStatusAvailable
+			mock.ExpectExec("^"+regexp.QuoteMeta(query)+"$").
+				WithArgs(status, "index-v2", "checkpoint", int64(43), "resource-1", int64(42)).
+				WillReturnResult(sqlmock.NewResult(0, tc.rows))
+
+			updated, err := access.UpdateLocalIndexState(t.Context(), tx, "resource-1", status, "index-v2", "checkpoint", 42, 43)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.rows == 1, updated)
+			if updated {
+				mock.ExpectCommit()
+				require.NoError(t, tx.Commit())
+			} else {
+				mock.ExpectRollback()
+				require.NoError(t, tx.Rollback())
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestResourceAccessCompareAndSetSyncMark(t *testing.T) {
+	access, mock, cleanup := newResourceAccessMock(t)
+	defer cleanup()
+	mock.ExpectBegin()
+	tx, err := access.db.BeginTx(t.Context(), nil)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	query := "^" + regexp.QuoteMeta("UPDATE t_resource SET f_sync_mark = ? WHERE f_id = ? AND f_local_index_name = ? AND f_local_status = ? AND f_sync_mark = ?") + "$"
+	status := interfaces.ResourceLocalIndexStatusAvailable
+	mock.ExpectExec(query).WithArgs("new-mark", "resource-1", "index-1", status, "").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(query).WithArgs("another-mark", "resource-1", "index-1", status, "").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	updated, err := access.CompareAndSetSyncMark(t.Context(), tx, "resource-1", "index-1", status, "", "new-mark")
+	require.NoError(t, err)
+	assert.True(t, updated)
+	updated, err = access.CompareAndSetSyncMark(t.Context(), tx, "resource-1", "index-1", status, "", "another-mark")
+	require.NoError(t, err)
+	assert.False(t, updated)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {

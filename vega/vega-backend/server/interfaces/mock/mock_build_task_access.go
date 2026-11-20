@@ -207,18 +207,18 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkCompleted(ctx, tx, id, finishTime
 }
 
 // MarkFailed mocks base method.
-func (m *MockBuildTaskAccess) MarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) MarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, allowedStatuses []string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkFailed", ctx, tx, id, detail, finishTime)
+	ret := m.ctrl.Call(m, "MarkFailed", ctx, tx, id, detail, allowedStatuses, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkFailed indicates an expected call of MarkFailed.
-func (mr *MockBuildTaskAccessMockRecorder) MarkFailed(ctx, tx, id, detail, finishTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkFailed(ctx, tx, id, detail, allowedStatuses, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkFailed), ctx, tx, id, detail, finishTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkFailed), ctx, tx, id, detail, allowedStatuses, finishTime)
 }
 
 // MarkPending mocks base method.
@@ -252,18 +252,18 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkRunning(ctx, tx, id, startTime an
 }
 
 // MarkStopped mocks base method.
-func (m *MockBuildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, allowedStatuses []string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkStopped", ctx, tx, id, finishTime)
+	ret := m.ctrl.Call(m, "MarkStopped", ctx, tx, id, allowedStatuses, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkStopped indicates an expected call of MarkStopped.
-func (mr *MockBuildTaskAccessMockRecorder) MarkStopped(ctx, tx, id, finishTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkStopped(ctx, tx, id, allowedStatuses, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopped", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopped), ctx, tx, id, finishTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopped", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopped), ctx, tx, id, allowedStatuses, finishTime)
 }
 
 // MarkStopping mocks base method.
@@ -282,16 +282,16 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkStopping(ctx, tx, id any) *gomock
 }
 
 // SetProgress mocks base method.
-func (m *MockBuildTaskAccess) SetProgress(ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, lastProgressTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) SetProgress(ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, allowedStatuses []string, lastProgressTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetProgress", ctx, tx, id, progress, lastProgressTime)
+	ret := m.ctrl.Call(m, "SetProgress", ctx, tx, id, progress, allowedStatuses, lastProgressTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SetProgress indicates an expected call of SetProgress.
-func (mr *MockBuildTaskAccessMockRecorder) SetProgress(ctx, tx, id, progress, lastProgressTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) SetProgress(ctx, tx, id, progress, allowedStatuses, lastProgressTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProgress", reflect.TypeOf((*MockBuildTaskAccess)(nil).SetProgress), ctx, tx, id, progress, lastProgressTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProgress", reflect.TypeOf((*MockBuildTaskAccess)(nil).SetProgress), ctx, tx, id, progress, allowedStatuses, lastProgressTime)
 }

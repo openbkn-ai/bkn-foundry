@@ -145,6 +145,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 						})
 						mysqlRawMetadata(rs, cs, resource, true, connectorType)
 						mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+						if mode == interfaces.PagingModeCursor {
+							mocks[0].ExpectBegin()
+						}
 						cause := &mysqldriver.MySQLError{Number: 1271, Message: "private UNION collations and source columns"}
 						statement := "SELECT * FROM (SELECT `label` FROM `sales.eu`.`order.items` UNION SELECT `label` FROM `sales.eu`.`order.items`) AS `_union_result`"
 						if phase == "count" {
@@ -163,6 +166,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 						} else {
 							mocks[0].ExpectQuery(statement).WithoutArgs().WillReturnError(cause)
 						}
+						if mode == interfaces.PagingModeCursor {
+							mocks[0].ExpectRollback()
+						}
 						mocks[0].ExpectClose()
 						result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
 							QueryFormat: interfaces.QueryFormatSQL,
@@ -178,7 +184,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 							mysqlRawMetadata(rs, cs, resource, true, connectorType)
 							rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 							result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
-							assert.Error(t, session.SQLRows.Scan(new(any)))
+							_, readErr := session.ReadSession.ReadPage(context.Background(), 1)
+							assert.ErrorIs(t, readErr, sql.ErrTxDone)
 						}
 						assert.Nil(t, result)
 						assertHTTPError(t, err, http.StatusBadRequest)
@@ -198,6 +205,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 					resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "bits", Type: interfaces.DataType_Binary}, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Binary}, &interfaces.Property{Name: "label", Type: interfaces.DataType_Text}, &interfaces.Property{Name: "flag", Type: interfaces.DataType_Integer})
 					mysqlRawMetadata(rs, cs, resource, true, connectorType)
 					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+					if mode == interfaces.PagingModeCursor {
+						mocks[0].ExpectBegin()
+					}
 					statement := "SELECT `bits`, `payload`, `label`, `flag` FROM `sales.eu`.`order.items` AS `_source_1` ORDER BY `_source_1`.`id` ASC"
 					limit := 2
 					if mode == interfaces.PagingModeSingle {
@@ -211,6 +221,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 						sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
 					).AddRow([]byte{0xff, 0}, []byte{0, 0xff}, []byte("text"), int64(127)).
 						AddRow([]byte{}, []byte{}, []byte{}, int64(0)).AddRow(nil, nil, nil, nil)).RowsWillBeClosed()
+					if mode == interfaces.PagingModeCursor {
+						mocks[0].ExpectRollback()
+					}
 					mocks[0].ExpectClose()
 					result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
 						QueryFormat: interfaces.QueryFormatSQL,
@@ -272,12 +285,14 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				resource := builderTestResource()
 				mysqlRawMetadata(rs, cs, resource, true, connectorType)
 				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+				mocks[0].ExpectBegin()
 				mocks[0].ExpectQuery("SELECT `id`, CAST(9007199254740993.125 AS DECIMAL(19,3)) AS `amount` FROM `sales.eu`.`order.items` WHERE (`id` > 0) ORDER BY `id` ASC LIMIT 3 OFFSET 2").
 					WithoutArgs().
 					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
 						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
 						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
 					).AddRow(3, []byte("9007199254740993.125")).AddRow(4, nil).AddRow(5, []byte("9007199254740993.125"))).RowsWillBeClosed()
+				mocks[0].ExpectRollback()
 				mocks[0].ExpectClose()
 				firstCtx, cancel := context.WithCancel(compileTestContext())
 				defer cancel()
@@ -292,8 +307,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				assert.Equal(t, []map[string]any{{"id": int64(3), "amount": "9007199254740993.125"}, {"id": int64(4), "amount": nil}}, first.Entries)
 				session, ok := rawQueryCursorSessions.acquire(token)
 				require.True(t, ok)
-				retainedRows := session.SQLRows
-				assert.IsType(t, &mysql.MariaDBConnector{}, session.SQLConnector)
+				stream := session.ReadSession
+				require.NotNil(t, stream)
+				assert.IsType(t, &mysql.MariaDBConnector{}, session.ReadConnector)
 				rawQueryCursorSessions.release(session)
 				cancel()
 
@@ -304,7 +320,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 				assert.Equal(t, []map[string]any{{"id": int64(5), "amount": "9007199254740993.125"}}, last.Entries)
 				assert.Nil(t, last.TotalCount)
 				assert.Nil(t, last.Paging.NextCursor)
-				assert.NoError(t, retainedRows.Err())
+				_, readErr := stream.ReadPage(context.Background(), 1)
+				assert.ErrorIs(t, readErr, sql.ErrTxDone)
 				assert.Empty(t, rawQueryCursorSessions.sessions)
 			})
 			for _, failure := range []string{"unknown column", "duplicate output names", "cursor read failure"} {
@@ -320,6 +337,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 						statement = "SELECT `id` FROM `sales.eu`.`order.items`"
 						status = http.StatusInternalServerError
 					}
+					if request.Paging.Mode == interfaces.PagingModeCursor {
+						mocks[0].ExpectBegin()
+					}
 					expected := mocks[0].ExpectQuery(statement)
 					switch failure {
 					case "unknown column":
@@ -328,6 +348,9 @@ func TestRawQueryServiceExecute(t *testing.T) {
 						expected.WillReturnRows(sqlmock.NewRows([]string{"id", "id"}).AddRow(1, 2)).RowsWillBeClosed()
 					case "cursor read failure":
 						expected.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).RowError(1, errors.New("private source detail"))).RowsWillBeClosed()
+					}
+					if request.Paging.Mode == interfaces.PagingModeCursor {
+						mocks[0].ExpectRollback()
 					}
 					mocks[0].ExpectClose()
 					result, err := svc.Execute(compileTestContext(), request)
@@ -967,8 +990,9 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil).Times(4)
 
 		callCount := 0
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
-			DoAndReturn(func(ctx context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
+				assert.Equal(t, "events", resource.SourceIdentifier)
 				callCount++
 				_, ok := ctx.Deadline()
 				assert.True(t, ok)
@@ -1122,7 +1146,7 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 			ConnectorType: "opensearch",
 		}, nil)
 
-		prepared, index, catalog, warning, err := svc.prepareOpenSearchCursorQuery(context.Background(), &interfaces.RawQueryRequest{
+		prepared, preparedResource, catalog, warning, err := svc.prepareOpenSearchCursorQuery(context.Background(), &interfaces.RawQueryRequest{
 			Query:     requestQuery,
 			NeedTotal: true,
 			Paging: interfaces.PagingRequest{
@@ -1133,7 +1157,7 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		assert.Equal(t, "events", index)
+		assert.Equal(t, "events", preparedResource.SourceIdentifier)
 		assert.Equal(t, "catalog-1", catalog.ID)
 		assert.Empty(t, warning)
 		assert.Equal(t, []any{"timestamp"}, prepared["sort"])
@@ -1185,8 +1209,9 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 		svc.cf = connectorFactory
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
+				assert.Equal(t, "events", resource.SourceIdentifier)
 				assert.Equal(t, 90, query["from"])
 				return &interfaces.RawQueryResponse{
 					Entries:     []map[string]any{{"id": "91"}, {"id": "92"}},
@@ -1212,6 +1237,55 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 	})
 }
 
+type cursorIndexConnector struct {
+	*vmock.MockIndexConnector
+	*vmock.MockIndexReadSessionConnector
+}
+
+func TestRawQueryServiceOpenSearchReadSession(t *testing.T) {
+	svc, rs, cs, cf := mysqlRawServices(t)
+	resource := builderTestResource()
+	resource.Category = interfaces.ResourceCategoryIndex
+	resource.SourceIdentifier = "events"
+	catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, ConnectorType: "opensearch"}
+	expectRawQueryResource(rs, resource.ID, resource)
+	expectRawQueryResources(rs, []string{resource.ID}, resource)
+	cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(catalog, nil).Times(2)
+	ctrl := gomock.NewController(t)
+	base := vmock.NewMockIndexConnector(ctrl)
+	opener := vmock.NewMockIndexReadSessionConnector(ctrl)
+	session := vmock.NewMockQueryPageSession(ctrl)
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).
+		Return(&cursorIndexConnector{base, opener}, nil)
+	total := int64(2)
+	gomock.InOrder(
+		base.EXPECT().Connect(gomock.Any()).Return(nil),
+		opener.EXPECT().OpenRawIndexRead(gomock.Any(), resource, gomock.Any(), 60*time.Second).Return(session, nil),
+		session.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+			Entries: []map[string]any{{"id": int64(1)}}, HasMore: true, TotalCount: &total,
+		}, nil),
+		session.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+			Entries: []map[string]any{{"id": int64(2)}}, TotalCount: &total,
+		}, nil),
+		session.EXPECT().Close().Return(nil),
+		base.EXPECT().Close(gomock.Any()).Return(nil),
+	)
+	ctx := compileTestContext()
+	first, err := svc.Execute(ctx, &interfaces.RawQueryRequest{
+		QueryFormat: interfaces.QueryFormatDSL,
+		Query:       map[string]any{"resource_id": resource.ID, "sort": []any{"id"}},
+		NeedTotal:   true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1, KeepAliveSec: 60},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	require.NotNil(t, first.TotalCount)
+	assert.Equal(t, total, *first.TotalCount)
+	last, err := svc.Execute(ctx, &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": int64(2)}}, last.Entries)
+	assert.Nil(t, last.Paging.NextCursor)
+}
+
 func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 	t.Run("continues and closes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1231,8 +1305,9 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		session.NeedTotal = true
 
 		callCount := 0
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
+				assert.Equal(t, "events", resource.SourceIdentifier)
 				callCount++
 				if callCount == 1 {
 					assert.Equal(t, 10, query["from"])
@@ -1255,7 +1330,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 			Return(indexConnector, nil).Times(2)
 		svc := &rawQueryService{cf: connectorFactory}
 		catalog := &interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}
-		first, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, nil)
+		first, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, &interfaces.Resource{SourceIdentifier: "events"}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, first.Paging)
 		require.NotNil(t, first.Paging.NextCursor)
@@ -1263,7 +1338,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		require.NotNil(t, first.TotalCount)
 		assert.Equal(t, int64(3), *first.TotalCount)
 
-		last, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, nil)
+		last, err := svc.executeOpenSearchCursorPage(context.Background(), session, catalog, &interfaces.Resource{SourceIdentifier: "events"}, nil)
 		require.NoError(t, err)
 		require.NotNil(t, last.Paging)
 		assert.Nil(t, last.Paging.NextCursor)
@@ -1291,7 +1366,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 2}
 		session.NeedTotal = true
 
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(&interfaces.RawQueryResponse{
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).Return(&interfaces.RawQueryResponse{
 			Entries:     []map[string]any{{"id": "1"}, {"id": "2"}},
 			SearchAfter: []any{"page-2"},
 			TotalCount:  int64Pointer(2),
@@ -1302,7 +1377,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		result, err := svc.executeOpenSearchCursorPage(context.Background(), session,
-			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, nil)
+			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, &interfaces.Resource{SourceIdentifier: "events"}, nil)
 		require.NoError(t, err)
 		assert.Nil(t, result.Paging.NextCursor)
 		require.NotNil(t, result.TotalCount)
@@ -1328,13 +1403,13 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		expiresAt := time.Now().Add(30 * time.Second).Unix()
 		atomic.StoreInt64(&session.ExpiresAtSec, expiresAt)
 
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(nil, errors.New("backend unavailable"))
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).Return(nil, errors.New("backend unavailable"))
 		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "opensearch", gomock.Any()).
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
 		_, err = svc.executeOpenSearchCursorPage(context.Background(), session,
-			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, nil)
+			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, &interfaces.Resource{SourceIdentifier: "events"}, nil)
 		require.Error(t, err)
 		assert.Equal(t, expiresAt, atomic.LoadInt64(&session.ExpiresAtSec))
 	})
@@ -1359,7 +1434,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		svc := &rawQueryService{cf: connectorFactory}
 
 		_, err = svc.executeOpenSearchCursorPage(context.Background(), session,
-			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, nil)
+			&interfaces.Catalog{ID: "catalog-1", ConnectorType: "opensearch"}, &interfaces.Resource{SourceIdentifier: "events"}, nil)
 
 		assertHTTPError(t, err, http.StatusInternalServerError)
 	})
@@ -1390,6 +1465,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 			Enabled:          true,
 			CatalogID:        "catalog-1",
 			Status:           interfaces.ResourceStatusActive,
+			SourceIdentifier: "events",
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}
 		catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: "opensearch"}
@@ -1398,8 +1474,9 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 
 		started := make(chan struct{})
 		finish := make(chan struct{})
-		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
+				assert.Equal(t, "events", resource.SourceIdentifier)
 				assert.NotContains(t, query, "search_after")
 				close(started)
 				<-finish
@@ -1414,11 +1491,15 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 		req := &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Cursor: session.ID}}
 		firstErr := make(chan error, 1)
 		go func() { _, err := svc.executeSQLCursorContinuation(ctx, req); firstErr <- err }()
-		<-started
+		select {
+		case <-started:
+		case err := <-firstErr:
+			t.Fatalf("the first request exited before reading the page: %v", err)
+		}
 
 		_, err = svc.executeSQLCursorContinuation(ctx, req)
-		require.Error(t, err)
 		close(finish)
+		require.Error(t, err)
 		require.NoError(t, <-firstErr)
 		_, ok := manager.acquire(session.ID)
 		assert.False(t, ok)
@@ -1810,10 +1891,10 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 		archive.ID, archive.SourceIdentifier, archive.UpdateTime = "archive", "`archive`", 19
 		unionRawMetadata(rs, cs, orders, archive)
 		statement := "SELECT * FROM (SELECT `id` FROM `sales.eu`.`order.items` UNION ALL SELECT `id` FROM `archive`) AS `_union_result` ORDER BY `id` ASC LIMIT 4 OFFSET 1"
-		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+statement+") AS `_raw_query_total`", nil,
-			[]map[string]any{{rawQueryTotalCountColumn: int64(4)}}, nil)
 		openedContexts := mysqlRawCursorRows(t, cf, statement,
 			sqlmock.NewRows([]string{"id"}).AddRow(2).AddRow(2).AddRow(3).AddRow(4), nil)
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+statement+") AS `_raw_query_total`", nil,
+			[]map[string]any{{rawQueryTotalCountColumn: int64(4)}}, nil)
 
 		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL,
 			Query:     "SELECT id FROM {{orders}} UNION ALL SELECT id FROM {{archive}} ORDER BY id LIMIT 4 OFFSET 1",
@@ -1927,8 +2008,8 @@ func TestRawQueryServiceMySQLSQLBuilder(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
 		mysqlRawMetadata(rs, cs, resource, true)
-		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM (SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 5) AS `_raw_query_total`", nil, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
 		openedContexts := mysqlRawCursorRows(t, cf, "SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 5", sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).AddRow(3).AddRow(4).AddRow(5), nil)
+		mysqlRawRead(t, cf, "SELECT COUNT(*) AS `_raw_query_total_count` FROM (SELECT `id` FROM `sales.eu`.`order.items` ORDER BY `id` ASC LIMIT 5) AS `_raw_query_total`", nil, []map[string]any{{rawQueryTotalCountColumn: int64(5)}}, nil)
 		firstCtx, cancelFirst := context.WithCancel(compileTestContext())
 		defer cancelFirst()
 		result, err := svc.Execute(firstCtx, &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}} ORDER BY id LIMIT 5", NeedTotal: true, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2}})
@@ -2333,6 +2414,52 @@ func TestRawQueryServiceSQLRowsCursorContinuation(t *testing.T) {
 	})
 }
 
+func TestReadCursorRows(t *testing.T) {
+	t.Run("cancellation during lookahead closes the fallback cursor", func(t *testing.T) {
+		previousManager := rawQueryCursorSessions
+		rawQueryCursorSessions = newCursorSessionManager(10, 9)
+		t.Cleanup(func() { rawQueryCursorSessions = previousManager })
+		session, err := rawQueryCursorSessions.create("account", "catalog", nil, 1, 0, 0)
+		require.NoError(t, err)
+		t.Cleanup(func() { rawQueryCursorSessions.remove(session.ID) })
+
+		db, driver, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		cursorCtx, cancelCursor := context.WithCancel(t.Context())
+		defer cancelCursor()
+		pageCtx, cancelPage := context.WithCancel(t.Context())
+		defer cancelPage()
+		driver.ExpectQuery("SELECT id").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2)).RowsWillBeClosed()
+		rows, err := db.QueryContext(cursorCtx, "SELECT id")
+		require.NoError(t, err)
+		defer func() { _ = rows.Close() }()
+
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		connector.EXPECT().ScanSQLBuilderRow(rows, nil).
+			DoAndReturn(func(*sql.Rows, []interfaces.ColumnInfo) (map[string]any, error) {
+				cancelPage()
+				<-cursorCtx.Done()
+				return map[string]any{"id": 2}, nil
+			})
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		session.SQLCancel = cancelCursor
+		session.SQLRows = rows
+		session.SQLConnector = connector
+		session.SQLPendingRow = map[string]any{"id": 1}
+
+		page, err := readCursorRows(pageCtx, session)
+
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, page)
+		assert.NotContains(t, rawQueryCursorSessions.sessions, session.ID)
+		if err := rows.Err(); err != nil {
+			assert.ErrorIs(t, err, context.Canceled)
+		}
+		require.NoError(t, driver.ExpectationsWereMet())
+	})
+}
+
 func TestRawQueryServiceMariaDBSQLBuilder(t *testing.T) {
 	t.Run("MariaDB uses the native builder for the mariadb input alias", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
@@ -2378,11 +2505,20 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 				resource := builderTestResource()
 				resource.SourceIdentifier = `"public"."orders"`
 				mysqlRawMetadata(rs, cs, resource, true, "postgresql")
-				mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
+				connections := 2
+				if mode == interfaces.PagingModeCursor {
+					connections = 1
+				}
+				mocks := nativeSQLConnectorMocks(t, cf, "postgresql", connections)
+				if mode == interfaces.PagingModeCursor {
+					mocks[0].ExpectBegin()
+				}
 				base := fmt.Sprintf(`SELECT DISTINCT "id", %s AS "n" FROM "public"."orders" ORDER BY 2 ASC NULLS FIRST`, test.expression)
 				mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(
 					sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(2)).RowsWillBeClosed()
-				mocks[0].ExpectClose()
+				if mode != interfaces.PagingModeCursor {
+					mocks[0].ExpectClose()
+				}
 				rows := sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("n").OfType(test.nativeType, ""))
 				paging := interfaces.PagingRequest{Limit: 1, Offset: 1}
 				statement, firstID := base+" LIMIT 1 OFFSET 1", int64(2)
@@ -2392,8 +2528,12 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 					rows.AddRow(1, test.value)
 				}
 				rows.AddRow(2, test.value)
-				mocks[1].ExpectQuery(statement).WithoutArgs().WillReturnRows(rows).RowsWillBeClosed()
-				mocks[1].ExpectClose()
+				dataMock := mocks[connections-1]
+				dataMock.ExpectQuery(statement).WithoutArgs().WillReturnRows(rows).RowsWillBeClosed()
+				if mode == interfaces.PagingModeCursor {
+					dataMock.ExpectRollback()
+				}
+				dataMock.ExpectClose()
 				result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
 					QueryFormat: interfaces.QueryFormatSQL,
 					Query:       fmt.Sprintf("SELECT DISTINCT id,%s AS n FROM {{orders}} ORDER BY n", test.input), NeedTotal: true, Paging: paging,
@@ -2472,17 +2612,18 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 			}
 		}
 	}
-	t.Run("UNION NULL branch limits retain one cursor and independent count", func(t *testing.T) {
+	t.Run("UNION NULL branch limits retain one cursor and transactional count", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
 		resource.SourceIdentifier = `"public"."orders"`
 		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
-		mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 2)
+		mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 1)
 		base := `SELECT * FROM ((SELECT NULL AS "v" FROM "public"."orders" LIMIT 1) UNION ALL (SELECT CAST(1 AS BIGINT) AS "v" FROM "public"."orders" LIMIT 1)) AS "_union_result" ORDER BY "v" ASC NULLS FIRST LIMIT 2`
+		mocks[0].ExpectBegin()
 		mocks[0].ExpectQuery(`SELECT COUNT(*) AS "_raw_query_total_count" FROM (` + base + `) AS "_raw_query_total"`).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("INT8", int64(0))).AddRow(2)).RowsWillBeClosed()
+		mocks[0].ExpectQuery(base).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("v").OfType("INT8", int64(0))).AddRow(nil).AddRow(1)).RowsWillBeClosed()
+		mocks[0].ExpectRollback()
 		mocks[0].ExpectClose()
-		mocks[1].ExpectQuery(base).WithoutArgs().WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("v").OfType("INT8", int64(0))).AddRow(nil).AddRow(1)).RowsWillBeClosed()
-		mocks[1].ExpectClose()
 		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
 			QueryFormat: interfaces.QueryFormatSQL,
 			Query:       "(SELECT NULL AS v FROM {{orders}} LIMIT 1) UNION ALL (SELECT 1 AS v FROM {{orders}} LIMIT 1) ORDER BY v LIMIT 2",
@@ -2524,7 +2665,9 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Binary})
 		mysqlRawMetadata(rs, cs, resource, true, "postgresql")
 		mocks := nativeSQLConnectorMocks(t, cf, "postgresql", 1)
+		mocks[0].ExpectBegin()
 		mocks[0].ExpectQuery(`SELECT "id", "payload" FROM "public"."orders" ORDER BY "id" ASC NULLS FIRST`).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("INT8", int64(0)), sqlmock.NewColumn("payload").OfType("BYTEA", []byte{})).AddRow(1, []byte{0, 255}).AddRow(2, []byte{}).AddRow(3, nil)).RowsWillBeClosed()
+		mocks[0].ExpectRollback()
 		mocks[0].ExpectClose()
 		result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id,payload FROM {{orders}} ORDER BY id", Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
 		require.NoError(t, err)

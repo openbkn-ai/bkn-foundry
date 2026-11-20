@@ -1808,8 +1808,8 @@ components:
       properties:
         state:
           description: |
-            available: the resource's local index is available. unavailable: the local index is unavailable or
-            stale. unknown: the resource could not be read, or reports another local_status. resource_missing:
+            available: the resource's local index can serve queries, including when Vega reports readonly.
+            unavailable: Vega reports unavailable or stale. unknown: the resource could not be read, or reports another local_status. resource_missing:
             the bound resource no longer exists. not_applicable: the data source is not a Vega resource.
           type: string
           enum:

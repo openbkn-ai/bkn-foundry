@@ -17,7 +17,7 @@ import (
 
 func TestExecuteRawQueryRejectsInvalidAggregationBeforeConnect(t *testing.T) {
 	connector := &OpenSearchConnector{}
-	_, err := connector.ExecuteRawQuery(context.Background(), "events", map[string]any{
+	_, err := connector.ExecuteRawQuery(context.Background(), &interfaces.Resource{SourceIdentifier: "events"}, map[string]any{
 		"aggs": map[string]any{
 			"by_status": map[string]any{"terms": map[string]any{"field": "status"}},
 			"by_type":   map[string]any{"terms": map[string]any{"field": "type"}},

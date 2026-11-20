@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	_ interfaces.TableConnector = (*PostgresqlConnector)(nil)
+	_ interfaces.TableConnector            = (*PostgresqlConnector)(nil)
+	_ interfaces.TableReadSessionConnector = (*PostgresqlConnector)(nil)
 
 	sessionTimeoutPattern = regexp.MustCompile(`^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*(us|ms|s|min|h|d)?$`)
 
@@ -309,6 +310,14 @@ func (c *PostgresqlConnector) connectionString() string {
 // Failed initialization closes the candidate pool before returning the error.
 func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 	return c.connect(ctx, 0)
+}
+
+// BeginReadTx 为流式查询建立只读的可重复读事务。
+func (c *PostgresqlConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 }
 
 func (c *PostgresqlConnector) connect(ctx context.Context, pingTimeout time.Duration) error {

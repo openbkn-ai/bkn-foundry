@@ -230,6 +230,8 @@ func TestBuildTaskAccessGetByCatalogID(t *testing.T) {
 }
 
 func TestBuildTaskAccessSetProgress(t *testing.T) {
+	runningOrStopping := []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}
+
 	t.Run("updates progress for running task", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
@@ -240,10 +242,26 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 
 		syncedCount := int64(10)
 		progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
-		updated, err := access.SetProgress(context.Background(), nil, "task-1", progress, 123)
+		updated, err := access.SetProgress(context.Background(), nil, "task-1", progress, runningOrStopping, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("recovered checkpoint does not update a stopping task", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		t.Cleanup(func() { _ = db.Close() })
+		checkpoint := `{"mode":"batch","cursor":[]}`
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_last_progress_time = ?, f_synced_mark = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(int64(123), checkpoint, "task-1", interfaces.BuildTaskStatusRunning).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		updated, err := access.SetProgress(t.Context(), nil, "task-1",
+			interfaces.BuildTaskProgress{SyncedMark: &checkpoint}, []string{interfaces.BuildTaskStatusRunning}, 123)
+
+		require.NoError(t, err)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -257,7 +275,7 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 
 		syncedCount := int64(10)
 		updated, err := access.SetProgress(context.Background(), nil, "task-1",
-			interfaces.BuildTaskProgress{SyncedCount: &syncedCount}, 123)
+			interfaces.BuildTaskProgress{SyncedCount: &syncedCount}, runningOrStopping, 123)
 
 		require.NoError(t, err)
 		assert.False(t, updated)
@@ -271,7 +289,7 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 			WithArgs(int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnError(errors.New("update failed"))
 
-		updated, err := access.SetProgress(context.Background(), nil, "task-1", interfaces.BuildTaskProgress{}, 123)
+		updated, err := access.SetProgress(context.Background(), nil, "task-1", interfaces.BuildTaskProgress{}, runningOrStopping, 123)
 
 		require.ErrorContains(t, err, "update failed")
 		assert.False(t, updated)
@@ -287,7 +305,7 @@ func TestBuildTaskAccessSetProgress(t *testing.T) {
 			WithArgs(int64(123), "task-1", interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		updated, err := access.SetProgress(context.Background(), tx, "task-1", interfaces.BuildTaskProgress{}, 123)
+		updated, err := access.SetProgress(context.Background(), tx, "task-1", interfaces.BuildTaskProgress{}, runningOrStopping, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -387,6 +405,7 @@ func TestBuildTaskAccessMarkPending(t *testing.T) {
 }
 
 func TestBuildTaskAccessMarkFailed(t *testing.T) {
+	activeStatuses := []string{interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}
 	t.Run("accepts stopping task", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
@@ -394,7 +413,7 @@ func TestBuildTaskAccessMarkFailed(t *testing.T) {
 			WithArgs("execution failed", int64(123), interfaces.BuildTaskStatusFailed, "task-1", interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		updated, err := access.MarkFailed(context.Background(), nil, "task-1", "execution failed", 123)
+		updated, err := access.MarkFailed(context.Background(), nil, "task-1", "execution failed", activeStatuses, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -411,12 +430,26 @@ func TestBuildTaskAccessMarkFailed(t *testing.T) {
 				interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		updated, err := access.MarkFailed(context.Background(), tx, "task-1", "execution failed", 123)
+		updated, err := access.MarkFailed(context.Background(), tx, "task-1", "execution failed", activeStatuses, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("returns false when the task no longer matches the allowed status", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs("execution failed", int64(123), interfaces.BuildTaskStatusFailed, "task-1", interfaces.BuildTaskStatusRunning).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		updated, err := access.MarkFailed(context.Background(), nil, "task-1", "execution failed",
+			[]string{interfaces.BuildTaskStatusRunning}, 123)
+
+		require.NoError(t, err)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -489,12 +522,26 @@ func TestBuildTaskAccessMarkStopped(t *testing.T) {
 			WithArgs(int64(123), interfaces.BuildTaskStatusStopped, "task-1", interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusStopping).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		updated, err := access.MarkStopped(context.Background(), tx, "task-1", 123)
+		updated, err := access.MarkStopped(context.Background(), tx, "task-1",
+			[]string{interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusStopping}, 123)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("restricts the transition to stopping", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_finish_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?)")).
+			WithArgs(int64(123), interfaces.BuildTaskStatusStopped, "task-1", interfaces.BuildTaskStatusStopping).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		updated, err := access.MarkStopped(context.Background(), nil, "task-1", []string{interfaces.BuildTaskStatusStopping}, 123)
+
+		require.NoError(t, err)
+		assert.True(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

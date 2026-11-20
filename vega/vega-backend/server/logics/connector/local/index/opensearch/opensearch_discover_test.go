@@ -303,14 +303,15 @@ func TestOpenSearchConnectorCountRows(t *testing.T) {
 		wantError    bool
 		noRequest    bool
 	}{
-		{name: "count", body: `{"count":42,"_shards":{"failed":0}}`, count: 42},
-		{name: "empty", body: `{"count":0,"_shards":{"failed":0}}`},
-		{name: "large count", body: `{"count":9007199254740993,"_shards":{"failed":0}}`, count: 9007199254740993},
+		{name: "count", body: `{"count":42,"_shards":{"total":1,"successful":1,"failed":0}}`, count: 42},
+		{name: "empty", body: `{"count":0,"_shards":{"total":1,"successful":1,"failed":0}}`},
+		{name: "large count", body: `{"count":9007199254740993,"_shards":{"total":1,"successful":1,"failed":0}}`, count: 9007199254740993},
 		{name: "http error", status: 403, body: `{"error":"private source details"}`, wantError: true},
 		{name: "transport error", transportErr: context.DeadlineExceeded, wantError: true},
-		{name: "failed shard", body: `{"count":4,"_shards":{"failed":1}}`, wantError: true},
-		{name: "missing count", body: `{"_shards":{"failed":0}}`, wantError: true},
-		{name: "negative count", body: `{"count":-1,"_shards":{"failed":0}}`, wantError: true},
+		{name: "failed shard", body: `{"count":4,"_shards":{"total":2,"successful":1,"failed":1}}`, wantError: true},
+		{name: "unavailable shard", body: `{"count":4,"_shards":{"total":2,"successful":1,"failed":0}}`, wantError: true},
+		{name: "missing count", body: `{"_shards":{"total":1,"successful":1,"failed":0}}`, wantError: true},
+		{name: "negative count", body: `{"count":-1,"_shards":{"total":1,"successful":1,"failed":0}}`, wantError: true},
 		{name: "missing shards", body: `{"count":42}`, wantError: true},
 		{name: "invalid json", body: `{`, wantError: true},
 		{name: "nil index", noRequest: true, wantError: true},
@@ -388,8 +389,6 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 	index := &interfaces.IndexMeta{Name: "products"}
 
 	require.NoError(t, connector.fetchMappings(t.Context(), index))
-	queryTypes := map[string]string{}
-	require.NoError(t, connector.fetchMappingsForQuery(t.Context(), "products", queryTypes))
 	for name, want := range map[string]string{
 		"age_alias": "long", "date_alias": "date", "name_alias": "keyword",
 		"missing_alias": "", "cycle_alias": "", "chain_alias": "", "object_alias": "", "invalid_alias": "",
@@ -399,14 +398,13 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 			assert.Equal(t, "alias", field.Type)
 			assert.Equal(t, want, field.ResolvedType)
 			assert.Contains(t, field.Attributes, "path")
-			assert.Equal(t, connector.MapType(want), queryTypes[name])
 			encoded, err := sonic.Marshal(field)
 			require.NoError(t, err)
 			assert.NotContains(t, string(encoded), "ResolvedType")
 		})
 	}
 	for _, name := range []string{"age_alias", "date_alias"} {
-		property := &interfaces.Property{Name: name, Type: queryTypes[name]}
+		property := &interfaces.Property{Name: name, Type: connector.MapType(index.Mapping[name].ResolvedType)}
 		cfg := &interfaces.FilterCondCfg{Field: name, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10}}
 		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
 			map[string]*interfaces.Property{name: property})

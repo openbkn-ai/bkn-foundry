@@ -187,17 +187,6 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	if err != nil {
 		return nil, err
 	}
-	var totalCount int64
-	if req.NeedTotal {
-		var counted *interfaces.RawQueryResponse
-		counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
-		if err == nil {
-			totalCount, err = rawQueryTotalCount(counted)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
 	session, err := rawQueryCursorSessions.create(
 		accountIDFromContext(ctx),
 		prepared.catalog.ID,
@@ -214,11 +203,9 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	session.SQLQuery = prepared.builder
 	session.SQLResourceVersions = prepared.resourceVersions
 	session.SQLSourceValidator = prepared.sourceValidator
-	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
-	session.SQLConnectorType = prepared.catalog.ConnectorType
+	session.CatalogUpdateTime = prepared.catalog.UpdateTime
+	session.ConnectorType = prepared.catalog.ConnectorType
 	session.PageOffset = req.Paging.Offset
-	session.TotalCount = totalCount
-	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
 	bindCursorResource(session, req)
 	if err := rqs.openSQLBuilderCursor(queryCtx, session, prepared.catalog); err != nil {
@@ -254,19 +241,32 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	queryCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 	var catalog *interfaces.Catalog
+	var resource *interfaces.Resource
 	var warnings []string
 	var err error
 	if session.QueryFormat == interfaces.QueryFormatSQL && session.SQLSourceValidator != nil {
 		catalog, warnings, err = rqs.prepareSQLCursorSources(queryCtx, session)
+	} else if session.QueryFormat == interfaces.QueryFormatDSL {
+		var resources []*interfaces.Resource
+		resources, warnings, err = rqs.queryResources(queryCtx, session.ResourceIDs)
+		if err == nil {
+			if len(resources) != 1 || resources[0].SourceIdentifier != session.OpenSearchIndex ||
+				resources[0].UpdateTime != session.ReadResourceUpdateTime {
+				err = sqlBuilderCursorChanged(ctx)
+			} else {
+				resource = resources[0]
+				catalog, err = rqs.catalogForQueryResources(queryCtx, resources)
+			}
+		}
 	} else {
 		catalog, warnings, err = rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
 	}
 	if err != nil {
-		invalidateSQLCursor(session, err)
+		invalidateSourceCursor(session, err)
 		return nil, err
 	}
 	if catalog.ID != session.CatalogID {
-		if session.QueryFormat == interfaces.QueryFormatSQL {
+		if session.QueryFormat == interfaces.QueryFormatSQL || session.ReadSession != nil {
 			rawQueryCursorSessions.remove(session.ID)
 		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
@@ -274,7 +274,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	}
 	if session.QueryFormat == interfaces.QueryFormatSQL {
 		if err := rqs.validateSQLBuilderCursor(queryCtx, session, catalog); err != nil {
-			invalidateSQLCursor(session, err)
+			invalidateSourceCursor(session, err)
 			return nil, err
 		}
 	}
@@ -282,7 +282,11 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	case interfaces.QueryFormatSQL:
 		return rqs.executeSQLCursorPage(queryCtx, session, warnings)
 	case interfaces.QueryFormatDSL:
-		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
+		if session.ReadSession != nil && (catalog.UpdateTime != session.CatalogUpdateTime || catalog.ConnectorType != session.ConnectorType) {
+			rawQueryCursorSessions.remove(session.ID)
+			return nil, sqlBuilderCursorChanged(ctx)
+		}
+		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, resource, warnings)
 	default:
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor has unsupported query format")
@@ -370,6 +374,9 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 		return nil, err
 	}
 	hasNext := session.SQLPendingRow != nil
+	if session.ReadSession != nil {
+		hasNext = session.ReadHasMore
+	}
 	if hasNext {
 		session.PageOffset += session.PageLimit
 		rawQueryCursorSessions.markPageSuccess(session)
@@ -400,7 +407,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
 
-	query, indexName, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(queryCtx, req)
+	query, resource, catalog, warning, err := rqs.prepareOpenSearchCursorQuery(queryCtx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +424,10 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	session.QueryFormat = interfaces.QueryFormatDSL
 	bindCursorResource(session, req)
 	session.OpenSearchQuery = query
-	session.OpenSearchIndex = indexName
+	session.OpenSearchIndex = resource.SourceIdentifier
+	session.ReadResourceUpdateTime = resource.UpdateTime
+	session.CatalogUpdateTime = catalog.UpdateTime
+	session.ConnectorType = catalog.ConnectorType
 	session.PageOffset = req.Paging.Offset
 	session.NeedTotal = req.NeedTotal
 	session.Lock()
@@ -426,7 +436,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 	if warning != "" {
 		warnings = append(warnings, warning)
 	}
-	result, err := rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
+	result, err := rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, resource, warnings)
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
 	}
@@ -486,45 +496,45 @@ func validateCursorResourceBinding(ctx context.Context, session *interfaces.Curs
 	return nil
 }
 
-func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (map[string]any, string, *interfaces.Catalog, string, error) {
+func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, req *interfaces.RawQueryRequest) (map[string]any, *interfaces.Resource, *interfaces.Catalog, string, error) {
 	queryMap := req.Query.(map[string]any)
 	resourceID := queryResourceID(queryMap)
 	if resourceID == "" {
-		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, nil, nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("resource_id is required for DSL queries")
 	}
 	if sort, ok := queryMap["sort"].([]any); !ok || len(sort) == 0 {
-		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, nil, nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("sort is required for OpenSearch cursor paging")
 	}
 
 	resource, err := rqs.resourceForQuery(ctx, resourceID)
 	if err != nil {
-		return nil, "", nil, "", err
+		return nil, nil, nil, "", err
 	}
 	if resource == nil {
-		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+		return nil, nil, nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 	}
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
-		return nil, "", nil, "", err
+		return nil, nil, nil, "", err
 	}
 	// Resource query permission was checked above. The Catalog is loaded
 	// solely for query execution, so it must not impose catalog:view_detail.
 	catalog, err := rqs.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
-		return nil, "", nil, "", err
+		return nil, nil, nil, "", err
 	}
 	if catalog == nil {
-		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, nil, nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 	}
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
-		return nil, "", nil, "", err
+		return nil, nil, nil, "", err
 	}
 	if catalog.ConnectorType != "opensearch" {
-		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, nil, nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
 	}
 
@@ -542,10 +552,14 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	if req.Paging.Offset > 0 {
 		prepared["from"] = req.Paging.Offset
 	}
-	return prepared, resource.SourceIdentifier, catalog, warning, nil
+	return prepared, resource, catalog, warning, nil
 }
 
-func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog, warnings []string) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, session *interfaces.CursorSession,
+	catalog *interfaces.Catalog, resource *interfaces.Resource, warnings []string) (*interfaces.RawQueryResponse, error) {
+	if session.ReadSession != nil {
+		return readOpenSearchCursorPage(ctx, session, warnings)
+	}
 	query := make(map[string]any, len(session.OpenSearchQuery)+1)
 	for key, value := range session.OpenSearchQuery {
 		query[key] = value
@@ -568,7 +582,12 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 	if err != nil {
 		return nil, connectorInitializationError(ctx, err)
 	}
-	defer func() { _ = connector.Close(pageCtx) }()
+	retained := false
+	defer func() {
+		if !retained {
+			_ = connector.Close(pageCtx)
+		}
+	}()
 
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
@@ -579,8 +598,18 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 	if err := indexConnector.Connect(pageCtx); err != nil {
 		return nil, connectorInitializationError(ctx, err)
 	}
+	if reader, ok := indexConnector.(interfaces.IndexReadSessionConnector); ok {
+		stream, err := reader.OpenRawIndexRead(pageCtx, resource, query, time.Duration(session.KeepAliveSec)*time.Second)
+		if err != nil {
+			return nil, sqlBuilderExecutionError(ctx, err)
+		}
+		session.ReadSession = stream
+		session.ReadConnector = connector
+		retained = true
+		return readOpenSearchCursorPage(pageCtx, session, warnings)
+	}
 
-	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
+	result, err := indexConnector.ExecuteRawQuery(pageCtx, resource, query)
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
@@ -619,6 +648,27 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.TotalCount = nil
 	}
 	result.Warnings = append(result.Warnings, warnings...)
+	return withExecutedResourceIDs(result, session.ResourceIDs), nil
+}
+
+func readOpenSearchCursorPage(ctx context.Context, session *interfaces.CursorSession, warnings []string) (*interfaces.RawQueryResponse, error) {
+	page, err := readSourceCursorPage(ctx, session)
+	if err != nil {
+		return nil, sqlBuilderExecutionError(ctx, err)
+	}
+	result := &interfaces.RawQueryResponse{
+		Entries:    page.Entries,
+		Columns:    page.Columns,
+		TotalCount: page.TotalCount,
+		Warnings:   warnings,
+	}
+	if page.HasMore {
+		rawQueryCursorSessions.markPageSuccess(session)
+		result.Paging = cursorPagingResponse(session)
+	} else {
+		result.Paging = &interfaces.PagingResponse{}
+		rawQueryCursorSessions.closeSession(session.ID)
+	}
 	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }
 
@@ -700,7 +750,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, connectorInitializationError(ctx, err)
 	}
 
-	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource.SourceIdentifier, queryMap)
+	result, err := indexConnector.ExecuteRawQuery(queryCtx, resource, queryMap)
 	if err != nil {
 		var validationErr *interfaces.RawAggregationValidationError
 		if errors.As(err, &validationErr) {
@@ -1036,7 +1086,7 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 	read := query
 	if options != nil {
 		if options.count {
-			read = sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}, Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
+			read = rawSQLCountQuery(query)
 		} else {
 			if options.offset < 0 || options.limit < 0 {
 				return nil, sqlBuilderQueryInvalid(ctx, "paging offset and limit must not be negative")
@@ -1101,12 +1151,36 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 		_ = connector.Close(ctx)
 		return sqlBuilderQueryInvalid(ctx, "connector is not a table connector")
 	}
+	if reader, ok := executor.(interfaces.TableReadSessionConnector); ok {
+		session.ReadConnector = connector
+		var count *sb.SelectBuilder
+		if session.NeedTotal {
+			count = rawSQLCountQuery(query)
+		}
+		cursorCtx, stop := startSQLCursorRead(ctx, session)
+		stream, err := reader.OpenSQLRead(cursorCtx, &read, count)
+		stop()
+
+		if err != nil {
+			return sqlBuilderExecutionError(ctx, err)
+		}
+		session.ReadSession = stream
+		return nil
+	}
 	session.SQLConnector = executor
 
-	// 保留请求身份与观测信息，Rows 生命周期由会话控制，不能随首屏 HTTP 请求结束。
-	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	session.SQLCancel = cancel
-	stop := watchSQLCursorRequest(ctx, cancel)
+	if session.NeedTotal {
+		counted, err := rqs.executeSQLBuilder(ctx, catalog, query, &rawSQLBuildOptions{count: true})
+		if err != nil {
+			return err
+		}
+		session.TotalCount, err = rawQueryTotalCount(counted)
+		if err != nil {
+			return err
+		}
+		session.HasTotalCount = true
+	}
+	cursorCtx, stop := startSQLCursorRead(ctx, session)
 	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，ScanSQLBuilderRow 在读取结束时检查 Err。
 	stop()
 
@@ -1118,6 +1192,18 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 	session.SQLColumns = columns
 
 	return nil
+}
+
+func rawSQLCountQuery(query *sb.SelectBuilder) *sb.SelectBuilder {
+	return sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}},
+		Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
+}
+
+func startSQLCursorRead(ctx context.Context, session *interfaces.CursorSession) (context.Context, func()) {
+	// 保留请求身份与观测信息，读取会话的生命周期独立于首屏 HTTP 请求。
+	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	session.SQLCancel = cancel
+	return cursorCtx, watchSQLCursorRequest(ctx, cancel)
 }
 
 // watchSQLCursorRequest 仅在当前请求打开或读取 Rows 时传播取消，并等待已启动的回调结束。
@@ -1133,38 +1219,63 @@ func watchSQLCursorRequest(ctx context.Context, cancel context.CancelFunc) func(
 
 // readSQLCursorPage 使用同一 Rows，最多缓存一行预读结果。读取失败后无法回退，必须终止会话。
 func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.RawQueryResponse, error) {
-	stop := watchSQLCursorRequest(ctx, session.SQLCancel)
-	result := &interfaces.RawQueryResponse{
-		Columns: session.SQLColumns,
-		Entries: make([]map[string]any, 0, session.PageLimit),
+	if session.ReadSession != nil {
+		page, err := readSourceCursorPage(ctx, session)
+		if err != nil {
+			return nil, sqlBuilderExecutionError(ctx, err)
+		}
+		if page.TotalCount != nil {
+			session.TotalCount = *page.TotalCount
+			session.HasTotalCount = true
+		}
+		return &interfaces.RawQueryResponse{Columns: page.Columns, Entries: page.Entries}, nil
 	}
+	rows, err := readCursorRows(ctx, session)
+	if err != nil {
+		return nil, sqlBuilderExecutionError(ctx, err)
+	}
+	return &interfaces.RawQueryResponse{
+		Columns: session.SQLColumns,
+		Entries: rows,
+	}, nil
+}
+
+func readCursorRows(ctx context.Context, session *interfaces.CursorSession) ([]map[string]any, error) {
+	stop := watchSQLCursorRequest(ctx, session.SQLCancel)
+	rows := make([]map[string]any, 0, session.PageLimit)
 	var err error
 	if session.SQLPendingRow != nil {
-		result.Entries = append(result.Entries, session.SQLPendingRow)
+		rows = append(rows, session.SQLPendingRow)
 		session.SQLPendingRow = nil
 	}
-	for len(result.Entries) <= session.PageLimit {
+	for len(rows) <= session.PageLimit {
 		var row map[string]any
 		row, err = session.SQLConnector.ScanSQLBuilderRow(session.SQLRows, session.SQLColumns)
 		if err != nil || row == nil {
 			break
 		}
-		if len(result.Entries) == session.PageLimit {
+		if len(rows) == session.PageLimit {
 			session.SQLPendingRow = row
 			break
 		}
-		result.Entries = append(result.Entries, row)
+		rows = append(rows, row)
 	}
 	stop()
 
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		rawQueryCursorSessions.remove(session.ID)
-		return nil, sqlBuilderExecutionError(ctx, err)
+		return nil, err
 	}
-	return result, nil
+	return rows, nil
 }
 
 func sqlBuilderExecutionError(ctx context.Context, err error) error {
+	if errors.Is(err, interfaces.ErrQueryPageSessionExpired) {
+		return cursorNotFoundError(ctx)
+	}
 	var forbidden *interfaces.SourceReadForbiddenError
 	if errors.As(err, &forbidden) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
@@ -1185,9 +1296,9 @@ func sqlSourceReadError(ctx context.Context, err error) error {
 	return sqlBuilderExecutionError(ctx, err)
 }
 
-// invalidateSQLCursor 权限或来源变化终止结果集；读取前的临时服务错误允许重试。
-func invalidateSQLCursor(session *interfaces.CursorSession, err error) {
-	if session.QueryFormat != interfaces.QueryFormatSQL {
+// invalidateSourceCursor 权限或来源变化终止结果集，读取前的临时服务错误允许重试。
+func invalidateSourceCursor(session *interfaces.CursorSession, err error) {
+	if session.QueryFormat != interfaces.QueryFormatSQL && session.ReadSession == nil {
 		return
 	}
 	var failure *httperrors.HTTPError
@@ -1200,7 +1311,7 @@ func (rqs *rawQueryService) validateSQLBuilderCursor(ctx context.Context, sessio
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return sqlBuilderQueryForbidden(ctx)
 	}
-	if catalog.ConnectorType != session.SQLConnectorType || catalog.UpdateTime != session.SQLCatalogUpdateTime {
+	if catalog.ConnectorType != session.ConnectorType || catalog.UpdateTime != session.CatalogUpdateTime {
 		return sqlBuilderCursorChanged(ctx)
 	}
 	for _, table := range sqlBuilderTables(session.SQLQuery) {

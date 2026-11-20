@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 )
 
-func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
+func TestResolveVectorConditionsResolvesModelIDForReadOnlyIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
 	model := &interfaces.SmallModel{ModelID: "model-1", BatchSize: 16}
@@ -28,7 +28,7 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 		ID:               "resource1",
 		Category:         interfaces.ResourceCategoryTable,
 		Name:             "orders",
-		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
 		LocalIndexName:   "managed-index",
 		IndexConfig:      &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model-1"},
 		SchemaDefinition: []*interfaces.Property{{

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -104,6 +105,16 @@ func TestCursorSessionManagerCreate(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, first, got)
 		manager.release(got)
+	})
+	t.Run("expired session counts toward capacity until reclaimed", func(t *testing.T) {
+		manager := newCursorSessionManager(1, 1)
+		session, err := manager.create("account", "catalog", nil, 1, 60, 30)
+		require.NoError(t, err)
+		atomic.StoreInt64(&session.ExpiresAtSec, 0)
+
+		_, err = manager.create("account", "catalog", nil, 1, 60, 30)
+		require.ErrorIs(t, err, errCursorSessionLimitReached)
+		assert.Contains(t, manager.sessions, session.ID)
 	})
 	t.Run("one account cannot exhaust another account's share", func(t *testing.T) {
 		manager := newCursorSessionManager(3, 2)
@@ -215,6 +226,135 @@ func TestCursorSessionManagerConfigure(t *testing.T) {
 	})
 }
 
+func TestCursorCreationDoesNotWaitForExpiredSessionClose(t *testing.T) {
+	manager := newCursorSessionManager(1, 1)
+	session, err := manager.create("account", "catalog", nil, 1, 60, 30)
+	require.NoError(t, err)
+	stream := vmock.NewMockQueryPageSession(gomock.NewController(t))
+	closeStarted := make(chan struct{})
+	releaseClose := make(chan struct{})
+	closed := make(chan struct{})
+	resume := sync.OnceFunc(func() { close(releaseClose) })
+	stream.EXPECT().Close().DoAndReturn(func() error {
+		close(closeStarted)
+		<-releaseClose
+		close(closed)
+		return nil
+	})
+	session.ReadSession = stream
+	atomic.StoreInt64(&session.ExpiresAtSec, 0)
+	ctx, cancel := context.WithCancel(t.Context())
+	reclaimerDone := make(chan struct{})
+	go func() {
+		defer close(reclaimerDone)
+		manager.reclaimExpired(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		resume()
+		<-reclaimerDone
+	})
+
+	select {
+	case <-closeStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("quota pressure did not wake up the reclaimer")
+	}
+	created := make(chan error, 1)
+	go func() {
+		_, err := manager.create("account", "catalog", nil, 1, 60, 30)
+		created <- err
+	}()
+	select {
+	case err := <-created:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("cursor creation waited for an expired snapshot to close")
+	}
+	resume()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expired snapshot was never closed")
+	}
+}
+
+func TestCursorSessionManagerReclaimThresholds(t *testing.T) {
+	t.Run("global threshold rounds up and repeated requests coalesce", func(t *testing.T) {
+		manager := newCursorSessionManager(6, 5)
+		for i := range 4 {
+			account := "a"
+			if i%2 != 0 {
+				account = "b"
+			}
+			_, err := manager.create(account, "catalog", nil, 1, 60, 30)
+			require.NoError(t, err)
+		}
+		require.Empty(t, manager.reclaimRequested)
+
+		_, err := manager.create("a", "catalog", nil, 1, 60, 30)
+		require.NoError(t, err)
+		require.Len(t, manager.reclaimRequested, 1)
+		_, err = manager.create("b", "catalog", nil, 1, 60, 30)
+		require.NoError(t, err)
+		require.Len(t, manager.reclaimRequested, 1)
+
+		<-manager.reclaimRequested
+		_, err = manager.create("b", "catalog", nil, 1, 60, 30)
+		require.ErrorIs(t, err, errCursorSessionLimitReached)
+		assert.Len(t, manager.reclaimRequested, 1)
+	})
+
+	t.Run("account threshold combines raw query and resource-data cursors", func(t *testing.T) {
+		manager := newCursorSessionManager(20, 5)
+		for range 3 {
+			_, err := manager.create("caller", "catalog", nil, 1, 60, 30)
+			require.NoError(t, err)
+		}
+		require.Empty(t, manager.reclaimRequested)
+
+		resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog"}
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}}
+		_, err := manager.createResourceData("admin", "caller", resource, params)
+		require.NoError(t, err)
+		require.Len(t, manager.reclaimRequested, 1)
+
+		_, err = manager.createResourceData("admin", "caller", resource, params)
+		require.NoError(t, err)
+		require.Len(t, manager.reclaimRequested, 1)
+		<-manager.reclaimRequested
+		_, err = manager.createResourceData("admin", "caller", resource, params)
+		require.ErrorIs(t, err, errCursorAccountLimitReached)
+		assert.Len(t, manager.reclaimRequested, 1)
+	})
+}
+
+func TestCursorSessionManagerReclaimsOnPeriodicTick(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		manager := newCursorSessionManager(10, 9)
+		session, err := manager.create("account", "catalog", nil, 1, 60, 30)
+		require.NoError(t, err)
+		atomic.StoreInt64(&session.ExpiresAtSec, 0)
+		require.Empty(t, manager.reclaimRequested)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go manager.reclaimExpired(ctx)
+		synctest.Wait()
+		manager.mu.Lock()
+		_, registered := manager.sessions[session.ID]
+		manager.mu.Unlock()
+		assert.True(t, registered)
+
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		manager.mu.Lock()
+		_, registered = manager.sessions[session.ID]
+		manager.mu.Unlock()
+		assert.False(t, registered)
+	})
+}
+
 func TestCursorSessionManagerMarkPageSuccess(t *testing.T) {
 	t.Run("refreshes successful page and expiry timestamps", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
@@ -281,7 +421,7 @@ func TestCloseCursorSession(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 }
 
-func TestCursorSessionManagerRemoveExpiredLocked(t *testing.T) {
+func TestCursorSessionManagerCloseExpiredSessions(t *testing.T) {
 	t.Run("skips active session", func(t *testing.T) {
 		manager := newCursorSessionManager(2, 1)
 		session, err := manager.create("account-1", "catalog-1", nil, 1, 60, 30)
@@ -289,18 +429,13 @@ func TestCursorSessionManagerRemoveExpiredLocked(t *testing.T) {
 		session.ExpiresAtSec = time.Now().Add(-time.Second).Unix()
 
 		session.Lock()
-		manager.mu.Lock()
-		manager.removeExpiredLocked(time.Now().Unix())
-		manager.mu.Unlock()
+		manager.closeExpiredSessions(time.Now().Unix())
 		_, ok := manager.sessions[session.ID]
 		assert.True(t, ok)
 		session.Unlock()
 
-		manager.mu.Lock()
-		manager.removeExpiredLocked(time.Now().Unix())
-		manager.mu.Unlock()
-		_, ok = manager.acquire(session.ID)
-		assert.False(t, ok)
+		manager.closeExpiredSessions(time.Now().Unix())
+		assert.NotContains(t, manager.sessions, session.ID)
 	})
 }
 
@@ -321,9 +456,9 @@ func TestCursorPagingResponse(t *testing.T) {
 }
 
 func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
-	for _, reason := range []string{"remove", "final page", "explicit close", "expired acquire", "expired close", "periodic expiry", "create reclaims expired", "resource data create reclaims expired"} {
+	for _, reason := range []string{"remove", "final page", "explicit close", "expired acquire", "expired close", "periodic expiry"} {
 		t.Run(reason, func(t *testing.T) {
-			manager := newCursorSessionManager(2, 1)
+			manager := newCursorSessionManager(10, 9)
 			session, err := manager.create("owner", "catalog", nil, 2, 60, 30)
 			require.NoError(t, err)
 			db, mock, err := sqlmock.New()
@@ -353,10 +488,8 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 			assert.NoError(t, ctx.Err())
 			session.Lock()
 			atomic.StoreInt64(&session.ExpiresAtSec, 0)
-			manager.mu.Lock()
-			removed := manager.removeExpiredLocked(time.Now().Unix())
-			manager.mu.Unlock()
-			assert.Empty(t, removed)
+			manager.closeExpiredSessions(time.Now().Unix())
+			assert.Contains(t, manager.sessions, session.ID)
 			assert.NoError(t, ctx.Err())
 			session.Unlock()
 			switch reason {
@@ -373,16 +506,13 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 			case "expired close":
 				assert.ErrorIs(t, manager.closeForAccount("owner", session.ID), errCursorSessionNotFound)
 			case "periodic expiry":
-				manager.mu.Lock()
-				removed = manager.removeExpiredLocked(time.Now().Unix())
-				manager.mu.Unlock()
-				closeSQLCursorResources(removed...)
-			case "create reclaims expired":
-				_, err = manager.create("owner", "catalog", nil, 1, 60, 30)
-				require.NoError(t, err)
-			case "resource data create reclaims expired":
-				_, err = manager.createResourceData("owner", "owner", &interfaces.Resource{ID: "r"}, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}})
-				require.NoError(t, err)
+				manager.closeExpiredSessions(time.Now().Unix())
+			}
+			if reason == "expired acquire" || reason == "expired close" {
+				assert.NoError(t, ctx.Err(), "rejecting an expired cursor must not close the connection")
+				assert.Contains(t, manager.sessions, session.ID)
+				assert.Len(t, manager.reclaimRequested, 1)
+				manager.closeExpiredSessions(time.Now().Unix())
 			}
 			assert.ErrorIs(t, ctx.Err(), context.Canceled)
 			assert.Error(t, session.SQLRows.Scan(new(any)))

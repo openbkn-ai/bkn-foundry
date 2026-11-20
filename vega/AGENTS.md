@@ -45,6 +45,7 @@
 - 类型化错误保留实际失败字段和必要参数；没有明确的别名还原需求时，不为错误提示额外增加来源追踪、名称列表或条件树遍历，也不从公开 metadata 反推条件或再次执行校验。
 - ResourceDataService 与派生视图在对外查询入口统一映射查询错误；HTTP 映射函数只返回 `*httperrors.HTTPError` 或 nil，内部执行保留原始错误及来源，未知故障由对外入口兜底。
 - 遵循 VEGA 既有六边形架构：`interfaces` → `logics` → `driveradapters` / `drivenadapters`。
+- 数据访问层负责 SQL、数据映射与数据库执行。业务校验、状态判断、跨 Access 调用与事务编排由 Service 负责。
 - 连接器应将驱动错误归类为可识别的普通错误；跨连接器共用的错误类型定义在 Foundry `interfaces/errors.go`，统一通过构造函数创建，由调用方通过 `errors.As` 转换为 HTTP 错误。连接器不直接构造 HTTP 错误。
 - 连接器的数据库能力和连接生命周期内稳定的共享参数（如 PostgreSQL money 的定标定义），统一在对应 `compatibility` 的初始化探测阶段获取并保存。探查和查询路径直接只读使用，不在表或字段循环中重复查询，不另设惰性缓存或为此加锁；重建连接时重新探测。
 - 保持 diff 聚焦，不做与任务无关的格式化、重命名、文件移动或依赖升级。
@@ -58,6 +59,21 @@
 - 非生成测试文件必须包含许可证文件头，按文件来源遵循仓库 `rules/CONTRIBUTING.md`：OpenBKN 净新文件使用 OpenBKN License，上游衍生文件保留 Apache 2.0 及上游版权行；生成文件不补文件头。
 - 不得修改、覆盖或提交工作区中属于用户的无关改动。
 - Dataset 是 Vega 管理的结构化文档资源，JSON 字段保留文档原有类型；table、index 等外部数据源的 JSON 查询输出约定不得直接套用到 Dataset，列表与按 ID 读取必须保持一致。
+
+## 连接器开发规范
+
+### 编译期接口检查
+
+新增连接器时，必须对其实现的基础接口添加编译期断言。连接器新增可选能力时，也必须对相应接口添加断言。实现 `interfaces.TableReadSessionConnector` 或 `interfaces.IndexReadSessionConnector` 的连接器，必须显式断言对应的读会话接口。
+
+在连接器主 Go 文件的包级 `var` 声明中，用空白标识符接收具体类型的 nil 指针，并把能力接口断言与基础接口断言放在一起。
+
+```go
+var (
+	_ interfaces.TableConnector            = (*MariaDBConnector)(nil)
+	_ interfaces.TableReadSessionConnector = (*MariaDBConnector)(nil)
+)
+```
 
 ## 列表接口的权限过滤
 

@@ -65,6 +65,15 @@ paths:
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
+        PostgreSQL、MySQL/MariaDB 的 InnoDB 源表和 HANA 使用显式只读 REPEATABLE READ，
+        Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SERIALIZABLE。COUNT 和数据结果集共享同一个事务。
+        后续页读取该结果集，末页、关闭、过期或源端读取失败释放会话。SQL Server 读取期间可能阻塞源端写入。
+        如果续页在读取源端前遇到并发限流，客户端可用同一个 cursor 重试。
+        Doris 等不支持事务读会话的来源继续逐页执行查询。
+        OpenSearch 搜索要求所有分片成功。分片失败或搜索超时时返回错误。
+        OpenSearch 原生索引、托管本地索引及 Dataset 的 cursor 在同一个 PIT 快照上续页，
+        排序应以稳定且唯一的字段打破并列。源端须支持 PIT 且查询账号须有相应权限。
+        PIT 失效时返回 404，需重新发起查询。
         逻辑视图查询要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
         授权版本不足返回 403 `Public.Forbidden`。
         HANA 源表无 SELECT 权限时返回 403

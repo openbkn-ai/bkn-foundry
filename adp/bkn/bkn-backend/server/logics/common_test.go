@@ -235,9 +235,26 @@ func TestVegaResourceIndexCaps_NoVectorFieldWithoutLocalIndex(t *testing.T) {
 	}
 }
 
+func TestVegaResourceIndexCaps_ReadOnlyLocalIndexRemainsSearchable(t *testing.T) {
+	res := &interfaces.VegaResource{
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "stadium_name", Features: []interfaces.PropertyFeature{
+				{FeatureType: interfaces.FieldFeatureType_Fulltext},
+				{FeatureType: interfaces.FieldFeatureType_Vector},
+			}},
+		},
+	}
+
+	caps := VegaResourceIndexCaps(res)
+	if !caps["stadium_name"].Fulltext || !caps["stadium_name"].Vector {
+		t.Fatalf("readonly local index must retain full-text and vector capabilities, got %+v", caps)
+	}
+}
+
 func TestVegaResourceIndexCaps_StaleLocalIndexHasNoCapability(t *testing.T) {
 	res := &interfaces.VegaResource{
-		LocalIndexStatus: "stale",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale,
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "stadium_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Vector}}},
 		},

@@ -429,10 +429,8 @@ func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.I
 		return 0, fmt.Errorf("count index failed: status %d", response.StatusCode)
 	}
 	var result struct {
-		Count  *int64 `json:"count"`
-		Shards struct {
-			Failed *int64 `json:"failed"`
-		} `json:"_shards"`
+		Count  *int64           `json:"count"`
+		Shards searchShardStats `json:"_shards"`
 	}
 	if err := common.DecodeJSON(response.Body, &result); err != nil {
 		return 0, fmt.Errorf("decode index count: %w", err)
@@ -440,8 +438,8 @@ func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.I
 	if result.Count == nil || *result.Count < 0 {
 		return 0, fmt.Errorf("invalid index count")
 	}
-	if result.Shards.Failed == nil || *result.Shards.Failed != 0 {
-		return 0, fmt.Errorf("index count incomplete: shard statistics missing or failed")
+	if !result.Shards.complete() {
+		return 0, fmt.Errorf("index count incomplete: missing or unsuccessful shards")
 	}
 	return *result.Count, nil
 }

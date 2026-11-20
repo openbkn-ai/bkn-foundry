@@ -57,10 +57,10 @@ type PropertyIndexCaps struct {
 
 // VegaResourceIndexCaps derives index capabilities for each resource field, keyed by resource field name.
 //
-// It returns nil unless the resource's local index is available. Features only configures what to build; the
-// capabilities do not exist until the build completes, and Vega queries the source database directly.
+// The local index must support queries before its configured features can be used.
 func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyIndexCaps {
-	if res == nil || res.LocalIndexStatus != interfaces.ResourceLocalIndexStatusAvailable {
+	if res == nil || (res.LocalIndexStatus != interfaces.ResourceLocalIndexStatusAvailable &&
+		res.LocalIndexStatus != interfaces.ResourceLocalIndexStatusReadOnly) {
 		return nil
 	}
 

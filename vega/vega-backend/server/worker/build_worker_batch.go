@@ -79,16 +79,30 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 			logger.Infof("Build task failed during final configuration check: %s", taskID)
 			return nil
 		}
-		logger.Errorf("Build failed for task %s: %w", taskID, err)
-		_, err = bbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error())
-		if err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
+		logger.Errorf("Batch build execution error: id=%s, error=%v", taskID, err)
+		if _, statusErr := markBatchBuildFailed(ctx, bbw.bts, taskID, err.Error()); statusErr != nil {
+			return errors.Join(err, statusErr)
 		}
 		return nil
 	}
 
 	logger.Infof("Build completed for task: %s, resource: %s", taskID, resourceID)
 	return nil
+}
+
+// markBatchBuildFailed records a running task's failure or finishes a stop that won the race.
+func markBatchBuildFailed(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) (bool, error) {
+	failed, err := bts.InternalMarkFailed(ctx, nil, taskID, detail, []string{interfaces.BuildTaskStatusRunning})
+	if err != nil {
+		return false, fmt.Errorf("mark batch build task failed: %w", err)
+	}
+	if failed {
+		return true, nil
+	}
+	if _, err := bts.InternalMarkStopped(ctx, nil, taskID, []string{interfaces.BuildTaskStatusStopping}); err != nil {
+		return false, fmt.Errorf("mark batch build task stopped: %w", err)
+	}
+	return false, nil
 }
 
 func (bbw *batchBuildWorker) isStopping() bool {
@@ -121,7 +135,7 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 	}
 	if err := validateBuildTaskResourceFingerprint(current, buildTask); err != nil {
 		detail := fmt.Sprintf("cannot publish full build result: %v", err)
-		failed, updateErr := bbw.bts.InternalMarkFailed(ctx, tx, buildTask.ID, detail)
+		failed, updateErr := bbw.bts.InternalMarkFailed(ctx, tx, buildTask.ID, detail, []string{interfaces.BuildTaskStatusRunning})
 		if updateErr != nil {
 			return fmt.Errorf("mark build task failed after config change: %w", updateErr)
 		}
@@ -135,13 +149,16 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 		return fmt.Errorf("%w: %s", errBuildTaskMarkedFailed, detail)
 	}
 
-	updated, err := bbw.rs.InternalUpdateLocalIndexState(ctx, tx, current.ID,
-		interfaces.ResourceLocalIndexStatusAvailable, indexName, syncMark)
+	// 仅主键的任务游标用于断点续跑，发布索引时清除 Resource 上的增量基线。
+	if len(buildTask.IndexConfig.IncrementalFields) == 0 {
+		syncMark = ""
+	}
+	updated, err := bbw.rs.InternalPublishLocalIndex(ctx, tx, current.ID, indexName, syncMark, current.UpdateTime)
 	if err != nil {
 		return fmt.Errorf("publish resource local index state: %w", err)
 	}
 	if !updated {
-		return errors.New("resource disappeared while publishing local index state")
+		return errors.New("resource changed before publishing local index")
 	}
 
 	completed, err := bbw.bts.InternalMarkCompleted(ctx, tx, buildTask.ID)
@@ -155,7 +172,7 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 		committed = true
 		// A stop request may win the race with completion. The resource update
 		// has been rolled back, so finish the stopping -> stopped transition.
-		if _, err := bbw.bts.InternalMarkStopped(ctx, nil, buildTask.ID); err != nil {
+		if _, err := bbw.bts.InternalMarkStopped(ctx, nil, buildTask.ID, nil); err != nil {
 			return fmt.Errorf("mark build task stopped: %w", err)
 		}
 		return nil
@@ -174,8 +191,8 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 func (bbw *batchBuildWorker) commitIncrementalProgress(ctx context.Context, resource *interfaces.Resource,
 	buildTask *interfaces.BuildTask, indexName, previousMark, syncMark string,
 	progress interfaces.BuildTaskProgress) error {
-	if logics.DB == nil {
-		return errors.New("database is not initialized")
+	if logics.DB == nil || logics.RA == nil {
+		return errors.New("incremental checkpoint access is not initialized")
 	}
 
 	tx, err := logics.DB.BeginTx(ctx, nil)
@@ -203,20 +220,20 @@ func (bbw *batchBuildWorker) commitIncrementalProgress(ctx context.Context, reso
 		return errors.New("resource checkpoint changed during incremental build")
 	}
 
-	updated, err := bbw.bts.InternalSetProgress(ctx, tx, buildTask.ID, progress)
+	updated, err := logics.RA.CompareAndSetSyncMark(ctx, tx,
+		current.ID, indexName, interfaces.ResourceLocalIndexStatusAvailable, previousMark, syncMark)
+	if err != nil {
+		return fmt.Errorf("update resource incremental checkpoint: %w", err)
+	}
+	if !updated {
+		return errors.New("resource local index or checkpoint changed during incremental build")
+	}
+	updated, err = bbw.bts.InternalSetProgress(ctx, tx, buildTask.ID, progress, runningOrStoppingStatuses)
 	if err != nil {
 		return fmt.Errorf("update incremental task checkpoint: %w", err)
 	}
 	if !updated {
 		return errors.New("build task status changed before incremental checkpoint")
-	}
-	updated, err = bbw.rs.InternalUpdateLocalIndexState(ctx, tx, current.ID,
-		interfaces.ResourceLocalIndexStatusAvailable, indexName, syncMark)
-	if err != nil {
-		return fmt.Errorf("update resource incremental checkpoint: %w", err)
-	}
-	if !updated {
-		return errors.New("resource disappeared while updating incremental checkpoint")
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -237,7 +254,7 @@ func (bbw *batchBuildWorker) completeIncrementalBuildTask(ctx context.Context, t
 		return nil
 	}
 	// A stop request may win the race with completion.
-	if _, err := bbw.bts.InternalMarkStopped(ctx, nil, taskID); err != nil {
+	if _, err := bbw.bts.InternalMarkStopped(ctx, nil, taskID, nil); err != nil {
 		return fmt.Errorf("mark build task stopped: %w", err)
 	}
 	return nil
@@ -268,6 +285,49 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) (*in
 		branches = append(branches, &interfaces.FilterCondCfg{Operation: "and", SubConds: subConditions})
 	}
 	return &interfaces.FilterCondCfg{Operation: "or", SubConds: branches}, nil
+}
+
+// buildBatchReadParams converts the checkpoint into the filter for a new source query.
+func buildBatchReadParams(ctx context.Context, resource *interfaces.Resource, limit int, needTotal bool,
+	sortFields []*interfaces.SortField, outputFields, effectiveCursorFields []string,
+	lastBatchKeyValues []interfaces.KeyValue) (*interfaces.ResourceDataQueryParams, error) {
+
+	params := &interfaces.ResourceDataQueryParams{
+		Paging:       interfaces.PagingRequest{Limit: limit},
+		Sort:         sortFields,
+		NeedTotal:    needTotal,
+		OutputFields: outputFields,
+	}
+	// Add filter condition for batch fields if we have last values
+	if len(lastBatchKeyValues) > 0 {
+		filter, err := buildBatchCursorFilter(effectiveCursorFields, lastBatchKeyValues)
+		if err != nil {
+			return nil, err
+		}
+		params.FilterCondCfg = filter
+
+		// Convert FilterCondCfg to ActualFilterCond
+		fieldMap := map[string]*interfaces.Property{}
+		for _, prop := range resource.SchemaDefinition {
+			fieldMap[prop.Name] = prop
+		}
+		// Internal keyset pagination is not a caller-supplied filter.
+		// Permit cursor comparisons on copies without changing public metadata.
+		for _, name := range effectiveCursorFields {
+			if property, exists := fieldMap[name]; exists {
+				copied := *property
+				copied.Filterable = new(true)
+				fieldMap[name] = &copied
+			}
+		}
+		actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
+		if err != nil {
+			return nil, fmt.Errorf("create filter condition failed: %w", err)
+		}
+		params.ActualFilterCond = actualFilterCond
+	}
+
+	return params, nil
 }
 
 // executeBuild executes the build logic
@@ -316,7 +376,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			SyncedCount: &zero,
 			SyncedMark:  &emptyMark,
 		}
-		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 	}
@@ -355,6 +415,21 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	if !ok {
 		return fmt.Errorf("connector is not a table connector")
 	}
+
+	var streamConnector interfaces.TableReadSessionConnector
+	if !isIncremental {
+		streamConnector, _ = tableConnector.(interfaces.TableReadSessionConnector)
+		if streamConnector == nil {
+			logger.Warnf("Full build source does not support snapshot reads: task_id=%s, connector_type=%s",
+				buildTaskInfo.ID, catalog.ConnectorType)
+		}
+	}
+	var stream interfaces.QueryPageSession
+	defer func() {
+		if stream != nil {
+			_ = stream.Close()
+		}
+	}()
 
 	// Build sort fields
 	sortFields := make([]*interfaces.SortField, len(effectiveCursorFields))
@@ -396,50 +471,45 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			// Task is stopping, exit the loop
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			// Update task status to stopped
-			_, err = bbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID)
+			_, err = bbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID, nil)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
 			return nil
 		}
 
-		params := &interfaces.ResourceDataQueryParams{
-			Paging:       interfaces.PagingRequest{Limit: batchSize},
-			Sort:         sortFields,
-			NeedTotal:    firstQuery,
-			OutputFields: outputFields,
-		}
-
-		// Add filter condition for batch fields if we have last values
-		if len(lastBatchKeyValues) > 0 {
-			filter, err := buildBatchCursorFilter(effectiveCursorFields, lastBatchKeyValues)
-			if err != nil {
-				return err
+		var result *interfaces.ResourceDataQueryResult
+		hasMore := true
+		if stream == nil {
+			limit := batchSize
+			if streamConnector != nil {
+				limit = 0 // 会话只执行一次数据查询，批大小由读取循环控制。
 			}
-			params.FilterCondCfg = filter
-
-			// Convert FilterCondCfg to ActualFilterCond
-			fieldMap := map[string]*interfaces.Property{}
-			for _, prop := range resource.SchemaDefinition {
-				fieldMap[prop.Name] = prop
+			params, paramsErr := buildBatchReadParams(ctx, resource, limit, firstQuery,
+				sortFields, outputFields, effectiveCursorFields, lastBatchKeyValues)
+			if paramsErr != nil {
+				return paramsErr
 			}
-			// Internal keyset pagination is not a caller-supplied filter.
-			// Permit cursor comparisons on copies without changing public metadata.
-			for _, name := range effectiveCursorFields {
-				if property, exists := fieldMap[name]; exists {
-					copied := *property
-					copied.Filterable = new(true)
-					fieldMap[name] = &copied
+			if streamConnector != nil {
+				stream, err = streamConnector.OpenTableRead(ctx, resource, params)
+				if err != nil {
+					return fmt.Errorf("open full build source stream: %w", err)
 				}
+			} else {
+				result, err = tableConnector.ExecuteQuery(ctx, resource, params)
 			}
-			actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
-			if err != nil {
-				return fmt.Errorf("create filter condition failed: %w", err)
-			}
-			params.ActualFilterCond = actualFilterCond
 		}
-
-		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
+		if stream != nil {
+			page, readErr := stream.ReadPage(ctx, batchSize)
+			if readErr != nil {
+				return fmt.Errorf("read full build source page: %w", readErr)
+			}
+			result = &interfaces.ResourceDataQueryResult{Entries: page.Entries}
+			if firstQuery && page.TotalCount != nil {
+				result.TotalCount = *page.TotalCount
+			}
+			hasMore = page.HasMore
+		}
 		if err != nil {
 			return fmt.Errorf("execute query failed: %w", err)
 		}
@@ -457,7 +527,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 					totalCount += syncedCount
 				}
 				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID,
-					interfaces.BuildTaskProgress{TotalCount: &totalCount}); err != nil {
+					interfaces.BuildTaskProgress{TotalCount: &totalCount}, runningOrStoppingStatuses); err != nil {
 					return fmt.Errorf("set build task total count: %w", err)
 				}
 			}
@@ -518,15 +588,23 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 					return fmt.Errorf("commit incremental progress: %w", err)
 				}
 			} else {
-				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses); err != nil {
 					return fmt.Errorf("update build task status failed: %w", err)
 				}
 			}
 			lastSyncedMark = syncedMarkStr
 		}
 
-		if readRows < batchSize {
+		if !hasMore || readRows < batchSize {
 			break
+		}
+	}
+
+	if stream != nil {
+		closeErr := stream.Close()
+		stream = nil
+		if closeErr != nil {
+			return fmt.Errorf("close full build source stream: %w", closeErr)
 		}
 	}
 
@@ -541,7 +619,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			SyncedCount: &zero,
 			SyncedMark:  &lastSyncedMark,
 		}
-		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress, runningOrStoppingStatuses); err != nil {
 			return fmt.Errorf("update empty build task progress: %w", err)
 		}
 	}

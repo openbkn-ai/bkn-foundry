@@ -149,7 +149,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if err := validateBuildTaskKeyFields(ctx, resource, executeType); err != nil {
 		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
 		return "", err
 	}
@@ -158,7 +158,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", err
 	}
 	if executeType == interfaces.BuildTaskExecuteTypeIncremental {
-		if err := validateIncrementalBaseline(ctx, resource); err != nil {
+		if err := validateIncrementalAdmission(ctx, resource); err != nil {
 			span.SetStatus(codes.Error, "Incremental baseline unavailable")
 			return "", err
 		}
@@ -245,12 +245,14 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	return nil
 }
 
-func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource, executeType string) error {
 	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails("build task requires at least one primary_key_fields entry")
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).
+			WithErrorDetails("build task requires at least one primary_key_fields entry")
 	}
-	if len(resource.IndexConfig.IncrementalFields) == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails("build task requires at least one incremental_fields entry")
+	if executeType == interfaces.BuildTaskExecuteTypeIncremental && len(resource.IndexConfig.IncrementalFields) == 0 {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).
+			WithErrorDetails("incremental build requires at least one incremental_fields entry")
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
@@ -497,10 +499,18 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 	return nil
 }
 
-func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resource) error {
-	if !resourcelogic.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+func validateIncrementalAdmission(ctx context.Context, resource *interfaces.Resource) error {
+	if resource != nil && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
-			WithErrorDetails("incremental build requires an available local index and committed checkpoint")
+			WithErrorDetails("published local index is read-only; run a full build before starting incremental builds")
+	}
+	if !resourcelogic.HasWritableLocalIndex(resource) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails("incremental build requires an available published local index")
+	}
+	// The worker recovers a missing checkpoint after claiming the task.
+	if resource.SyncMark == "" {
+		return nil
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
 	if err != nil {
@@ -592,11 +602,11 @@ func (bts *buildTaskService) InternalList(ctx context.Context,
 }
 
 func (bts *buildTaskService) InternalSetProgress(ctx context.Context,
-	tx *sql.Tx, id string, progress interfaces.BuildTaskProgress) (bool, error) {
+	tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalSetProgress")
 	defer span.End()
 
-	return bts.bta.SetProgress(ctx, tx, id, progress, time.Now().UnixMilli())
+	return bts.bta.SetProgress(ctx, tx, id, progress, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
@@ -606,11 +616,14 @@ func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx
 	return bts.bta.MarkRunning(ctx, tx, id, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error) {
+func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkFailed")
 	defer span.End()
 
-	return bts.bta.MarkFailed(ctx, tx, id, detail, time.Now().UnixMilli())
+	if len(allowedStatuses) == 0 {
+		allowedStatuses = activeBuildTaskStatuses
+	}
+	return bts.bta.MarkFailed(ctx, tx, id, detail, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error) {
@@ -620,11 +633,14 @@ func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, tx *sql.
 	return bts.bta.MarkCancelled(ctx, tx, id, detail, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkStopped")
 	defer span.End()
 
-	return bts.bta.MarkStopped(ctx, tx, id, time.Now().UnixMilli())
+	if len(allowedStatuses) == 0 {
+		allowedStatuses = []string{interfaces.BuildTaskStatusStopping}
+	}
+	return bts.bta.MarkStopped(ctx, tx, id, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
@@ -911,7 +927,10 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
+		return validateIncrementalAdmission(ctx, resource)
+	}
+	if err := validateBuildTaskKeyFields(ctx, resource, buildTask.ExecuteType); err != nil {
 		return err
 	}
 	if err := validateBuildTaskDefaultFeatures(ctx, resource); err != nil {
@@ -939,7 +958,13 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
-		return validateIncrementalBaseline(ctx, resource)
+		if err := validateIncrementalAdmission(ctx, resource); err != nil {
+			return err
+		}
+		if buildTask.IndexName != resource.LocalIndexName {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+				WithErrorDetails("resource published index has changed; create a new build task instead")
+		}
 	}
 	return nil
 }
@@ -981,7 +1006,7 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	// When dequeuing, if the worker detects "stopped", it will skip and will not be revived for execution.
 	var updated bool
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
-		updated, err = bts.bta.MarkStopped(ctx, nil, taskID, time.Now().UnixMilli())
+		updated, err = bts.bta.MarkStopped(ctx, nil, taskID, []string{interfaces.BuildTaskStatusPending}, time.Now().UnixMilli())
 	} else {
 		updated, err = bts.bta.MarkStopping(ctx, nil, taskID)
 	}

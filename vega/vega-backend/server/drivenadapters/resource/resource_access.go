@@ -740,9 +740,8 @@ func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-// UpdateLocalIndexState atomically updates the Resource-owned index state.
 func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-	localIndexStatus string, localIndexName string, syncMark string) (bool, error) {
+	localIndexStatus, localIndexName, syncMark string, expectedUpdateTime, updateTime int64) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource local index state")
 	defer span.End()
 
@@ -751,7 +750,8 @@ func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx,
 		Set("f_local_status", localIndexStatus).
 		Set("f_local_index_name", localIndexName).
 		Set("f_sync_mark", syncMark).
-		Where(sq.Eq{"f_id": id})
+		Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id, "f_update_time": expectedUpdateTime})
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -776,7 +776,33 @@ func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx,
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return rowsAffected > 0, nil
+	return rowsAffected == 1, nil
+}
+
+func (ra *resourceAccess) CompareAndSetSyncMark(ctx context.Context, tx *sql.Tx, id, indexName, indexStatus, previous, next string) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Compare and set resource sync mark")
+	defer span.End()
+
+	query, args, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_sync_mark", next).
+		Where(sq.Eq{
+			"f_id": id, "f_local_index_name": indexName, "f_local_status": indexStatus, "f_sync_mark": previous,
+		}).
+		ToSql()
+	if err != nil {
+		return false, err
+	}
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		result, err = ra.db.ExecContext(ctx, query, args...)
+	}
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected == 1, err
 }
 
 // UpdateSemanticMetadata updates only fields owned by semantic understanding

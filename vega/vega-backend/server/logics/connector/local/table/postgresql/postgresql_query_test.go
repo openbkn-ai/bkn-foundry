@@ -749,6 +749,48 @@ func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
 	}
 }
 
+func TestPostgresqlConnectorOpenTableRead(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		assert.NoError(t, db.Close())
+	})
+	connector := &PostgresqlConnector{db: db, connected: true}
+	resource := &interfaces.Resource{
+		SourceIdentifier: "events",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: "timestamptz"},
+			{Name: "payload", Type: interfaces.DataType_Binary, OriginalType: "bytea"},
+		},
+	}
+	timestamp := time.Date(2026, time.January, 1, 12, 0, 0, 0, time.FixedZone("source", 8*60*60))
+	payload := []byte{0, 255}
+	mock.ExpectBegin()
+	rows := sqlmock.NewRows([]string{"created", "payload"}).AddRow(timestamp, payload).AddRow(timestamp, payload)
+	mock.ExpectQuery("SELECT").WillReturnRows(rows).RowsWillBeClosed()
+	mock.ExpectRollback()
+
+	mode := interfaces.BinaryModeContent
+	session, err := connector.OpenTableRead(t.Context(), resource, &interfaces.ResourceDataQueryParams{BinaryMode: &mode})
+	require.NoError(t, err)
+	defer func() { _ = session.Close() }()
+	page, err := session.ReadPage(t.Context(), 1)
+	require.NoError(t, err)
+	want := []map[string]any{{"created": timestamp.Local(), "payload": payload}}
+	assert.Equal(t, want, page.Entries)
+	assert.True(t, page.HasMore)
+
+	mode = interfaces.BinaryModeMetadata
+	resource.SchemaDefinition[0].OriginalType = "timestamp"
+	last, err := session.ReadPage(t.Context(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, want, last.Entries)
+	assert.False(t, last.HasMore)
+	require.NoError(t, session.Close())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestPostgresqlConnectorOpenSQLBuilder 检查 Rows 转交、重复列关闭及取消前不创建连接。
 func TestPostgresqlConnectorOpenSQLBuilder(t *testing.T) {
 	t.Run("duplicate names close Rows before returning error", func(t *testing.T) {

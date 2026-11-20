@@ -12,6 +12,7 @@ package mock_interfaces
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
@@ -261,6 +262,21 @@ func (mr *MockLocalIndexManagerMockRecorder) ListIndexes(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIndexes", reflect.TypeOf((*MockLocalIndexManager)(nil).ListIndexes), ctx)
 }
 
+// OpenDocumentRead mocks base method.
+func (m *MockLocalIndexManager) OpenDocumentRead(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams, keepAlive time.Duration) (interfaces.QueryPageSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenDocumentRead", ctx, indexName, res, params, keepAlive)
+	ret0, _ := ret[0].(interfaces.QueryPageSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenDocumentRead indicates an expected call of OpenDocumentRead.
+func (mr *MockLocalIndexManagerMockRecorder) OpenDocumentRead(ctx, indexName, res, params, keepAlive any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenDocumentRead", reflect.TypeOf((*MockLocalIndexManager)(nil).OpenDocumentRead), ctx, indexName, res, params, keepAlive)
+}
+
 // SchemaForQuery mocks base method.
 func (m *MockLocalIndexManager) SchemaForQuery(schema []*interfaces.Property) ([]*interfaces.Property, error) {
 	m.ctrl.T.Helper()
@@ -321,17 +337,17 @@ func (mr *MockLocalIndexManagerMockRecorder) ValidateAnalyzer(ctx, analyzer any)
 }
 
 // ValidateFilterCondition mocks base method.
-func (m *MockLocalIndexManager) ValidateFilterCondition(condition interfaces.FilterCondition, properties []*interfaces.Property) error {
+func (m *MockLocalIndexManager) ValidateFilterCondition(condition interfaces.FilterCondition, schema []*interfaces.Property) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateFilterCondition", condition, properties)
+	ret := m.ctrl.Call(m, "ValidateFilterCondition", condition, schema)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ValidateFilterCondition indicates an expected call of ValidateFilterCondition.
-func (mr *MockLocalIndexManagerMockRecorder) ValidateFilterCondition(condition, properties any) *gomock.Call {
+func (mr *MockLocalIndexManagerMockRecorder) ValidateFilterCondition(condition, schema any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateFilterCondition), condition, properties)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateFilterCondition", reflect.TypeOf((*MockLocalIndexManager)(nil).ValidateFilterCondition), condition, schema)
 }
 
 // ValidateFilterability mocks base method.
