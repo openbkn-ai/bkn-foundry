@@ -15,7 +15,7 @@ import (
 // A knowledge base keeps source files and blocks to locate text, and relates every record read to
 // them. They are not business: no path runs through them and no question needs them.
 func Test_EvidenceIsNoBusinessNeed(t *testing.T) {
-	Convey("Test evidence objects in needs and paths\\n", t, func() {
+	Convey("Test evidence objects in needs and paths\n", t, func() {
 		ot := func(id, name, role string) *interfaces.DraftObjectType {
 			o := &interfaces.DraftObjectType{ID: id, Name: name, Adopted: true}
 			if role != "" {
@@ -40,21 +40,34 @@ func Test_EvidenceIsNoBusinessNeed(t *testing.T) {
 			return interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: id}
 		}
 
-		Convey("no path between two records runs through the file they were read from\\n", func() {
+		Convey("no path between two records runs through the file they were read from\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Lines of a contract?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 				Needs: []interfaces.RequirementItemRef{objectRef("contract"), objectRef("line")}}
 			path, unconnected := questionPath(q, draft)
 			So(path, ShouldBeEmpty)
 			So(unconnected, ShouldHaveLength, 1)
 		})
-		Convey("a need of evidence is dropped, and none is named from the text\\n", func() {
+		Convey("a need of evidence is dropped, and none is named from the text\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Which Source document has the Contract?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS,
 				Needs: []interfaces.RequirementItemRef{objectRef("contract"), objectRef("file"),
 					{Kind: interfaces.REQUIREMENT_ITEM_RELATION_TYPE, ID: "contract_file"}}}
 			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("contract")})
 			So(objectTypesNamed(draft, q.Text), ShouldHaveLength, 1)
 		})
-		Convey("a question drafted with no needs needs the object types its text names\\n", func() {
+		Convey("one whose type is named only in its template needs it too, as drafting reads both\n", func() {
+			q := &interfaces.RequirementQuestion{Text: "Which costs most?", Template: "Which Contract line {no} costs most?",
+				NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS}
+			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
+		})
+		Convey("a question that needs only evidence is asked of no record of it\n", func() {
+			q := &interfaces.RequirementQuestion{Text: "Which file?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_PERSON,
+				Needs: []interfaces.RequirementItemRef{objectRef("file")}}
+			asked := *q
+			asked.Needs = businessNeeds(q, draft)
+			ot, _ := exampleObject(&asked, draft)
+			So(ot, ShouldBeNil)
+		})
+		Convey("a question drafted with no needs needs the object types its text names\n", func() {
 			q := &interfaces.RequirementQuestion{Text: "Which Contract line costs most?", NeedsSource: interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS}
 			So(businessNeeds(q, draft), ShouldResemble, []interfaces.RequirementItemRef{objectRef("line")})
 			// One a person said needs nothing keeps needing nothing.

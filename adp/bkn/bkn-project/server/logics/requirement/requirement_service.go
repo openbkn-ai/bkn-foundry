@@ -163,9 +163,9 @@ func (s *requirementService) ScenarioQuestions(ctx context.Context, projectID st
 		question.Path, question.Unconnected = questionPath(&asked, current)
 		// A question its template asks of a record, or, with no template, of the first object
 		// type it needs: the run asks it of a record the data has.
-		ot, _ := exampleObject(q, current)
+		ot, _ := exampleObject(&asked, current)
 		question.Fillable = len(serverTests(q, unmapped)) > 0 || ot != nil
-		for _, need := range q.Needs {
+		for _, need := range question.Needs {
 			if !drafted[need] {
 				question.MissingItems = append(question.MissingItems, need)
 			}
@@ -202,7 +202,7 @@ func businessNeeds(q *interfaces.RequirementQuestion, draft *interfaces.Draft) [
 		return false
 	})
 	if len(needs) == 0 && q.NeedsSource == interfaces.REQUIREMENT_NEEDS_FROM_CONCEPTS {
-		for _, ot := range objectTypesNamed(draft, q.Text) {
+		for _, ot := range objectTypesNamed(draft, q.Template+"\n"+q.Text) {
 			needs = append(needs, interfaces.RequirementItemRef{Kind: interfaces.REQUIREMENT_ITEM_OBJECT_TYPE, ID: ot.ID})
 		}
 	}
