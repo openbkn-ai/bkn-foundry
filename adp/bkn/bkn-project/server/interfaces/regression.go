@@ -146,6 +146,8 @@ type RegressionAccess interface {
 	// FailRunning marks every running regression as failed with reason; regressions run in the
 	// service process, so ones left running after a restart will never finish.
 	FailRunning(ctx context.Context, reason string, finishTime int64) (int64, error)
+	// ListRunning returns every running regression's project and run.
+	ListRunning(ctx context.Context) ([]*Regression, error)
 }
 
 // Why a regression run failed as a whole.

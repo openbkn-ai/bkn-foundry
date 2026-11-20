@@ -604,7 +604,7 @@ func AllModels() []any {
 		&Group{}, &GroupMember{}, &ResourceType{}, &Operation{},
 		&AuditLog{}, &AccessLog{}, &AuthzDecision{}, &APIKey{}, &License{}, &ResourceParent{},
 		&ManagedProxyAccount{}, &ProxyGrantSource{}, &ProxyGrantPolicy{},
-		&BuildGrant{}, &BuildGrantVersion{},
+		&BuildGrant{}, &BuildGrantVersion{}, &ExecutionGrant{},
 		&ProxyGrantAuditLog{}, &AuthorizationGrant{},
 		&OAuthAccessOrigin{}, &OAuthClientSyncState{},
 		&PermissionRequest{}, &PermissionRequestOperation{}, &PermissionRequestDecision{}, &PermissionRequestReviewer{},

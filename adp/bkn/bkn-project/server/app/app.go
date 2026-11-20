@@ -34,6 +34,7 @@ import (
 	diagnosisaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/diagnosis"
 	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executiongrant"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/idregistry"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/indexbuild"
@@ -103,6 +104,7 @@ func Boot() *Application {
 	logics.SetRequirementAccess(requirementaccess.NewRequirementAccess(appSetting))
 	logics.SetRegressionAccess(regressionaccess.NewRegressionAccess(appSetting))
 	logics.SetAdminAccess(accountname.NewAdminAccess())
+	logics.SetExecutionGrantAccess(executiongrant.NewExecutionGrantAccess())
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	// Drafting and checks run in this process; those a previous run left going will never finish.

@@ -53,6 +53,8 @@ func NewRegressionService() interfaces.RegressionService {
 			da:    logics.DA,
 			pa:    logics.PA,
 			va:    logics.VA,
+			aa:    logics.AA,
+			ga:    logics.EGA,
 			run:   func(fn func()) { go fn() },
 			sleep: time.Sleep,
 			now:   time.Now,
@@ -74,6 +76,10 @@ type regressionService struct {
 	pa interfaces.ProjectAccess
 	// va tells which tables the release's types read are gone.
 	va interfaces.VegaAccess
+	// aa tells when the sign-in a run started with lapses; ga issues the credential the run goes
+	// on with after that. Without ga a run asks with the sign-in alone.
+	aa interfaces.AuthAccess
+	ga interfaces.ExecutionGrantAccess
 	// run answers in the background; tests replace it to run in line. sleep and now pace the
 	// waiting for a judgement.
 	run   func(fn func())
@@ -115,15 +121,26 @@ func (s *regressionService) StartRegression(ctx context.Context, token string, r
 		return r, started, nil
 	}
 	background, running := context.WithoutCancel(ctx), *r
-	s.run(func() { s.answer(background, token, release, &running) })
+	// Issued while the sign-in that started the run still holds.
+	credential := s.credential(ctx, token, release, r)
+	s.run(func() { s.answer(background, credential, release, &running) })
 	span.SetStatus(codes.Ok, "")
 	return r, true, nil
 }
 
 func (s *regressionService) FailInterrupted(ctx context.Context) error {
+	// Read only to revoke their credentials: failing them does not wait on it.
+	running, err := s.ra.ListRunning(ctx)
+	if err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("List running regressions to revoke their credentials: %v", err))
+	}
 	n, err := s.ra.FailRunning(ctx, interfaces.REGRESSION_ERROR_INTERRUPTED, time.Now().UnixMilli())
 	if err != nil {
 		return err
+	}
+	// Their credentials are of no use any more.
+	for _, r := range running {
+		s.revoke(ctx, r.ProjectID, r.RunID)
 	}
 	if n > 0 {
 		otellog.LogWarn(ctx, fmt.Sprintf("Failed %d regressions left running by a previous run", n))
@@ -245,12 +262,15 @@ func (c *regressionContext) name(kind string, id string) interfaces.ReleaseItem 
 // answer asks each question, or its tests, in the network's draft holding the release, has the judge decide each
 // answer, and asks once more what could not be asked; a judgement that failed is made once more
 // from the answer kept. It records the outcome as the run that started.
-func (s *regressionService) answer(ctx context.Context, token string, release *interfaces.Release,
+func (s *regressionService) answer(ctx context.Context, credential *runCredential, release *interfaces.Release,
 	r *interfaces.Regression) {
 	defer func() {
 		r.FinishTime = time.Now().UnixMilli()
 		if ok, err := s.ra.FinishRegression(ctx, r); err != nil || !ok {
 			otellog.LogWarn(ctx, fmt.Sprintf("Record regression of %s: recorded %v, %v", r.ReleaseID, ok, err))
+		}
+		if credential.delegated != "" {
+			s.revoke(ctx, release.ProjectID, r.RunID)
 		}
 	}()
 	files, err := s.gs.ReadTree(ctx, release.LineageID, release.BranchCommit)
@@ -260,12 +280,12 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 		return
 	}
 	// The draft is read at the revision the release prepared, once its search index is built.
-	if code := s.awaitDraft(ctx, token, release); code != "" {
+	if code := s.awaitDraft(ctx, credential, r.Runner, release); code != "" {
 		r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, code
 		return
 	}
 	defer func() {
-		if r.Status != interfaces.REGRESSION_STATUS_FAILED && s.draftMoved(ctx, token, release) {
+		if r.Status != interfaces.REGRESSION_STATUS_FAILED && s.draftMoved(ctx, credential, r.Runner, release) {
 			r.Status, r.Error = interfaces.REGRESSION_STATUS_FAILED, interfaces.REGRESSION_ERROR_DRAFT_CHANGED
 		}
 	}()
@@ -279,10 +299,9 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 
 	asks := regressionAsks(r.Questions)
 	r.Results = make([]interfaces.RegressionResult, len(asks))
-	// Asked a few at a time: a run asks as the person who started it, with the credential they
-	// started it with, and one asked a question after another can outlast it.
+	// Asked a few at a time, to keep a run short.
 	eachAsk(len(asks), func(i int) {
-		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 1, asks[i], r.Runner, rc)
+		r.Results[i] = s.judge(ctx, credential.current(), release.NetworkID, r.RunID, i, 1, asks[i], r.Runner, rc)
 	})
 	// What could not be asked is asked once more, alone.
 	for i, a := range asks {
@@ -296,7 +315,7 @@ func (s *regressionService) answer(ctx context.Context, token string, release *i
 			r.Results[i] = s.decide(ctx, a, result, r.Runner, rc)
 			continue
 		}
-		r.Results[i] = s.judge(ctx, token, release.NetworkID, r.RunID, i, 2, a, r.Runner, rc)
+		r.Results[i] = s.judge(ctx, credential.current(), release.NetworkID, r.RunID, i, 2, a, r.Runner, rc)
 	}
 	r.Status = regressionStatus(r.Results)
 }
@@ -538,13 +557,14 @@ const (
 // awaitDraft waits until the draft's search index is built at the revision the release prepared,
 // and tells why the regression cannot run when it is not: the draft moved on, or the index did not
 // come in time.
-func (s *regressionService) awaitDraft(ctx context.Context, token string, release *interfaces.Release) string {
+func (s *regressionService) awaitDraft(ctx context.Context, credential *runCredential, runner interfaces.AccountInfo,
+	release *interfaces.Release) string {
 	if s.kva == nil {
 		return ""
 	}
 	deadline := s.now().Add(draftIndexWait)
 	for {
-		versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+		versioning, err := s.versioning(ctx, credential, runner, release.LineageID)
 		switch {
 		case err != nil:
 			otellog.LogWarn(ctx, fmt.Sprintf("Read draft of %s for the regression: %v", release.LineageID, err))
@@ -564,10 +584,24 @@ func (s *regressionService) awaitDraft(ctx context.Context, token string, releas
 
 // draftMoved tells whether the draft was written while the regression read it. A draft that cannot
 // be read counts as moved: the answers cannot be vouched for.
-func (s *regressionService) draftMoved(ctx context.Context, token string, release *interfaces.Release) bool {
+func (s *regressionService) draftMoved(ctx context.Context, credential *runCredential, runner interfaces.AccountInfo,
+	release *interfaces.Release) bool {
 	if s.kva == nil {
 		return false
 	}
-	versioning, err := s.kva.GetVersioning(ctx, token, release.LineageID)
+	versioning, err := s.versioning(ctx, credential, runner, release.LineageID)
 	return err != nil || versioning.Draft.Revision != release.DraftRevision
+}
+
+// versioning reads where the network's draft stands as the run's runner, through bkn-backend's
+// internal API, which needs no sign-in: the one the run started with may have lapsed. A
+// bkn-backend without that API is asked with the sign-in, as before.
+func (s *regressionService) versioning(ctx context.Context, credential *runCredential, runner interfaces.AccountInfo,
+	knID string) (*interfaces.KNVersioning, error) {
+	versioning, err := s.kva.GetVersioningAs(ctx, runner, knID)
+	if err == nil {
+		return versioning, nil
+	}
+	otellog.LogWarn(ctx, fmt.Sprintf("Read draft of %s as %s: %v", knID, runner.ID, err))
+	return s.kva.GetVersioning(ctx, credential.token, knID)
 }
