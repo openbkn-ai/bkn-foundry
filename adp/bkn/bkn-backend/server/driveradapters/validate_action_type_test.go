@@ -605,7 +605,7 @@ func Test_ValidateActionType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Failed with empty ObjectTypeID but having condition\n", func() {
+		Convey("Success with tool condition declaring its own object type\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         "at1",
@@ -621,12 +621,10 @@ func Test_ValidateActionType(t *testing.T) {
 				},
 			}
 			err := ValidateActionType(ctx, at, true)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(err, ShouldBeNil)
 		})
 
-		Convey("Rejects empty ObjectTypeID and condition when strictMode false\n", func() {
+		Convey("Accepts tool condition with its own object type when strictMode false\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         "at1",
@@ -642,7 +640,27 @@ func Test_ValidateActionType(t *testing.T) {
 				},
 			}
 			err := ValidateActionType(ctx, at, false)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Failed with tool condition missing its own object type\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					ObjectTypeID: "",
+					Condition: &interfaces.ActionCondCfg{
+						Field:     "field1",
+						Operation: cond.OperationEq,
+						Value:     "value1",
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+				},
+			}
+			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
 		Convey("Failed with empty ObjectTypeID but parameter using property (strict)\n", func() {

@@ -665,7 +665,7 @@ paths:
   /skills/{skill_id}/download:
     get:
       summary: "下载 Skill ZIP"
-      description: "下载指定 Skill 的 ZIP 包。返回内容包含 SKILL.md 与已登记的内部文件。`f_is_deleted=1` 的 Skill 对外视为不存在；当前实现满足 execute / public_access / view 任一权限即可下载。"
+      description: "下载指定 Skill 已发布版本的 ZIP 包（编辑态用 management/download）；Skill 未发布或已下线时返回 404。返回内容包含 SKILL.md 与已登记的内部文件。`f_is_deleted=1` 的 Skill 对外视为不存在；当前实现满足 execute / public_access / view 任一权限即可下载。"
       tags:
         - "Skill 管理"
       parameters:

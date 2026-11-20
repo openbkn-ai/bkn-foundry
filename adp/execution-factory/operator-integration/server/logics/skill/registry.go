@@ -833,20 +833,28 @@ func (r *skillRegistry) buildSkillArchive(ctx context.Context, skillID string) (
 	return r.buildSkillArchiveFromSnapshot(ctx, skillDB, files)
 }
 
-// selectSkillSnapshot loads a Skill and the files of its current version.
+// selectSkillSnapshot loads the published release of a Skill and the files of that version.
+// Execution and the non-management download serve what is published, the same version the
+// content and files/read endpoints serve, not the draft an unpublished edit leaves in the
+// Skill row; the management endpoints are the ones that read the draft.
 func (r *skillRegistry) selectSkillSnapshot(ctx context.Context, skillID string) (*model.SkillRepositoryDB, []*model.SkillFileIndexDB, error) {
-	skillDB, err := r.skillRepo.SelectSkillByID(ctx, nil, skillID)
+	release, err := r.releaseRepo.SelectBySkillID(ctx, nil, skillID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if skillDB == nil {
-		return nil, nil, fmt.Errorf("skill not found: %s", skillID)
+	if release == nil {
+		return nil, nil, errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("published skill not found: %s", skillID))
 	}
-	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, nil, skillID, skillDB.Version)
+	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, nil, skillID, release.Version)
 	if err != nil {
 		return nil, nil, err
 	}
-	return skillDB, files, nil
+	return &model.SkillRepositoryDB{
+		SkillID: release.SkillID,
+		Name:    release.Name,
+		Version: release.Version,
+		Status:  release.Status,
+	}, files, nil
 }
 
 // buildSkillArchiveFromSnapshot zips the files of a snapshot and names the snapshot after what

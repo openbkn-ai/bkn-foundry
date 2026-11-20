@@ -52,6 +52,44 @@ func TestCreateSchemaOnlyExposesMappedObjectProperties(t *testing.T) {
 	}
 }
 
+func TestToolConditionSchemaExposesInstanceTargets(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	object := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "hosts", OTName: "Hosts", PrimaryKeys: []string{"id"},
+		DataProperties: []cond.DataProperty{{Name: "id", DisplayName: "ID", Type: "string"}},
+	}}
+	action := &interfaces.ActionType{OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"}}
+	schema, err := (&Resolver{}).ExecutionSchema(context.Background(), action, "kn", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := schema["properties"].(map[string]any)["_instance_identities"]; exists {
+		t.Fatal("unconditioned tool execution must not request instance targets")
+	}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "hosts").Return(object, true, nil)
+	action.Condition = &cond.CondCfg{ObjectTypeID: "hosts", Name: "status", Operation: "==", Value: "critical"}
+	schema, err = (&Resolver{Models: models}).ExecutionSchema(context.Background(), action, "kn", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	properties := schema["properties"].(map[string]any)
+	identities, exists := properties["_instance_identities"].(map[string]any)
+	if !exists {
+		t.Fatalf("conditioned tool schema must request instance targets: %#v", properties)
+	}
+	required := false
+	for _, item := range schema["required"].([]string) {
+		if item == "_instance_identities" {
+			required = true
+		}
+	}
+	if !required || identities["minItems"] != 1 {
+		t.Fatalf("identities=%#v required=%#v", identities, schema["required"])
+	}
+}
+
 func TestCreateRejectsUnmappedObjectInput(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
