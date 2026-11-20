@@ -107,6 +107,10 @@ type ReleaseItem struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// For a relation type, the names of the object types it joins, so relations named alike can
+	// be told apart; empty when an end is not in the same definitions.
+	SourceName string `json:"source_name,omitempty"`
+	TargetName string `json:"target_name,omitempty"`
 }
 
 // ReleaseChanges are the object types and relation types the release adds, changes or removes

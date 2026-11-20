@@ -495,6 +495,23 @@ func isEvidenceObject(ot *interfaces.DraftObjectType) bool {
 	return ot.Document != nil && strings.HasPrefix(ot.Document.Role, "evidence_")
 }
 
+// isEvidenceRelation tells a relation to or between such system objects: it tells where a record
+// was read, not how the business is related.
+func isEvidenceRelation(draft *interfaces.Draft, rt *interfaces.DraftRelationType) bool {
+	if rt == nil {
+		return false
+	}
+	if rt.DocumentMapping != nil && rt.DocumentMapping.Mode == "evidence" {
+		return true
+	}
+	for _, end := range []string{rt.Source, rt.Target} {
+		if ot := projecthooks.FindObjectType(&draft.Items, end); ot != nil && isEvidenceObject(ot) {
+			return true
+		}
+	}
+	return false
+}
+
 func messageOntologyOf(draft *interfaces.Draft, withProperties bool) ([]messageObjectType, []messageRelationType, int) {
 	objectTypes, relationTypes, propertiesOmitted := []messageObjectType{}, []messageRelationType{}, 0
 	if draft == nil {
@@ -1401,7 +1418,7 @@ func objectTypesNamed(draft *interfaces.Draft, text string) []*interfaces.DraftO
 	}
 	named := []*interfaces.DraftObjectType{}
 	for _, ot := range draft.Items.ObjectTypes {
-		if ot != nil && ot.Adopted && strings.TrimSpace(ot.Name) != "" && strings.Contains(text, strings.TrimSpace(ot.Name)) {
+		if ot != nil && ot.Adopted && !isEvidenceObject(ot) && strings.TrimSpace(ot.Name) != "" && strings.Contains(text, strings.TrimSpace(ot.Name)) {
 			named = append(named, ot)
 		}
 	}

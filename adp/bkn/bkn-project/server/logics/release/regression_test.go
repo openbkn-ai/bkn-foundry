@@ -196,7 +196,7 @@ func Test_RegressionService(t *testing.T) {
 				// The answer is kept as it came, blank too.
 				{QuestionID: "q3", Outcome: interfaces.REGRESSION_OUTCOME_NO_ANSWER, Answer: "  "},
 				{QuestionID: "q5", Outcome: interfaces.REGRESSION_OUTCOME_MISSING,
-					Missing: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part", Name: "supplier_part"}}},
+					Missing: []interfaces.ReleaseItem{{Kind: interfaces.RELEASE_ITEM_RELATION_TYPE, ID: "supplier_part"}}},
 			})
 		})
 

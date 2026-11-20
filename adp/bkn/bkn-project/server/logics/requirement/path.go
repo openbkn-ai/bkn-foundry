@@ -28,7 +28,9 @@ func graphOf(draft *interfaces.Draft) draftGraph {
 		return g
 	}
 	for _, rt := range draft.Items.RelationTypes {
-		if !rt.Adopted || rt.Source == rt.Target {
+		// A path never runs through the source files and blocks a knowledge base keeps to
+		// locate text: they join every record read from the same file, not the business.
+		if !rt.Adopted || rt.Source == rt.Target || isEvidenceRelation(draft, rt) {
 			continue
 		}
 		g[rt.Source] = append(g[rt.Source], hop{relation: rt, from: rt.Source, to: rt.Target})

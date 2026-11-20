@@ -77,8 +77,8 @@ func Test_ReleaseQuestions(t *testing.T) {
 			So(q.Unanswerable, ShouldResemble, []interfaces.ReleaseQuestion{
 				{ID: "q3", Text: "Text of q3", Needs: []interfaces.ReleaseItem{supplier},
 					Missing: []interfaces.ReleaseItem{supplier}},
-				{ID: "q4", Text: "Text of q4", Needs: []interfaces.ReleaseItem{item(ot, "customer", "customer"), purchaseOrder},
-					Missing: []interfaces.ReleaseItem{item(ot, "customer", "customer")}},
+				{ID: "q4", Text: "Text of q4", Needs: []interfaces.ReleaseItem{item(ot, "customer", ""), purchaseOrder},
+					Missing: []interfaces.ReleaseItem{item(ot, "customer", "")}},
 			})
 		})
 
@@ -121,7 +121,7 @@ func Test_ReleaseQuestions(t *testing.T) {
 			q := releaseQuestions(sq, branchFiles, mainFiles, diff)
 
 			So(q.Unanswerable, ShouldHaveLength, 1)
-			So(q.Unanswerable[0].Missing, ShouldResemble, []interfaces.ReleaseItem{item(rt, "purchase_order", "purchase_order")})
+			So(q.Unanswerable[0].Missing, ShouldResemble, []interfaces.ReleaseItem{item(rt, "purchase_order", "")})
 		})
 
 		Convey("The path joining what a question needs is judged as its needs are\n", func() {
@@ -160,7 +160,7 @@ func Test_ReleaseQuestions(t *testing.T) {
 			// Named as main has it when the branch lacks it, else by its id.
 			apart.Unconnected = []interfaces.ScenarioUnconnected{{From: "supplier", To: "carrier"}}
 			q = releaseQuestions(&interfaces.ScenarioQuestions{Questions: []interfaces.ScenarioQuestion{apart}}, branchFiles, mainFiles, diff)
-			So(q.Unanswerable[0].Unconnected, ShouldResemble, []interfaces.ReleaseUnconnected{{From: supplier, To: item(ot, "carrier", "carrier")}})
+			So(q.Unanswerable[0].Unconnected, ShouldResemble, []interfaces.ReleaseUnconnected{{From: supplier, To: item(ot, "carrier", "")}})
 		})
 
 		Convey("Without a specification there are no questions, and the lists are empty, not null\n", func() {

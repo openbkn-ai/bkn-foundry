@@ -253,9 +253,8 @@ func (c *regressionContext) name(kind string, id string) interfaces.ReleaseItem 
 		key.Name = name
 	} else if name, ok := c.drafted[key]; ok && name != "" {
 		key.Name = name
-	} else {
-		key.Name = id
 	}
+	// Else unnamed: the client words it as an item no longer in the model, not by its id.
 	return key
 }
 

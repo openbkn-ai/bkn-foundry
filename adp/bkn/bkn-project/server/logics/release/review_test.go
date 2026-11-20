@@ -328,9 +328,12 @@ func Test_ProjectReleaseService_ReviewRelease(t *testing.T) {
 			So(r.Refusals, ShouldBeEmpty)
 			So(r.ProjectID, ShouldEqual, "p1")
 			So(r.Version, ShouldEqual, "1.1.0")
+			// A relation is told by the object types it joins.
+			joins := item(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_has_purchase_order", "Supplier has purchase order")
+			joins.SourceName, joins.TargetName = "Supplier", "Purchase Order"
 			So(r.Changes.Added, ShouldResemble, []interfaces.ReleaseItem{
 				item(interfaces.RELEASE_ITEM_OBJECT_TYPE, "purchase_order", "Purchase Order"),
-				item(interfaces.RELEASE_ITEM_RELATION_TYPE, "supplier_has_purchase_order", "Supplier has purchase order"),
+				joins,
 			})
 			So(r.Changes.Changed, ShouldBeEmpty)
 			So(r.Changes.Removed, ShouldBeEmpty)
