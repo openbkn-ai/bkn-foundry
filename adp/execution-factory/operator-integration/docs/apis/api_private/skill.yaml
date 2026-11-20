@@ -443,7 +443,7 @@ paths:
   /skills/{skill_id}/execute:
     post:
       summary: "执行 Skill"
-      description: "执行工厂通过 Session Pool 获取可用 Sandbox 会话，上传 Skill 压缩包，并在上传接口返回的工作目录中执行入口命令。"
+      description: "执行工厂通过 Session Pool 获取可用 Sandbox 会话，上传 Skill 压缩包，并在上传接口返回的工作目录中执行入口命令。执行的是已发布版本（与 content、files/read 读到的版本一致），不是未发布的编辑态；Skill 未发布或已下线时返回 404。"
       tags:
         - "Skill 执行"
       parameters:
