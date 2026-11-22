@@ -163,8 +163,8 @@ paths:
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
         - `category=api` 仅支持专业版及以上的启用物理 API Catalog，必须提交 api_effect_type=read、
-          api_definition 和非空 schema_definition。先本地校验再执行默认单页只读验证，
-          完整响应、成功条件与字段映射通过后才写入；失败不保存。
+          api_definition 和非空 schema_definition。先本地校验，再使用 validation 中本次提供的
+          条件和可选分页执行单页只读验证。完整响应、成功条件与字段映射通过后才写入；失败不保存。
           服务端使用实际资源 ID 作为 `source_identifier`，忽略请求中的 `source_identifier`。
           API 资源不支持发现、扫描、本地索引构建或物化任务。
         - `category=logical_view` 仅在 EE 专业版及以上授权可创建，且必须提交
@@ -330,7 +330,8 @@ paths:
         更新 Resource。请求通过公共绑定函数直接绑定 ResourceRequest；未声明字段按默认解码行为忽略。
 
         - API 的 api_definition、api_effect_type 和整个 schema_definition 省略或为 null 时保留已有值；
-          api_effect_type 的空字符串同样表示保留。显式提交定义或 Schema 时仍校验完整候选，验证成功后保存。
+          api_effect_type 的空字符串同样表示保留。实际修改调用定义或字段映射时，使用 validation
+          中的本次验证输入执行完整候选；验证成功后保存。单独提交 validation 不触发验证。
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
         - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
@@ -1250,7 +1251,7 @@ components:
         创建 / 更新请求体。与 `Resource` 实体相比，去掉了后端计算 / 时间戳 / 操作者
         等只读字段。category=api 创建时必须提供 api_effect_type=read、api_definition
         及非空 schema_definition，归属启用且兼容的物理 API Catalog。
-        创建及实际修改调用定义或字段映射时，先完成本地校验和一次默认分页只读调用验证，
+        创建及实际修改调用定义或字段映射时，先完成本地校验和一次使用 validation 的单页只读调用验证，
         成功后才保存；失败不写入。普通名称、描述等元数据更新不调用上游且保留已有定义。
         已有 Resource 的定义/映射更新除 modify 外还需 query_data，乐观锁冲突不会部分写入。
         API 不支持 index_config、本地索引 Feature 或用户指定的源身份。
@@ -1373,6 +1374,14 @@ components:
                           value:
                             type: string
             - type: "null"
+        validation:
+          description: 仅 category=api 的本次保存前只读验证使用。条件和分页不会随资源保存或返回。其他类别拒绝非 null 值。
+          type: [object, "null"]
+          properties:
+            filter_condition:
+              $ref: "resource-data.yaml#/components/schemas/APIResourceFilterCondition"
+            paging:
+              $ref: "resource-data.yaml#/components/schemas/APIResourceDataQueryParams/properties/paging"
         logical_type:
           description: |
             创建和完整 PUT 更新逻辑视图时必填；须与当前定义结构一致，PUT 不可改变既有类型。

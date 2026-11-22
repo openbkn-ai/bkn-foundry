@@ -245,8 +245,15 @@ type ResourceRequest struct {
 	LogicalType           string `json:"logical_type,omitempty"`            // Required for logical views; selects the definition shape
 	LogicalViewDefinition any    `json:"logical_view_definition,omitempty"` // Definition shape depends on logical_type
 
-	APIEffectType string         `json:"api_effect_type,omitempty"`
-	APIDefinition *APIDefinition `json:"api_definition,omitempty"`
+	APIEffectType string                 `json:"api_effect_type,omitempty"`
+	APIDefinition *APIDefinition         `json:"api_definition,omitempty"`
+	Validation    *APIResourceValidation `json:"validation,omitempty"`
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
+}
+
+// APIResourceValidation 是本次 API Resource 保存前验证的调用参数，不随资源定义保存。
+type APIResourceValidation struct {
+	FilterCondition any           `json:"filter_condition,omitempty"`
+	Paging          PagingRequest `json:"paging,omitempty"`
 }

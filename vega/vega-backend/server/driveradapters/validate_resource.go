@@ -80,6 +80,10 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("API definition fields are only accepted for API resources")
 	}
+	if req.Category != interfaces.ResourceCategoryAPI && req.Validation != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails("validation is only accepted for API resources")
+	}
 	switch req.Category {
 	case interfaces.ResourceCategoryAPI:
 		if req.APIEffectType != "" && req.APIEffectType != interfaces.APIEffectRead || req.IndexConfig != nil {

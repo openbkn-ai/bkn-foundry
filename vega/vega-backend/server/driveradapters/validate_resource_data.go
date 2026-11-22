@@ -66,6 +66,11 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		}
 	}
 
+	if category == interfaces.ResourceCategoryAPI {
+		// API 执行器校验原始条件树，包括节点内的显式 null 和多余字段。
+		return nil
+	}
+
 	// The filter conditions are connected using a map and then decoded into the condCfg
 	var actualCond *interfaces.FilterCondCfg
 	err = mapstructure.Decode(params.FilterCondition, &actualCond)

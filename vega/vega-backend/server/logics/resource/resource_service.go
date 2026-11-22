@@ -159,6 +159,9 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 	if req.Category != interfaces.ResourceCategoryAPI && (req.APIEffectType != "" || req.APIDefinition != nil) {
 		return nil, unsupportedResourceUpdateError(ctx, "API definition fields are only accepted for API resources")
 	}
+	if req.Category != interfaces.ResourceCategoryAPI && req.Validation != nil {
+		return nil, unsupportedResourceUpdateError(ctx, "validation is only accepted for API resources")
+	}
 	id := req.ID
 	if id == "" {
 		generatedID, err := uuid.NewV7()
@@ -1660,6 +1663,9 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	}
 	if resource.Category != interfaces.ResourceCategoryAPI && (req.APIEffectType != "" || req.APIDefinition != nil) {
 		return false, unsupportedResourceUpdateError(ctx, "API definition fields are only accepted for API resources")
+	}
+	if resource.Category != interfaces.ResourceCategoryAPI && req.Validation != nil {
+		return false, unsupportedResourceUpdateError(ctx, "validation is only accepted for API resources")
 	}
 	if resource.Category == interfaces.ResourceCategoryAPI {
 		if req.LogicalType != "" || req.LogicalViewDefinition != nil {
