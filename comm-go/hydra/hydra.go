@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
@@ -176,7 +176,7 @@ func (h *hydra) Introspect(ctx context.Context, token string) (info TokenIntrosp
 	}
 
 	respParam := make(map[string]interface{})
-	err = sonic.Unmarshal(body, &respParam)
+	err = jsoncodec.Unmarshal(body, &respParam)
 	if err != nil {
 		return
 	}

@@ -8,8 +8,8 @@ openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，modul
 
 ## Garble 兼容构建
 
-默认构建中，`httperrors` 和 `rest` 继续使用 Sonic。指定 `garble_compat`
-构建标签时，这两个包的 JSON 编解码改用 Go 标准库，避免这两条路径引入
+默认构建中，`httperrors`、`rest`、`hydra`、`audit` 和 `crypto` 继续使用 Sonic。
+指定 `garble_compat` 构建标签时，这些包的 JSON 编解码改用 Go 标准库，避免这些路径引入
 `sonic/loader`。兼容实现关闭 HTML 字符转义，以保持常见 HTTP JSON 输出行为；
 它与 Sonic 的所有边界行为和性能不保证完全一致。
 
