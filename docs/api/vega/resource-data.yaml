@@ -96,7 +96,10 @@ paths:
 
         **API Resource（专业版）**：category=api 且 api_effect_type=read 时复用本入口。
         查询直接绑定公共 DTO；未知顶层/分页字段忽略，null 沿用公共绑定的零值语义，不做字段出现性检查。
-        当前阶段接受公共 paging 和 need_total；binary_mode 对 API 无作用。实际启用的过滤、排序、聚合、输出投影等未支持能力返回 400。
+        接受公共 filter_condition、paging 和 need_total；binary_mode 对 API 无作用。排序、聚合、输出投影等已指定但不受支持的查询能力返回 400。
+        过滤条件必须能由 Resource 请求定义完整绑定或转换，过滤字段、结构、类型及转换失败均在登录和业务请求前返回 400。
+        直接绑定支持常量等值条件及不重复字段的 AND 组合。SQL 支持有限比较、集合、空值与 AND/OR，不支持 LIKE。
+        Query 参数仅在必填且缺值时应用已配置的默认值。必填且没有默认值时报错，非必填且缺值时省略。
         公开位置统一为 offset + limit，上游 page 在 Connector 内换算。
         limit 缺省、0 或 null 均使用 Resource.paging_rule.default_limit，受资源 max_limit 约束，不注入 Table 默认值。
         page 规则在 Connector 内按 page_base + offset / limit 换算，offset 必须对齐 limit。
@@ -511,6 +514,8 @@ components:
       type: [object, "null"]
       additionalProperties: true
       properties:
+        filter_condition:
+          $ref: "#/components/schemas/APIResourceFilterCondition"
         paging:
           description: 复用公共分页字段，仅允许 single；limit 缺省/0/null 使用资源默认值，keep_alive_sec 忽略。非空 cursor 或 cursor 模式不支持。
           allOf:
@@ -528,6 +533,14 @@ components:
           description: 复用公共绑定和取值校验；API 忽略此项，不影响单页查询结果。
           type: [string, "null"]
           enum: [metadata, content, null]
+    APIResourceFilterCondition:
+      description: |
+        通用条件树。比较节点使用 field、operation、value 和可选的 value_from；
+        and/or 节点使用 sub_conditions。字段名来自 Resource 的 schema_definition。
+        省略或 null 表示未提供过滤。显式空对象、非法节点和无法完整转换的条件返回 400，
+        不应用请求默认值或部分执行来替代非法过滤。
+      type: [object, "null"]
+      minProperties: 1
     APIResourceDataResult:
       description: API Resource 复用公共响应字段；query_source 默认 source，is_approximate 默认 false。single 查询不创建会话，公共分页响应的 next_cursor/expires_at_sec 均为 null。
       type: object

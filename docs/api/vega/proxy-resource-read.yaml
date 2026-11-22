@@ -114,6 +114,9 @@ paths:
         Requires `query_data`. `object_type`, `relation_type`, and `metric`
         children may use this operation. `X-HTTP-Method-Override` must be `GET`;
         write overrides are rejected before authorization and physical access.
+        API Resources validate and bind the full condition tree using their
+        request definition. Conditions that cannot be represented fail before
+        upstream authentication or execution.
       parameters:
         - $ref: "#/components/parameters/ResourceID"
         - $ref: "#/components/parameters/AccountID"
@@ -144,7 +147,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "resource-data.yaml#/components/schemas/ResourceDataQueryParams"
+              anyOf:
+                - $ref: "resource-data.yaml#/components/schemas/ResourceDataQueryParams"
+                - $ref: "resource-data.yaml#/components/schemas/APIResourceDataQueryParams"
       responses:
         "200":
           description: Query result

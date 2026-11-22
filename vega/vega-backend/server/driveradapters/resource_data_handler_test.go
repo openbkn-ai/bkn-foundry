@@ -1246,7 +1246,6 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 		{name: "invalid binary mode", body: `{"binary_mode":"raw"}`, invalid: true},
 		{name: "invalid sort direction", body: `{"sort":[{"field":"id","direction":"wrong"}]}`, invalid: true},
 		{name: "invalid aggregation", body: `{"aggregation":{"property":"id","aggr":"wrong"}}`, invalid: true},
-		{name: "invalid filter", body: `{"filter_condition":{"field":"id","operation":"wrong","value":1}}`, invalid: true},
 		{name: "safe bind error", body: `{"paging":{"limit":"fixture-private-input"}}`, invalid: true},
 	}
 	for _, proxy := range []bool{false, true} {
@@ -1304,11 +1303,12 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 			})
 		}
 	}
-	t.Run("typed unsupported capabilities reach service without losing precision", func(t *testing.T) {
+	t.Run("filters remain precise and capabilities reach the API service", func(t *testing.T) {
 		for _, proxy := range []bool{false, true} {
 			for _, body := range []string{
 				`{"filter_condition":{"field":"id","operation":"==","value":9007199254740993}}`,
 				`{"filter_condition":{"field":"id","operation":"==","value":9007199254740993.123456789}}`,
+				`{"filter_condition":{"field":"id","operation":"null","value":null}}`,
 				`{"sort":[{"field":"id","direction":"asc"}]}`,
 				`{"aggregation":{"property":"id","aggr":"sum"},"group_by":[{"property":"id"}]}`,
 				`{"output_fields":["id"]}`,
@@ -1331,14 +1331,20 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 					rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 						switch {
 						case strings.Contains(body, "filter_condition"):
-							require.NotNil(t, params.FilterCondition)
+							filter, ok := params.FilterCondition.(map[string]any)
+							require.True(t, ok)
+							assert.Nil(t, params.FilterCondCfg)
+							if strings.Contains(body, `"operation":"null"`) {
+								assert.Contains(t, filter, "value")
+								assert.Nil(t, filter["value"])
+								break
+							}
 							want := json.Number("9007199254740993")
 							if strings.Contains(body, ".123456789") {
 								want = json.Number("9007199254740993.123456789")
 							}
-							assert.Equal(t, want, params.FilterCondition.(map[string]any)["value"])
-							require.NotNil(t, params.FilterCondCfg)
-							assert.Equal(t, want, params.FilterCondCfg.Value)
+							assert.Equal(t, want, filter["value"])
+							return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": want}}}, nil
 						case strings.Contains(body, "sort"):
 							require.Len(t, params.Sort, 1)
 							assert.Equal(t, "ASC", params.Sort[0].Direction)
@@ -1362,6 +1368,11 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 					}
 					recorder := httptest.NewRecorder()
 					engine.ServeHTTP(recorder, request)
+					if strings.Contains(body, `"operation":"=="`) {
+						require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+						assert.Contains(t, recorder.Body.String(), "9007199254740993")
+						return
+					}
 					require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
 					assert.Contains(t, recorder.Body.String(), "unsupported API query capability")
 				})

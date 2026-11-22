@@ -88,6 +88,52 @@ func TestRestHandlerAPIResourceInvalidBody(t *testing.T) {
 	}
 }
 
+func TestRestHandlerAPIResourceValidationInput(t *testing.T) {
+	const body = `{"catalog_id":"catalog-1","name":"orders","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":true}],"expected_update_time":1,"validation":{"filter_condition":{"field":"id","operation":"eq","value":9007199254740993},"paging":{"offset":2,"limit":1}}}`
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			engine, _, rs := setupResourceHandlerTest(t)
+			check := func(req *interfaces.ResourceRequest) {
+				require.NotNil(t, req.Validation)
+				filter, ok := req.Validation.FilterCondition.(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, json.Number("9007199254740993"), filter["value"])
+				assert.Equal(t, interfaces.PagingRequest{Offset: 2, Limit: 1}, req.Validation.Paging)
+			}
+			url := "/api/vega-backend/in/v1/resources"
+			status := http.StatusCreated
+			if method == http.MethodPost {
+				rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+					check(req)
+					return &interfaces.Resource{ID: "res-1"}, nil
+				})
+			} else {
+				url += "/res-1"
+				status = http.StatusNoContent
+				rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+					check(req)
+					return nil
+				})
+			}
+			request := httptest.NewRequest(method, url, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, status, recorder.Code, recorder.Body.String())
+
+			const datasetBody = `{"catalog_id":"catalog-1","name":"orders","category":"dataset","schema_definition":[{"name":"id","type":"integer","filterable":true}],"expected_update_time":1,"validation":{}}`
+			request = httptest.NewRequest(method, url, strings.NewReader(datasetBody))
+			request.Header.Set("Content-Type", "application/json")
+			recorder = httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+			var response httperrors.BaseError
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, response.ErrorCode)
+		})
+	}
+}
+
 func setupResourceHandlerTest(t *testing.T) (*gin.Engine, *vmock.MockCatalogService, *vmock.MockResourceService) {
 	t.Helper()
 
