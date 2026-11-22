@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 )
@@ -252,7 +252,7 @@ func transformLog(auditLog *AuditLog) error {
 // sendLog sends an audit log to Kafka.
 func sendLog(auditLog *AuditLog) {
 
-	auditLogStr, err := sonic.MarshalString(auditLog)
+	auditLogStr, err := jsoncodec.MarshalString(auditLog)
 	if err != nil {
 		logger.Errorf("marshal auditLog failed: %v", err)
 		return

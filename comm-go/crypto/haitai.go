@@ -17,8 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
@@ -63,7 +62,7 @@ func (ci haitaiCipher) Decrypt(encryptedData string) (string, error) {
 		"data":    encryptedData,
 		"dataKey": ci.dataKey,
 	}
-	bodyBytes, _ := sonic.Marshal(body)
+	bodyBytes, _ := jsoncodec.Marshal(body)
 
 	httpUrl := fmt.Sprintf("%s/ded-service/api/decrypt", ci.host)
 
@@ -95,7 +94,7 @@ func (ci haitaiCipher) Signature(signContent string) (string, error) {
 	body := map[string]string{
 		"data": signContent,
 	}
-	bodyBytes, _ := sonic.Marshal(body)
+	bodyBytes, _ := jsoncodec.Marshal(body)
 
 	httpUrl := fmt.Sprintf("%s/ded-service/api/sign", ci.host)
 
