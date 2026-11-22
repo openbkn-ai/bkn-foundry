@@ -7,7 +7,6 @@ package action_scheduler
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
 	"errors"
 	"net/http"
@@ -74,18 +73,18 @@ func TestActionGovernanceDigestBindsPublishedSnapshot(t *testing.T) {
 	snapshot := map[string]any{"name": "pay", "object_type_id": "order"}
 	models.EXPECT().GetActionType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "pay").
 		Return(interfaces.ActionType{ATID: "pay"}, snapshot, true, nil)
-	service := &actionSchedulerService{omAccess: models}
+	gate := &dynamicScopeGateStub{required: true}
+	service := &actionSchedulerService{omAccess: models, governanceGate: gate}
 	digest, err := service.ActionGovernanceDigest(context.Background(), "kn1", "pay")
 	if err != nil {
 		t.Fatalf("digest error=%v", err)
 	}
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatalf("encode snapshot: %v", err)
+	actor := interfaces.AccountInfo{ID: "alice", Type: "user"}
+	if err := service.claimActionGovernance(context.Background(), governanceRequest(), actor, snapshot); err != nil {
+		t.Fatalf("claim action governance: %v", err)
 	}
-	sum := sha256.Sum256(encoded)
-	if digest != hex.EncodeToString(sum[:]) {
-		t.Fatalf("digest=%s does not bind the published snapshot", digest)
+	if gate.calls != 1 || digest == "" || digest != gate.claim.DefinitionDigest {
+		t.Fatalf("published digest=%q, claimed digest=%q, claims=%d", digest, gate.claim.DefinitionDigest, gate.calls)
 	}
 }
 
