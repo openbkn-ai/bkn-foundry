@@ -206,7 +206,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 		return nil, fmt.Errorf("object metric execution context response is empty")
 	}
 	var executionContext interfaces.ObjectMetricExecutionContextV1
-	if err := common.UnmarshalPreciseJSON(result, &executionContext); err != nil {
+	if err := common.UnmarshalJSON(result, &executionContext); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal execution context failed")
 		return nil, err
 	}
@@ -681,7 +681,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var response struct {
 		ActionTypes []interfaces.ActionType `json:"entries"`
 	}
-	if err = common.UnmarshalPreciseJSON(result, &response); err != nil {
+	if err = common.UnmarshalJSON(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal action type info failed")
@@ -699,7 +699,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var rawResponse struct {
 		Entries []map[string]any `json:"entries"`
 	}
-	if err = common.UnmarshalPreciseJSON(result, &rawResponse); err != nil {
+	if err = common.UnmarshalJSON(result, &rawResponse); err != nil {
 		logger.Errorf("unmalshal raw action type info failed: %v\n", err)
 		// Still return the parsed struct, but leave raw data as nil.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)

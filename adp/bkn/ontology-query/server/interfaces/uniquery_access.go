@@ -37,7 +37,7 @@ func (s *SearchAfterArray) UnmarshalJSON(data []byte) error {
 
 	// Cursor values can be uint64 business identifiers, so retain their original
 	// number literals rather than narrowing them to int64 or float64.
-	if err := common.UnmarshalPreciseJSON(data, &result); err != nil {
+	if err := common.UnmarshalJSON(data, &result); err != nil {
 		logger.Errorf("Unmarshal Search After failed, %s", err)
 		return err
 	}

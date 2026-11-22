@@ -210,7 +210,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID:        sourceObjectTypeID,
@@ -224,7 +224,8 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 
 			result, err := service.SearchSubgraph(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 1)
+			So(result.TotalCount, ShouldNotBeNil)
+			So(*result.TotalCount, ShouldEqual, 1)
 		})
 
 		Convey("成功 - limit为0时使用默认值", func() {
@@ -245,7 +246,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			typePaths := []interfaces.RelationTypePath{}
 			startObjects := interfaces.Objects{
 				Datas:      []map[string]any{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID: sourceObjectTypeID,
@@ -261,7 +262,8 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 
 			result, err := service.SearchSubgraph(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 0)
+			So(result.TotalCount, ShouldNotBeNil)
+			So(*result.TotalCount, ShouldEqual, 0)
 		})
 
 		Convey("失败 - 获取起点对象错误", func() {
@@ -347,7 +349,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID:        sourceObjectTypeID,
@@ -453,7 +455,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID:        "ot1",
@@ -593,7 +595,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "123"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID:        "ot2",
@@ -1281,7 +1283,7 @@ func Test_knowledgeNetworkService_expandObjectPathsBatch(t *testing.T) {
 			objectsOf := func(otID string, datas []map[string]any) interfaces.Objects {
 				return interfaces.Objects{
 					Datas:      datas,
-					TotalCount: int64(len(datas)),
+					TotalCount: new(int64(len(datas))),
 					ObjectType: &interfaces.ObjectType{
 						ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 							OTID:        otID,
@@ -1768,7 +1770,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "123"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID: "ot1",
@@ -1845,7 +1847,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 					{"target_id": "123", "status": "active"},
 					{"target_id": "456", "status": "active"},
 				},
-				TotalCount: 2,
+				TotalCount: new(int64(2)),
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID: "ot2",
@@ -2532,7 +2534,7 @@ func Test_knowledgeNetworkService_compositeIndirectRelationFixture(t *testing.T)
 		So(projectIDs(result["E02"]), ShouldResemble, []string{"P02", "P04"})
 		So(projectIDs(result["E03"]), ShouldResemble, []string{"P01", "P02"})
 		So(projectIDs(result["E04"]), ShouldResemble, []string{"P04"})
-		So(result["E01"].TotalCount+result["E02"].TotalCount+result["E03"].TotalCount+result["E04"].TotalCount, ShouldEqual, int64(7))
+		So(*result["E01"].TotalCount+*result["E02"].TotalCount+*result["E03"].TotalCount+*result["E04"].TotalCount, ShouldEqual, int64(7))
 	})
 }
 

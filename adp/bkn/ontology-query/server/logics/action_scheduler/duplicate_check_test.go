@@ -171,7 +171,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 					interfaces.SYSTEM_PROPERTY_DISPLAY:           "pod-1",
 				},
 			},
-			TotalCount: 1,
+			TotalCount: new(int64(1)),
 		}, nil)
 
 		logsService.EXPECT().QueryExecutions(gomock.Any(), gomock.Any()).Return(

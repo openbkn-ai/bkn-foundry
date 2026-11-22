@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -1857,6 +1858,29 @@ func Test_EvaluateDataAgainstCondition_EmptyConditionSets(t *testing.T) {
 }
 
 func TestCondCfgToFilterMap(t *testing.T) {
+	t.Run("preserves exact constants through nested conditions", func(t *testing.T) {
+		condition := &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{
+			{Name: "id", Operation: cond.OperationEq, Value: json.Number("9007199254740993"), ValueFrom: "const"},
+			{Name: "amount", Operation: cond.OperationIn, Value: []any{json.Number("1234567890123456.78"), nil}, ValueFrom: "const"},
+		}}
+		encoded, err := json.Marshal(CondCfgToFilterMap(condition))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored cond.CondCfg
+		if err := json.Unmarshal(encoded, &restored); err != nil {
+			t.Fatal(err)
+		}
+		var actual map[string]any
+		if err := common.UnmarshalJSON(encoded, &actual); err != nil {
+			t.Fatal(err)
+		}
+		leaves := actual["sub_conditions"].([]any)
+		if leaves[0].(map[string]any)["value"] != json.Number("9007199254740993") ||
+			leaves[1].(map[string]any)["value"].([]any)[0] != json.Number("1234567890123456.78") {
+			t.Fatalf("constant precision lost: %s", encoded)
+		}
+	})
 	Convey("nil cond returns nil map", t, func() {
 		So(CondCfgToFilterMap(nil), ShouldBeNil)
 	})

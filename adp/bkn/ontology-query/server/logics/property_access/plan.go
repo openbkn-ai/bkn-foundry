@@ -144,6 +144,13 @@ func collectConditionFields(condition *cond.CondCfg, propertyNames []string, res
 	} else if strings.TrimSpace(condition.Name) != "" {
 		result[condition.Name] = struct{}{}
 	}
+	// A field comparison reads both operands, even when only the left property
+	// appears in the requested output. Neither operand may bypass full access.
+	if condition.ValueFrom == cond.ValueFrom_Field {
+		if name, ok := condition.Value.(string); ok && strings.TrimSpace(name) != "" {
+			result[name] = struct{}{}
+		}
+	}
 	for _, child := range condition.SubConds {
 		collectConditionFields(child, propertyNames, result)
 	}

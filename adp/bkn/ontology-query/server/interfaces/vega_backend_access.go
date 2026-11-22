@@ -15,7 +15,7 @@ type DatasetQueryResponse struct {
 	IsApproximate *bool                       `json:"is_approximate"`
 	QuerySource   string                      `json:"query_source"`
 	Entries       []map[string]any            `json:"entries"`
-	TotalCount    int64                       `json:"total_count"`
+	TotalCount    *int64                      `json:"total_count,omitempty"`
 	SearchAfter   []any                       `json:"search_after"`
 	Paging        *ResourceDataPagingResponse `json:"paging"`
 }

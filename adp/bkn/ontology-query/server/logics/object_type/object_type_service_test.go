@@ -195,7 +195,7 @@ func TestObjectTypeSampleDataUsesQueryDataProxyBinding(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"field1": "sample"}}, TotalCount: 1,
+		Entries: []map[string]any{{"field1": "sample"}}, TotalCount: new(int64(1)),
 	}}
 	proxy := &objectTypeProxyResolverStub{}
 	service := &objectTypeService{omAccess: models, vba: vega, proxy: proxy, propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}}
@@ -416,7 +416,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "v1"},
 					},
@@ -470,7 +470,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			stub := &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "v1"},
 					},
@@ -520,7 +520,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -570,7 +570,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -644,7 +644,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -699,7 +699,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -779,7 +779,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -830,7 +830,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -895,7 +895,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -959,7 +959,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -1025,7 +1025,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},
@@ -1083,7 +1083,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			service.vba = &vegaStubForOTQuery{
 				resp: &interfaces.DatasetQueryResponse{
-					TotalCount: 1,
+					TotalCount: new(int64(1)),
 					Entries: []map[string]any{
 						{"field1": "value1", "id": "123", "prop1": "value1"},
 					},

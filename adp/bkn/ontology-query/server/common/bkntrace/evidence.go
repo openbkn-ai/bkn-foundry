@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 
 	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel/trace"
@@ -74,7 +74,7 @@ type DataQuerySubject struct {
 	SubjectID     string
 	QueryHash     string
 	ReturnedCount int
-	TotalCount    int64
+	TotalCount    *int64
 	Truncated     bool
 }
 

@@ -647,3 +647,25 @@ func TestObjectQueryDefaultSortDoesNotRequireFullPrimaryKeyAccess(t *testing.T) 
 		t.Fatalf("schema-only primary key produced identity: %#v", result.Datas[0])
 	}
 }
+
+func TestPropertyAccessPlanRequiresFullRightHandField(t *testing.T) {
+	objectType := accessPlanObjectType()
+	for _, level := range []interfaces.PropertyAccessLevel{interfaces.PropertyAccessFull, interfaces.PropertyAccessMasked, interfaces.PropertyAccessSchema, interfaces.PropertyAccessNone} {
+		t.Run(string(level), func(t *testing.T) {
+			resolver := propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+				"id": interfaces.PropertyAccessFull, "mobile": interfaces.PropertyAccessFull, "notes": level, "secret": interfaces.PropertyAccessNone,
+			}}
+			query := &interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"id"}, ActualCondition: &cond.CondCfg{
+				Name: "id", Operation: cond.OperationEq, ValueFrom: "field", Value: "notes",
+			}}
+			_, err := buildPropertyAccessPlan(context.Background(), resolver, objectType, query, true)
+			if (err == nil) != (level == interfaces.PropertyAccessFull) {
+				t.Fatalf("right hand level=%s error=%v", level, err)
+			}
+			query.ActualCondition.ValueFrom = "const"
+			if _, err := buildPropertyAccessPlan(context.Background(), resolver, objectType, query, true); err != nil {
+				t.Fatalf("constant interpreted as field: %v", err)
+			}
+		})
+	}
+}

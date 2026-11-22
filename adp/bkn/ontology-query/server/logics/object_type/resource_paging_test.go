@@ -169,7 +169,7 @@ func (v *vegaSessionPoolStub) QueryResourceData(_ context.Context, _ string,
 	entries := []map[string]any{{"customer_id": "customer-1"}}
 	if params.Paging.Mode != interfaces.ResourceDataPagingModeCursor {
 		v.singleReads++
-		return &interfaces.DatasetQueryResponse{Entries: entries, TotalCount: 18989,
+		return &interfaces.DatasetQueryResponse{Entries: entries, TotalCount: new(int64(18989)),
 			Paging: &interfaces.ResourceDataPagingResponse{}}, nil
 	}
 	if v.sessions >= v.limit {
@@ -179,7 +179,7 @@ func (v *vegaSessionPoolStub) QueryResourceData(_ context.Context, _ string,
 	v.sessions++
 	v.lastSessionID = fmt.Sprintf("session-%d", v.sessions)
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
-	return &interfaces.DatasetQueryResponse{Entries: entries, TotalCount: 18989,
+	return &interfaces.DatasetQueryResponse{Entries: entries, TotalCount: new(int64(18989)),
 		Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &v.lastSessionID, ExpiresAtSec: &expiresAt}}, nil
 }
 
@@ -190,6 +190,11 @@ func (v *vegaSessionPoolStub) GetResourceSchema(context.Context, string) (*inter
 func resourcePagingService(t *testing.T, vba interfaces.VegaBackendAccess, getCalls int) *objectTypeService {
 	t.Helper()
 	objectType := accessPlanObjectType()
+	for i := range objectType.DataProperties {
+		if objectType.DataProperties[i].Name == "notes" {
+			objectType.DataProperties[i].ConditionOperations = []string{cond.OperationIn}
+		}
+	}
 	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
 	models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(getCalls).
@@ -264,9 +269,9 @@ func TestResourceContinuationBeyondIndexWindowReplaysFromFirstPage(t *testing.T)
 	}
 	sessionID := "session-1"
 	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{
-		{Entries: fullPage, TotalCount: 3 * limit, Paging: &interfaces.ResourceDataPagingResponse{}},
-		{Entries: fullPage, TotalCount: 3 * limit, Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &sessionID}},
-		{Entries: fullPage[:1], TotalCount: 3 * limit, Paging: &interfaces.ResourceDataPagingResponse{}},
+		{Entries: fullPage, TotalCount: new(int64(3 * limit)), Paging: &interfaces.ResourceDataPagingResponse{}},
+		{Entries: fullPage, TotalCount: new(int64(3 * limit)), Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &sessionID}},
+		{Entries: fullPage[:1], TotalCount: new(int64(3 * limit)), Paging: &interfaces.ResourceDataPagingResponse{}},
 	}}
 	service := resourcePagingService(t, vega, 2)
 	ctx := resourcePagingContext()
@@ -301,8 +306,8 @@ func TestContinuousObjectScanDoesNotReplayFirstPage(t *testing.T) {
 		lastPage[i] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", firstPageSize+i)}
 	}
 	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{
-		{Entries: firstPage, TotalCount: 12190, Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &sessionID}},
-		{Entries: lastPage, TotalCount: 12190,
+		{Entries: firstPage, TotalCount: new(int64(12190)), Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &sessionID}},
+		{Entries: lastPage, TotalCount: new(int64(12190)),
 			Paging: &interfaces.ResourceDataPagingResponse{}},
 	}}
 	service := resourcePagingService(t, vega, 2)
@@ -337,7 +342,7 @@ func TestContinuousObjectScanBoundaryRowCounts(t *testing.T) {
 				firstRows[index] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", index)}
 			}
 			var nextCursor *string
-			responses := []*interfaces.DatasetQueryResponse{{Entries: firstRows, TotalCount: int64(total),
+			responses := []*interfaces.DatasetQueryResponse{{Entries: firstRows, TotalCount: new(int64(total)),
 				Paging: &interfaces.ResourceDataPagingResponse{}}}
 			if total >= 10000 {
 				session := "session-1"
@@ -348,7 +353,7 @@ func TestContinuousObjectScanBoundaryRowCounts(t *testing.T) {
 					lastRows[index] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", 10000+index)}
 				}
 				responses = append(responses, &interfaces.DatasetQueryResponse{Entries: lastRows,
-					TotalCount: int64(total), Paging: &interfaces.ResourceDataPagingResponse{}})
+					TotalCount: new(int64(total)), Paging: &interfaces.ResourceDataPagingResponse{}})
 			}
 			vega := &vegaStubForOTQuery{responses: responses}
 			service := resourcePagingService(t, vega, len(responses))
@@ -436,7 +441,7 @@ func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
 
 func TestObjectCountRowsUsesAuthorizedVegaTotal(t *testing.T) {
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: 100001, QuerySource: "local_index",
+		Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: new(int64(100001)), QuerySource: "local_index",
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
@@ -464,7 +469,7 @@ func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
 		},
 		// Index-backed aggregates may report matched documents rather than
 		// result groups as total_count. The object aggregate normalizes this.
-		TotalCount: 100003, QuerySource: "local_index", Paging: &interfaces.ResourceDataPagingResponse{},
+		TotalCount: new(int64(100003)), QuerySource: "local_index", Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
 	query := resourcePagingQuery(1)
@@ -475,7 +480,7 @@ func TestObjectGroupedCountRowsUsesAuthorizedVegaAggregate(t *testing.T) {
 	if err != nil || len(result.Datas) != 2 || result.Datas[0]["mobile"] != "north" ||
 		result.Datas[0]["notes"] != "priority" || result.Datas[0]["__value"] != json.Number("100001") ||
 		result.Datas[1]["mobile"] != nil || result.Datas[1]["notes"] != "standard" ||
-		result.Datas[1]["__value"] != json.Number("2") || result.TotalCount != 2 || result.QuerySource != "local_index" {
+		result.Datas[1]["__value"] != json.Number("2") || (result.TotalCount == nil || *result.TotalCount != 2) || result.QuerySource != "local_index" {
 		t.Fatalf("authorized grouped row count = %#v, error %v", result, err)
 	}
 	params := vega.lastParams
@@ -495,7 +500,7 @@ func TestObjectGroupedCountRowsRejectsIncompleteAggregate(t *testing.T) {
 		entries[index] = map[string]any{"phone": fmt.Sprintf("region-%d", index), "__value": json.Number("1")}
 	}
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: entries, TotalCount: int64(len(entries)), QuerySource: "source",
+		Entries: entries, TotalCount: new(int64(len(entries))), QuerySource: "source",
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := resourcePagingService(t, vega, 1)
@@ -576,7 +581,7 @@ func TestObjectCountRowsDoesNotRequireMappedPrimaryProjection(t *testing.T) {
 	}
 	models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
-	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{TotalCount: new(int64(0))}}
 	service := &objectTypeService{
 		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
 		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now()),
@@ -712,7 +717,7 @@ func TestObjectMetricAggregateMapsGroupedPlanAndHaving(t *testing.T) {
 		interfaces.ObjectAggregateQuery{MeasureProperty: "id", Operation: "sum", GroupBy: []string{"mobile"},
 			Having: &interfaces.ObjectAggregateHaving{Operation: cond.OperationGt, Value: 10}})
 	if err != nil || len(result.Datas) != 1 || result.Datas[0]["mobile"] != "east" ||
-		result.Datas[0]["__value"] != "42.5" || result.TotalCount != 1 {
+		result.Datas[0]["__value"] != "42.5" || (result.TotalCount == nil || *result.TotalCount != 1) {
 		t.Fatalf("metric aggregate = %#v, error %v", result, err)
 	}
 	params := vega.lastParams
@@ -780,7 +785,7 @@ func TestUnstableResourceSortNeverReturnsContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-		Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: 5,
+		Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: new(int64(5)),
 		Paging: &interfaces.ResourceDataPagingResponse{},
 	}}
 	service := &objectTypeService{vba: vega}
@@ -796,7 +801,7 @@ func TestUnstableResourceSortNeverReturnsContinuation(t *testing.T) {
 
 func TestNextResourceOffset(t *testing.T) {
 	page := func(rows int, total int64) *interfaces.DatasetQueryResponse {
-		return &interfaces.DatasetQueryResponse{Entries: make([]map[string]any, rows), TotalCount: total}
+		return &interfaces.DatasetQueryResponse{Entries: make([]map[string]any, rows), TotalCount: new(total)}
 	}
 	cases := []struct {
 		name      string
@@ -808,6 +813,7 @@ func TestNextResourceOffset(t *testing.T) {
 	}{
 		{"short page is final", 0, 10, false, page(9, 0), 0},
 		{"full page without total may continue", 0, 10, false, page(10, 0), 10},
+		{"unknown requested total does not end a full page", 0, 10, true, &interfaces.DatasetQueryResponse{Entries: make([]map[string]any, 10)}, 10},
 		{"full page below total continues", 20, 10, true, page(10, 31), 30},
 		{"full page reaching total is final", 20, 10, true, page(10, 30), 0},
 		{"empty page is final", 0, 10, false, page(0, 0), 0},
@@ -827,7 +833,7 @@ func TestObjectQueryLocalIndexContract(t *testing.T) {
 				source = "source"
 			}
 			vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: 5,
+				Entries: []map[string]any{{"customer_id": "customer-1"}}, TotalCount: new(int64(5)),
 				QuerySource: source, Paging: &interfaces.ResourceDataPagingResponse{},
 			}}
 			service := resourcePagingService(t, vega, 3)

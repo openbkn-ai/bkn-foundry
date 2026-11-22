@@ -692,7 +692,7 @@ func mapToActionExecution(m map[string]any) (*interfaces.ActionExecution, error)
 	}
 
 	var exec interfaces.ActionExecution
-	if err := common.UnmarshalPreciseJSON(data, &exec); err != nil {
+	if err := common.UnmarshalJSON(data, &exec); err != nil {
 		return nil, err
 	}
 

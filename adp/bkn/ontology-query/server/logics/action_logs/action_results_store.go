@@ -213,7 +213,7 @@ func decodeStoredResult(source map[string]any) (interfaces.ObjectExecutionResult
 		return interfaces.ObjectExecutionResult{}, err
 	}
 	var stored storedExecutionResult
-	if err := common.UnmarshalPreciseJSON(data, &stored); err != nil {
+	if err := common.UnmarshalJSON(data, &stored); err != nil {
 		return interfaces.ObjectExecutionResult{}, err
 	}
 	return stored.ObjectExecutionResult, nil

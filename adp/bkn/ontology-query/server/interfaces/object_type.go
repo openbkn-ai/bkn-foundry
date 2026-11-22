@@ -64,7 +64,7 @@ type Objects struct {
 	IsApproximate        bool                           `json:"-"` // Actual property-aggregate accuracy for metric executors.
 	ObjectType           *ObjectType                    `json:"object_type,omitempty"`
 	Datas                []map[string]any               `json:"datas"`
-	TotalCount           int64                          `json:"total_count,omitempty"`
+	TotalCount           *int64                         `json:"total_count,omitempty"`
 	SearchAfter          []any                          `json:"-"`
 	ResourceCursor       string                         `json:"-"`
 	ResourceCursorExpiry *int64                         `json:"-"`
@@ -116,7 +116,7 @@ type ObjectTypeSampleData struct {
 	Columns              []*ObjectTypeSampleDataColumn  `json:"columns"`
 	Entries              []map[string]any               `json:"entries"`
 	Name                 string                         `json:"name"`
-	TotalCount           int64                          `json:"total_count,omitempty"`
+	TotalCount           *int64                         `json:"total_count,omitempty"`
 	SearchAfter          []any                          `json:"-"`
 	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`

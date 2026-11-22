@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -91,7 +92,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "name": "obj1"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(objectQuery)
@@ -261,7 +262,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByEx(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "name": "obj1"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(objectQuery)
@@ -322,7 +323,7 @@ func Test_RestHandler_GetObjectsInObjectType(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "name": "obj1"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(objectQuery)
@@ -456,7 +457,7 @@ func Test_RestHandler_GetObjectsPropertiesByIn(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "prop1": "value1", "prop2": "value2"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(propertyQuery)
@@ -548,7 +549,7 @@ func Test_RestHandler_GetObjectsPropertiesByEx(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "prop1": "value1", "prop2": "value2"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(propertyQuery)
@@ -610,7 +611,7 @@ func Test_RestHandler_GetObjectsProperties(t *testing.T) {
 				Datas: []map[string]any{
 					{"id": "1", "prop1": "value1", "prop2": "value2"},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(propertyQuery)
@@ -679,4 +680,30 @@ func Test_RestHandler_GetObjectsProperties(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusInternalServerError)
 		})
 	})
+}
+
+func TestObjectQueryHTTPPreservesExactInputAndFinalJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctrl := gomock.NewController(t)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	handler := &restHandler{ots: objects, qas: allowQueryAuthorizationService{}}
+	engine := gin.New()
+	engine.POST("/knowledge-networks/:kn_id/object-types/:ot_id", handler.GetObjectsInObjectTypeByIn)
+	objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+		if query.Limit != 10 || query.ActualCondition.Value != json.Number("9007199254740993") {
+			t.Fatalf("unified query input changed: %#v", query)
+		}
+		return interfaces.Objects{Datas: []map[string]any{{"id": query.ActualCondition.Value, "amount": json.Number("1234567890123456.78")}}}, nil
+	})
+	body := []byte(`{"limit":10,"condition":{"field":"id","operation":"==","value_from":"const","value":9007199254740993}}`)
+	request := httptest.NewRequest(http.MethodPost, "/knowledge-networks/kn-1/object-types/ot-1", bytes.NewReader(body))
+	request.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+	request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user-1")
+	request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+	if response.Code != 200 || !bytes.Contains(response.Body.Bytes(), []byte(`"id":9007199254740993`)) || !bytes.Contains(response.Body.Bytes(), []byte(`"amount":1234567890123456.78`)) {
+		t.Fatalf("HTTP %d: %s", response.Code, response.Body.String())
+	}
 }

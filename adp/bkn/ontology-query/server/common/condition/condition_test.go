@@ -837,3 +837,34 @@ func Test_IsSameType(t *testing.T) {
 		})
 	})
 }
+
+func TestRewriteConditionFieldReferences(t *testing.T) {
+	fields := map[string]*DataProperty{
+		"left":  {Name: "left", Type: "string", MappedField: Field{Name: "right"}},
+		"right": {Name: "right", Type: "string", MappedField: Field{Name: "source_right"}},
+	}
+	original := &CondCfg{Operation: OperationOr, SubConds: []*CondCfg{
+		{Name: "left", Operation: OperationEq, ValueFrom: ValueFrom_Field, Value: "right"},
+		{Name: "right", Operation: OperationEq, ValueFrom: ValueFrom_Const, Value: "right"},
+	}}
+	rewritten, err := RewriteCondition(t.Context(), original, fields, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rewritten.SubConds[0].Name != "right" || rewritten.SubConds[0].Value != "source_right" || rewritten.SubConds[1].Name != "source_right" || rewritten.SubConds[1].Value != "right" {
+		t.Fatalf("field references or constants mapped incorrectly: %#v / %#v", rewritten.SubConds[0], rewritten.SubConds[1])
+	}
+	if original.SubConds[0].Value != "right" {
+		t.Fatal("original field reference changed")
+	}
+	for _, value := range []any{nil, 12, "missing"} {
+		_, err := RewriteCondition(t.Context(), &CondCfg{Name: "left", Operation: OperationEq, ValueFrom: ValueFrom_Field, Value: value}, fields, nil)
+		if err == nil {
+			t.Fatalf("invalid field reference accepted: %#v", value)
+		}
+	}
+	fields["right"].MappedField.Name = ""
+	if _, err := RewriteCondition(t.Context(), original.SubConds[0], fields, nil); err == nil {
+		t.Fatal("unmapped field reference accepted")
+	}
+}

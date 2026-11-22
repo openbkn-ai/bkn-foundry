@@ -35,7 +35,7 @@ func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
 
 	if strings.HasPrefix(raw, "[") {
 		var values interfaces.SearchAfterArray
-		if err := common.UnmarshalPreciseJSON([]byte(raw), &values); err != nil {
+		if err := common.UnmarshalJSON([]byte(raw), &values); err != nil {
 			return nil, err
 		}
 		return values, nil
@@ -46,7 +46,7 @@ func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		var decoded any
-		if err := common.UnmarshalPreciseJSON([]byte(part), &decoded); err == nil {
+		if err := common.UnmarshalJSON([]byte(part), &decoded); err == nil {
 			if number, ok := decoded.(json.Number); ok {
 				values = append(values, number)
 				continue

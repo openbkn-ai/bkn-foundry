@@ -11,6 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
 )
 
@@ -180,7 +181,7 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 
 	// Parse into a standard map.
 	var result map[string]any
-	if err := sonic.Unmarshal(data, &result); err != nil {
+	if err := common.UnmarshalJSON(data, &result); err != nil {
 		return nil, err
 	}
 

@@ -241,14 +241,14 @@ func buildActionFromInstanceData(instanceData map[string]any,
 	}
 
 	params := map[string]any{}
-	err = common.UnmarshalPreciseJSON([]byte(paramsJson), &params)
+	err = common.UnmarshalJSON([]byte(paramsJson), &params)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s paramtersJson to map, %s",
 			actionType.ATName, err.Error())
 	}
 
 	dynamicParams := map[string]any{}
-	err = common.UnmarshalPreciseJSON([]byte(dynamicParamsJson), &dynamicParams)
+	err = common.UnmarshalJSON([]byte(dynamicParamsJson), &dynamicParams)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s dynamicParamsJson to map, %s",
 			actionType.ATName, err.Error())
