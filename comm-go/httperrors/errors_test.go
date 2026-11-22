@@ -11,9 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 )
 
 func TestMetadataMergesAndOwnsTopLevelMap(t *testing.T) {
@@ -71,7 +70,7 @@ func TestDelayedRenderingAcrossSerializationPaths(t *testing.T) {
 			}
 			err = err.WithMetadata(map[string]any{"limit": 10}).WithErrorDetails("public detail")
 			for _, value := range []any{err, *err} {
-				for _, marshal := range []func(any) ([]byte, error){json.Marshal, sonic.Marshal} {
+				for _, marshal := range []func(any) ([]byte, error){json.Marshal, jsoncodec.Marshal} {
 					data, marshalErr := marshal(value)
 					if marshalErr != nil {
 						t.Fatal(marshalErr)
@@ -94,7 +93,7 @@ func TestDelayedRenderingAcrossSerializationPaths(t *testing.T) {
 			}
 			assertErrorBody(t, []byte(err.Error()), code, tc.description)
 			assertErrorBody(t, []byte(err.BaseError.Error()), code, incomplete.Description)
-			nested, marshalErr := sonic.Marshal(map[string]any{"error": err})
+			nested, marshalErr := jsoncodec.Marshal(map[string]any{"error": err})
 			if marshalErr != nil {
 				t.Fatal(marshalErr)
 			}

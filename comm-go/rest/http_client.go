@@ -16,11 +16,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -181,7 +181,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod string, url string, head
 		return
 	}
 
-	err = sonic.Unmarshal(respBody, &respData)
+	err = jsoncodec.Unmarshal(respBody, &respData)
 	if err != nil {
 		logger.Error(err.Error())
 	}
@@ -245,7 +245,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod string, url str
 		if v, ok := reqParam.([]byte); ok {
 			reader = bytes.NewReader(v)
 		} else {
-			reqData, err := sonic.Marshal(reqParam)
+			reqData, err := jsoncodec.Marshal(reqParam)
 			if err != nil {
 				logger.Error(err.Error())
 				return nil, err

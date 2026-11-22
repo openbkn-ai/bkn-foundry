@@ -6,6 +6,24 @@ openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，modul
 开发、构建和测试需要 Go 1.26.0 或更新版本。CI 从本模块的 `go.mod` 读取 Go
 版本；消费者升级到本模块的新版本时，也需要使用 Go 1.26.0 或更新版本。
 
+## Garble 兼容构建
+
+默认构建中，`httperrors` 和 `rest` 继续使用 Sonic。指定 `garble_compat`
+构建标签时，这两个包的 JSON 编解码改用 Go 标准库，避免这两条路径引入
+`sonic/loader`。兼容实现关闭 HTML 字符转义，以保持常见 HTTP JSON 输出行为；
+它与 Sonic 的所有边界行为和性能不保证完全一致。
+
+例如，在已引用包含该变更的 comm-go 版本的 bkn-safe EE 模块中：
+
+```bash
+CGO_ENABLED=0 garble build -trimpath -tags 'garble_compat,noasm' \
+  -ldflags '-s -w' -o bkn-safe-ee ./cmd/bkn-safe-ee
+```
+
+`noasm` 用于避免部分依赖的汇编实现引入 `sonic/loader`。其他依赖仍可能
+直接引入 Sonic；应对具体服务使用相同构建标签检查 `go list -deps`，并验证
+其 JSON 行为、性能和混淆后的实际运行。
+
 ## 本地联调
 
 本地联调通过仓库根目录的 `go.work` 使用工作区中的 `comm-go`，不在消费者的

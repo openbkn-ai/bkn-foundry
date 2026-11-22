@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -34,7 +34,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	)
 
 	if body != nil {
-		bodyStr, err = sonic.MarshalString(body)
+		bodyStr, err = jsoncodec.MarshalString(body)
 		if err != nil {
 			logger.Error("response JSON encoding failed")
 			httpErr := httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
@@ -65,7 +65,7 @@ func ReplyError(c *gin.Context, err error) {
 	if renderErr != nil {
 		logger.Errorf("localized error rendering failed: %v", renderErr)
 	}
-	body, encodeErr := sonic.Marshal(httpErr.BaseError)
+	body, encodeErr := jsoncodec.Marshal(httpErr.BaseError)
 	if encodeErr != nil {
 		logger.Errorf("error response JSON encoding failed: error_code=%s", httpErr.ErrorCode)
 		ctx := i18n.WithLanguage(c.Request.Context(), httpErr.Lang)
@@ -75,7 +75,7 @@ func ReplyError(c *gin.Context, err error) {
 			logger.Errorf("localized error rendering failed: %v", renderErr)
 		}
 		// This fresh DTO contains only strings, so it cannot retain the failed data.
-		body, encodeErr = sonic.Marshal(httpErr.BaseError)
+		body, encodeErr = jsoncodec.Marshal(httpErr.BaseError)
 		if encodeErr != nil {
 			logger.Error("public error JSON encoding failed")
 			body = []byte(`{"error_code":"Public.InternalServerError","description":"","error_details":""}`)
