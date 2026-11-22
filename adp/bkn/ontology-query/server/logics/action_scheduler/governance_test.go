@@ -67,6 +67,41 @@ func TestManagedActionScopeParserRejectsAmbiguousRollout(t *testing.T) {
 	}
 }
 
+func TestActionGovernanceDigestBindsPublishedSnapshot(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	snapshot := map[string]any{"name": "pay", "object_type_id": "order"}
+	models.EXPECT().GetActionType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "pay").
+		Return(interfaces.ActionType{ATID: "pay"}, snapshot, true, nil)
+	gate := &dynamicScopeGateStub{required: true}
+	service := &actionSchedulerService{omAccess: models, governanceGate: gate}
+	digest, err := service.ActionGovernanceDigest(context.Background(), "kn1", "pay")
+	if err != nil {
+		t.Fatalf("digest error=%v", err)
+	}
+	actor := interfaces.AccountInfo{ID: "alice", Type: "user"}
+	if err := service.claimActionGovernance(context.Background(), governanceRequest(), actor, snapshot); err != nil {
+		t.Fatalf("claim action governance: %v", err)
+	}
+	if gate.calls != 1 || digest == "" || digest != gate.claim.DefinitionDigest {
+		t.Fatalf("published digest=%q, claimed digest=%q, claims=%d", digest, gate.claim.DefinitionDigest, gate.calls)
+	}
+}
+
+func TestActionGovernanceDigestRejectsMissingDefinition(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	models.EXPECT().GetActionType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "gone").
+		Return(interfaces.ActionType{}, nil, false, nil)
+	service := &actionSchedulerService{omAccess: models}
+	if _, err := service.ActionGovernanceDigest(context.Background(), "kn1", "gone"); status(err) != http.StatusNotFound {
+		t.Fatalf("missing definition status=%d err=%v", status(err), err)
+	}
+	if _, err := service.ActionGovernanceDigest(context.Background(), "", "pay"); status(err) != http.StatusBadRequest {
+		t.Fatalf("missing ids status=%d err=%v", status(err), err)
+	}
+}
+
 func governanceRequest() *interfaces.ActionExecutionRequest {
 	return &interfaces.ActionExecutionRequest{KNID: "kn1", ActionTypeID: "pay", GovernanceRequestID: "request1", GovernancePermitID: "permit1", GovernancePlanDigest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", DynamicParams: map[string]any{"amount": 100}, Instances: []interfaces.ObjectSystemInfo{{InstanceIdentity: map[string]any{"order_id": "o1"}}}}
 }
@@ -192,4 +227,38 @@ func status(err error) int {
 		return httpErr.HTTPCode
 	}
 	return 0
+}
+
+type dynamicScopeGateStub struct {
+	actionGateStub
+	required  bool
+	lookupErr error
+}
+
+func (gate *dynamicScopeGateStub) RequiresActionGovernance(context.Context, string, string) (bool, error) {
+	return gate.required, gate.lookupErr
+}
+
+func TestSavedPolicyRequiresPermitWithoutStaticRollout(t *testing.T) {
+	gate := &dynamicScopeGateStub{required: true}
+	service := &actionSchedulerService{governanceGate: gate}
+	req := governanceRequest()
+	req.GovernanceRequestID = ""
+	if err := service.claimActionGovernance(context.Background(), req, interfaces.AccountInfo{ID: "alice", Type: "user"}, map[string]any{"id": "pay"}); err == nil || gate.calls != 0 {
+		t.Fatalf("missing permit bypassed: %v", err)
+	}
+	req = governanceRequest()
+	if err := service.claimActionGovernance(context.Background(), req, interfaces.AccountInfo{ID: "alice", Type: "user"}, map[string]any{"id": "pay"}); err != nil || gate.calls != 1 {
+		t.Fatalf("saved policy not enforced: %v", err)
+	}
+	gate.lookupErr = errors.New("governance unavailable")
+	if err := service.claimActionGovernance(context.Background(), governanceRequest(), interfaces.AccountInfo{}, nil); err == nil {
+		t.Fatal("lookup failure bypassed gate")
+	}
+	gate.lookupErr = nil
+	gate.required = false
+	req = governanceRequest()
+	if err := service.claimActionGovernance(context.Background(), req, interfaces.AccountInfo{}, nil); err != nil || req.GovernanceRequestID != "" || req.GovernancePermitID != "" {
+		t.Fatalf("unmanaged references trusted: %+v %v", req, err)
+	}
 }
