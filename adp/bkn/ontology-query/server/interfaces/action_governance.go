@@ -47,3 +47,12 @@ type ActionGovernanceGate interface {
 type ActionGovernancePreparer interface {
 	PrepareActionPermit(context.Context, ActionGovernanceClaim) (string, error)
 }
+
+// ActionGovernanceScope is optional and lets an installed adapter enforce saved
+// policies without a deployment change per action. Lookup errors must fail closed.
+type ActionGovernanceScope interface {
+	RequiresActionGovernance(context.Context, string, string) (bool, error)
+}
+
+// ActionGovernanceScopeVersion identifies executor support for live policy scopes.
+const ActionGovernanceScopeVersion = 1
