@@ -930,7 +930,11 @@ func (kns *knowledgeNetworkService) getNextObjectsByIndirectRelation(ctx context
 					continue
 				}
 				merged.Datas = append(merged.Datas, objects.Datas...)
-				merged.TotalCount += objects.TotalCount
+				if merged.TotalCount != nil && objects.TotalCount != nil {
+					merged.TotalCount = new(*merged.TotalCount + *objects.TotalCount)
+				} else {
+					merged.TotalCount = nil
+				}
 				result[objectID] = merged
 			}
 			return limit <= 0 || len(found) < limit, nil
@@ -1023,7 +1027,7 @@ func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []in
 		filteredObjects := interfaces.Objects{
 			Datas:       []map[string]any{},
 			ObjectType:  nextObjects.ObjectType,
-			TotalCount:  0,
+			TotalCount:  new(int64(0)),
 			SearchAfter: nextObjects.SearchAfter,
 		}
 
@@ -1040,7 +1044,7 @@ func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []in
 			}
 			if related {
 				filteredObjects.Datas = append(filteredObjects.Datas, nextObj)
-				filteredObjects.TotalCount++
+				*filteredObjects.TotalCount++
 			}
 		}
 

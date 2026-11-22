@@ -86,7 +86,7 @@ func emitSubgraphEvidence(c *gin.Context, ctx context.Context, visitor hydra.Vis
 		QueryHash:     bkntrace.HashValue(queryShape),
 		ReturnedCount: len(result.RelationPaths),
 		TotalCount:    result.TotalCount,
-		Truncated:     result.TotalCount > 0 && int64(len(result.RelationPaths)) < result.TotalCount,
+		Truncated:     result.TotalCount != nil && *result.TotalCount > 0 && int64(len(result.RelationPaths)) < *result.TotalCount,
 	}
 	eventID := bkntrace.EmitDataQueryEvents(ctx, ontologyTraceRequestContext(c, ctx, visitor), subject,
 		bkntrace.SubgraphRefs(knID, branch, result))

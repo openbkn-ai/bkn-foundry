@@ -231,7 +231,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	// Instant-query parameters: time (start and end), isInstantQuery, and interval = 1.
 	// Bind request parameters.
 	query := interfaces.ObjectQueryBaseOnObjectType{}
-	err = c.ShouldBindJSON(&query)
+	err = common.BindJSON(c.Request.Body, &query)
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
@@ -419,7 +419,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	}
 	// Bind request parameters.
 	query := interfaces.ObjectPropertyValueQuery{}
-	err = c.ShouldBindJSON(&query)
+	err = common.BindJSON(c.Request.Body, &query)
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))

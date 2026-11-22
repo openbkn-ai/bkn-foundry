@@ -106,7 +106,7 @@ type ObjectSubGraph struct {
 	Objects           map[string]ObjectInfoInSubgraph `json:"objects"`
 	IsolatedObjects   map[string]ObjectInfoInSubgraph `json:"isolated_objects,omitempty"`
 	RelationPaths     []RelationPath                  `json:"relation_paths"`
-	TotalCount        int64                           `json:"total_count,omitempty"`
+	TotalCount        *int64                          `json:"total_count,omitempty"`
 	Cursor            string                          `json:"cursor,omitempty"`
 	CuurentPathNumber int                             `json:"current_path_number,omitempty"`
 	OverallMs         int64                           `json:"overall_ms"`

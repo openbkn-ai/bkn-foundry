@@ -239,6 +239,15 @@ func RewriteCondition(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*D
 		return nil, err
 	}
 
+	if viewCfg != nil && viewCfg.ValueFrom == ValueFrom_Field {
+		name, ok := viewCfg.Value.(string)
+		field := fieldsMap[name]
+		if !ok || field == nil || field.MappedField.Name == "" {
+			return nil, fmt.Errorf("condition field operand requires a mapped object property")
+		}
+		viewCfg.Value = field.MappedField.Name
+	}
+
 	return viewCfg, nil
 }
 

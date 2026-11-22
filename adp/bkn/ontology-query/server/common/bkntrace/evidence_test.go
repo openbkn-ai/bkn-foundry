@@ -187,7 +187,7 @@ func TestBuildDataQueryEventsRecordsDataWithoutFabricatingClaim(t *testing.T) {
 	rows := []map[string]any{{"_instance_id": "obj_customer_001", "name": "Sensitive Customer", "phone": "13800000000"}}
 	events := BuildDataQueryEvents(testTraceContext(), testRequestContext(), DataQuerySubject{
 		EntityKind: EntityKindObjectInstance, Operation: "bkn.object.query", KNID: "kn_demo", Branch: "main", SubjectID: "customer",
-		QueryHash: HashValue(map[string]any{"condition": "redacted"}), ReturnedCount: 1, TotalCount: 1,
+		QueryHash: HashValue(map[string]any{"condition": "redacted"}), ReturnedCount: 1, TotalCount: new(int64(1)),
 	}, ObjectRowRefs("kn_demo", "main", "customer", rows))
 
 	assertSafeEvents(t, events, 1, []string{

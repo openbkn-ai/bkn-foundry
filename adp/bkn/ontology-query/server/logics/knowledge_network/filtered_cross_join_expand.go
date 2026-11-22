@@ -121,11 +121,11 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 				objs = interfaces.Objects{
 					Datas:      []map[string]any{},
 					ObjectType: nextObjects.ObjectType,
-					TotalCount: 0,
+					TotalCount: new(int64(0)),
 				}
 			}
 			objs.Datas = append(objs.Datas, trow)
-			objs.TotalCount++
+			*objs.TotalCount++
 			result[s.ObjectID] = objs
 			pairCount++
 		}

@@ -514,7 +514,7 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 		} `json:"hits"`
 	}
 
-	if err := common.DecodePreciseJSON(res.Body, &searchResult); err != nil {
+	if err := common.DecodeJSON(res.Body, &searchResult); err != nil {
 		return nil, fmt.Errorf("failed to decode search response: %w", err)
 	}
 

@@ -199,7 +199,8 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 			"resource-1", &interfaces.ResourceDataQueryParams{})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(response.Entries, convey.ShouldHaveLength, 1)
-		convey.So(response.TotalCount, convey.ShouldEqual, int64(1))
+		convey.So(response.TotalCount, convey.ShouldNotBeNil)
+		convey.So(*response.TotalCount, convey.ShouldEqual, int64(1))
 
 		expected := map[string]string{
 			"int64_max":  "9223372036854775807",

@@ -259,7 +259,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 		return toolResult, fmt.Errorf("proxy tool execution returned an empty response")
 	}
 
-	if err := common.UnmarshalPreciseJSON(result, &toolResult); err != nil {
+	if err := common.UnmarshalJSON(result, &toolResult); err != nil {
 		logger.Errorf("Unmarshal tool execution result failed, %s", err)
 		return toolResult, err
 	}
@@ -336,7 +336,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 		return mcpResult, fmt.Errorf("proxy MCP execution returned an empty response")
 	}
 
-	if err := common.UnmarshalPreciseJSON(result, &mcpResult); err != nil {
+	if err := common.UnmarshalJSON(result, &mcpResult); err != nil {
 		logger.Errorf("Unmarshal MCP execution result failed, %s", err)
 		return mcpResult, err
 	}
@@ -382,7 +382,7 @@ func (r mcpCallToolResult) normalize() map[string]any {
 
 	joined := strings.Join(texts, "\n")
 	var parsed any
-	if err := common.UnmarshalPreciseJSON([]byte(joined), &parsed); err == nil {
+	if err := common.UnmarshalJSON([]byte(joined), &parsed); err == nil {
 		switch v := parsed.(type) {
 		case map[string]any:
 			return v

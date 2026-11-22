@@ -617,7 +617,7 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.ObjectQueryBaseOnObjectType) (map[string]any, error) {
 
 	var dslMap map[string]any
-	err := common.UnmarshalPreciseJSON([]byte(queryStr), &dslMap)
+	err := common.UnmarshalJSON([]byte(queryStr), &dslMap)
 	if err != nil {
 		return map[string]any{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
@@ -1396,7 +1396,7 @@ func CondCfgToFilterMap(c *cond.CondCfg) map[string]any {
 		return nil
 	}
 	var m map[string]any
-	if err := sonic.Unmarshal(raw, &m); err != nil {
+	if err := common.UnmarshalJSON(raw, &m); err != nil {
 		return nil
 	}
 	return m

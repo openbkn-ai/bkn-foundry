@@ -269,7 +269,7 @@ func (ots *objectTypeService) ScanObjectsByObjectTypeID(ctx context.Context,
 		// sort cannot be made total (see appendResourceSortTieBreakers). Its
 		// remaining rows cannot be addressed, so the result is flagged rather
 		// than passed off as complete.
-		result.Incomplete = len(objects.Datas) >= page.Limit && result.TotalCount > int64(len(result.Datas))
+		result.Incomplete = len(objects.Datas) >= page.Limit && (result.TotalCount == nil || *result.TotalCount > int64(len(result.Datas)))
 		break
 	}
 	result.SearchAfter, result.ResourceCursor, result.ResourceCursorExpiry = nil, "", nil
@@ -550,8 +550,13 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 	} else {
 		// A false authorized predicate is complete without reading a resource.
 		// No physical query path was chosen, so provenance remains empty.
+		resps.Datas = []map[string]any{}
+		if query.NeedTotal {
+			resps.TotalCount = new(int64(0))
+		}
 		if aggregate != nil && aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
 			resps.Datas = []map[string]any{{"__value": json.Number("0")}}
+			resps.TotalCount = new(int64(0))
 		}
 	}
 
@@ -880,7 +885,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 					return err
 				}
 				resps.QuerySource = response.QuerySource
-				resps.TotalCount = scanned
+				resps.TotalCount = new(scanned)
 				return nil
 			}
 			page = interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: activeCursor}}
@@ -978,7 +983,10 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			resps.IsApproximate = true
 		}
 		if aggregate.operation == "count_rows" && len(aggregate.groupBy) == 0 {
-			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(resp.TotalCount, 10))}}
+			if resp.TotalCount == nil {
+				return ots.objectResourceQueryError(ctx, fmt.Errorf("resource count response is missing total_count"), objectType)
+			}
+			resps.Datas = []map[string]any{{"__value": json.Number(strconv.FormatInt(*resp.TotalCount, 10))}}
 			resps.QuerySource = resp.QuerySource
 			resps.TotalCount = resp.TotalCount
 			return nil
@@ -1010,7 +1018,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 			// meaning: source tables report groups while local indexes report
 			// matched documents. A short single page is complete by the paging
 			// contract, and the aggregate boundary exposes its returned groups.
-			resps.TotalCount = int64(len(resps.Datas))
+			resps.TotalCount = new(int64(len(resps.Datas)))
 		} else {
 			resps.TotalCount = resp.TotalCount
 		}
@@ -1183,7 +1191,7 @@ func nextResourceOffset(offset, limit int, needTotal bool, resp *interfaces.Data
 		return 0
 	}
 	next := offset + len(resp.Entries)
-	if needTotal && int64(next) >= resp.TotalCount {
+	if needTotal && resp.TotalCount != nil && int64(next) >= *resp.TotalCount {
 		return 0
 	}
 	return next
@@ -1384,6 +1392,8 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 	resps.Datas = datas
 	resps.ObjectType = objects.ObjectType
 	resps.TotalCount = objects.TotalCount
+	resps.QuerySource = objects.QuerySource
+	resps.RowFilterApplied = objects.RowFilterApplied
 	resps.SearchAfter = objects.SearchAfter
 	resps.Paging = objects.Paging
 	resps.Cursor = objects.Cursor

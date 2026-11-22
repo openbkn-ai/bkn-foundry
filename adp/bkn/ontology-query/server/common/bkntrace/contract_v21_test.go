@@ -24,7 +24,7 @@ func TestBuildDataQueryEventsV21RecordsFactWithoutFabricatingClaim(t *testing.T)
 
 	events := BuildDataQueryEvents(testTraceContext(), req, DataQuerySubject{
 		EntityKind: EntityKindObjectInstance, Operation: "bkn.object.query", KNID: "kn_demo", Branch: "main", SubjectID: "customer",
-		QueryHash: HashValue("safe shape"), ReturnedCount: 1, TotalCount: 1,
+		QueryHash: HashValue("safe shape"), ReturnedCount: 1, TotalCount: new(int64(1)),
 	}, []EvidenceRef{
 		{RefID: "object:kn_demo:customer", RefType: RefTypeObject},
 		{RefID: "property:kn_demo:customer:risk_level", RefType: RefTypeProperty},

@@ -47,7 +47,7 @@ func (r *restHandler) CheckActionFactsByIn(c *gin.Context) {
 		return
 	}
 	check := interfaces.ActionFactCheck{}
-	if err := common.BindPreciseJSON(c.Request.Body, &check); err != nil {
+	if err := common.BindJSON(c.Request.Body, &check); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter))
 		return
 	}
@@ -118,7 +118,7 @@ func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
 	req := interfaces.ActionExecutionRequest{}
-	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -195,7 +195,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 
 	// Bind request body
 	req := interfaces.ActionExecutionRequest{}
-	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 

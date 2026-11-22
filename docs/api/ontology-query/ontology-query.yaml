@@ -24,6 +24,10 @@ info:
     responses expose Vega's actual `query_source` (`local_index` or `source`)
     instead of `search_from_index`. Clients must migrate these names together
     with the server. The internal cursor digest encoding remains unchanged.
+    Resource consumers retain the unified sorting, paging and total-request rules.
+    Unsupported Resource capabilities return errors through the existing query boundary.
+    Conditions and final JSON results preserve exact numeric values. Unknown totals stay
+    absent; a known zero is preserved.
     Changing `ignore_local_index` requires a new query rather than continuing
     an existing cursor.
 
@@ -3383,7 +3387,6 @@ components:
       required:
       - objects
       - relation_paths
-      - total_count
       type: object
       properties:
         objects:
@@ -3402,7 +3405,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
         total_count:
-          description: 起点对象类的总条数
+          description: 起点对象类的已知总条数。未知时省略，已知为零时返回 0。
           type: integer
         cursor:
           description: 不透明且经过认证的起点对象分页游标；后续请求应回传此值，原始 search_after 不被接受
@@ -3563,7 +3566,7 @@ components:
           items:
             $ref: '#/components/schemas/ObjectInfo'
         total_count:
-          description: 总条数
+          description: 已知总条数。未知时省略，已知为零时返回 0。
           type: integer
         cursor:
           description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。

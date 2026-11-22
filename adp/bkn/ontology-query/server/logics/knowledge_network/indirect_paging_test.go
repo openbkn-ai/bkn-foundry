@@ -121,7 +121,7 @@ func (v *backingTableVega) QueryResourceData(_ context.Context, _ string,
 	end := min(offset+limit, len(matched))
 	page := matched[min(offset, len(matched)):end]
 	v.served += len(page)
-	resp := &interfaces.DatasetQueryResponse{Entries: page, TotalCount: int64(len(matched)),
+	resp := &interfaces.DatasetQueryResponse{Entries: page, TotalCount: new(int64(len(matched))),
 		Paging: &interfaces.ResourceDataPagingResponse{}}
 	if (params.Paging.Mode == interfaces.ResourceDataPagingModeCursor || params.Paging.Cursor != "") && end < len(matched) {
 		if v.cursors == nil {

@@ -31,7 +31,7 @@ func scanPages(total int, pageSizes ...int) []*interfaces.DatasetQueryResponse {
 			rows[row] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", next+row)}
 		}
 		next += size
-		page := &interfaces.DatasetQueryResponse{Entries: rows, TotalCount: int64(total),
+		page := &interfaces.DatasetQueryResponse{Entries: rows, TotalCount: new(int64(total)),
 			Paging: &interfaces.ResourceDataPagingResponse{}}
 		if index < len(pageSizes)-1 {
 			session := fmt.Sprintf("session-%d", index+1)
@@ -83,8 +83,8 @@ func TestScanObjectsReadsEveryPageAtBoundaries(t *testing.T) {
 				}
 				seen[id] = struct{}{}
 			}
-			if result.TotalCount != int64(tc.total) || result.Cursor != "" || result.Paging.NextCursor != nil {
-				t.Fatalf("total=%d cursor=%q paging=%#v", result.TotalCount, result.Cursor, result.Paging)
+			if (result.TotalCount == nil || *result.TotalCount != int64(tc.total)) || result.Cursor != "" || result.Paging.NextCursor != nil {
+				t.Fatalf("total=%v cursor=%q paging=%#v", result.TotalCount, result.Cursor, result.Paging)
 			}
 			first := vega.paramsHistory[0].Paging
 			if len(vega.paramsHistory) != len(tc.pages) || first.Mode != interfaces.ResourceDataPagingModeCursor ||
@@ -110,8 +110,8 @@ func TestScanObjectsStopsOnePastTheLimit(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 	ids := scannedIDs(result)
-	if len(ids) != 10001 || ids[10000] != "customer-10000" || result.TotalCount != 18989 {
-		t.Fatalf("scanned %d objects, total %d", len(ids), result.TotalCount)
+	if len(ids) != 10001 || ids[10000] != "customer-10000" || (result.TotalCount == nil || *result.TotalCount != 18989) {
+		t.Fatalf("scanned %d objects, total %v", len(ids), result.TotalCount)
 	}
 	if len(vega.paramsHistory) != 2 {
 		t.Fatalf("read %d pages, want 2", len(vega.paramsHistory))
@@ -178,8 +178,24 @@ func TestScanObjectsFlagsAnUnpageableMatchSet(t *testing.T) {
 		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now()),
 	}
 	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 20000)
-	if err != nil || !result.Incomplete || len(result.Datas) != 10000 || result.TotalCount != 10001 {
-		t.Fatalf("unpageable scan: incomplete=%t rows=%d total=%d err=%v",
+	if err != nil || !result.Incomplete || len(result.Datas) != 10000 || (result.TotalCount == nil || *result.TotalCount != 10001) {
+		t.Fatalf("unpageable scan: incomplete=%t rows=%d total=%v err=%v",
 			result.Incomplete, len(result.Datas), result.TotalCount, err)
+	}
+}
+
+func TestScanObjectsDoesNotTreatUnknownTotalAsComplete(t *testing.T) {
+	objectType := accessPlanObjectType()
+	objectType.PrimaryKeys = []string{"legacy_code"}
+	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
+	models := omock.NewMockOntologyManagerAccess(gomock.NewController(t))
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
+	page := scanPages(10000, 10000)[0]
+	page.TotalCount = nil
+	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{page}}
+	service := &objectTypeService{omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{}, propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{}, cursor: testQueryCursorCodec(t, time.Now())}
+	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 20000)
+	if err != nil || !result.Incomplete || result.TotalCount != nil || len(result.Datas) != 10000 {
+		t.Fatalf("unknown-total scan: incomplete=%t total=%v rows=%d error=%v", result.Incomplete, result.TotalCount, len(result.Datas), err)
 	}
 }

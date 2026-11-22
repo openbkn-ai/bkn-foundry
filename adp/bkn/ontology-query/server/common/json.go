@@ -15,25 +15,25 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-var precisionJSON = sonic.Config{UseNumber: true}.Froze()
+var defaultJSON = sonic.Config{UseNumber: true}.Froze()
 
-// DecodePreciseJSON preserves number literals in dynamic JSON fields.
-func DecodePreciseJSON(reader io.Reader, target any) error {
-	return precisionJSON.NewDecoder(reader).Decode(target)
+// DecodeJSON reads one JSON value and preserves numbers in interface values as json.Number.
+func DecodeJSON(reader io.Reader, target any) error {
+	return defaultJSON.NewDecoder(reader).Decode(target)
 }
 
-// BindPreciseJSON decodes an HTTP request body and applies Gin's validator.
-func BindPreciseJSON(reader io.Reader, target any) error {
-	if err := DecodePreciseJSON(reader, target); err != nil {
+// BindJSON decodes an HTTP request body and applies Gin's validator.
+func BindJSON(reader io.Reader, target any) error {
+	if err := DecodeJSON(reader, target); err != nil {
 		return err
 	}
 	return binding.Validator.ValidateStruct(target)
 }
 
-// BindStrictPreciseJSON preserves number literals, rejects unknown fields, and
+// BindStrictJSON preserves number literals, rejects unknown fields, and
 // applies Gin validation. It is used by first-version contracts that do not
 // carry backward-compatible request fields.
-func BindStrictPreciseJSON(reader io.Reader, target any) error {
+func BindStrictJSON(reader io.Reader, target any) error {
 	// Sonic's stream decoder can report EOF for malformed trailing bytes.
 	decoder := json.NewDecoder(reader)
 	decoder.UseNumber()
@@ -51,7 +51,7 @@ func BindStrictPreciseJSON(reader io.Reader, target any) error {
 	return binding.Validator.ValidateStruct(target)
 }
 
-// UnmarshalPreciseJSON preserves number literals in dynamic JSON fields.
-func UnmarshalPreciseJSON(data []byte, target any) error {
-	return precisionJSON.Unmarshal(data, target)
+// UnmarshalJSON decodes JSON bytes and preserves numbers in interface values as json.Number.
+func UnmarshalJSON(data []byte, target any) error {
+	return defaultJSON.Unmarshal(data, target)
 }

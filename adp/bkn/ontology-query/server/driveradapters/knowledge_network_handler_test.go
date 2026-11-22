@@ -61,7 +61,7 @@ func Test_RestHandler_GetObjectsSubgraphByIn(t *testing.T) {
 		Convey("成功 - 基于起点获取子图", func() {
 			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{
 				Objects:    map[string]interfaces.ObjectInfoInSubgraph{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(subgraphQuery)
@@ -164,7 +164,7 @@ func Test_RestHandler_GetObjectsSubgraphByEx(t *testing.T) {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(visitor, nil)
 			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{
 				Objects:    map[string]interfaces.ObjectInfoInSubgraph{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(subgraphQuery)
@@ -225,7 +225,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 		Convey("成功 - 参数验证通过，获取子图", func() {
 			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{
 				Objects:    map[string]interfaces.ObjectInfoInSubgraph{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			reqParamByte, _ := sonic.Marshal(subgraphQuery)
