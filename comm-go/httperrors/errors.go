@@ -11,9 +11,8 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -111,7 +110,7 @@ func (e *HTTPError) Render() error {
 // to inspect rendering failures; this method returns only JSON encoding errors.
 func (e HTTPError) MarshalJSON() ([]byte, error) {
 	_ = e.Render()
-	return sonic.Marshal(e.BaseError)
+	return jsoncodec.Marshal(e.BaseError)
 }
 
 func (e *HTTPError) Error() string {
@@ -124,7 +123,7 @@ func (e *HTTPError) Error() string {
 }
 
 func (e *BaseError) Error() string {
-	data, err := sonic.Marshal(e)
+	data, err := jsoncodec.Marshal(e)
 	if err != nil {
 		logger.Errorf("serialize base error failed: error_code=%s", e.ErrorCode)
 		return e.ErrorCode
