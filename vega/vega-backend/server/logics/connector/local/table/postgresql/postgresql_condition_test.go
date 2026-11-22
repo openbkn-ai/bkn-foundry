@@ -235,9 +235,15 @@ func TestPostgresqlConnectorConvertFilterCondition(t *testing.T) {
 func TestPostgresqlConnectorConvertFilterConditionLike(t *testing.T) {
 	field := &interfaces.Property{Name: "name", OriginalName: "name", Type: interfaces.DataType_String}
 	for _, operation := range []string{"like", "not_like"} {
-		for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
+		for _, pattern := range []string{"", "   ", "%", "_", "%ali%", "ali%", "%ali", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`, "O'Reilly%_!"} {
 			t.Run(operation+"/"+pattern, func(t *testing.T) {
 				condition, err := filter_condition.NewFilterCondition(t.Context(), &interfaces.FilterCondCfg{Field: "name", Operation: operation, Value: pattern}, map[string]*interfaces.Property{"name": field})
+				if pattern == "" {
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.Nil(t, condition)
+					return
+				}
 				require.NoError(t, err)
 				text, args := toSQL(t, &PostgresqlConnector{}, condition)
 				keyword := "LIKE"

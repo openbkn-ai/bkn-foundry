@@ -24,6 +24,9 @@ info:
     `schedule_id` 和 `trigger_type` 是服务端写入的只读来源字段。手动任务的
     `schedule_id` 为空，`trigger_type=manual`；由 BuildSchedule 创建的任务为 `scheduled`。
     删除调度不删除已生成任务，也不清除其 schedule_id。手动创建接口不能伪造这些字段。
+    任务详情另返回可选只读 `schedule_name`，为关联计划的当前名称，不是触发时快照；
+    手动任务、计划已删除或读取计划失败时省略该字段，仍保留任务及既有 schedule_id。
+    任务列表不返回 schedule_name。
 
     每个新任务均有服务端分配的只读 `index_name`。Full BuildTask 使用新的
     `vega-build-<uuidv7>` 物理索引；Incremental BuildTask 快照创建时 Resource 的当前
@@ -151,8 +154,22 @@ paths:
         `VegaBackend.BuildTask.Exist`。终态 Task 不阻止创建新任务。
 
         - 当前版本暂不支持 `streaming` 模式。
-        - `batch` 模式要求 `primary_key_fields` 和 `incremental_fields` 均非空。
-        - 所有字段都需要在 Resource 的 schema 中存在；否则 400。
+        - `batch` 模式要求 `primary_key_fields` 非空。`incremental` 还要求 `incremental_fields` 非空。
+          `full` 可省略 `incremental_fields`。未配置时，任务依旧记录主键游标供断点续跑，
+          构建期间的源端变更可能遗漏，可通过再次全量刷新补齐。
+        - `incremental` 要求 `local_status=available` 的已发布本地索引。`readonly` 的旧索引仍可查询，须全量重建后才能继续增量。
+          缺少可写索引或已有非空基线校验失败时，
+          返回 409 `VegaBackend.BuildTask.IncrementalBaselineUnavailable`。
+          基线为空时，任务先入队。worker 使用 Resource 当前发布的索引，按增量字段和补齐的主键字段倒序取首条。
+          首条记录须能形成有效游标。只有查询完整且精确总数为 0 时，才恢复为空游标。
+          当前支持整数主键及整数、日期和日期时间游标字段。
+          恢复失败时，任务状态变为 `failed`。任务详情的 `error_msg` 区分游标字段不支持恢复、已发布索引查询失败、索引游标值无效等原因。
+          字段不支持或游标值无效时，可以配置增量字段后发起全量构建以建立基线。
+          时间字段按索引的毫秒精度排序，续跑时可能重读同一毫秒内的部分记录。游标之前的变更和源端删除可能不会反映到索引中。
+        - PostgreSQL、MySQL/MariaDB 的 InnoDB 表、HANA、Oracle 和 SQL Server 在每次 `full` 执行中使用同一源端事务统计总数并打开结果集，逐批消费该结果集。
+          Oracle 事务读会话要求非 SYS 账号。SQL Server 使用 SERIALIZABLE，读事务可能阻塞源端写入。中断后从任务游标开启新事务，跨运行的批次可能看到不同的数据。
+          Doris 等不支持事务读会话的来源继续逐批执行查询。
+        - 已配置的主键字段和增量字段必须存在于 Resource 的 schema 中，各组字段不能重复且必须使用受支持的类型，否则返回 400。
         - `index_name` 由服务端分配并在详情、列表响应中返回；请求体不接受该字段。
         - 创建后 status = `pending`。
 
@@ -190,6 +207,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /build-tasks/{id}:
@@ -266,6 +285,11 @@ paths:
         409 `VegaBackend.BuildTask.IncrementalResetUnsupported`。full 任务仅在 `reset=true` 时清除进度并从头重建，
         不修改原始 `execute_type`；
         worker 实际开始执行时会清空 `error_msg`。
+
+        按原执行类型重新校验 Resource 构建字段。`full` 需要主键。`incremental` 还需要增量字段
+        和任务所对应的 `local_status=available` 的已发布本地索引。缺少可写索引或已有非空基线校验失败时，返回 409
+        `VegaBackend.BuildTask.IncrementalBaselineUnavailable`。基线为空时，任务可重新入队，
+        worker 会在读取源端前尝试从已发布索引恢复。恢复失败时，通过任务详情查看 `failed` 状态和 `error_msg`。
 
         **响应 status 滞后**：HTTP 202 表示"启动指令已被接受并入队"，**不**表示
         status 已切换为 `running`。worker 实际执行时才会写为 `running`，
@@ -366,7 +390,7 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
       description: |
-        状态冲突：状态机不允许该转移，或 task 处于 running/stopping 无法删除
+        状态冲突，例如任务状态不允许当前操作，或增量构建缺少可用索引和有效基线。
       content:
         application/json:
           schema:
@@ -421,17 +445,18 @@ components:
         schedule_id:
           description: 触发本任务的 BuildSchedule ID；手动任务为空，计划删除后保留
           type: string
-          readOnly: true
         trigger_type:
           description: 服务端确定的任务来源；历史任务按 manual 返回
           type: string
-          readOnly: true
           enum: [manual, scheduled]
+        catalog_name:
+          description: 关联 Catalog 的当前名称；响应时按当前任务集合批量补齐，不落库
+          type: string
         resource_name:
           description: 关联 Resource 的当前名称；响应时按当前任务集合批量补齐，不落库
           type: string
-        catalog_name:
-          description: 关联 Catalog 的当前名称；响应时按当前任务集合批量补齐，不落库
+        schedule_name:
+          description: 仅任务详情返回关联 BuildSchedule 的当前名称，不落库；手动任务、计划已删除或读取失败时省略，schedule_id 不受影响
           type: string
         status:
           description: 状态
@@ -468,7 +493,7 @@ components:
           type: integer
           format: int64
         synced_mark:
-          description: 不透明的执行 checkpoint 字符串，仅用于展示和透传；调用方不得解析其内部结构
+          description: 不透明的任务续跑 checkpoint，仅用于展示和透传。调用方不得解析其内部结构
           type: string
         error_msg:
           description: 错误或取消原因（仅在 failed/cancelled 状态下有意义）
@@ -505,11 +530,9 @@ components:
         resource_id: { type: string }
         schedule_id:
           type: string
-          readOnly: true
           description: BuildSchedule ID；手动任务为空，计划删除后保留
         trigger_type:
           type: string
-          readOnly: true
           enum: [manual, scheduled]
         resource_name: { type: string }
         catalog_id: { type: string }
@@ -541,7 +564,7 @@ components:
           items:
             type: string
         incremental_fields:
-          description: Ordered incremental cursor fields before any missing primary key fields are appended internally.
+          description: Ordered incremental cursor fields. Required for incremental builds. A full build without them uses the primary key for task checkpoints.
           type: array
           items:
             type: string

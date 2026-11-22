@@ -40,14 +40,26 @@ func (ats *actionTypeService) checkOperationDependencies(ctx context.Context, tx
 		return err
 	}
 	cfg := at.OperationConfig
-	if cfg.Type == interfaces.ActionOperationTool {
-		return nil
-	}
 	getObject := func(id string) (*interfaces.ObjectType, error) {
 		if batch != nil && batch.ObjectTypes[id] != nil {
 			return batch.ObjectTypes[id], nil
 		}
 		return ats.ots.GetObjectTypeByID(ctx, tx, at.KNID, at.Branch, id)
+	}
+	if cfg.Type == interfaces.ActionOperationTool {
+		// A tool action stays unbound; its optional condition carries the object
+		// type the runtime guards instances against.
+		if at.Condition == nil {
+			return nil
+		}
+		conditionObject, err := getObject(at.Condition.ObjectTypeID)
+		if err != nil {
+			return err
+		}
+		if conditionObject == nil {
+			return fmt.Errorf("object type %q does not exist", at.Condition.ObjectTypeID)
+		}
+		return checkConditionSchema(at.Condition, conditionObject, at.Parameters)
 	}
 	current, err := getObject(at.ObjectTypeID)
 	if err != nil {

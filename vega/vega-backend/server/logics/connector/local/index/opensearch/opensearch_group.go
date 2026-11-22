@@ -152,18 +152,12 @@ func (c *OpenSearchConnector) executeGroupedQuery(ctx context.Context, indexName
 		query["timeout"] = "30s"
 		query["pit"] = map[string]any{"id": pit, "keep_alive": "1m"}
 		query["track_total_hits"] = params.NeedTotal && after == nil
-		response, err := c.aggregationRequest(ctx, http.MethodPost, "/_search?allow_partial_search_results=false", query, "group_aggregation")
-		if err != nil {
-			return nil, err
-		}
+		response, err := c.aggregationRequest(ctx, http.MethodPost, "/_search", query, "group_aggregation")
 		if id, ok := response["pit_id"].(string); ok && id != "" {
 			pit = id
 		}
-		if err := validateCompleteAggregationResponse(response); err != nil {
+		if err != nil {
 			return nil, err
-		}
-		if _, ok := response["_shards"].(map[string]any); !ok {
-			return nil, fmt.Errorf("group aggregation response is missing shard completion metadata")
 		}
 		if params.NeedTotal && after == nil {
 			hits, _ := response["hits"].(map[string]any)

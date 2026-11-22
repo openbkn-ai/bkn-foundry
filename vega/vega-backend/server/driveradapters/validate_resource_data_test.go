@@ -23,11 +23,30 @@ import (
 
 func TestValidateResourceDataQueryParams(t *testing.T) {
 	ctx := context.Background()
+	t.Run("API pagination preserves Resource defaults and upper bounds", func(t *testing.T) {
+		for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle} {
+			for _, limit := range []int{0, 10001} {
+				params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: mode, Limit: limit}}
+				require.NoError(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+				assert.Equal(t, limit, params.Paging.Limit)
+				assert.Equal(t, interfaces.Format_Original, params.Format)
+				assert.Equal(t, new(interfaces.BinaryModeMetadata), params.BinaryMode)
+			}
+		}
+	})
+	t.Run("API rejects cursor while Table retains binary continuation restrictions", func(t *testing.T) {
+		for _, category := range []string{interfaces.ResourceCategoryAPI, interfaces.ResourceCategoryTable} {
+			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque"}, BinaryMode: new(interfaces.BinaryModeContent), NeedTotal: true}
+			require.Error(t, ValidateResourceDataQueryParams(ctx, params, category))
+		}
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}
+		require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+	})
 
 	t.Run("sets defaults for minimal query", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{}
 
-		err := ValidateResourceDataQueryParams(ctx, params)
+		err := ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable)
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.Format_Original, params.Format)
@@ -38,9 +57,9 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 	t.Run("ignores deprecated top-level pagination fields", func(t *testing.T) {
 		var params interfaces.ResourceDataQueryParams
-		require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{"limit":10000,"offset":10}`), &params))
+		require.NoError(t, common.UnmarshalJSON([]byte(`{"limit":10000,"offset":10}`), &params))
 
-		err := ValidateResourceDataQueryParams(ctx, &params)
+		err := ValidateResourceDataQueryParams(ctx, &params, interfaces.ResourceCategoryTable)
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.PagingModeSingle, params.Paging.Mode)
@@ -68,7 +87,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			Having: &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: float64(10)},
 		}
 
-		err := ValidateResourceDataQueryParams(ctx, params)
+		err := ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable)
 
 		require.NoError(t, err)
 		require.NotNil(t, params.FilterCondCfg)
@@ -77,7 +96,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 	t.Run("normalizes precise before interval for connectors", func(t *testing.T) {
 		var params interfaces.ResourceDataQueryParams
-		require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{
+		require.NoError(t, common.UnmarshalJSON([]byte(`{
 			"filter_condition": {
 				"field": "created_at",
 				"operation": "before",
@@ -86,7 +105,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			}
 		}`), &params))
 
-		require.NoError(t, ValidateResourceDataQueryParams(ctx, &params))
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, &params, interfaces.ResourceCategoryTable))
 		require.NotNil(t, params.FilterCondCfg)
 		assert.Equal(t, int64(30), params.FilterCondCfg.Value.([]any)[0])
 	})
@@ -95,14 +114,14 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		initial := &interfaces.ResourceDataQueryParams{
 			Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: 50, Limit: interfaces.MinPageLimit},
 		}
-		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial))
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, initial, interfaces.ResourceCategoryTable))
 		assert.Equal(t, 50, initial.Paging.Offset)
 
 		continuation := &interfaces.ResourceDataQueryParams{
 			Paging:    interfaces.PagingRequest{Cursor: "opaque-cursor"},
 			NeedTotal: true,
 		}
-		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation))
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, continuation, interfaces.ResourceCategoryTable))
 		assert.Zero(t, continuation.Paging.Offset)
 		assert.Zero(t, continuation.Paging.Limit)
 		assert.False(t, continuation.NeedTotal)
@@ -112,14 +131,14 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
 			Mode: interfaces.PagingModeCursor, Limit: 1, KeepAliveSec: 59,
 		}}
-		require.Error(t, ValidateResourceDataQueryParams(ctx, params))
+		require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable))
 	})
 
 	t.Run("ignores keep alive below minimum for single paging", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
 			Mode: interfaces.PagingModeSingle, KeepAliveSec: 1,
 		}}
-		require.NoError(t, ValidateResourceDataQueryParams(ctx, params))
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable))
 	})
 
 	t.Run("rejects query fields on cursor continuation", func(t *testing.T) {
@@ -146,7 +165,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			},
 		} {
 			t.Run(name, func(t *testing.T) {
-				require.Error(t, ValidateResourceDataQueryParams(ctx, params))
+				require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable))
 			})
 		}
 	})
@@ -174,7 +193,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				require.Error(t, ValidateResourceDataQueryParams(ctx, tt.params))
+				require.Error(t, ValidateResourceDataQueryParams(ctx, tt.params, interfaces.ResourceCategoryTable))
 			})
 		}
 	})
@@ -328,7 +347,7 @@ func TestValidateAggregateParams(t *testing.T) {
 		for _, aggr := range []string{"count_distinct", "sum", "avg", "min", "max"} {
 			t.Run(aggr, func(t *testing.T) {
 				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: aggr}}
-				err := ValidateResourceDataQueryParams(ctx, params)
+				err := ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable)
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
@@ -338,7 +357,7 @@ func TestValidateAggregateParams(t *testing.T) {
 		}
 		require.NoError(t, ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{
 			Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"},
-		}))
+		}, interfaces.ResourceCategoryTable))
 	})
 	t.Run("returns errors for invalid aggregate options", func(t *testing.T) {
 		tests := []struct {
@@ -383,7 +402,7 @@ func TestValidateAggregateParams(t *testing.T) {
 			} {
 				t.Run(operation+"/"+tc.name, func(t *testing.T) {
 					params := &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: operation, Value: tc.value}}
-					err := ValidateResourceDataQueryParams(ctx, params)
+					err := ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable)
 					if tc.valid {
 						require.NoError(t, err)
 						assert.Equal(t, tc.value, params.Having.Value)
@@ -418,8 +437,8 @@ func TestValidateAggregateParams(t *testing.T) {
 				t.Run(operation+"/"+tc.name, func(t *testing.T) {
 					var params interfaces.ResourceDataQueryParams
 					payload := `{"having":{"field":"count(*)","operation":"` + operation + `","value":` + tc.value + `}}`
-					require.NoError(t, common.UnmarshalPreciseJSON([]byte(payload), &params))
-					err := ValidateResourceDataQueryParams(ctx, &params)
+					require.NoError(t, common.UnmarshalJSON([]byte(payload), &params))
+					err := ValidateResourceDataQueryParams(ctx, &params, interfaces.ResourceCategoryTable)
 					if tc.valid {
 						require.NoError(t, err)
 						return
@@ -434,7 +453,7 @@ func TestValidateAggregateParams(t *testing.T) {
 	})
 	t.Run("HAVING comparisons reject typed string arrays", func(t *testing.T) {
 		for _, value := range []any{[]string{"1", "2"}, []string(nil), []string{}} {
-			err := ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: "==", Value: value}})
+			err := ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: "==", Value: value}}, interfaces.ResourceCategoryTable)
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)

@@ -11,9 +11,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +33,74 @@ import (
 
 const singleHavingGroup = "__vega_single_group"
 
+var errSearchTimedOut = errors.New("index search timed out")
+
+type searchShardStats struct {
+	Total      int64  `json:"total"`
+	Successful int64  `json:"successful"`
+	Failed     *int64 `json:"failed"`
+}
+
+func (s searchShardStats) complete() bool {
+	// OpenSearch includes shards skipped by prefiltering in Successful.
+	return s.Total > 0 && s.Successful == s.Total && s.Failed != nil && *s.Failed == 0
+}
+
+func validateSearchResponse(body []byte, rejectEarlyTermination bool) error {
+	var execution struct {
+		TimedOut        *bool            `json:"timed_out"`
+		TerminatedEarly bool             `json:"terminated_early"`
+		Shards          searchShardStats `json:"_shards"`
+	}
+	if err := sonic.Unmarshal(body, &execution); err != nil {
+		return fmt.Errorf("decode search execution status: %w", err)
+	}
+	if execution.TimedOut != nil && *execution.TimedOut {
+		return errSearchTimedOut
+	}
+	if execution.TimedOut == nil || !execution.Shards.complete() {
+		return errors.New("incomplete index search result")
+	}
+	if rejectEarlyTermination && execution.TerminatedEarly {
+		return errors.New("index search terminated before completion")
+	}
+	return nil
+}
+
+func (c *OpenSearchConnector) searchDocuments(ctx context.Context, indexName string, query map[string]any, snapshot bool) ([]byte, error) {
+	queryJSON, err := sonic.Marshal(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize query: %w", err)
+	}
+	req := opensearchapi.SearchRequest{
+		Body:                      bytes.NewReader(queryJSON),
+		AllowPartialSearchResults: new(false),
+	}
+	if !snapshot {
+		req.Index = []string{indexName}
+	}
+	resp, err := req.Do(ctx, c.client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute search: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if snapshot && resp.StatusCode == http.StatusNotFound {
+		return nil, interfaces.ErrQueryPageSessionExpired
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("search failed: %s", resp.String())
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read search response: %w", err)
+	}
+	rejectEarlyTermination := snapshot || query["track_total_hits"] == true || query["aggs"] != nil || query["aggregations"] != nil
+	if err := validateSearchResponse(body, rejectEarlyTermination); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
 func openSearchInt64(value any) (int64, bool) {
 	switch value := value.(type) {
 	case int64:
@@ -47,6 +117,20 @@ func openSearchInt64(value any) (int64, bool) {
 	}
 }
 
+func hasExactSearchTotal(total int64, hasValue bool, relation string) bool {
+	return hasValue && total >= 0 && relation == "eq"
+}
+
+func readSearchTotal(hits map[string]any, exact bool) (int64, error) {
+	count, _ := hits["total"].(map[string]any)
+	total, valid := openSearchInt64(count["value"])
+	relation, _ := count["relation"].(string)
+	if exact && !hasExactSearchTotal(total, valid, relation) {
+		return 0, errors.New("index search has no exact total")
+	}
+	return total, nil
+}
+
 func openSearchFloat64(value any) (float64, bool) {
 	switch value := value.(type) {
 	case float64:
@@ -61,7 +145,10 @@ func openSearchFloat64(value any) (float64, bool) {
 	}
 }
 
-func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*interfaces.ResourceDataQueryResult, error) {
+func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resource *interfaces.Resource, dsl string) (*interfaces.ResourceDataQueryResult, error) {
+	if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
+		return nil, interfaces.NewConditionBuildError("DSL queries require a Resource source index")
+	}
 	// Ensure the connector is enabled
 	if !c.enabled {
 		return nil, fmt.Errorf("OpenSearch connector is not enabled")
@@ -76,34 +163,16 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	}
 	// Parse the DSL to ensure it's valid JSON
 	var dslMap map[string]any
-	if err := common.UnmarshalPreciseJSON([]byte(dsl), &dslMap); err != nil {
+	if err := common.UnmarshalJSON([]byte(dsl), &dslMap); err != nil {
 		return nil, fmt.Errorf("invalid DSL JSON: %w", err)
 	}
 
-	// Execute search request with the provided DSL
-	// resourceID is used as the index name
-	req := opensearchapi.SearchRequest{
-		Index: []string{resourceName},
-		Body:  strings.NewReader(dsl),
-	}
-
-	resp, err := req.Do(ctx, c.client)
+	responseBody, err := c.searchDocuments(ctx, resource.SourceIdentifier, dslMap, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
+		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.IsError() {
-		return nil, fmt.Errorf("search failed: %s", resp.String())
-	}
-
-	// Parse response
 	var result map[string]any
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read search response: %w", err)
-	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -112,12 +181,9 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 		return nil, fmt.Errorf("invalid search result format: missing hits")
 	}
 
-	// Extract total count
-	var total int64
-	if totalMap, ok := hits["total"].(map[string]any); ok {
-		if value, ok := openSearchInt64(totalMap["value"]); ok {
-			total = value
-		}
+	total, err := readSearchTotal(hits, dslMap["track_total_hits"] == true)
+	if err != nil {
+		return nil, err
 	}
 
 	hitsArray, ok := hits["hits"].([]any)
@@ -128,10 +194,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 		}, nil
 	}
 
-	fieldTypes := make(map[string]string)
-	if err := c.fetchMappingsForQuery(ctx, resourceName, fieldTypes); err != nil {
-		return nil, fmt.Errorf("failed to read JSON field types: %w", err)
-	}
+	fieldTypes := rawQueryFieldTypes(resource)
 
 	// Extract documents from hits
 	documents := make([]map[string]any, 0, len(hitsArray))
@@ -168,7 +231,15 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 }
 
 // ExecuteRawQuery executes a raw OpenSearch DSL query on the specified index.
-func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
+	if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
+		return nil, interfaces.NewConditionBuildError("DSL queries require a Resource source index")
+	}
+	return c.executeRawQuery(ctx, resource.SourceIdentifier, query, rawQueryFieldTypes(resource), false)
+}
+
+func (c *OpenSearchConnector) executeRawQuery(ctx context.Context, indexName string, query map[string]any,
+	fieldTypes map[string]string, snapshot bool) (*interfaces.RawQueryResponse, error) {
 	aggregationPlan, err := compileRawAggregationPlan(query)
 	if err != nil {
 		return nil, err
@@ -177,36 +248,17 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 		return nil, fmt.Errorf("connect failed: %w", err)
 	}
 
-	// Convert query to JSON
-	queryJSON, err := sonic.Marshal(query)
+	responseBody, err := c.searchDocuments(ctx, indexName, query, snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query: %w", err)
-	}
-
-	logger.Debugf("Executing OpenSearch DSL query")
-
-	// Create search request
-	req := opensearchapi.SearchRequest{
-		Index: []string{indexName},
-		Body:  strings.NewReader(string(queryJSON)),
-	}
-
-	// Execute search
-	resp, err := req.Do(ctx, c.client)
-	if err != nil {
-		return nil, fmt.Errorf("execute query failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.IsError() {
-		return nil, fmt.Errorf("opensearch API error: %s", resp.String())
+		return nil, err
 	}
 
 	// Parse response
 	var searchResp struct {
 		Hits struct {
 			Total struct {
-				Value int64 `json:"value"`
+				Value    *int64 `json:"value"`
+				Relation any    `json:"relation"`
 			} `json:"total"`
 			Hits []struct {
 				Source map[string]any `json:"_source"`
@@ -216,14 +268,20 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 		Aggregations map[string]any `json:"aggregations"`
 	}
 
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read raw query response: %w", err)
-	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &searchResp); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &searchResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	totalCount := searchResp.Hits.Total.Value
+	var totalCount int64
+	hitsTotal := searchResp.Hits.Total
+	if hitsTotal.Value != nil {
+		totalCount = *hitsTotal.Value
+	}
+	if query["track_total_hits"] == true {
+		relation, _ := hitsTotal.Relation.(string)
+		if !hasExactSearchTotal(totalCount, hitsTotal.Value != nil, relation) {
+			return nil, errors.New("index search has no exact total")
+		}
+	}
 	if aggregationPlan != nil {
 		entries, err := aggregationPlan.flatten(searchResp.Aggregations)
 		if err != nil {
@@ -236,7 +294,9 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 		}, nil
 	}
 
-	// If no hits, return empty result
+	if searchResp.Hits.Hits == nil {
+		return nil, errors.New("index search response has no document list")
+	}
 	if len(searchResp.Hits.Hits) == 0 {
 		return &interfaces.RawQueryResponse{
 			Columns:    []interfaces.ColumnInfo{},
@@ -245,30 +305,13 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 		}, nil
 	}
 
-	// Obtain the mapping information of the index to determine the field type
-	fieldTypeMap := make(map[string]string)
-	if err := c.fetchMappingsForQuery(ctx, indexName, fieldTypeMap); err != nil {
-		return nil, fmt.Errorf("failed to read JSON field types: %w", err)
-	}
-
-	// Collect all field names from the first hit
-	firstHit := searchResp.Hits.Hits[0].Source
-	columns := make([]interfaces.ColumnInfo, 0, len(firstHit))
-	for fieldName := range firstHit {
-		fieldType := "string" // Default type
-		if mappedType, ok := fieldTypeMap[fieldName]; ok {
-			fieldType = mappedType
-		}
-		columns = append(columns, interfaces.ColumnInfo{
-			Name: fieldName,
-			Type: fieldType,
-		})
-	}
-
-	// Convert hits to entries
+	var columns []interfaces.ColumnInfo
 	entries := make([]map[string]any, 0, len(searchResp.Hits.Hits))
-	for _, hit := range searchResp.Hits.Hits {
-		if err := stringifyJSONQueryFields(hit.Source, fieldTypeMap); err != nil {
+	for i, hit := range searchResp.Hits.Hits {
+		if i == 0 {
+			columns = rawHitColumns(hit.Source, fieldTypes)
+		}
+		if err := stringifyJSONQueryFields(hit.Source, fieldTypes); err != nil {
 			return nil, err
 		}
 		entries = append(entries, hit.Source)
@@ -294,77 +337,38 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 	return response, nil
 }
 
-// fetchMappingsForQuery retrieves the mapping information of the index and builds the field type mapping
-func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexName string, fieldTypeMap map[string]string) error {
-	req := opensearchapi.IndicesGetMappingRequest{
-		Index: []string{indexName},
-	}
-	resp, err := req.Do(ctx, c.client)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.IsError() {
-		return fmt.Errorf("opensearch API error: %s", resp.String())
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Parse JSON
-	var dataMapping map[string]struct {
-		Mappings struct {
-			Properties map[string]Property `json:"properties"`
-		} `json:"mappings"`
-	}
-	if err := sonic.Unmarshal(bodyBytes, &dataMapping); err != nil {
-		return fmt.Errorf("failed to unmarshal mappings: %w", err)
-	}
-
-	// 别名和通配符响应使用实际索引名，逐索引解析后再合并类型。
-	indexNames := make([]string, 0, len(dataMapping))
-	for name := range dataMapping {
-		indexNames = append(indexNames, name)
-	}
-	sort.Strings(indexNames)
-	mergedTypes := make(map[string]string)
-	for _, name := range indexNames {
-		properties := dataMapping[name].Mappings.Properties
-		fields := make(map[string]interfaces.IndexFieldMeta)
-		parseProperties("", properties, fields)
-		// 发现流程展开 object 子字段；查询还需保留顶层 object 的 JSON 类型。
-		for fieldName, property := range properties {
-			if property.Type == "object" || (property.Type == "" && property.Properties != nil) {
-				fields[fieldName] = interfaces.IndexFieldMeta{Type: "object"}
-			}
+func rawHitColumns(source map[string]any, fieldTypes map[string]string) []interfaces.ColumnInfo {
+	columns := make([]interfaces.ColumnInfo, 0, len(source))
+	for fieldName := range source {
+		fieldType := interfaces.DataType_String
+		if mappedType, ok := fieldTypes[fieldName]; ok {
+			fieldType = mappedType
 		}
-		resolveIndexAliasTypes(fields)
-		fieldNames := make([]string, 0, len(fields))
-		for fieldName := range fields {
-			fieldNames = append(fieldNames, fieldName)
-		}
-		sort.Strings(fieldNames)
-		for _, fieldName := range fieldNames {
-			meta := fields[fieldName]
-			nativeType := meta.Type
-			if meta.ResolvedType != "" {
-				nativeType = meta.ResolvedType
-			}
-			fieldType := c.MapType(nativeType)
-			if previous, exists := mergedTypes[fieldName]; exists && previous != fieldType {
-				return fmt.Errorf("conflicting mapping types for field %q", fieldName)
-			}
-			mergedTypes[fieldName] = fieldType
+		columns = append(columns, interfaces.ColumnInfo{Name: fieldName, Type: fieldType})
+	}
+	return columns
+}
+
+// rawQueryFieldTypes 按源字段名取类型，显式 schema 优先于探查记录的对象类型。
+func rawQueryFieldTypes(resource *interfaces.Resource) map[string]string {
+	objects, _ := resource.SourceMetadata["object_fields"].([]any)
+	fieldTypes := make(map[string]string, len(resource.SchemaDefinition)+len(objects))
+	for _, object := range objects {
+		if name, ok := object.(string); ok && name != "" {
+			fieldTypes[name] = interfaces.DataType_Json
 		}
 	}
-	for fieldName, fieldType := range mergedTypes {
-		fieldTypeMap[fieldName] = fieldType
+	for _, field := range resource.SchemaDefinition {
+		if field == nil {
+			continue
+		}
+		name := field.OriginalName
+		if name == "" {
+			name = field.Name
+		}
+		fieldTypes[name] = field.Type
 	}
-
-	return nil
+	return fieldTypes
 }
 
 // ExecuteQuery executes a query on the OpenSearch index.
@@ -537,54 +541,26 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		// Add the aggregation to the query
 		query["aggs"] = aggs
 
-		// Serialized query
-		queryJSON, err := sonic.Marshal(query)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize aggregate query: %w", err)
-		}
-
 		logger.Debugf("Executing OpenSearch aggregate query")
-
-		// Execute the search request
-		req := opensearchapi.SearchRequest{
-			Index: []string{indexName},
-			Body:  bytes.NewReader(queryJSON),
+		bodyBytes, err := c.searchDocuments(ctx, indexName, query, false)
+		if errors.Is(err, errSearchTimedOut) {
+			return nil, interfaces.NewQueryExecutionBudgetError("aggregation_time", nil)
 		}
-
-		resp, err := req.Do(ctx, c.client)
 		if err != nil {
-			return nil, fmt.Errorf("failed to execute aggregate search: %w", err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.IsError() {
-			return nil, fmt.Errorf("aggregate search failed: %s", resp.String())
-		}
-
-		// Read the response body for diagnostic logging.
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response body: %w", err)
+			return nil, err
 		}
 		logger.Debugf("OpenSearch aggregate response: %s", string(bodyBytes))
 
 		// Parsing response
 		var result map[string]any
-		if err := common.UnmarshalPreciseJSON(bodyBytes, &result); err != nil {
+		if err := common.UnmarshalJSON(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
-		if err := validateCompleteAggregationResponse(result); err != nil {
-			return nil, err
-		}
 
-		// Extract the total number of documents
-		var totalCount int64
-		if hits, ok := result["hits"].(map[string]any); ok {
-			if totalMap, ok := hits["total"].(map[string]any); ok {
-				if value, ok := openSearchInt64(totalMap["value"]); ok {
-					totalCount = value
-				}
-			}
+		hits, _ := result["hits"].(map[string]any)
+		totalCount, err := readSearchTotal(hits, params.NeedTotal)
+		if err != nil {
+			return nil, err
 		}
 
 		// Extract the aggregation results
@@ -634,7 +610,14 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}, nil
 	}
 
-	// Detailed inquiry
+	query, err := c.buildDocumentQuery(resource, params)
+	if err != nil {
+		return nil, err
+	}
+	return c.executeDocumentQuery(ctx, indexName, resource, query, false)
+}
+
+func (c *OpenSearchConnector) buildDocumentQuery(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (map[string]any, error) {
 	// Build the OpenSearch query
 	query := map[string]any{
 		"query": map[string]any{
@@ -718,36 +701,18 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 	}
 
-	// Serialize query
-	queryJSON, err := sonic.Marshal(query)
+	return query, nil
+}
+
+func (c *OpenSearchConnector) executeDocumentQuery(ctx context.Context, indexName string, resource *interfaces.Resource,
+	query map[string]any, snapshot bool,
+) (*interfaces.ResourceDataQueryResult, error) {
+	responseBody, err := c.searchDocuments(ctx, indexName, query, snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize query: %w", err)
+		return nil, err
 	}
-	logger.Debugf("Executing OpenSearch query")
-
-	// Execute search request
-	req := opensearchapi.SearchRequest{
-		Index: []string{indexName},
-		Body:  bytes.NewReader(queryJSON),
-	}
-
-	resp, err := req.Do(ctx, c.client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute search: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.IsError() {
-		return nil, fmt.Errorf("search failed: %s", resp.String())
-	}
-
-	// Parse response
 	var result map[string]any
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read search response: %w", err)
-	}
-	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
+	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -756,14 +721,18 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		return nil, fmt.Errorf("invalid search result format: missing hits")
 	}
 
-	total, _ := openSearchInt64(hits["total"].(map[string]any)["value"])
+	exactTotal := query["track_total_hits"] == true
+	total, err := readSearchTotal(hits, exactTotal)
+	if err != nil {
+		return nil, err
+	}
 
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
-		return &interfaces.ResourceDataQueryResult{
-			Entries:    []map[string]any{},
-			TotalCount: int64(total),
-		}, nil
+		return nil, errors.New("index search response has no document list")
+	}
+	if exactTotal && int64(len(hitsArray)) > total {
+		return nil, errors.New("index search returned more documents than its exact total")
 	}
 
 	fieldTypes := make(map[string]string, len(resource.SchemaDefinition))
@@ -779,12 +748,12 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	for _, hit := range hitsArray {
 		hitMap, ok := hit.(map[string]any)
 		if !ok {
-			continue
+			return nil, errors.New("invalid index search hit")
 		}
 
 		source, ok := hitMap["_source"].(map[string]any)
 		if !ok {
-			continue
+			return nil, errors.New("index search hit has no _source object")
 		}
 
 		source["_id"] = hitMap["_id"]
@@ -796,9 +765,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			return nil, err
 		}
 		documents = append(documents, source)
-		if sort, ok := hitMap["sort"].([]any); ok {
-			searchAfter = sort
-		}
+		searchAfter, _ = hitMap["sort"].([]any)
 	}
 
 	return &interfaces.ResourceDataQueryResult{

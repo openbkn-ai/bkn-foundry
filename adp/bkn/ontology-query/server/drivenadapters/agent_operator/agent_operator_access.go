@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +41,26 @@ type integrationError struct {
 	Detail      interface{} `json:"detail"`      // Error details
 	Solution    interface{} `json:"solution"`    // Suggested resolution
 	Link        interface{} `json:"link"`        // Error link
+}
+
+// platformErrorCodePattern matches the error codes of the execution factory and the shared
+// platform errors, such as AgentOperatorIntegration.BadRequest.DebugParamsInvalid.
+var platformErrorCodePattern = regexp.MustCompile(`^(AgentOperatorIntegration|Public)(\.[A-Za-z0-9_]+){1,4}$`)
+
+// withPlatformErrorCode names the platform error code of a failed call's body in err, so a
+// task shows why a tool was refused. The code is the only part of the body taken: the rest,
+// and a code that is not the platform's, may be a tool's own values.
+func withPlatformErrorCode(err error, body any) error {
+	fields, ok := body.(map[string]any)
+	if !ok {
+		return err
+	}
+	for _, key := range []string{"error_code", "code"} {
+		if code, ok := fields[key].(string); ok && len(code) <= 128 && platformErrorCodePattern.MatchString(code) {
+			return fmt.Errorf("%w (%s)", err, code)
+		}
+	}
+	return err
 }
 
 type executionResult struct {
@@ -228,7 +249,10 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 			}}
 		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
 			boxID, toolID, httpErr.HTTPCode, httpErr.ErrorCode)
-		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
+		var body any
+		_ = sonic.Unmarshal(result, &body)
+		return toolResult, withPlatformErrorCode(
+			fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode), body)
 	}
 
 	if result == nil {
@@ -245,7 +269,8 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 		toolResult.StatusCode < http.StatusMultipleChoices {
 		return toolResult.Body, nil
 	} else {
-		return nil, fmt.Errorf("execute tool failed with status %d", toolResult.StatusCode)
+		return nil, withPlatformErrorCode(
+			fmt.Errorf("execute tool failed with status %d", toolResult.StatusCode), toolResult.Body)
 	}
 }
 

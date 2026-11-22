@@ -41,7 +41,7 @@ func TestForwarderPreservesLargeJSONIntegers(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"payload":{"large_integer":9007199254740993}}`)),
 	}
-	parsed, err := f.processResponse(response, time.Now())
+	parsed, err := f.processResponse(response, time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

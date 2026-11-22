@@ -32,7 +32,7 @@ var bknSafeEnUS = i18n.I18nMessages{
 		"BknSafe.Auth.AccountPlaceholder":                    "Account",
 		"BknSafe.Auth.PasswordPlaceholder":                   "Password",
 		"BknSafe.Auth.LoginButton":                           "Sign in",
-		"BknSafe.Auth.LoginAlternative":                      "or",
+		"BknSafe.Auth.LoginAlternative":                      "Other sign-in options",
 		"BknSafe.Auth.LoginWithPrefix":                       "Sign in with ",
 		"BknSafe.Auth.LoginWithSuffix":                       " account",
 		"BknSafe.Auth.ChangePasswordTitle":                   "Change password",

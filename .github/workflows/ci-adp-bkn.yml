@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'adp/bkn/**'
+      - 'migrations/bkn-project/**'
       - 'infra/sandbox/runtime/sandbox_sdk/**'
       - '.github/workflows/ci-adp-bkn.yml'
 
@@ -33,35 +34,18 @@ jobs:
           I18N_MODE_UT: "true"
         run: go test -count=1 -gcflags="all=-l" ./...
 
-  bkn-project:
+  # This repository carries no bkn-project code or tables.
+  no-bkn-project:
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: adp/bkn/bkn-project/server
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: adp/bkn/bkn-project/server/go.mod
-      # The knowledge base of bkn-project is in the professional edition; the open core keeps only
-      # the edition hooks. Neither its packages nor its tables may come back here.
-      - name: Core keeps no knowledge base
-        working-directory: .
+      - name: The open core carries no bkn-project
         run: |
           set -u
-          latest=$(ls migrations/bkn-project/mariadb | sort -V | tail -1)
-          hits=$(grep -rnE 'logics/kb|logics/docdraft|t_bkn_project_kb_' adp/bkn/bkn-project/server "migrations/bkn-project/mariadb/${latest}/init.sql" || true)
-          if [ -n "$hits" ]; then
-            echo "::error::Knowledge-base code or tables found in the open core; they belong to the professional edition."
-            echo "$hits"
+          if [ -e adp/bkn/bkn-project ] || [ -e migrations/bkn-project ]; then
+            echo "::error::bkn-project code and tables are not part of this repository."
             exit 1
           fi
-      - run: go build ./...
-      - run: go vet ./...
-      - name: Run BKN project unit tests
-        env:
-          I18N_MODE_UT: "true"
-        run: go test -count=1 -gcflags="all=-l" ./...
 
   ontology-query:
     runs-on: ubuntu-24.04

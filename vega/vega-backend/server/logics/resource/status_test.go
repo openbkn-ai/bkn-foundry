@@ -21,9 +21,17 @@ import (
 
 func TestHasAvailableLocalIndex(t *testing.T) {
 	assert.False(t, HasAvailableLocalIndex(nil))
+	assert.True(t, HasAvailableLocalIndex(&interfaces.Resource{
+		LocalIndexName:   "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
+	}))
 	assert.False(t, HasAvailableLocalIndex(&interfaces.Resource{
 		LocalIndexName:   "vega-build-abc",
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale,
+	}))
+	assert.False(t, HasAvailableLocalIndex(&interfaces.Resource{
+		LocalIndexName:   "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
 	}))
 	assert.False(t, HasAvailableLocalIndex(&interfaces.Resource{
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
@@ -32,6 +40,19 @@ func TestHasAvailableLocalIndex(t *testing.T) {
 		LocalIndexName:   "vega-build-abc",
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 	}))
+}
+
+func TestHasWritableLocalIndex(t *testing.T) {
+	resource := &interfaces.Resource{LocalIndexName: "vega-build-abc"}
+	for _, status := range []string{interfaces.ResourceLocalIndexStatusReadOnly,
+		interfaces.ResourceLocalIndexStatusStale, interfaces.ResourceLocalIndexStatusUnavailable} {
+		resource.LocalIndexStatus = status
+		assert.False(t, HasWritableLocalIndex(resource), status)
+	}
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	assert.True(t, HasWritableLocalIndex(resource))
+	resource.LocalIndexName = ""
+	assert.False(t, HasWritableLocalIndex(resource))
 }
 
 func TestShouldIgnoreLocalIndex(t *testing.T) {

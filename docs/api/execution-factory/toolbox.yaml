@@ -24,6 +24,9 @@ info:
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
     AppKey）。
+    后台运行（例如场景回归）还可以带 bkn-safe 签发的 `bex_` 执行凭据，代表发起人本人；
+    它只在本服务回答问题时会用到的执行、列出和读取接口上有效，请求必须用 `X-Kn-ID`
+    写明凭据绑定的知识网络，其他网络或其他接口一律拒绝。
 
     **检索入口在内部面**：`POST /internal-v1/tool-box/tools/search`，请求体
     `{ query, tool_refs, top_k }`，出参每项带 `matched_by` 与 `score`。
@@ -1629,7 +1632,8 @@ components:
       type: object
       description: |
         被调服务的原始响应。**上游报错时本接口仍是 200**，实际状态在
-        `status_code` 里。
+        `status_code` 里。`request_observation` 描述代理实际发出的请求，
+        是脱敏的传输层事实，供请求组装类证据消费方使用。
       properties:
         status_code:
           type: integer
@@ -1643,6 +1647,43 @@ components:
         error:
           type: string
           description: 调用过程中的错误信息。
+        request_observation:
+          $ref: '#/components/schemas/RequestObservation'
+
+    RequestObservation:
+      type: object
+      description: |
+        代理实际发送的 HTTP 请求的脱敏观察。只包含传输层事实：
+        **绝不包含** header 值、Cookie、请求体内容或 query 参数值。
+      required:
+        - method
+        - path
+        - redirected
+      properties:
+        method:
+          type: string
+          description: 实际发送的 HTTP 方法；若传输层跟随了重定向，为最终方法。
+        path:
+          type: string
+          description: 实际发送的编码路径；若传输层跟随了重定向，为最终路径。
+        query_keys:
+          type: array
+          items:
+            type: string
+          description: 排序后的 query 参数名列表，只有键名，没有值。
+        content_type:
+          type: string
+          description: 请求 Content-Type；未发送请求体时省略。
+        content_length:
+          type: integer
+          format: int64
+          description: 请求体字节数；仅在已知且为正时返回。
+        redirected:
+          type: boolean
+          description: |
+            传输层是否跟随了重定向并因此改变了最终 URL。当前共享 raw
+            HTTP client 不跟随重定向（3xx 原样返回给调用方），因此该值
+            恒为 false；重定向本身通过 `status_code` 与 `headers` 可见。
 
 
     OpenApiBundleRequest:

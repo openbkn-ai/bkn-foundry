@@ -17,6 +17,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -158,6 +161,26 @@ func (s *buildScheduleService) GetByID(ctx context.Context, id string) (*interfa
 	}
 	s.populateReferences(ctx, []*interfaces.BuildSchedule{schedule})
 	return schedule, nil
+}
+
+// InternalGetByIDs 供内部调用方批量读取计划，不重复鉴权或补全关联字段。
+func (s *buildScheduleService) InternalGetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.BuildSchedule, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildScheduleService.InternalGetByIDs")
+	defer span.End()
+
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return map[string]*interfaces.BuildSchedule{}, nil
+	}
+
+	schedulesByID, err := s.sa.GetByIDs(ctx, ids)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get build schedules failed")
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return schedulesByID, nil
 }
 
 func (s *buildScheduleService) List(ctx context.Context, params interfaces.BuildScheduleQueryParams) ([]*interfaces.BuildSchedule, int64, error) {

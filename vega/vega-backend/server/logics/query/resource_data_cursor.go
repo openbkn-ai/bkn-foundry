@@ -6,6 +6,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -22,6 +23,10 @@ type ResourceDataPageExecutor func(context.Context, *interfaces.ResourceDataQuer
 // ResourceDataPageRunner executes a page without requiring a function callback.
 type ResourceDataPageRunner interface {
 	ExecutePage(context.Context, *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error)
+}
+
+type resourceDataCursorPageRunner interface {
+	ExecuteCursorPage(context.Context, *interfaces.ResourceDataQueryParams, *interfaces.CursorSession) (*interfaces.ResourceDataQueryResult, error)
 }
 
 func (execute ResourceDataPageExecutor) ExecutePage(ctx context.Context,
@@ -117,21 +122,33 @@ func sameCursorSource(saved *interfaces.ResourceDataCursorSource, source *interf
 
 func executeResourceDataCursorPage(ctx context.Context, session *interfaces.CursorSession,
 	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
+	offset := session.PageOffset
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
 	params.NeedTotal = session.ResourceDataParams.NeedTotal && !session.HasTotalCount
 	params.Paging = interfaces.PagingRequest{
 		Mode:   interfaces.PagingModeSingle,
-		Offset: session.PageOffset,
-		Limit:  session.PageLimit + 1,
+		Offset: offset,
+		Limit:  session.PageLimit,
 	}
-	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		// OpenSearch uses search_after and must not request limit+1: size plus
-		// the first-page offset can otherwise exceed max_result_window.
-		params.Paging.Limit = session.PageLimit
+	// OpenSearch search_after uses the requested page size without lookahead.
+	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+		params.Paging.Limit++
 	}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
-	page, err := execute.ExecutePage(ctx, params)
+	var page *interfaces.ResourceDataQueryResult
+	var err error
+	if runner, ok := execute.(resourceDataCursorPageRunner); ok {
+		page, err = runner.ExecuteCursorPage(ctx, params, session)
+	} else {
+		page, err = execute.ExecutePage(ctx, params)
+	}
 	if err != nil {
+		if session.PageOffset != offset {
+			// The source page was consumed before a later step failed.
+			rawQueryCursorSessions.remove(session.ID)
+		} else {
+			invalidateSourceCursor(session, err)
+		}
 		return nil, err
 	}
 	entries, total := page.Entries, page.TotalCount
@@ -146,7 +163,9 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	page.TotalCount = responseTotal
 	page.NeedTotal = session.ResourceDataParams.NeedTotal
 	hasNext := len(entries) > session.PageLimit
-	if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
+	if session.ReadSession != nil {
+		hasNext = session.ReadHasMore
+	} else if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
 		if session.HasTotalCount {
 			hasNext = len(entries) == session.PageLimit &&
 				int64(session.PageOffset+len(entries)) < session.TotalCount && len(page.SearchAfter) > 0
@@ -159,17 +178,65 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		page.Paging = &interfaces.PagingResponse{}
 		return page, nil
 	}
-	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+	if session.ReadSession == nil && session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
 		entries = entries[:session.PageLimit]
 	}
 	page.Entries = entries
-	session.PageOffset += len(entries)
+	if session.ReadSession == nil {
+		session.PageOffset += len(entries)
+	}
 	if len(page.SearchAfter) > 0 {
 		session.SearchAfter = append([]any(nil), page.SearchAfter...)
 	}
 	rawQueryCursorSessions.markPageSuccess(session)
 	page.Paging = cursorPagingResponse(session)
 	return page, nil
+}
+
+// OpenResourceTableCursor opens a source stream that survives the first request.
+func OpenResourceTableCursor(ctx context.Context, session *interfaces.CursorSession,
+	connector interfaces.TableConnector, reader interfaces.TableReadSessionConnector,
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+	cursorCtx, stop := startSQLCursorRead(ctx, session)
+	stream, err := reader.OpenTableRead(cursorCtx, resource, params)
+	stop()
+
+	if err != nil {
+		return err
+	}
+	session.ReadSession = stream
+	session.ReadConnector = connector
+	return nil
+}
+
+func readSourceCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.QueryPage, error) {
+	page, err := session.ReadSession.ReadPage(ctx, session.PageLimit)
+	if err != nil {
+		rawQueryCursorSessions.remove(session.ID)
+		return nil, err
+	}
+	session.ReadHasMore = page.HasMore
+	return page, nil
+}
+
+// ReadResourceCursorPage consumes one page from a retained source snapshot.
+func ReadResourceCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.ResourceDataQueryResult, error) {
+	page, err := readSourceCursorPage(ctx, session)
+	if errors.Is(err, interfaces.ErrQueryPageSessionExpired) {
+		return nil, cursorNotFoundError(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	session.PageOffset += len(page.Entries)
+	result := &interfaces.ResourceDataQueryResult{Entries: page.Entries}
+	for _, column := range page.Columns {
+		result.Columns = append(result.Columns, column.Name)
+	}
+	if page.TotalCount != nil {
+		result.TotalCount = *page.TotalCount
+	}
+	return result, nil
 }
 
 func cursorNotFoundError(ctx context.Context) error {

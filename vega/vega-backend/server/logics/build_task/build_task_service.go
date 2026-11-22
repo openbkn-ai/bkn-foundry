@@ -28,6 +28,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/build_schedule"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
@@ -47,6 +48,7 @@ const buildTaskDispatchBuffer = 1
 type buildTaskService struct {
 	appSetting *common.AppSetting
 	bta        interfaces.BuildTaskAccess
+	bss        interfaces.BuildScheduleService
 	cf         interfaces.ConnectorFactory
 	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // When deleting a task, drop its local index. Test Injection mock
@@ -66,7 +68,7 @@ var activeBuildTaskStatuses = []string{
 // NewBuildTaskService creates a new BuildTaskService.
 func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceService) interfaces.BuildTaskService {
 	btServiceOnce.Do(func() {
-		btService = &buildTaskService{
+		taskService := &buildTaskService{
 			appSetting: appSetting,
 			bta:        logics.BTA,
 			cf:         factory.NewConnectorFactory(appSetting),
@@ -78,6 +80,9 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 
 			dispatchCh: make(chan struct{}, buildTaskDispatchBuffer),
 		}
+		// 计划执行依赖任务服务，先创建任务实例再注入，避免循环初始化单例。
+		taskService.bss = build_schedule.NewBuildScheduleService(appSetting, taskService, rs)
+		btService = taskService
 	})
 	return btService
 }
@@ -144,7 +149,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if err := validateBuildTaskKeyFields(ctx, resource, executeType); err != nil {
 		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
 		return "", err
 	}
@@ -153,7 +158,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", err
 	}
 	if executeType == interfaces.BuildTaskExecuteTypeIncremental {
-		if err := validateIncrementalBaseline(ctx, resource); err != nil {
+		if err := validateIncrementalAdmission(ctx, resource); err != nil {
 			span.SetStatus(codes.Error, "Incremental baseline unavailable")
 			return "", err
 		}
@@ -240,12 +245,14 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	return nil
 }
 
-func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource) error {
+func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource, executeType string) error {
 	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails("build task requires at least one primary_key_fields entry")
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).
+			WithErrorDetails("build task requires at least one primary_key_fields entry")
 	}
-	if len(resource.IndexConfig.IncrementalFields) == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails("build task requires at least one incremental_fields entry")
+	if executeType == interfaces.BuildTaskExecuteTypeIncremental && len(resource.IndexConfig.IncrementalFields) == 0 {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).
+			WithErrorDetails("incremental build requires at least one incremental_fields entry")
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
@@ -492,10 +499,18 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 	return nil
 }
 
-func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resource) error {
-	if !resourcelogic.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+func validateIncrementalAdmission(ctx context.Context, resource *interfaces.Resource) error {
+	if resource != nil && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
-			WithErrorDetails("incremental build requires an available local index and committed checkpoint")
+			WithErrorDetails("published local index is read-only; run a full build before starting incremental builds")
+	}
+	if !resourcelogic.HasWritableLocalIndex(resource) {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails("incremental build requires an available published local index")
+	}
+	// The worker recovers a missing checkpoint after claiming the task.
+	if resource.SyncMark == "" {
+		return nil
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
 	if err != nil {
@@ -587,11 +602,11 @@ func (bts *buildTaskService) InternalList(ctx context.Context,
 }
 
 func (bts *buildTaskService) InternalSetProgress(ctx context.Context,
-	tx *sql.Tx, id string, progress interfaces.BuildTaskProgress) (bool, error) {
+	tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalSetProgress")
 	defer span.End()
 
-	return bts.bta.SetProgress(ctx, tx, id, progress, time.Now().UnixMilli())
+	return bts.bta.SetProgress(ctx, tx, id, progress, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
@@ -601,11 +616,14 @@ func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx
 	return bts.bta.MarkRunning(ctx, tx, id, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error) {
+func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkFailed")
 	defer span.End()
 
-	return bts.bta.MarkFailed(ctx, tx, id, detail, time.Now().UnixMilli())
+	if len(allowedStatuses) == 0 {
+		allowedStatuses = activeBuildTaskStatuses
+	}
+	return bts.bta.MarkFailed(ctx, tx, id, detail, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error) {
@@ -615,11 +633,14 @@ func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, tx *sql.
 	return bts.bta.MarkCancelled(ctx, tx, id, detail, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+func (bts *buildTaskService) InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string, allowedStatuses []string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkStopped")
 	defer span.End()
 
-	return bts.bta.MarkStopped(ctx, tx, id, time.Now().UnixMilli())
+	if len(allowedStatuses) == 0 {
+		allowedStatuses = []string{interfaces.BuildTaskStatusStopping}
+	}
+	return bts.bta.MarkStopped(ctx, tx, id, allowedStatuses, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
@@ -629,49 +650,65 @@ func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.
 	return bts.bta.MarkCompleted(ctx, tx, id, time.Now().UnixMilli())
 }
 
-// PopulateBuildTaskReferences batch completion task related resources and show directory field. It only queries the current situation
-// The entity referenced by the returned task should be avoided to prevent the task list from being triggered by the front end to load the full resource/directory.
+// populateBuildTaskReferences 补齐任务当前关联的资源、目录和计划名称。
+// 补全错误统一返回，由详情调用方记录；不影响其他关联名称的补全。
 func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, buildTasks []*interfaces.BuildTask) error {
 	if len(buildTasks) == 0 {
 		return nil
 	}
 
-	resourceIDs := make([]string, 0, len(buildTasks))
-	resourceIDSet := make(map[string]struct{}, len(buildTasks))
 	catalogIDs := make([]string, 0, len(buildTasks))
 	catalogIDSet := make(map[string]struct{}, len(buildTasks))
+	resourceIDs := make([]string, 0, len(buildTasks))
+	resourceIDSet := make(map[string]struct{}, len(buildTasks))
+	scheduleIDs := make([]string, 0, len(buildTasks))
+	scheduleIDSet := make(map[string]struct{}, len(buildTasks))
 	for _, buildTask := range buildTasks {
-		if buildTask.ResourceID != "" {
-			if _, exists := resourceIDSet[buildTask.ResourceID]; !exists {
-				resourceIDSet[buildTask.ResourceID] = struct{}{}
-				resourceIDs = append(resourceIDs, buildTask.ResourceID)
-			}
-		}
 		if buildTask.CatalogID != "" {
 			if _, exists := catalogIDSet[buildTask.CatalogID]; !exists {
 				catalogIDSet[buildTask.CatalogID] = struct{}{}
 				catalogIDs = append(catalogIDs, buildTask.CatalogID)
 			}
 		}
+		if buildTask.ResourceID != "" {
+			if _, exists := resourceIDSet[buildTask.ResourceID]; !exists {
+				resourceIDSet[buildTask.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, buildTask.ResourceID)
+			}
+		}
+		if buildTask.TriggerType == interfaces.BuildTaskTriggerScheduled && buildTask.ScheduleID != "" {
+			if _, exists := scheduleIDSet[buildTask.ScheduleID]; !exists {
+				scheduleIDSet[buildTask.ScheduleID] = struct{}{}
+				scheduleIDs = append(scheduleIDs, buildTask.ScheduleID)
+			}
+		}
 	}
 
 	var referenceErrors []error
+	catalogsByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	if err != nil {
+		referenceErrors = append(referenceErrors, err)
+	}
 	resourcesByID, err := bts.rs.InternalGetByIDs(ctx, resourceIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
 	}
-
-	catalogsByID, err := bts.cs.InternalGetByIDs(ctx, catalogIDs)
+	schedulesByID, err := bts.bss.InternalGetByIDs(ctx, scheduleIDs)
 	if err != nil {
 		referenceErrors = append(referenceErrors, err)
 	}
 
 	for _, buildTask := range buildTasks {
+		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
+			buildTask.CatalogName = catalog.Name
+		}
 		if resource := resourcesByID[buildTask.ResourceID]; resource != nil {
 			buildTask.ResourceName = resource.Name
 		}
-		if catalog := catalogsByID[buildTask.CatalogID]; catalog != nil {
-			buildTask.CatalogName = catalog.Name
+		if buildTask.TriggerType == interfaces.BuildTaskTriggerScheduled && buildTask.ScheduleID != "" {
+			if schedule := schedulesByID[buildTask.ScheduleID]; schedule != nil {
+				buildTask.ScheduleName = schedule.Name
+			}
 		}
 	}
 	return errors.Join(referenceErrors...)
@@ -890,7 +927,10 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource); err != nil {
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
+		return validateIncrementalAdmission(ctx, resource)
+	}
+	if err := validateBuildTaskKeyFields(ctx, resource, buildTask.ExecuteType); err != nil {
 		return err
 	}
 	if err := validateBuildTaskDefaultFeatures(ctx, resource); err != nil {
@@ -918,7 +958,13 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}
 	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
-		return validateIncrementalBaseline(ctx, resource)
+		if err := validateIncrementalAdmission(ctx, resource); err != nil {
+			return err
+		}
+		if buildTask.IndexName != resource.LocalIndexName {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+				WithErrorDetails("resource published index has changed; create a new build task instead")
+		}
 	}
 	return nil
 }
@@ -960,7 +1006,7 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 	// When dequeuing, if the worker detects "stopped", it will skip and will not be revived for execution.
 	var updated bool
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
-		updated, err = bts.bta.MarkStopped(ctx, nil, taskID, time.Now().UnixMilli())
+		updated, err = bts.bta.MarkStopped(ctx, nil, taskID, []string{interfaces.BuildTaskStatusPending}, time.Now().UnixMilli())
 	} else {
 		updated, err = bts.bta.MarkStopping(ctx, nil, taskID)
 	}

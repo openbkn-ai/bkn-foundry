@@ -14,27 +14,88 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDecodePreciseJSONPreservesLargeInteger(t *testing.T) {
+func TestJSONNumbersEqual(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		left, right any
+		equal       bool
+	}{
+		{"numeric representations", map[string]any{"value": json.Number("1.0")}, map[string]any{"value": float64(1)}, true},
+		{"large exact integer", json.Number("9007199254740993"), json.Number("9007199254740992"), false},
+		{"exact decimal", json.Number("9007199254740993.123456789"), json.Number("9007199254740993.123456788"), false},
+		{"large equivalent positive exponents", json.Number("1e1000002"), json.Number("10e1000001"), true},
+		{"large equivalent negative exponents", json.Number("-100e-1000004"), json.Number("-1e-1000002"), true},
+		{"equivalent exponents beyond int64", json.Number("1e9223372036854775808"), json.Number("10e9223372036854775807"), true},
+		{"distinct large exponents", json.Number("1e1000002"), json.Number("1e1000003"), false},
+		{"zero with a large exponent", json.Number("-0.0e9223372036854775808"), 0, true},
+		{"text is not numeric", "1", json.Number("1"), false},
+		{"null remains null", map[string]any{"value": nil}, map[string]any{"value": nil}, true},
+		{"array order remains significant", []int{1, 2}, []int{2, 1}, false},
+		{"unencodable value", make(chan int), nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) { assert.Equal(t, tc.equal, JSONNumbersEqual(tc.left, tc.right)) })
+	}
+	input := map[string]any{"value": json.Number("1.0")}
+	assert.True(t, JSONNumbersEqual(input, map[string]any{"value": 1}))
+	assert.Equal(t, json.Number("1.0"), input["value"], "comparison must preserve caller-owned JSON")
+}
+
+func TestDecodeJSONPreservesLargeInteger(t *testing.T) {
 	var target map[string]any
-	if err := DecodePreciseJSON(strings.NewReader(`{"value":110101199001152345}`), &target); err != nil {
-		t.Fatalf("DecodePreciseJSON() error = %v", err)
+	if err := DecodeJSON(strings.NewReader(`{"value":110101199001152345}`), &target); err != nil {
+		t.Fatalf("DecodeJSON() error = %v", err)
 	}
 	if got, ok := target["value"].(json.Number); !ok || got.String() != "110101199001152345" {
 		t.Fatalf("value = %#v, want json.Number preserving literal", target["value"])
 	}
 }
 
+func TestJSONValidatesStringSyntax(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		decode func(string, any) error
+	}{
+		{"reader", func(input string, target any) error { return DecodeJSON(strings.NewReader(input), target) }},
+		{"bytes", func(input string, target any) error { return UnmarshalJSON([]byte(input), target) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var invalid map[string]any
+			require.Error(t, tc.decode("{\"name\":\"night\tly\"}", &invalid))
+			var valid map[string]any
+			require.NoError(t, tc.decode(`{"name":"night\tly","value":9007199254740993}`, &valid))
+			assert.Equal(t, "night\tly", valid["name"])
+			assert.Equal(t, json.Number("9007199254740993"), valid["value"])
+		})
+	}
+}
+
 func TestJSONNumberConversions(t *testing.T) {
-	integer, ok := NumberAsInt64(json.Number("9007199254740993"))
-	if !ok || integer != 9007199254740993 {
-		t.Fatalf("NumberAsInt64() = %d, %v", integer, ok)
+	for _, tc := range []struct {
+		literal json.Number
+		want    int64
+	}{
+		{"30", 30},
+		{"9007199254740993", 9007199254740993},
+		{"9223372036854775807", math.MaxInt64},
+		{"-9223372036854775808", math.MinInt64},
+		{"-0", 0},
+	} {
+		t.Run(string(tc.literal), func(t *testing.T) {
+			got, ok := NumberAsInt64(tc.literal)
+			require.True(t, ok)
+			assert.Equal(t, tc.want, got)
+		})
 	}
-	integer, ok = NumberAsInt64(json.Number("42.0"))
-	if !ok || integer != 42 {
-		t.Fatalf("NumberAsInt64(decimal integer) = %d, %v", integer, ok)
-	}
-	if _, ok = NumberAsInt64(json.Number("42.5")); ok {
-		t.Fatal("NumberAsInt64() accepted a fractional number")
+	for _, literal := range []json.Number{
+		"30.0", "30.000", "-0.0", "9223372036854775807.0", "-9223372036854775808.0",
+		"3e1", "300e-1", "30.0E0", "0e0", "42.5", "30.000000000000000001",
+		"1e-1000002", "1e1000002", "9223372036854775808", "-9223372036854775809", "30.", "030.0", "invalid",
+	} {
+		t.Run(string(literal), func(t *testing.T) {
+			got, ok := NumberAsInt64(literal)
+			assert.False(t, ok)
+			assert.Zero(t, got)
+		})
 	}
 	floating, ok := NumberAsFloat64(json.Number("0.25"))
 	if !ok || floating != 0.25 {
@@ -43,7 +104,7 @@ func TestJSONNumberConversions(t *testing.T) {
 	if _, ok = NumberAsFloat64(json.Number("invalid")); ok {
 		t.Fatal("NumberAsFloat64() accepted an invalid number")
 	}
-	if _, ok = NumberAsInt64(math.Inf(1)); ok {
+	if _, ok := NumberAsInt64(math.Inf(1)); ok {
 		t.Fatal("NumberAsInt64() accepted infinity")
 	}
 }
@@ -78,8 +139,8 @@ func TestJSONQueryValueText(t *testing.T) {
 			case map[string]any, []any:
 				require.IsType(t, "", got)
 				var actual, expected any
-				require.NoError(t, UnmarshalPreciseJSON([]byte(got.(string)), &actual))
-				require.NoError(t, UnmarshalPreciseJSON([]byte(tc.want.(string)), &expected))
+				require.NoError(t, UnmarshalJSON([]byte(got.(string)), &actual))
+				require.NoError(t, UnmarshalJSON([]byte(tc.want.(string)), &expected))
 				assert.Equal(t, expected, actual)
 				assert.Contains(t, got, "<>&")
 			default:

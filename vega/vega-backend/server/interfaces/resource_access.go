@@ -36,13 +36,15 @@ type ResourceAccess interface {
 	ListPermissionRefs(ctx context.Context, params ResourcesQueryParams) ([]ResourcePermissionRef, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
-	// UpdateEnabled updates only a Resource's enabled state and audit fields.
-	UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64, updater AccountInfo) error
+	// UpdateEnabled updates a Resource's enabled state and audit fields if its version matches.
+	UpdateEnabled(ctx context.Context, id string, enabled bool, expectedUpdateTime, updateTime int64, updater AccountInfo) (int64, error)
 	// UpdateLocalIndexName updates only a Resource's local index name.
 	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
-	// UpdateLocalIndexState atomically updates Resource-owned index state.
+	// UpdateLocalIndexState updates the index state and Resource version if the expected version matches.
 	UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-		localIndexStatus, localIndexName, syncMark string) (bool, error)
+		localIndexStatus, localIndexName, syncMark string, expectedUpdateTime, updateTime int64) (bool, error)
+	// CompareAndSetSyncMark updates the checkpoint when the index, status and previous mark still match.
+	CompareAndSetSyncMark(ctx context.Context, tx *sql.Tx, id, indexName, indexStatus, previous, next string) (bool, error)
 	// UpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
 	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateDiscoveryMetadata updates only Resource metadata owned by discovery.

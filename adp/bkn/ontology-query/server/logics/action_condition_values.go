@@ -36,7 +36,7 @@ func ResolveActionConditionValues(cfg *cond.CondCfg, data, dynamic map[string]an
 	}
 	switch cfg.ValueFrom {
 	case "", "const":
-		return &result, nil
+		// The stored value is already literal.
 	case "property", "input":
 		if _, noValue := cond.NotRequiredValueOperationMap[cfg.Operation]; noValue {
 			return nil, fmt.Errorf("condition operator %q does not accept a reference", cfg.Operation)
@@ -57,6 +57,15 @@ func ResolveActionConditionValues(cfg *cond.CondCfg, data, dynamic map[string]an
 		result.Value, result.ValueFrom = value, "const"
 	default:
 		return nil, fmt.Errorf("unsupported action condition value_from %q", cfg.ValueFrom)
+	}
+	switch cfg.Operation {
+	case cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex:
+		if value, ok := result.Value.(string); ok && value == "" {
+			if cfg.ValueFrom == "property" || cfg.ValueFrom == "input" {
+				return nil, fmt.Errorf("action condition operator %q requires a non-empty string; %s reference %q resolved to an empty string", cfg.Operation, cfg.ValueFrom, cfg.Value)
+			}
+			return nil, fmt.Errorf("action condition operator %q requires a non-empty string", cfg.Operation)
+		}
 	}
 	return &result, nil
 }

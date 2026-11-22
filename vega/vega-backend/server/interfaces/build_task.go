@@ -74,9 +74,10 @@ type BuildTask struct {
 	LastProgressTime int64                 `json:"last_progress_time,omitempty"`
 	IndexConfig      *BuildTaskIndexConfig `json:"index_config,omitempty"` // A snapshot of the index configuration derived from resource when creating a task
 	CatalogID        string                `json:"catalog_id"`
-	// The following associated fields are only used for response display and will not be included in the database. The service will batch complete the tasks according to the current task set.
+	// 关联名称仅用于响应展示，不落库；资源和目录名称批量补齐，计划名称仅在详情补齐。
 	ResourceName string `json:"resource_name,omitempty"`
 	CatalogName  string `json:"catalog_name,omitempty"`
+	ScheduleName string `json:"schedule_name,omitempty"`
 }
 
 // BuildTaskSummary is the lightweight representation returned by list APIs.

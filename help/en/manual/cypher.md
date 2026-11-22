@@ -45,7 +45,7 @@ Request fields:
 | --- | --- |
 | `query` | The Cypher text, at most 8192 characters |
 | `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is accepted only where the query tests `$name IS NULL` (see "Optional conditions" below). Parameter names are case-sensitive and may be keywords, such as `$end` or `$limit` |
-| `object_properties` | Extra properties a returned node carries, per node variable, as in `{"t": ["team_name"]}`. Each variable must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
+| `object_properties` | Extra properties a returned node carries, as in `{"t": ["team_name"]}`. A key is a node variable (`t` in `(t:team)`) or the alias the node is returned as (`team` for `RETURN t AS team`), and must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
 | `explain` | When `true`, returns the plan and reads nothing; see "Checking a query with explain" below |
 
 The branch is chosen with the `branch` query parameter, `main` by default.
@@ -72,6 +72,7 @@ With `"explain": true` the query is read, authorized and compiled as usual but n
 ## 🧭 Naming things
 
 - A **label** is an object type's id or name, and a **relationship type** is a relation type's id or name, both as `search_schema`, `get_object_types` and `get_relation_types` return them.
+- Object type names are unique in a network; relation type names are not, and relation types may share a name, as Sales Order → Customer and Invoice → Customer may both be called Customer. Written by name, a relationship type resolves to the relation type that connects the two nodes' object types the way the arrow reads; when two of them do, the query is refused as ambiguous, so use the relation type's id. So `(o:SalesOrder)-[:Customer]->(c:Customer)` and `(i:Invoice)-[:Customer]->(c:Customer)` each take their own relation type, while two same-named relation types with the same ends, or an undirected `-[:R]-` with a same-named relation type each way, are refused as ambiguous; the latter can also be settled by writing the arrow's direction. When none connects, the error lists every relation type of that name with its ends.
 - A **property** is a logical property name. Display names and physical column names are not accepted. Logic properties (computed by a function or a metric) cannot be used in Cypher; read them with `get_logic_properties_values`.
 - Quote a name that holds spaces or special characters with backticks: `` (p:`产品BOM`) ``.
 
@@ -413,6 +414,7 @@ Only the basic forms are available there:
 | Form | On datasets and indexes |
 | --- | --- |
 | MATCH, multi-hop relationships, OPTIONAL MATCH | Yes |
+| Relations that link their ends through a link table, common in networks built from a knowledge base | Yes in MATCH; no in OPTIONAL MATCH, refused naming the relation type |
 | WHERE conditions (comparisons, IN, string matching, IS NULL, arithmetic) | Yes |
 | Returning properties, aggregates (count, sum, avg, min, max), ORDER BY / SKIP / LIMIT | Yes |
 | WITH to filter after aggregating or by an earlier stage's values (semi-join) | Yes |

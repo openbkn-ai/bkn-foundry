@@ -20,6 +20,18 @@ import (
 // HasAvailableLocalIndex reports whether a resource may use its managed local index for queries.
 func HasAvailableLocalIndex(resource *interfaces.Resource) bool {
 	return resource != nil &&
+		IsReadableLocalIndexStatus(resource.LocalIndexStatus) &&
+		resource.LocalIndexName != ""
+}
+
+// IsReadableLocalIndexStatus reports whether the published index can serve queries.
+func IsReadableLocalIndexStatus(status string) bool {
+	return status == interfaces.ResourceLocalIndexStatusAvailable || status == interfaces.ResourceLocalIndexStatusReadOnly
+}
+
+// HasWritableLocalIndex reports whether an incremental build may target the published index.
+func HasWritableLocalIndex(resource *interfaces.Resource) bool {
+	return resource != nil &&
 		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable &&
 		resource.LocalIndexName != ""
 }

@@ -26,6 +26,11 @@ Some tools are not installed by default and need to be explicitly enabled before
 When adding this type of tool, the assembly logic in `app.go` and the catalog logic in `info.go` must skip it using the same predicate.
 If the two places diverge, `/mcp/info` will advertise a tool that cannot be called.
 
-## Description reference
+## Documentation
 
-For descriptions, refer to the "Tool Overview" and "Tool Reference" sections in `docs/releases/v5.0.4/tool-usage-guide.md`.
+Every tool must also appear in the hand-written tool catalogues:
+
+- the "工具目录" table in `docs/api/context-loader/mcp.yaml`, including its `/mcp-compact` column;
+- the MCP tool tables in `help/zh/manual/context-loader.md` and `help/en/manual/context-loader.md`.
+
+`tool_catalog_docs_test.go` compares these catalogues with `tools_meta.json` and fails when a tool is added, renamed or removed without updating them.

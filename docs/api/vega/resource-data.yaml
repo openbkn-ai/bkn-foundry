@@ -32,7 +32,7 @@ info:
     `VegaBackend.Dataset.DeleteIncomplete`。单条文档不存在
     与 resource 不存在共用 `VegaBackend.Resource.NotFound`，靠 `error_details` 区分。
 
-    cursor 可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
+    支持 cursor 的非 API 资源可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
     [raw-query.yaml](raw-query.yaml)。默认空闲租约为 1800 秒；单账号 cursor session
     默认上限 100，全局默认上限 1000。
   version: 0.1.0
@@ -65,6 +65,15 @@ paths:
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
         `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
+        PostgreSQL、MySQL/MariaDB 的 InnoDB 源表和 HANA 使用显式只读 REPEATABLE READ，
+        Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SERIALIZABLE。COUNT 和数据结果集共享同一个事务。
+        后续页读取该结果集，末页、关闭、过期或源端读取失败释放会话。SQL Server 读取期间可能阻塞源端写入。
+        如果续页在读取源端前遇到并发限流，客户端可用同一个 cursor 重试。
+        Doris 等不支持事务读会话的来源继续逐页执行查询。
+        OpenSearch 搜索要求所有分片成功。分片失败或搜索超时时返回错误。
+        OpenSearch 原生索引、托管本地索引及 Dataset 的 cursor 在同一个 PIT 快照上续页，
+        排序应以稳定且唯一的字段打破并列。源端须支持 PIT 且查询账号须有相应权限。
+        PIT 失效时返回 404，需重新发起查询。
         逻辑视图查询要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
         授权版本不足返回 403 `Public.Forbidden`。
         HANA 源表无 SELECT 权限时返回 403
@@ -84,6 +93,32 @@ paths:
         （仅支持源查询的资源）。旧版后端的通用 InvalidParameter 错误仍按通用错误处理。
         非过滤条件的视图存储结构损坏、源读取及模型服务故障仍按原有错误处理。
         已保存的复合逻辑视图在首次查询和 cursor 续页时也暂时返回 501。
+
+        **API Resource（专业版）**：category=api 且 api_effect_type=read 时复用本入口。
+        查询直接绑定公共 DTO；未知顶层/分页字段忽略，null 沿用公共绑定的零值语义，不做字段出现性检查。
+        当前阶段接受公共 paging 和 need_total；binary_mode 对 API 无作用。实际启用的过滤、排序、聚合、输出投影等未支持能力返回 400。
+        公开位置统一为 offset + limit，上游 page 在 Connector 内换算。
+        limit 缺省、0 或 null 均使用 Resource.paging_rule.default_limit，受资源 max_limit 约束，不注入 Table 默认值。
+        page 规则在 Connector 内按 page_base + offset / limit 换算，offset 必须对齐 limit。
+        paging.mode 缺省或为空时使用 single；API 只支持无会话单页查询。
+        cursor 模式或非空 paging.cursor 在登录、业务 HTTP 及游标会话创建前拒绝；keep_alive_sec 在 single 下忽略。
+        不支持流式响应、索引构建或自动扫描/发现；请求独立提供下一页 offset，不维护续页 token 或租约。
+        连接器先按 Catalog 配置验证一次登录，未配置登录时先做 TCP/TLS 探测，成功后发送一次业务请求。
+        登录获得的 Cookie 用于该次业务请求。查询不重试、重定向或自动翻页。
+        结果使用 APIResourceDataResult：entries 为按必需 schema_definition 映射的对象数组，
+        保留精确 JSON number、JSON 原类型及日期时间原值；合法空结果为 []。
+        输入行的对象/数组格式由上游响应 Schema 校验；result_rows 仅定位行数据路径。
+        对象行按 SchemaDefinition.original_name 映射，数组行按 SchemaDefinition 有序字段逐项映射；
+        不配置或读取独立列元数据，不按上游 columns 重排字段。
+        不根据条数判断还有下一页，不生成下一位置；需要更多数据时使用新的 offset/limit 独立查询。
+        保留公共 single 分页响应，next_cursor 和 expires_at_sec 均为 null，不创建查询会话。
+        need_total=true 须配置 total 路径，响应才返回 total_count；不补造未知总数。
+        统一返回公共 query_source 和 is_approximate；API 默认分别为 source 和 false，不返回上游 page、columns 或内部执行状态。
+        响应格式、业务成功条件、提取和字段类型任一步失败均不返回部分业务数据。
+        请求/定义错误为 400；上游状态、响应契约、业务判定或映射错误为 502 VegaBackend.Query.ExecuteFailed，
+        超时为 504。metadata.stage/upstream_status 区分阶段及原上游状态，
+        上游 401/403 不冒充当前调用者权限拒绝。已完整读取的上游错误正文按原文附于 error_details，
+        上限 64 KiB，超出时按 UTF-8 字符边界截断并标记。
 
         **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。
 
@@ -117,8 +152,9 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
+              anyOf:
                 - $ref: "#/components/schemas/ResourceDataQueryParams"
+                - $ref: "#/components/schemas/APIResourceDataQueryParams"
                 - $ref: "#/components/schemas/Document"
       responses:
         "200":
@@ -126,8 +162,9 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ListResponse"
+                  - $ref: "#/components/schemas/APIResourceDataResult"
                   - $ref: "#/components/schemas/DeleteByQueryResult"
         "201":
           description: Override=POST 创建成功
@@ -151,14 +188,28 @@ paths:
           $ref: "#/components/responses/Conflict"
         "429":
           description: |
-            `VegaBackend.Query.CursorSessionLimitExceeded`。`error_details` 区分
-            `per-account cursor session limit reached` 与 `global cursor session limit reached`。
+            API Resource 查询参与 Vega 全局查询并发控制。查询并发额度耗尽时返回
+            `VegaBackend.Query.ConcurrencyLimitExceeded`。
+            游标会话额度耗尽时返回 `VegaBackend.Query.CursorSessionLimitExceeded`，
+            `error_details` 区分 `per-account cursor session limit reached` 与 `global cursor session limit reached`。
           content:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "502":
+          description: API 上游调用、响应契约、业务判定或结果映射失败。已完整读取的上游错误正文按原文展示，最多 64 KiB。
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "504":
+          description: API 出站请求超时或调用取消，不返回部分业务结果。
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "501":
           $ref: "#/components/responses/NotImplemented"
     put:
@@ -455,6 +506,63 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Document"
+    APIResourceDataQueryParams:
+      description: API Resource 只读查询，直接绑定公共 DTO，未知字段忽略，null 沿用零值语义；默认条数及上限由资源规则决定；仅支持 single，不创建游标或流式查询。实际未支持的查询能力仍拒绝。
+      type: [object, "null"]
+      additionalProperties: true
+      properties:
+        paging:
+          description: 复用公共分页字段，仅允许 single；limit 缺省/0/null 使用资源默认值，keep_alive_sec 忽略。非空 cursor 或 cursor 模式不支持。
+          allOf:
+            - $ref: "#/components/schemas/PagingRequest"
+            - properties:
+                mode:
+                  enum: [single, "", null]
+                cursor:
+                  enum: ["", null]
+        need_total:
+          description: 是否返回总数；null 按 false。为 true 时每个成功状态选中的响应须配置 result_total，调用前检查；每次独立查询重新计算。
+          type: [boolean, "null"]
+          default: false
+        binary_mode:
+          description: 复用公共绑定和取值校验；API 忽略此项，不影响单页查询结果。
+          type: [string, "null"]
+          enum: [metadata, content, null]
+    APIResourceDataResult:
+      description: API Resource 复用公共响应字段；query_source 默认 source，is_approximate 默认 false。single 查询不创建会话，公共分页响应的 next_cursor/expires_at_sec 均为 null。
+      type: object
+      additionalProperties: false
+      required: [entries, query_source, is_approximate]
+      properties:
+        query_source:
+          $ref: "#/components/schemas/ListResponse/properties/query_source"
+          default: source
+        is_approximate:
+          $ref: "#/components/schemas/ListResponse/properties/is_approximate"
+          default: false
+        entries:
+          type: array
+          description: 仅输出 schema_definition 声明字段的对象数组。保留精确 JSON 数字及 JSON 原类型；不套用 Table JSON 字符串化规则。
+          items:
+            type: object
+            additionalProperties: true
+        paging:
+          allOf:
+            - $ref: "#/components/schemas/PagingResponse"
+            - properties:
+                next_cursor:
+                  const: null
+                expires_at_sec:
+                  const: null
+        total_count:
+          description: 仅 need_total=true 且所选响应的 result_total 配置有效时返回；每次调用独立提取。
+          type: integer
+          format: int64
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
     ResourceDataQueryParams:
       description: |
         查询 / 删除参数。`Override: GET` 用 filter+分页查询；`Override: DELETE` 用
@@ -471,7 +579,13 @@ components:
             避免 OpenSearch 将其重新解释为通配或权重表达式，也不允许空列表回退到默认字段。
             这些字符不能通过添加反斜杠按字面转义；此限制不改变 match／match_phrase 的字段名语义。
 
-            like/not_like 使用完整字符串的 SQL LIKE 模式，不自动补充前后 `%`。
+            like/not_like、regex、prefix/not_prefix、match/match_phrase/multi_match 的字符串 value
+            必须非空；显式空字符串 `""` 在结构化条件校验阶段返回 400，各查询通道一致。
+            不会 trim 或改写输入，纯空格以及合法的 `%`、`.*` 模式仍按各自操作语义处理。
+            等值／不等值和集合成员仍允许空字符串；查空串请使用 `== ""`，排除空串使用 `!= ""`。
+            已保存固定条件同样校验，不自动删除或迁移；非法固定条件沿既有定义错误路径返回。
+
+            like/not_like 使用完整字符串的 SQL LIKE 模式，并额外要求模式非空，不自动补充前后 `%`。
             `%` 匹配任意长度字符串，`_` 匹配一个字符；反斜杠转义下一个字符，
             因此 `\%`、`\_`、`\\` 分别匹配字面百分号、下划线和反斜杠。
             这些示例表示 JSON 解码后的模式文本；在 JSON 字符串中传递时，反斜杠还需按 JSON 规则转义。
@@ -481,7 +595,7 @@ components:
             TEXT 仍要求 keyword Feature，不因使用 not_like 而绕过此要求。
 
             时间常量：date 为 YYYY-MM-DD；time 为 HH:mm:ss[.fraction]；
-            datetime 支持 RFC3339、YYYY-MM-DD HH:mm:ss[.fraction] 或 int64 整数毫秒时间戳
+            datetime 支持 RFC3339、空格或 T 分隔的 YYYY-MM-DD[ T]HH:mm:ss[.fraction] 或 int64 整数毫秒时间戳
             （JSON 整数或数字字符串）。小数秒支持 1–9 位；无时区 datetime 按服务器 TZ 解释，默认 UTC。
             date/datetime 的 before 使用 `[正整数间隔, 单位]`，单位为
             year/quarter/month/week/day/hour/minute/second/microsecond 中实际连接器支持的子集，
@@ -525,7 +639,29 @@ components:
           type: object
           additionalProperties: true
         paging:
-          $ref: "#/components/schemas/PagingRequest"
+          allOf:
+            - $ref: "#/components/schemas/PagingRequest"
+            - properties:
+                limit:
+                  maximum: 10000
+              if:
+                required: [mode]
+                properties:
+                  mode:
+                    const: cursor
+              then:
+                required: [limit]
+                properties:
+                  limit:
+                    type: integer
+                    minimum: 1
+                  keep_alive_sec:
+                    anyOf:
+                      - type: "null"
+                      - const: 0
+                      - type: integer
+                        minimum: 60
+                        maximum: 3600
         sort:
           description: |
             排序字段。派生逻辑视图的非聚合查询支持保留元字段 `_score`，无需在视图 Schema
@@ -756,39 +892,27 @@ components:
         data:
           description: 字段内容；Binary 内容为 Base64 编码字符串。
     PagingRequest:
-      description: 首次请求使用 offset 和 limit；cursor 续页以 cursor 定位，need_total 可携带但不会覆盖首次请求冻结值，其余查询参数不得重传。
-      type: object
-      allOf:
-        - if:
-            required: [mode]
-            properties:
-              mode:
-                const: cursor
-          then:
-            required: [limit]
-            properties:
-              keep_alive_sec:
-                minimum: 60
-                maximum: 3600
+      description: 首次请求使用 offset 和 limit；cursor 续页以 cursor 定位，need_total 不覆盖首次请求冻结值，其余参数按实际值校验。未知字段忽略，null 采用绑定零值。
+      type: [object, "null"]
+      additionalProperties: true
       properties:
         mode:
-          type: string
-          enum: [single, cursor]
+          type: [string, "null"]
+          enum: [single, cursor, "", null]
           default: single
         offset:
-          description: 首次请求的起始偏移，>=0；实际物理查询为 OpenSearch 的非聚合请求要求 offset + limit 不超过 10000。
-          type: integer
+          description: 首次请求的起始偏移；缺省/null 为 0。实际物理查询为 OpenSearch 的非聚合请求要求 offset + limit 不超过 10000。
+          type: [integer, "null"]
           minimum: 0
         limit:
-          description: 单次最多返回条数；cursor 模式必填，范围 [1, 10000]。
-          type: integer
-          minimum: 1
-          maximum: 10000
+          description: 单次最多返回条数；API 缺省/0/null 使用资源默认条数并受资源上限约束，其余类别 cursor 模式必须提供正数且最多 10000。
+          type: [integer, "null"]
+          minimum: 0
         keep_alive_sec:
-          description: cursor 成功取页后的空闲租约秒数；首次 cursor 请求时取值范围 [60, 3600]，single 模式下忽略。省略时默认 1800。
-          type: integer
+          description: cursor 成功取页后的空闲租约秒数；首次 cursor 非零时范围 [60, 3600]，single 模式下忽略。缺省/0/null 使用默认 1800。
+          type: [integer, "null"]
         cursor:
-          type: string
+          type: [string, "null"]
     PagingResponse:
       type: object
       required: [next_cursor, expires_at_sec]

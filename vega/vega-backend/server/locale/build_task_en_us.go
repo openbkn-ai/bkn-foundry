@@ -13,7 +13,7 @@ var buildTaskEnUS = i18n.I18nMessages{
 		"VegaBackend.BuildTask.InvalidParameter.ResourceID":              "Invalid resource ID. Please check if the resource ID is provided and exists",
 		"VegaBackend.BuildTask.InvalidParameter.Mode":                    "Invalid build task mode. Mode must be one of: streaming, batch",
 		"VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields":        "Invalid primary key fields. Configure at least one unique primary_key_fields field that exists in the resource schema and has a supported type",
-		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "Invalid incremental fields. Configure at least one unique incremental_fields field that exists in the resource schema and has a supported type",
+		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "Invalid incremental fields. Configured fields must be unique schema fields of a supported type. Incremental builds require at least one such field",
 		"VegaBackend.BuildTask.StreamingUnsupported":                     "Streaming build tasks are temporarily unsupported. Create a batch build task instead",
 		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "Resource fields do not meet index build requirements. Check the field types, precision, and configuration in the error details before retrying",
 		"VegaBackend.BuildTask.InvalidParameter.Analyzer":                "Unavailable full-text analyzer. Choose an analyzer installed in OpenSearch, or update the affected field to use the resource default",

@@ -36,6 +36,28 @@ func ValidateCatalogRequest(ctx context.Context, req *interfaces.CatalogRequest)
 	return nil
 }
 
+// ValidateUpdateCatalogRequest 统一校验路径标识、目录字段及乐观更新版本。
+func ValidateUpdateCatalogRequest(ctx context.Context, req *interfaces.CatalogRequest, pathID string) error {
+	if req.ID != "" && req.ID != pathID {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDMismatch).
+			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", pathID, req.ID))
+	}
+	req.ID = pathID
+	if err := ValidateCatalogRequest(ctx, req); err != nil {
+		return err
+	}
+	return validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime)
+}
+
+// ValidateCatalogConnectionTestRequest 校验未保存配置的必要连接字段。
+func ValidateCatalogConnectionTestRequest(ctx context.Context, req *interfaces.CatalogConnectionTestRequest) error {
+	if req.ConnectorType == "" || req.ConnectorCfg == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("connector_type and connector_config are required")
+	}
+	return nil
+}
+
 func ValidateCatalogListQueryParams(ctx context.Context, params interfaces.CatalogsQueryParams) error {
 	if err := validateCatalogTypeQueryParam(ctx, params.Type); err != nil {
 		return err

@@ -301,6 +301,7 @@ func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, op
 }
 
 func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service, catalog AuthorizationResourceCatalog, reviewerSync reviewerInboxSyncer) {
+ registerPermissionProjection(g, e, db)
 	// GET /policies?resource_type=&resource_id= — the p-lines written directly
 	// against this exact object key, grouped by subject. -> { entries:[
 	// { accessor_id, resource{type,id}, operations:[...] } ] }

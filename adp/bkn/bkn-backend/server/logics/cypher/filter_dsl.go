@@ -213,6 +213,9 @@ func pushFilterNegated(predicate PlanPredicate, negated bool) (pushedFilter, boo
 		if node.Operator == Contains {
 			// Cypher CONTAINS receives literal text; Vega LIKE receives a complete pattern.
 			value = "%" + likeValueEscaper.Replace(value) + "%"
+		} else if node.Operator == StartsWith && value == "" {
+			// Preserve Cypher's empty-prefix semantics without sending an empty search value.
+			operation, value = "like", "%"
 		}
 		if negated {
 			operation = "not_" + operation

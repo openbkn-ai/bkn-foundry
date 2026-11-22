@@ -50,6 +50,9 @@ func (c *NotLikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)
 	}
+	if val == "" {
+		return nil, interfaces.NewConditionBuildError("condition [not_like] right value must be a non-empty string")
+	}
 	if err := ValidateLikePattern(OperationNotLike, val); err != nil {
 		return nil, err
 	}

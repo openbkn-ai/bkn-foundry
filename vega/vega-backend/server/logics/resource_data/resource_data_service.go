@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -61,8 +62,32 @@ type resourceDataPageRunner struct {
 // ExecutePage 使用实际页参数记录查询来源并映射执行错误，兼容游标恢复的执行选项。
 func (runner *resourceDataPageRunner) ExecutePage(ctx context.Context,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	return runner.executePage(ctx, params, nil)
+}
+
+func (runner *resourceDataPageRunner) ExecuteCursorPage(ctx context.Context,
+	params *interfaces.ResourceDataQueryParams, session *interfaces.CursorSession) (*interfaces.ResourceDataQueryResult, error) {
+	return runner.executePage(ctx, params, session)
+}
+
+func (runner *resourceDataPageRunner) executePage(ctx context.Context,
+	params *interfaces.ResourceDataQueryParams, session *interfaces.CursorSession) (*interfaces.ResourceDataQueryResult, error) {
 	runner.querySource = resourceQuerySource(runner.resource, params)
-	page, err := runner.service.query(ctx, runner.resource, params)
+	var page *interfaces.ResourceDataQueryResult
+	var err error
+	if runner.resource.Category == interfaces.ResourceCategoryAPI {
+		if runner.service.cl != nil {
+			release, err := runner.service.acquireQueryPermit(ctx, rate.AcquireParams{CatalogID: runner.resource.CatalogID})
+			if err != nil {
+				return nil, err
+			}
+			defer release()
+		}
+		// API 扩展负责加载 Catalog。
+		page, err = runner.service.executeSourceQueryWithCursor(ctx, nil, runner.resource, params, nil)
+	} else {
+		page, err = runner.service.queryWithCursor(ctx, runner.resource, params, session)
+	}
 	if err != nil {
 		invalidCode := verrors.VegaBackend_Query_InvalidParameter
 		if runner.querySource == interfaces.ResourceQuerySourceLocalIndex || runner.resource.Category == interfaces.ResourceCategoryDataset {
@@ -121,13 +146,11 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 // The view service owns its permission check, cursor session, and HTTP mapping of execution errors.
 func (rds *resourceDataService) QuerySourcePage(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-	return rds.query(ctx, resource, params)
+	return rds.queryWithCursor(ctx, resource, params, nil)
 }
 
-// query executes the existing structured resource-data path. Public callers
-// use QueryWithPaging so every result has the common paging envelope.
-func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams) (result *interfaces.ResourceDataQueryResult, err error) {
+func (rds *resourceDataService) queryWithCursor(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, cursor *interfaces.CursorSession) (result *interfaces.ResourceDataQueryResult, err error) {
 	// 保留源端完整聚合形态，分页完成后只裁剪调用方选择的结果列。
 	defer func() {
 		if err == nil && result != nil {
@@ -173,33 +196,15 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		}
 	}
 
-	// Concurrent control
-	var release func()
 	if rds.cl != nil {
-		// Obtain concurrent permission
-		var acquireErr error
-		release, acquireErr = rds.cl.Acquire(rate.AcquireParams{
+		release, acquireErr := rds.acquireQueryPermit(ctx, rate.AcquireParams{
 			CatalogID:            resource.CatalogID,
 			MaxConcurrentQueries: maxConcurrentQueries,
 		})
 		if acquireErr != nil {
-			logger.Warnf("Concurrency limit exceeded: catalog=%s, error=%v",
-				resource.CatalogID, acquireErr)
-
-			// Return a rate limiting error
-			var rateErr *rate.RateLimitError
-			if errors.As(acquireErr, &rateErr) {
-				httpErr := httperrors.NewHTTPError(ctx, rateErr.HTTPStatus, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
-					WithErrorDetails(rateErr.Message)
-				otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
-				return nil, httpErr
-			}
-			httpErr := httperrors.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
-				WithErrorDetails("Query concurrency limit exceeded, please retry later")
-			otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
-			return nil, httpErr
+			return nil, acquireErr
 		}
-		defer release() // Release the permission after the query is completed
+		defer release()
 	}
 
 	querySchema := resource.SchemaDefinition
@@ -207,6 +212,19 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	usesLocalIndex := resourcelogic.HasAvailableLocalIndex(resource) &&
 		(resource.Category == interfaces.ResourceCategoryDataset ||
 			resource.Category == interfaces.ResourceCategoryTable && !ignoreLocalIndex)
+	if cursor != nil && cursor.ReadSession != nil {
+		var indexName string
+		switch {
+		case usesLocalIndex || resource.Category == interfaces.ResourceCategoryDataset:
+			indexName = resource.LocalIndexName
+		case resource.Category == interfaces.ResourceCategoryIndex:
+			indexName = resource.SourceIdentifier
+		}
+		if catalog.ID != cursor.CatalogID || catalog.UpdateTime != cursor.CatalogUpdateTime ||
+			catalog.ConnectorType != cursor.ConnectorType || indexName != cursor.ReadIndexName {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged)
+		}
+	}
 	if usesLocalIndex {
 		querySchema, err = rds.lim.SchemaForQuery(resource.SchemaDefinition)
 		if err != nil {
@@ -298,6 +316,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 
 	switch resource.Category {
 	case interfaces.ResourceCategoryDataset:
+		if cursor != nil {
+			return rds.readLocalDocumentPage(ctx, cursor, catalog, resource, params)
+		}
 		// Call dataset access to list the documents
 		result, err := rds.ds.ListDocuments(ctx, resource, params)
 		if err != nil {
@@ -307,11 +328,16 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		return result, nil
 
 	case interfaces.ResourceCategoryTable:
-		// Only an available managed index may be queried. Stale index names are
-		// retained for diagnostics and must fall back to the source.
+		// A compatible published index can serve queries while a full build is needed for writes.
 		if resourcelogic.HasAvailableLocalIndex(resource) && !ignoreLocalIndex {
 			// Call the local index manager to list the build product documentation
-			result, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
+			var result *interfaces.ResourceDataQueryResult
+			var err error
+			if cursor != nil {
+				result, err = rds.readLocalDocumentPage(ctx, cursor, catalog, resource, params)
+			} else {
+				result, err = rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
+			}
 			if err != nil {
 				otellog.LogError(ctx, "Query table data from local index failed", err)
 				return nil, err
@@ -325,7 +351,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
 
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQueryWithCursor(ctx, catalog, resource, params, cursor)
 		if err != nil {
 			otellog.LogError(ctx, "Query table data failed", err)
 			return nil, err
@@ -341,7 +367,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		return result, nil
 
 	case interfaces.ResourceCategoryIndex:
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQueryWithCursor(ctx, catalog, resource, params, cursor)
 		if err != nil {
 			otellog.LogError(ctx, "Query index data failed", err)
 			return nil, err
@@ -368,7 +394,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
 
-		result, err := rds.QueryData(ctx, catalog, resource, params)
+		result, err := rds.executeSourceQueryWithCursor(ctx, catalog, resource, params, nil)
 		if err != nil {
 			otellog.LogError(ctx, "Query fileset data failed", err)
 			return nil, err
@@ -507,6 +533,10 @@ func (rds *resourceDataService) queryWithPaging(ctx context.Context, resource *i
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}
+	if resource.Category == interfaces.ResourceCategoryAPI && (params.Paging.Cursor != "" || params.Paging.Mode != "" && params.Paging.Mode != interfaces.PagingModeSingle) {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("API queries support only single paging without a cursor")
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
 			return nil, err
@@ -618,21 +648,68 @@ func accountIDFromContext(ctx context.Context) string {
 	return accountInfo.ID
 }
 
-func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+func (rds *resourceDataService) acquireQueryPermit(ctx context.Context, params rate.AcquireParams) (rate.ReleaseFunc, error) {
+	release, err := rds.cl.Acquire(params)
+	if err == nil {
+		return release, nil
+	}
+
+	logger.Warnf("Concurrency limit exceeded: catalog=%s, error=%v", params.CatalogID, err)
+	status := http.StatusTooManyRequests
+	details := "Query concurrency limit exceeded, please retry later"
+	var rateErr *rate.RateLimitError
+	if errors.As(err, &rateErr) {
+		status = rateErr.HTTPStatus
+		details = rateErr.Message
+	}
+	httpErr := httperrors.NewHTTPError(ctx, status, verrors.VegaBackend_Query_ConcurrencyLimitExceeded).
+		WithErrorDetails(details)
+	otellog.LogError(ctx, "Concurrency limit exceeded", httpErr)
+	return nil, httpErr
+}
+
+func (rds *resourceDataService) readLocalDocumentPage(ctx context.Context,
+	cursor *interfaces.CursorSession, catalog *interfaces.Catalog, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	if cursor.ReadSession == nil {
+		stream, err := rds.lim.OpenDocumentRead(ctx, resource.LocalIndexName,
+			resource, params, time.Duration(cursor.KeepAliveSec)*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		cursor.ReadSession = stream
+		cursor.ReadIndexName = resource.LocalIndexName
+		cursor.CatalogUpdateTime = catalog.UpdateTime
+		cursor.ConnectorType = catalog.ConnectorType
+	}
+	return querylogic.ReadResourceCursorPage(ctx, cursor)
+}
+
+func (rds *resourceDataService) executeSourceQueryWithCursor(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, cursor *interfaces.CursorSession) (*interfaces.ResourceDataQueryResult, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query data")
 	defer span.End()
 
-	logger.Debugf("QueryData, resourceID: %s, catalogID: %s, params: %v",
-		resource.ID, resource.CatalogID, params)
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		return resourcelogic.QueryAPIResource(ctx, resource, params)
+	}
+	if cursor != nil && cursor.ReadSession != nil {
+		return querylogic.ReadResourceCursorPage(ctx, cursor)
+	}
+	logger.Debugf("executeSourceQuery, resourceID: %s, catalogID: %s, params: %v", resource.ID, resource.CatalogID, params)
 
 	connector, err := rds.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)
 		return nil, connectorCreationError(ctx, err)
 	}
-	defer func() { _ = connector.Close(ctx) }()
+	retained := false
+	defer func() {
+		if !retained {
+			_ = connector.Close(ctx)
+		}
+	}()
 
 	if err := connector.Connect(ctx); err != nil {
 		otellog.LogError(ctx, "Connect to data source failed", err)
@@ -650,6 +727,17 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			return nil, httpErr
 		}
 
+		if cursor != nil {
+			if reader, ok := tableConnector.(interfaces.TableReadSessionConnector); ok {
+				if err := querylogic.OpenResourceTableCursor(ctx, cursor, tableConnector, reader, resource, params); err != nil {
+					return nil, err
+				}
+				retained = true
+				cursor.CatalogUpdateTime = catalog.UpdateTime
+				cursor.ConnectorType = catalog.ConnectorType
+				return querylogic.ReadResourceCursorPage(ctx, cursor)
+			}
+		}
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)
 		if err != nil {
 			otellog.LogError(ctx, "Execute query failed", err)
@@ -666,6 +754,19 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 				WithErrorDetails(fmt.Sprintf("connector %s does not support index operations", catalog.ConnectorType))
 			otellog.LogError(ctx, "Connector does not support index operations", httpErr)
 			return nil, httpErr
+		}
+		if reader, ok := indexConnector.(interfaces.IndexReadSessionConnector); cursor != nil && ok {
+			stream, err := reader.OpenIndexRead(ctx, resource.SourceIdentifier, resource, params, time.Duration(cursor.KeepAliveSec)*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			retained = true
+			cursor.ReadSession = stream
+			cursor.ReadConnector = connector
+			cursor.ReadIndexName = resource.SourceIdentifier
+			cursor.CatalogUpdateTime = catalog.UpdateTime
+			cursor.ConnectorType = catalog.ConnectorType
+			return querylogic.ReadResourceCursorPage(ctx, cursor)
 		}
 
 		result, err := indexConnector.ExecuteQuery(ctx, resource.SourceIdentifier, resource, params)

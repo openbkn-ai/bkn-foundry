@@ -35,35 +35,18 @@ func convertRawValue(v any, preserveBinary bool) any {
 
 // convertValue converts zoned time values to the server time zone and preserves binary output when requested.
 func convertValue(v any, colName string, origTypeMap map[string]string, preserveBinary bool) any {
-	if v == nil {
-		return nil
-	}
-
-	// Obtain the original type information from origTypeMap
-	origType, ok := origTypeMap[colName]
-	if !ok {
-		return convertRawValue(v, preserveBinary)
-	}
-
-	// Only time types with time zones need to be converted
-	// PostgreSQL primitive types: timestamptz, timetz, timestamp with time zone, time with time zone
-	needsConversion := false
-	switch origType {
-	case "timestamptz", "timetz", "timestamp with time zone", "time with time zone":
-		needsConversion = true
-	}
-
-	if !needsConversion {
-		return convertRawValue(v, preserveBinary)
-	}
-
-	// Processing time type
-	switch t := v.(type) {
-	case time.Time:
-		// Convert to the local time zone
+	if t, ok := v.(time.Time); ok && isZonedTimeType(origTypeMap[colName]) {
 		return t.Local()
+	}
+	return convertRawValue(v, preserveBinary)
+}
+
+func isZonedTimeType(nativeType string) bool {
+	switch nativeType {
+	case "timestamptz", "timetz", "timestamp with time zone", "time with time zone":
+		return true
 	default:
-		return convertRawValue(v, preserveBinary)
+		return false
 	}
 }
 
@@ -84,20 +67,15 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 	// COUNT 独立执行，先释放数据 Rows，兼容单连接池。
 	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close query rows: %w", postgresqlQueryError(err))
+		return nil, fmt.Errorf("failed to close query rows: %w", c.ClassifyQueryError(err))
 	}
 	if params.NeedTotal {
-		unpaged := *query
-		unpaged.LimitPart = nil
-		unpaged.OffsetPart = 0
-		unpaged.OrderByPart = nil
-		count := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).FromSelect(&unpaged, "_resource_total")
-		text, args, err := ToSql(count)
+		text, args, err := ToSql(table.StructuredCountQuery(query))
 		if err != nil {
 			return nil, err
 		}
 		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.TotalCount); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", postgresqlQueryError(err))
+			return nil, fmt.Errorf("failed to scan total: %w", c.ClassifyQueryError(err))
 		}
 	}
 	table.NormalizeQueryResult(result, resource, params)
@@ -313,8 +291,7 @@ func sqlCalendarGroup(expr sb.SqlNode, unit string) (sb.SqlNode, error) {
 	return &sb.Function{Name: "TO_CHAR", Args: []sb.SqlNode{&sb.Function{Name: "DATE_TRUNC", Args: []sb.SqlNode{&sb.Literal{Value: unit}, expr}}, &sb.Literal{Value: format}}}, nil
 }
 
-// scanQueryRows 复用原始字段类型和聚合别名信息，保留带时区值与二进制内容。
-func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+func queryColumnTypes(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) map[string]string {
 	fieldMap := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, field := range resource.SchemaDefinition {
 		fieldMap[field.Name] = field
@@ -345,7 +322,12 @@ func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces
 			origTypeMap[metricAlias] = field.OriginalType
 		}
 	}
+	return origTypeMap
+}
 
+// scanQueryRows 复用原始字段类型和聚合别名信息，保留带时区值与二进制内容。
+func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	origTypeMap := queryColumnTypes(resource, params)
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read result columns: %w", err)
@@ -370,13 +352,13 @@ func (c *PostgresqlConnector) scanQueryRows(rows *sql.Rows, resource *interfaces
 		result.Entries = append(result.Entries, entry)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate result rows: %w", postgresqlQueryError(err))
+		return nil, fmt.Errorf("failed to iterate result rows: %w", c.ClassifyQueryError(err))
 	}
 	return result, nil
 }
 
-// postgresqlQueryError classifies unknown-column errors and preserves the source error chain.
-func postgresqlQueryError(err error) error {
+// ClassifyQueryError 按 SQLSTATE 归类查询错误，并保留原始驱动错误供诊断。
+func (*PostgresqlConnector) ClassifyQueryError(err error) error {
 	var driverErr *pq.Error
 	if errors.As(err, &driverErr) {
 		switch string(driverErr.Code) {
@@ -395,18 +377,16 @@ func (c *PostgresqlConnector) OpenSQLBuilder(ctx context.Context, query *sb.Sele
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	text, args, err := ToSql(query)
+	statement, err := readStatement(query)
 	if err != nil {
-		failure := interfaces.NewConditionBuildError("SQL expression is not supported by PostgreSQL")
-		failure.Cause = err
-		return nil, nil, failure
+		return nil, nil, err
 	}
 	if err := c.Connect(ctx); err != nil {
-		return nil, nil, fmt.Errorf("failed to connect for SQL builder query: %w", postgresqlQueryError(err))
+		return nil, nil, fmt.Errorf("failed to connect for SQL builder query: %w", c.ClassifyQueryError(err))
 	}
-	rows, err := c.db.QueryContext(ctx, text, args...)
+	rows, err := c.db.QueryContext(ctx, statement.Text, statement.Args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to execute SQL builder query: %w", postgresqlQueryError(err))
+		return nil, nil, fmt.Errorf("failed to execute SQL builder query: %w", c.ClassifyQueryError(err))
 	}
 	transferred := false
 	defer func() {
@@ -414,21 +394,70 @@ func (c *PostgresqlConnector) OpenSQLBuilder(ctx context.Context, query *sb.Sele
 			_ = rows.Close()
 		}
 	}()
-	types, err := rows.ColumnTypes()
+	columns, err := table.DescribeSQLRows(rows, c)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read result column types: %w", err)
-	}
-	columns := make([]interfaces.ColumnInfo, len(types))
-	names := make(map[string]bool, len(types))
-	for i, column := range types {
-		if names[column.Name()] {
-			return nil, nil, interfaces.NewConditionBuildError("query result contains duplicate column names; use explicit aliases")
-		}
-		names[column.Name()] = true
-		columns[i] = interfaces.ColumnInfo{Name: column.Name(), Type: c.MapType(column.DatabaseTypeName())}
+		return nil, nil, err
 	}
 	transferred = true
 	return rows, columns, nil
+}
+
+// OpenTableRead 以结构化查询的字段转换规则打开流式读取会话。
+func (c *PostgresqlConnector) OpenTableRead(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+
+	query, err := c.buildSelectBuilder(resource, params)
+	if err != nil {
+		return nil, err
+	}
+	query.LimitPart = nil
+	var count *sb.SelectBuilder
+	if params.NeedTotal {
+		count = table.StructuredCountQuery(query)
+	}
+	return c.openReadSession(ctx, query, count, resource, params)
+}
+
+// OpenSQLRead 为已通过只读策略校验的 Builder 查询打开流式读取会话。
+func (c *PostgresqlConnector) OpenSQLRead(ctx context.Context, query, count *sb.SelectBuilder) (interfaces.QueryPageSession, error) {
+	return c.openReadSession(ctx, query, count, nil, nil)
+}
+
+func (c *PostgresqlConnector) openReadSession(ctx context.Context, query, count *sb.SelectBuilder,
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+	statement, err := readStatement(query)
+	if err != nil {
+		return nil, err
+	}
+	var countStatement *table.SQLStatement
+	if count != nil {
+		rendered, err := readStatement(count)
+		if err != nil {
+			return nil, err
+		}
+		countStatement = &rendered
+	}
+	var localTimeColumns map[string]bool
+	if params != nil {
+		localTimeColumns = make(map[string]bool)
+		for name, nativeType := range queryColumnTypes(resource, params) {
+			if isZonedTimeType(nativeType) {
+				localTimeColumns[name] = true
+			}
+		}
+	}
+	session, err := table.OpenReadSession(ctx, c, statement, countStatement, resource, params, localTimeColumns)
+	return session, c.ClassifyQueryError(err)
+}
+
+func readStatement(query *sb.SelectBuilder) (table.SQLStatement, error) {
+	text, args, err := ToSql(query)
+	if err != nil {
+		failure := interfaces.NewConditionBuildError("SQL expression is not supported by PostgreSQL")
+		failure.Cause = err
+		return table.SQLStatement{}, failure
+	}
+	return table.SQLStatement{Text: text, Args: args}, nil
 }
 
 // ExecuteSQLBuilder 消费一次 Builder 结果，保留 bytea 原始字节和 NUMERIC 文本精度。
@@ -455,15 +484,22 @@ func (c *PostgresqlConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.S
 		result.Entries = append(result.Entries, entry)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate SQL builder rows: %w", postgresqlQueryError(err))
+		return nil, fmt.Errorf("failed to iterate SQL builder rows: %w", c.ClassifyQueryError(err))
 	}
 	total := int64(len(result.Entries))
 	result.TotalCount = &total
 	return result, nil
 }
 
+// ScanTableReadRow 读取结构化查询的一行，并保留投影指定的二进制列。
+func (*PostgresqlConnector) ScanTableReadRow(rows *sql.Rows, columns []interfaces.ColumnInfo,
+	_ map[string]*interfaces.Property, _ *string, binaryContentColumns map[string]bool) (map[string]any, error) {
+
+	return table.ScanTableReadRow(rows, columns, binaryContentColumns)
+}
+
 // ScanSQLBuilderRow reads one retained SQL row and classifies source errors.
 func (c *PostgresqlConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
 	row, err := table.ScanSQLRow(rows, columns)
-	return row, postgresqlQueryError(err)
+	return row, c.ClassifyQueryError(err)
 }

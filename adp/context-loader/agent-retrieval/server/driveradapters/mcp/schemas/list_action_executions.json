@@ -25,7 +25,7 @@
       },
       "trigger_type": {
         "type": "string",
-        "description": "按触发方式过滤（可选）：manual/scheduled。"
+        "description": "按触发方式过滤（可选）：manual 手动、scheduled 定时、agent 由 Agent 经 Context Loader 发起。"
       },
       "start_time_from": {
         "type": "integer",

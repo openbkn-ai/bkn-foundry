@@ -149,15 +149,15 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = common.UnmarshalPreciseJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = common.UnmarshalJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		if err := common.UnmarshalPreciseJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
+		if err := common.UnmarshalJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
 			return nil, err
 		}
 	}
 	if indexConfig.Valid && indexConfig.String != "" {
-		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
+		_ = common.UnmarshalJSON([]byte(indexConfig.String), &resource.IndexConfig)
 	}
 	resource.LogicDefinitionStr = logicDefinition.String
 	return resource, nil
@@ -676,9 +676,9 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 	return rowsAffected, nil
 }
 
-// UpdateEnabled updates only a Resource's enabled state and audit fields.
-func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64,
-	updater interfaces.AccountInfo) error {
+// UpdateEnabled updates a Resource's enabled state and audit fields if its version matches.
+func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool,
+	expectedUpdateTime, updateTime int64, updater interfaces.AccountInfo) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource enabled")
 	defer span.End()
 
@@ -689,18 +689,25 @@ func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled 
 		Set("f_updater_type", updater.Type).
 		Set("f_update_time", updateTime).
 		Where(sq.Eq{"f_id": id}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return 0, err
 	}
-	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+	result, err := ra.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
-		return err
+		return 0, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }
 
 // UpdateLocalIndexName updates only the local index name so asynchronous build
@@ -733,9 +740,8 @@ func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-// UpdateLocalIndexState atomically updates the Resource-owned index state.
 func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-	localIndexStatus string, localIndexName string, syncMark string) (bool, error) {
+	localIndexStatus, localIndexName, syncMark string, expectedUpdateTime, updateTime int64) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource local index state")
 	defer span.End()
 
@@ -744,7 +750,8 @@ func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx,
 		Set("f_local_status", localIndexStatus).
 		Set("f_local_index_name", localIndexName).
 		Set("f_sync_mark", syncMark).
-		Where(sq.Eq{"f_id": id})
+		Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id, "f_update_time": expectedUpdateTime})
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -769,7 +776,33 @@ func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx,
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return rowsAffected > 0, nil
+	return rowsAffected == 1, nil
+}
+
+func (ra *resourceAccess) CompareAndSetSyncMark(ctx context.Context, tx *sql.Tx, id, indexName, indexStatus, previous, next string) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Compare and set resource sync mark")
+	defer span.End()
+
+	query, args, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_sync_mark", next).
+		Where(sq.Eq{
+			"f_id": id, "f_local_index_name": indexName, "f_local_status": indexStatus, "f_sync_mark": previous,
+		}).
+		ToSql()
+	if err != nil {
+		return false, err
+	}
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, query, args...)
+	} else {
+		result, err = ra.db.ExecContext(ctx, query, args...)
+	}
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected == 1, err
 }
 
 // UpdateSemanticMetadata updates only fields owned by semantic understanding

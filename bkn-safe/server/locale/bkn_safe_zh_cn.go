@@ -32,7 +32,7 @@ var bknSafeZhCN = i18n.I18nMessages{
 		"BknSafe.Auth.AccountPlaceholder":                    "账号",
 		"BknSafe.Auth.PasswordPlaceholder":                   "密码",
 		"BknSafe.Auth.LoginButton":                           "登录",
-		"BknSafe.Auth.LoginAlternative":                      "或",
+		"BknSafe.Auth.LoginAlternative":                      "其他登录方式",
 		"BknSafe.Auth.LoginWithPrefix":                       "使用 ",
 		"BknSafe.Auth.LoginWithSuffix":                       " 登录",
 		"BknSafe.Auth.ChangePasswordTitle":                   "修改密码",

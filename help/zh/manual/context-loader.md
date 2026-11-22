@@ -68,29 +68,44 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 
 ### MCP 工具列表
 
-配置完成后，MCP 客户端可获取以下工具（以部署实际返回为准，用 `openbkn context info` 查看当前目录）：
+配置完成后，MCP 客户端可获取以下工具（以部署实际返回为准，用 `openbkn context info` 查看当前目录；许可证覆盖的企业版工具会额外出现）：
 
 | 工具 | 用途 |
 |------|------|
-| `search_schema` | 搜索对象类 / 关系类 / 行动类 / 指标的 Schema |
+| `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
+| `list_knowledge_networks` | 列出知识网络 |
 | `get_kn_detail` | 取知识网络 Schema，支持 `summary` 骨架与逐层下钻 |
-| `get_object_types` / `get_relation_types` | 按 id 取对象类 / 关系类的完整定义；`get_object_types` 不传 id 时按页列举对象类索引 |
+| `search_schema` | 搜索对象类 / 关系类 / 行动类 / 指标的 Schema |
+| `get_object_types` / `get_relation_types` | 按 id 取对象类 / 关系类的完整定义；不传 id 时按页列举索引 |
+| `search_instance` | 用一句自然语言直接召回实例，并附带对象类精简定义 |
 | `query_object_instance` | 条件查询对象实例 |
 | `query_instance_subgraph` | 沿关系类路径查询实例子图 |
+| `explore_subgraph` | 不预先知道路径时，从起点对象类按方向与跳数探索关联子图 |
 | `get_logic_properties_values` | 计算逻辑属性（派生字段）取值 |
+| `run_cypher` | 用对象类名与关系类名写 Cypher 查询，适合聚合、排名与多跳问题 |
+| `query_metric` | 按已发布对象指标的固定口径取数 |
+| `drill_through_metric` | 查看 `query_metric` 某个结果桶中参与计算的对象实例 |
 | `get_action_info` | 取行动类信息、入参 Schema 与执行结果 Schema（`output_schema`） |
 | `execute_action` | 执行行动类 |
 | `get_action_execution` / `list_action_executions` | 查询行动执行状态与历史 |
-| `search_capabilities` | 在一个排序空间里检索该网络已挂载的全部能力:Skill、函数工具、API 工具与 MCP 工具 |
-| `list_knowledge_networks` | 列出知识网络 |
-| `bkn_start_interaction` / `bkn_finish_interaction` | 会话生命周期（业务可追溯性） |
+| `list_skills` | 浏览平台已发布的 Skill（不受知识网络挂载约束） |
+| `get_skill_content` / `read_skill_file` | 读技能主文档 SKILL.md 与技能包内的文件 |
+| `execute_skill` | 在沙箱内执行技能包中的脚本；默认不装配，需设置 `EXECUTE_SKILL_ENABLED=true` |
+| `search_capabilities` | 在一个排序空间里检索该网络已挂载的全部能力：Skill、函数工具、API 工具与 MCP 工具 |
+| `execute_tool` | 调用已挂载到该网络的函数工具或 MCP 工具 |
+| `run_code` / `run_shell` | 在沙箱内执行 Python 代码或 shell 命令；Python 脚本内可直接调用业务工具 |
+| `search_native_tools` / `describe_native_tool` / `execute_native_tool` | 按需网关，仅精简入口 `/mcp-compact` 提供 |
+
+每个工具的入参、返回与适用场景见 API 文档[上下文加载 · MCP 服务 API](../../../docs/api/context-loader/mcp.yaml) 的「工具目录」一节。
+
+**精简入口**：`https://<访问地址>/api/agent-retrieval/v1/mcp-compact` 是第二个 MCP 端点，鉴权、受管会话与工具语义与 `/mcp` 相同，面向每次模型调用都携带全部工具定义的宿主。它只公布 14 个工具：两个生命周期工具，`list_knowledge_networks`、`get_kn_detail`、`search_schema`、`search_instance`、`query_object_instance`、`query_metric`、`drill_through_metric`、`run_cypher`、`query_instance_subgraph` 九个查询工具，以及三个网关工具。其余工具不出现在 `tools/list` 中，先用 `search_native_tools` 查找，再用 `execute_native_tool` 按目标工具名执行。
 
 `run_sql`、`list_resources`、`describe_resource` 已移除，MCP 和 REST 都不再提供（`POST /kn/run_sql` 等三条路由返回 404）：它们按调用者自己的数据资源授权返回物理列，绕开知识网络的属性级规则。
 要聚合用 `run_cypher`，要指标用 `query_metric`。
 
 `get_kn_detail` 在对象类超过 200、或关系类超过 600 的知识网络上只返回导航壳：概念组、三类概念的数量与一条 `notice`，三个概念数组回 `null`（`detail_level=full` 同样如此）。这类网络的全量 Schema 有一兆多，模型读不进去；该规模下先用概念组把范围收敛到 1-3 个分组，再用 `search_schema` 取概念；网络没划概念组时，`notice` 会改为让你直接调 `search_schema`。要按页走完这类网络的全部对象类，用 `get_object_types` 不传 `ids` 列举对象类索引（只有 id/name/comment，默认 50 条一页，响应带 `total_count` 与 `next_offset`），挑好再把 id 传回去取完整定义。
 
-每个工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
+除 `list_knowledge_networks`、`list_skills`、生命周期工具与网关工具外，其余工具都需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
 
 受管会话先调用 `bkn_start_interaction`：没有当前 Conversation 时传
 `conversation_mode=new`，不传 `conversation_id`；延续当前对话时传

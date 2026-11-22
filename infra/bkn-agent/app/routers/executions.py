@@ -45,7 +45,7 @@ from app.public_auth import (
     PUBLIC_AGENT_IDS,
     authorize_execution,
     authorize_network_setting,
-    get_public_account,
+    get_execution_account,
 )
 
 logger = logging.getLogger("bkn-agent.executions")
@@ -116,6 +116,14 @@ async def _owned(session, run_id, account):
     ):
         raise not_found("task", run_id)
     kn_id = info["request"]["context"]["kn_id"]
+    # An execution credential reaches only runs on its network and Agent: any
+    # other run of the same person is not there for it.
+    if account.delegation is not None and (
+        info["protocol"] != _PROTOCOL
+        or kn_id != account.delegation.kn_id
+        or task.agent_id != account.delegation.agent_id
+    ):
+        raise not_found("task", run_id)
     if info["protocol"] == METRIC_PROTOCOL:
         if task.agent_id != METRIC_AGENT_ID or not info.get("metric_request"):
             raise not_found("task", run_id)
@@ -128,7 +136,7 @@ async def _owned(session, run_id, account):
 @router.get("/executions/{run_id}", response_model=ExecutionOut)
 async def get_execution(
     run_id: str,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     return _decode(await _owned(session, run_id, account))
@@ -137,7 +145,7 @@ async def get_execution(
 @router.post("/executions/{run_id}/cancel", response_model=ExecutionOut)
 async def cancel_execution(
     run_id: str,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     task = await _owned(session, run_id, account)
@@ -173,14 +181,17 @@ async def cancel_execution(
             "result stays authoritative. "
             "Successful result is persisted before "
             "result/terminal; terminal.status is succeeded/failed/cancelled. Retries return "
-            "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution.",
+            "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution. "
+            "While a run is quiet, the stream sends an SSE comment line (`: ping`) every "
+            "BKN_AGENT_SSE_HEARTBEAT_S seconds (15 by default), so a proxy does not close it as idle; "
+            "it carries no event and clients ignore it.",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         }
     },
 )
 async def execute(
     req: ExecutionRequest,
-    account: Account = Depends(get_public_account),
+    account: Account = Depends(get_execution_account),
     session: AsyncSession = Depends(get_session),
 ):
     return await _execute_impl(req, account, session)
@@ -205,6 +216,13 @@ async def _execute_impl(
             "BknAgent.Execution.ContextInvalid",
             field="draft_revision requires kn_version=draft",
         )
+    # An execution credential acts only on the network and Agent it was issued for.
+    if account.delegation is not None and (
+        metric_request
+        or req.agent_id != account.delegation.agent_id
+        or req.context.kn_id != account.delegation.kn_id
+    ):
+        raise err(403, "BknAgent.Execution.Forbidden")
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
         raise not_found("agent", req.agent_id)
@@ -558,8 +576,52 @@ def _provider_context(req: ExecutionRequest, provider):
         )
 
 
+_HEARTBEAT = b": ping\n\n"
+
+
+class _HeartbeatResponse(StreamingResponse):
+    """An event stream that writes an SSE comment line whenever it has been quiet for
+    `config.SSE_HEARTBEAT_S`. A model thinking or a tool running can send nothing for minutes,
+    and a proxy closes a connection that stays quiet for its read timeout; a closed connection
+    cancels the run. The events are still read in this task, so a cancel, the run's timeout and a
+    disconnect reach the generator as before; the beat only writes between them."""
+
+    async def stream_response(self, send):
+        await send({"type": "http.response.start", "status": self.status_code, "headers": self.raw_headers})
+        loop = asyncio.get_running_loop()
+        interval = config.SSE_HEARTBEAT_S
+        lock = asyncio.Lock()
+        last = loop.time()
+
+        async def write(chunk, more=True):
+            nonlocal last
+            async with lock:
+                await send({"type": "http.response.body", "body": chunk, "more_body": more})
+                last = loop.time()
+
+        async def beat():
+            while True:
+                await asyncio.sleep(max(0.0, last + interval - loop.time()))
+                if loop.time() - last >= interval:
+                    await write(_HEARTBEAT)
+
+        heartbeat = asyncio.create_task(beat()) if interval > 0 else None
+        if heartbeat is not None:
+            # A beat that failed on a closed connection says nothing the stream does not.
+            heartbeat.add_done_callback(lambda task: task.cancelled() or task.exception())
+        try:
+            async for chunk in self.body_iterator:
+                if not isinstance(chunk, bytes | memoryview):
+                    chunk = chunk.encode(self.charset)
+                await write(chunk)
+        finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
+        await write(b"", more=False)
+
+
 def _response(events):
-    return StreamingResponse(
+    return _HeartbeatResponse(
         events,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

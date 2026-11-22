@@ -53,9 +53,9 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.CreateSemanticUnderstandingTaskRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(err.Error())
+			WithErrorDetails("invalid request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -351,7 +351,7 @@ func (r *restHandler) applySemanticUnderstandingTask(c *gin.Context, visitor hyd
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.ApplySemanticUnderstandingTaskRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

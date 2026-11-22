@@ -12,14 +12,14 @@
 |---|---|---|
 | [schema-search.yaml](schema-search.yaml) | Schema retrieval | `POST /kn/search_schema`, `POST /kn/kn_search` |
 | [kn-explore.yaml](kn-explore.yaml) | Knowledge-network exploration | `POST /kn/list_knowledge_networks`, `POST /kn/get_kn_detail`, `POST /kn/get_object_types`, `POST /kn/get_relation_types` |
-| [object-instance.yaml](object-instance.yaml) | Object-instance queries | `POST /kn/query_object_instance` |
-| [instance-subgraph.yaml](instance-subgraph.yaml) | Instance-subgraph queries | `POST /kn/query_instance_subgraph` |
+| [object-instance.yaml](object-instance.yaml) | Object-instance queries | `POST /kn/query_object_instance`, `POST /kn/search_instance` |
+| [instance-subgraph.yaml](instance-subgraph.yaml) | Instance-subgraph queries | `POST /kn/query_instance_subgraph`, `POST /kn/explore_subgraph` |
 | [cypher.yaml](cypher.yaml) | Cypher queries | `POST /kn/run_cypher` |
 | [logic-property.yaml](logic-property.yaml) | Logical-property evaluation and metric queries | `POST /kn/logic-property-resolver`, `POST /kn/query_metric` |
 | [action.yaml](action.yaml) | Action retrieval and execution | `POST /kn/get_action_info`, `POST /kn/execute_action`, `POST /kn/get_action_execution`, `POST /kn/list_action_executions` |
 | [skill.yaml](skill.yaml) | Skill reading and execution | `POST /kn/list_skills`, `POST /kn/get_skill_content`, `POST /kn/read_skill_file`, `POST /kn/execute_skill` |
 | [tool.yaml](tool.yaml) | Mounted-capability retrieval and tool execution | `POST /kn/search_capabilities`, `POST /kn/execute_tool` |
-| [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
+| [mcp.yaml](mcp.yaml) | MCP service and the full MCP tool catalog | `GET /mcp/info`, `POST /mcp`, `GET /mcp-compact/info`, `POST /mcp-compact` |
 
 ## Sandbox OSDK REST routing
 
@@ -127,7 +127,7 @@ Two things follow that are worth stating, because both have been got wrong:
 ## Conventions
 
 - **OpenAPI version:** 3.0.3.
-- **Authentication:** `Authorization: Bearer <token>` with either an OAuth access token or a self-issued AppKey with the `bak_` prefix. The service derives the account from the credential; callers do not send `x-account-id` or `x-account-type`.
+- **Authentication:** `Authorization: Bearer <token>` with either an OAuth access token or a self-issued AppKey with the `bak_` prefix. The MCP endpoints also accept a `bex_` execution credential, which bkn-safe issues to a background run for the person who started it. It acts as that person, every tool call is held to the one knowledge network it was issued for (`list_knowledge_networks` is refused), and every other route refuses it. The service derives the account from the credential; callers do not send `x-account-id` or `x-account-type`.
 - **All operations use POST:** This includes query-like operations and operations without a request body, such as `list_knowledge_networks`.
 - **Managed execution:** While capture is enabled, `execute_action` and `execute_skill` require a nonempty `bkn_context` with `conversation_id` and `interaction_id`. A missing or empty context returns HTTP 400 `conversation_required` with `required_action: create_conversation` before execution. When capture is disabled, the MCP start tool still creates a Conversation and Interaction and returns their IDs with `capture_enabled=false`, `trace_recorded=false` and `code=capture_disabled`. MCP business tools require those IDs but execute without recording Operations, receipts or evidence. REST `execute_tool`, like `search_schema`, allows missing or empty `bkn_context` without a Trace Core probe. Authentication, network execute permissions and tool-mount checks still apply. Explicit nonempty context remains validated by the managed guard. When Trace Core is unavailable, REST execution uses a bounded, read-only probe and continues without context or Trace only after an infrastructure failure is confirmed. Read operations, including `run_cypher`, may run ad hoc without a context; providing one enables managed execution when available.
 - **Response format:** Every operation accepts `?response_format=toon` and returns `application/toon`, which represents homogeneous arrays as tables to reduce token usage. The default is `json`.

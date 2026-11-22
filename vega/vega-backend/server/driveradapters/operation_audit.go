@@ -180,7 +180,7 @@ func captureOperationAuditRequest(request *http.Request) map[string]any {
 		return nil
 	}
 	var value map[string]any
-	if common.UnmarshalPreciseJSON(body, &value) != nil {
+	if common.UnmarshalJSON(body, &value) != nil {
 		return nil
 	}
 	return value

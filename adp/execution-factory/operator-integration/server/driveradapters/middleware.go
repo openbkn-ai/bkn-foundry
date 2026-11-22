@@ -43,10 +43,20 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		ctx := c.Request.Context()
 		var tokenInfo *interfaces.TokenInfo
 		var err error
-		if token := drivenadapters.GetToken(c); appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix) {
+		token := drivenadapters.GetToken(c)
+		delegated := strings.HasPrefix(token, interfaces.ExecutionGrantPrefix)
+		switch {
+		case delegated && (appKeys == nil || !executionRoute(c.Request.Method, c.FullPath())):
+			// An execution credential runs only what an answer on its network runs.
+			err = oerrors.DefaultHTTPError(ctx, http.StatusUnauthorized, "execution credentials are not accepted here")
+		case delegated || appKeys != nil && strings.HasPrefix(token, interfaces.AppKeyPrefix):
 			tokenInfo, err = appKeys.Verify(ctx, token)
-		} else {
+		default:
 			tokenInfo, err = hydra.Introspect(c)
+		}
+		if err == nil && delegated && c.GetHeader(interfaces.HeaderKnID) != tokenInfo.DelegatedKnID {
+			// The request must name the network the credential was issued for.
+			err = oerrors.DefaultHTTPError(ctx, http.StatusForbidden, "execution credential is for another knowledge network")
 		}
 		if err != nil {
 			rest.ReplyError(c, err)
@@ -67,6 +77,30 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 		c.Request.Header.Set(string(interfaces.IsPublic), "true")
 		c.Next()
 	}
+}
+
+// executionRoutes are the public routes an execution credential may call, as an answer on its
+// network uses them: running a Function, and listing, reading and running the tools, MCP proxies
+// and Skills mounted for it.
+var executionRoutes = map[string]bool{
+	"POST /function/execute":                true,
+	"GET /tool-box/list":                    true,
+	"GET /tool-box/:box_id/tools/list":      true,
+	"GET /tool-box/:box_id/tool/:tool_id":   true,
+	"POST /tool-box/:box_id/proxy/:tool_id": true,
+	"GET /mcp/proxy/:mcp_id/tools":          true,
+	"POST /mcp/proxy/:mcp_id/tool/call":     true,
+	"GET /skills/available":                 true,
+	"GET /skills/:skill_id/content":         true,
+	"POST /skills/:skill_id/files/read":     true,
+	"POST /skills/:skill_id/execute":        true,
+}
+
+// executionRoute tells whether a public route, as the router matched it under its version
+// prefix, takes an execution credential.
+func executionRoute(method, route string) bool {
+	_, rest, found := strings.Cut(route, "/api/agent-operator-integration/v1/")
+	return found && executionRoutes[method+" /"+rest]
 }
 
 // Internal interface Header authentication account information processing middleware.

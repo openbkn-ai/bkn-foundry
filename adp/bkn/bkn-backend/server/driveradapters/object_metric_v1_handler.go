@@ -376,8 +376,15 @@ func (r *restHandler) checkObjectMetricVersionDeletion(c *gin.Context, vis hydra
 	if !ok {
 		return
 	}
-	check, err := r.oms.CheckVersionDeletion(objectMetricContext(c, vis), c.Param("kn_id"),
-		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	// A read like any other: kn_version selects the network version checked, while version is
+	// the metric's own version.
+	r.useKNVersionService()
+	ctx := objectMetricContext(c, vis)
+	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
+	if !ok {
+		return
+	}
+	check, err := r.oms.CheckVersionDeletion(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return

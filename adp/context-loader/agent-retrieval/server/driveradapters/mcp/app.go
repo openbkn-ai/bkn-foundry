@@ -279,6 +279,9 @@ func newMCPServerForProfile(
 		// "no such tool", not "conversation_required", or the paid surface
 		// announces itself to anyone probing.
 		server.WithToolHandlerMiddleware(mcptool.GateMiddleware()),
+		// Before the lifecycle guard: a call outside an execution credential's
+		// network is refused before it records anything.
+		server.WithToolHandlerMiddleware(delegationScopeMiddleware()),
 		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
 		// Not just a listing filter. Since mcp-go v0.55.0 the filter also runs
 		// on tools/call, and a tool it drops is refused by mcp-go itself with

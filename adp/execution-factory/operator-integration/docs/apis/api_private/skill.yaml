@@ -443,7 +443,7 @@ paths:
   /skills/{skill_id}/execute:
     post:
       summary: "执行 Skill"
-      description: "执行工厂通过 Session Pool 获取可用 Sandbox 会话，上传 Skill 压缩包，并在上传接口返回的工作目录中执行入口命令。"
+      description: "执行工厂通过 Session Pool 获取可用 Sandbox 会话，上传 Skill 压缩包，并在上传接口返回的工作目录中执行入口命令。执行的是已发布版本（与 content、files/read 读到的版本一致），不是未发布的编辑态；Skill 未发布或已下线时返回 404。"
       tags:
         - "Skill 执行"
       parameters:
@@ -1161,7 +1161,7 @@ components:
               description: "执行工厂从 Session Pool 获取的 Sandbox 会话 ID"
             work_dir:
               type: string
-              description: "Sandbox 上传接口返回的解压目录，作为 execute-sync 的 `working_directory`"
+              description: "Sandbox 上传接口返回的解压目录，作为 execute-sync 的 `working_directory`。形如 `skills/<skill_id>/<snapshot>`，`<snapshot>` 由包内各文件路径及内容摘要算出：内容相同的包共用同一目录，内容不同的包互不覆盖"
             file_name:
               type: string
               description: "上传的 Skill 压缩包文件名"
@@ -1176,7 +1176,7 @@ components:
               description: "ZIP 自动解压时成功写入的文件数量"
             skipped_file_count:
               type: integer
-              description: "ZIP 自动解压时因冲突被跳过的文件数量"
+              description: "ZIP 自动解压时因目标路径已有文件而跳过的文件数量；同一快照目录中已有的文件与包内内容相同"
             command:
               type: string
               description: "实际执行的入口命令"

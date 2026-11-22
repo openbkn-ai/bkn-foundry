@@ -40,6 +40,25 @@ type localIndexManager struct {
 	capabilityErrorExpires time.Time
 }
 
+type localIndexReadSession struct {
+	interfaces.QueryPageSession
+	resource *interfaces.Resource
+	params   *interfaces.ResourceDataQueryParams
+}
+
+func (s *localIndexReadSession) ReadPage(ctx context.Context, limit int) (*interfaces.QueryPage, error) {
+	page, err := s.QueryPageSession.ReadPage(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := &interfaces.ResourceDataQueryResult{Entries: page.Entries}
+	if err := normalizeQueryJSONValues(s.resource, s.params, result); err != nil {
+		return nil, err
+	}
+	page.Entries = result.Entries
+	return page, nil
+}
+
 var analyzerCandidates = []string{"standard", "english", "ik_max_word", "hanlp_standard", "hanlp_index"}
 
 // NewLocalIndexManager creates a LocalIndexManager.
@@ -280,6 +299,30 @@ func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName strin
 		return nil, err
 	}
 	return result, nil
+}
+
+func (lim *localIndexManager) OpenDocumentRead(ctx context.Context, indexName string, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, keepAlive time.Duration) (interfaces.QueryPageSession, error) {
+	if err := lim.validateQueryFields(resource, params); err != nil {
+		return nil, err
+	}
+	queryResource, err := lim.resourceForQuery(resource)
+	if err != nil {
+		return nil, err
+	}
+	reader, ok := lim.lic.(interfaces.IndexReadSessionConnector)
+	if !ok {
+		return nil, fmt.Errorf("local index connector does not support snapshot pagination")
+	}
+	session, err := reader.OpenIndexRead(ctx, indexName, queryResource, params, keepAlive)
+	if err != nil {
+		return nil, err
+	}
+	return &localIndexReadSession{
+		QueryPageSession: session,
+		resource:         resource,
+		params:           params,
+	}, nil
 }
 
 func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error) {

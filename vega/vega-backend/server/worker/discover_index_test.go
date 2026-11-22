@@ -325,6 +325,7 @@ func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 		GetIndexMeta(gomock.Any(), &interfaces.IndexMeta{Name: "products"}).
 		DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
 			index.MappingMeta = map[string]any{"description": "新 mapping 说明", "owner": "search-team"}
+			index.ObjectFields = []string{"payload"}
 			index.Mapping = map[string]interfaces.IndexFieldMeta{
 				"empty":  {Name: "empty", Type: "keyword", Description: "新字段说明"},
 				"source": {Name: "source", Type: "keyword", Description: "新字段说明"},
@@ -340,10 +341,12 @@ func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 			assert.NotContains(t, updated.SourceMetadata, "original_description")
 			assert.NotContains(t, updated.SourceMetadata, "original_name")
 			assert.Equal(t, map[string]any{"description": "新 mapping 说明", "owner": "search-team"}, updated.SourceMetadata["mapping_meta"])
+			assert.Equal(t, []any{"payload"}, updated.SourceMetadata["object_fields"])
 			fields := make(map[string]*interfaces.Property, len(updated.SchemaDefinition))
 			for _, field := range updated.SchemaDefinition {
 				fields[field.Name] = field
 			}
+			assert.NotContains(t, fields, "payload")
 			assert.Equal(t, "新字段说明", fields["empty"].Description)
 			assert.Equal(t, "新字段说明", fields["source"].Description)
 			assert.Equal(t, "新字段说明", fields["source"].OriginalDescription)

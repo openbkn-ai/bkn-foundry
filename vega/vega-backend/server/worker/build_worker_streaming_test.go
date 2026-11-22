@@ -79,7 +79,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 		task := &interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending}
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "`app`.`orders`"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(&interfaces.Catalog{ID: "c1", Enabled: true, ConnectorType: "mysql", ConnectorCfg: interfaces.ConnectorConfig{"databases": []string{"app"}}}, nil)
-		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "incomplete table metadata").Return(true, nil)
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "incomplete table metadata", nil).Return(true, nil)
 		require.NoError(t, worker.Run(context.Background(), task))
 	})
 
@@ -100,7 +100,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 			ConnectorType: "postgresql",
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, nil)
-		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "PostgreSQL streaming build requires connector_config.database").
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "PostgreSQL streaming build requires connector_config.database", nil).
 			Return(true, nil)
 
 		require.NoError(t, sh.Run(context.Background(), task))
@@ -340,7 +340,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 			} {
 				t.Run(operation+"/"+tc.logicalType, func(t *testing.T) {
 					var event map[string]any
-					require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
+					require.NoError(t, common.UnmarshalJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
 					after := event["payload"].(map[string]any)["after"].(map[string]any)
 					lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
 					worker := &streamingBuildWorker{lim: lim}

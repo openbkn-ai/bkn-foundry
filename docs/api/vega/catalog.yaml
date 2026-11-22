@@ -16,16 +16,17 @@ info:
 
     创建和显式配置更新先做本地配置校验，再沿用物理 Catalog 流程执行连接测试；
     成功保存为 `healthy`，连接失败默认不保存，`allow_unhealthy=true` 时可保存为 `unhealthy`。
-    连接测试、显式预检和周期健康检查共用连接器 TestConnection，HTTP API 实现仅做 TCP/TLS 探测，
-    不登录、不发送 HTTP 请求、不验证凭据或业务访问权限。
+    连接测试、显式预检和周期健康检查共用连接器 TestConnection。HTTP API 配置 login_request 时
+    执行一次登录并验证响应契约及成功规则；未配置时仅执行 TCP/TLS 探测。
     API Catalog 沿用物理目录的健康检查计划：默认继承平台计划，也可显式启用、修改或禁用。
-    HTTP API 连接测试只验证目标 TCP 连通性，HTTPS 额外完成使用默认信任链和主机名校验的 TLS 握手；
-    不发送 HTTP 请求、不登录、不验证凭据或业务权限。健康结果仅代表该传输层可达性，
-    不能作为 read Resource 业务验证结果。实际认证与 read Resource 的业务验证随后续 Resource 执行交付。
+    Catalog 测试不选择 Resource，不接收 scope、resource_id 或分页选项；业务读取及映射验证通过
+    Resource 保存前验证或已有 ResourceData 查询入口执行。连接测试成功不代表业务 Resource 已验证。
+    底层 Ping 始终只验证 TCP 连通性及 HTTPS 默认信任链、主机名和 TLS 握手，不发送 HTTP 请求。
+    普通 HTTP 使用明文 TCP，HTTPS 的探测、登录和业务请求最低使用 TLS 1.3。
     通用 HTTP 连接器声明 SupportDiscover=false，不支持发现任务或发现计划；探查入口依据连接器声明的能力校验，不按名称 http 或类别 api 一律拒绝。配置结构见 `HTTPAPIConnectorConfig`。
     连接器固定配置字段名按定义精确区分大小写；大小写变体按未知字段忽略，不参与解码。`variables` 的动态成员名及驱动 options 的成员名和值保持原样，不递归改名。
     Token、API Key 和其他自定义参数及凭据统一存入 `variables`，
-    `sensitive_variables` 直接列出其中需要保护的成员名，例如 `["app_secret"]`。模板仍直接使用 `{{ app_secret }}`。同名顶层字段和 variables 成员同时存在时，加密、解密及普通读取隐藏均处理两处，不能因顶层字段存在而漏处理变量。
+    每个变量使用 `{value, sensitive}` 声明，sensitive 省略时为 false，敏感值现阶段必须为字符串；不再使用独立的 sensitive_variables 名单。模板仍直接使用 `{{ app_secret }}`，执行器读取该声明的 value。普通读取保留变量名与 sensitive 标记，仅省略敏感 value；受保护存取只对 value 加解密，不改变普通 JSON 值。
     调用方提交敏感明文，不预先加密；创建或显式更新时，敏感值以大小写任意形式的 `enc:` 开头均返回 400，该限制不受 Crypto 开关影响。启用平台 Crypto 后，后端使用 AES-256-GCM 加密独立存储副本，保存 `ENC:Base64(nonce + 含认证标签的密文)`；nonce 由后端生成，与密文同字段保存，无需额外数据库列。
     显式关闭 Crypto 时沿用明文保存策略。开关只控制新写入：读取明文时保持原值，读取带 ENC: 标记的密文时始终使用原 AES 密钥解密；关闭后仍需保留该密钥，缺钥、编码错误或认证失败时明确报错，不回退为明文。不兼容 RSA 密文，不进行数据迁移。新配置的连接测试直接使用明文，不进行存储加解密，也不修改原请求。
 
@@ -224,7 +225,7 @@ paths:
 
         物理 Catalog（包括 HTTP API）的 category 由服务端从连接器取得，调用方不配置；逻辑 Catalog 保存空字符串。物理 Catalog 在持久化前执行一次连接测试。默认连接失败返回 400，且不会创建 Catalog；
         可传 `allow_unhealthy=true` 保存该 Catalog，并将其健康状态记为 `unhealthy`。
-        HTTP API 的成功仅表示 TCP/TLS 可达；`allow_unhealthy` 不豁免本地配置或版本校验。
+        HTTP API 按 login_request 是否存在验证登录或 TCP/TLS；`allow_unhealthy` 不豁免本地配置或版本校验。
       parameters:
         - name: allow_unhealthy
           in: query
@@ -458,14 +459,12 @@ paths:
       description: |
         使用请求中的 `connector_type` 与 `connector_config` 执行一次同步连接测试。
         本接口不创建或更新 Catalog，也不持久化健康状态；适用于创建或编辑表单保存前的“测试连接”。
-        HTTP API 类型与其他物理连接器共用显式测试接口，但仅执行目标 TCP/TLS 可达性探测；
-        与创建、配置更新及周期健康检查一致，不发送 HTTP 请求、不登录、不验证凭据或 read Resource。
-        TCP/TLS 可达不代表认证或业务读取成功。
+        HTTP API 配置了 login_request 时，执行一次登录并校验登录响应及成功规则；没有配置时仅验证
+        TCP/TLS 可达性，不猜测身份或业务接口。测试不发送 Resource 业务请求，不接收测试范围选择。
+        只消费 connector_type 和 connector_config；其它未声明字段按公共绑定默认行为忽略。
 
-        探测结果通过响应体 `success` 字段返回；目标不可达不视为 HTTP 错误：
-        - 连通 → 200 `{ success: true, message }`
-        - 连不通 → 200 `{ success: false, message }`
-        - 非 2xx 仅用于请求、鉴权、参数校验或服务内部错误。
+        测试完成通过 200 响应体 success 表示结果：登录或连接验证通过为 true，失败为 false。
+        定义初始化、请求、鉴权及内部错误沿用通用非 2xx 返回。未保存配置测试不写配置或健康状态。
 
         失败时 `message` 保留连接器返回的诊断详情（例如主机、端口、用户名、数据库名和驱动错误），
         但会替换连接器声明的密码、token 等敏感配置值，并限制异常超长的远端响应。
@@ -488,8 +487,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
         "500":
           $ref: "#/components/responses/InternalServerError"
   /catalogs/{id}/health-status:
@@ -529,27 +526,22 @@ paths:
     post:
       summary: 测试 catalog 连接
       description: |
-        以当前持久化的 `connector_config` 真实建立一次到数据源的连接，验证连通性。
-        与 `health-status`（异步定时检查的最近结果）不同，本端点是**同步实时探测**。
-        调用者必须拥有目标 Catalog 的 `modify` 权限。
-        HTTP API 类型与创建、配置更新和周期健康检查共用相同连接器测试；HTTP 仅建立 TCP 连接，
-        HTTPS 另验证默认信任链与目标主机名并完成 TLS 握手。不发送 HTTP 请求、不登录、不验证凭据或业务 API。
-        成功统一返回 `Connection test succeeded.`，表示对应连接器 TestConnection 通过；通用 HTTP 连接器的实际检查范围仍仅为 TCP/TLS，read Resource 业务验证由后续执行能力提供。
-
-        探测结果通过响应体 `success` 字段返回；连不通**不**视为 HTTP 错误：
-        - 连通 → 200 `{ success: true, message }`
-        - 连不通 → 200 `{ success: false, message }`
-        - 非 2xx 仅用于"请求 / 鉴权 / 服务内部"问题，与目标连通性无关。
-
-        失败时 `message` 保留连接器返回的诊断详情（例如主机、端口、用户名、数据库名和驱动错误），
-        但会替换连接器声明的密码、token 等敏感配置值，并限制异常超长的远端响应。
+        调用者必须拥有目标 Catalog 的 modify 权限。使用已保存的目录配置执行连接器 TestConnection，
+        不读取或解析请求体，不支持 scope、Resource 选择或分页输入。
+        HTTP API 有 login_request 时必须执行一次登录并验证响应契约及成功规则；没有时仅做 TCP/TLS。
+        不发送业务请求，Resource 业务验证通过其保存前验证或正常 ResourceData 查询完成。
+        验证通过/失败均用 200 的 success 表示，并沿用既有已保存 Catalog 健康结果更新规则。
+        初始化、权限、存在性与内部错误沿用原有非 2xx 语义；目标或凭据不能由测试输入覆盖。
+        不重试、重新登录、跟随重定向或自动翻页，临时认证状态在测试结束后释放。
       responses:
         "200":
-          description: 探测完成（成功或失败均返回，业务结果看 `success` 字段）
+          description: transport 探测结果，或指定 login/resource 范围的验证成功结果
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TestConnectionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -558,6 +550,7 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     OAuth2:
@@ -802,11 +795,11 @@ components:
             type: string
     HTTPAPIConnectorConfig:
       description: |
-        专业版 http 连接器的通用顶层配置由 field_config 声明：base_url、options、variables、sensitive_variables 和可选 login_request。
-        timeout_seconds 和 max_response_mib 位于 options；创建和显式配置更新沿用物理连接器测试流程，当前仅探测 TCP/TLS 可达性。
-        Token/API Key 等凭据统一放入 variables，并通过 sensitive_variables 声明保护；请求通过 Header/参数模板自行注入，例如 Authorization: Bearer {{ token }}。
-        不定义 auth_type 或顶层 token，不自动注入 Bearer Header。login_request 包含 request、response 和 success_rule，Cookie 由后续执行阶段的 HTTP Client/CookieJar 自动管理。
-        调用方提交敏感明文，创建或显式更新时拒绝以 enc: 开头的敏感值（忽略大小写）；Crypto 启用时后端加密存储，显式关闭时沿用明文保存。固定字段精确区分大小写，未知配置键（包括大小写变体）忽略，不作为可引用变量；variables 的动态成员名和值保持原样；不提供旧字段兼容或迁移。
+        专业版 http 连接器的通用顶层配置由 field_config 声明：base_url、options、variables 和可选 login_request。
+        timeout_seconds 和 max_response_mib 位于 options；创建、显式配置更新及健康检查均执行 TestConnection，有 login_request 验证登录，没有则仅探测 TCP/TLS。
+        Token/API Key 等凭据统一放入 variables，每项通过 sensitive=true 声明保护；请求通过 Header/参数模板自行注入，例如 Authorization: Bearer {{ token }}，无需访问存储包装层的 value 字段。
+        不定义 auth_type 或顶层 token，不自动注入 Bearer Header。login_request 包含 request、response 和 success_rule，Cookie 由本次调用的 HTTP Client/CookieJar 自动管理。
+        调用方提交敏感明文，创建或显式更新时拒绝以 enc: 开头的敏感值（忽略大小写）；Crypto 启用时后端加密存储，显式关闭时沿用明文保存。固定字段精确区分大小写，未知配置键（包括大小写变体）忽略，不作为可引用变量；variables 的动态成员名及 value 内的业务 JSON 保持原样；旧 sensitive_variables 名单作为未知字段忽略，不参与敏感保护；变量仍须使用 value/sensitive 包装，不提供旧字段转换或迁移。
       type: object
       additionalProperties: true
       required: [base_url]
@@ -814,41 +807,67 @@ components:
         base_url:
           type: string
           format: uri
-          description: HTTP/HTTPS 服务根地址；不得包含内嵌用户凭据、Query 或 fragment。
+          description: HTTP/HTTPS 服务根地址。HTTP 使用明文，HTTPS 要求 TLS 1.3。不得包含内嵌用户凭据、Query 或 fragment。
         options:
           type: object
-          description: HTTP 连接与执行参数；省略时使用默认值，未知选项忽略。不得作为模板变量引用，不包含凭据。
+          description: HTTP 连接与执行参数。数值选项使用整数字面量（如 30），拒绝 30.0 和 3e1。省略时使用默认值，未知选项忽略。不得作为模板变量引用，不包含凭据。
           additionalProperties: true
           properties:
             timeout_seconds:
               type: integer
               minimum: 1
-              description: 整次调用预算（秒）；省略时初始默认 30 秒，运行时受平台硬上限约束。
+              description: 每次出站调用超时（秒）；省略时默认 30 秒，固定上限为 300 秒。登录和业务 HTTP 请求分别计时，覆盖发送及响应正文读取；无登录时用于 TCP/TLS 探测。校验、构造和结果映射不计入该超时，流程沿用原始上下文的取消信号；连接测试入口不再额外创建超时。
             max_response_mib:
               type: integer
               minimum: 1
-              description: 单个解压后响应上限（MiB）；省略时初始默认 10 MiB，运行时受平台硬上限约束。
+              description: 单个解压后响应上限（MiB）；省略时默认 10 MiB，运行时上限为 50 MiB，默认值和上限由常量定义。
         variables:
           type: object
-          description: 自定义参数及凭据，包含 Token/API Key；模板仅引用此对象的成员，如 {{ token }}。名称须以字母开头，后续只含字母、数字或下划线，不得与当前通用顶层字段或系统/模板保留名冲突。被列入 sensitive_variables 的值必须为字符串。
-          additionalProperties: true
+          description: 自定义参数及凭据，每个成员为 value/sensitive 声明；模板以 {{ token }} 或 {{ __variables.token }} 引用实际值，不解析 value 中的模板文本。名称须以字母开头，后续只含字母、数字或下划线，不得与当前通用顶层字段或系统/模板保留名冲突。
+          additionalProperties:
+            $ref: "#/components/schemas/HTTPAPICatalogVariable"
           propertyNames:
             allOf:
               - pattern: "^[A-Za-z][A-Za-z0-9_]*$"
               - not:
-                  enum: [base_url, options, variables, sensitive_variables, login_request]
-        sensitive_variables:
-          type: array
-          description: |
-            variables 中需要保护的直接成员名，省略视为空；如 token/app_secret 需由此声明。成员须存在且为字符串，不接受变量路径。普通读取隐藏对应值，Crypto 只决定新写入是否加密；受保护读取按原值处理明文，并使用同一 AES 密钥解密 ENC:Base64(nonce + 含认证标签的密文)。调用方不预先加密；保存时禁止以 enc: 开头的敏感明文（忽略大小写）。同名顶层字段和 variables 成员均受保护。
-          uniqueItems: true
-          items:
-            type: string
-            pattern: "^[A-Za-z][A-Za-z0-9_]*$"
+                  enum: [base_url, options, variables, login_request]
         login_request:
-          type: object
-          description: 可选登录定义，包含 request、response 和 success_rule；模板仅引用 variables。后续执行阶段在业务请求前登录，Cookie 在本次调用内自动传递；当前只做配置校验。
-          additionalProperties: true
+          description: 可选登录定义，复用公共 HTTP 操作结构，模板仅引用 Catalog variables；配置后在连接测试及业务请求前验证一次登录，禁止配置 Resource 业务 result_rows 或 result_total。
+          $ref: "resource.yaml#/components/schemas/HTTPOperationDefinition"
+    HTTPAPICatalogVariable:
+      type: object
+      description: |
+        Catalog 变量声明。value 自身缺省或为 null 均表示未配置，创建和完整配置替换拒绝未配置的值；允许 0、false、空字符串、对象与数组，对象或数组内部的 null 保持原样，不附加类型声明。
+        sensitive 省略或为 null 时按 false 处理；字符串、数字等其它类型由通用解码器拒绝；为 true 时 value 必须为字符串。普通读取返回同名声明与 sensitive=true，但省略 value，不以密文或掩码代替值。
+        Crypto 只决定敏感 value 的新写入是否加密；受保护读取使用现有密钥解密带 ENC: 标记的值。调用方提交明文，保存时禁止敏感明文以任意大小写的 enc: 开头。
+        元信息字段精确区分大小写，未知字段忽略；value 内的同名业务字段不解释为元信息。
+      required: [value]
+      additionalProperties: true
+      properties:
+        value:
+          description: 实际 JSON 值；自身不可为 null，嵌套业务值可为 null。普通读取中敏感变量省略本字段，元数据读取兼容缺省或 null 的敏感值，但不能直接作为完整替换输入。
+          not:
+            type: "null"
+        sensitive:
+          type: [boolean, "null"]
+          default: false
+          description: 仅 true 将本变量的 value 作为敏感字符串保护；省略或 null 均为 false，不改变系统的加密开关。
+      if:
+        required: [sensitive]
+        properties:
+          sensitive:
+            const: true
+      then:
+        properties:
+          value:
+            type: string
+      examples:
+        - value: tenant-example
+          sensitive: false
+        - value: credential-example
+          sensitive: true
+        - value:
+            optional: null
     CatalogRequest:
       description: |
         catalog 创建 / 更新请求体。
@@ -900,6 +919,7 @@ components:
         connector_config:
           description: |
             连接器配置；固定字段由 ConnectorType.field_config 定义并精确区分大小写，大小写变体按未知字段忽略；动态变量名及字段值保持原样。敏感值按明文提交，保存时禁止以 enc: 开头（忽略大小写）；后端按平台 Crypto 设置加密存储，原请求不改写。
+            Oracle 和 SQL Server 的数值超时选项以非负整数字面量表示秒数（如 30），拒绝 30.0 和 3e1。
             PUT 时省略或 null 表示保留已存配置、敏感字段和健康状态，并跳过连接测试；
             显式对象（包括 {}）按完整配置校验和替换，不合并已存字段。
             POST 时物理 Catalog 仍必须提供满足连接器要求的配置。HTTP API 结构见 HTTPAPIConnectorConfig；
@@ -928,8 +948,8 @@ components:
               description: |
                 可选的健康检查计划组合创建参数。physical Catalog（包括 HTTP API）缺失或 `null` 时创建
                 `mode=inherit` 的计划。提供对象时 `mode` 必填；仅 `mode=enabled` 时 `cron_expr` 必填；
-                创建失败时整个 Catalog 创建请求回滚。API Catalog 的检查只执行 TCP/TLS 可达性探测，
-                不发送 HTTP 请求、不登录、不验证凭据或业务读取。保存计划本身不立即执行周期任务；
+                创建失败时整个 Catalog 创建请求回滚。API Catalog 的检查按 login_request 是否存在验证登录或 TCP/TLS，
+                不执行 Resource 业务读取。保存计划本身不立即执行周期任务；
                 Catalog 创建及显式连接配置更新仍按正常流程同步执行 TestConnection。
               oneOf:
                 - $ref: "catalog-health-check-schedule.yaml#/components/schemas/CatalogHealthCheckScheduleRequest"
@@ -1036,7 +1056,7 @@ components:
         id:
           type: string
     CatalogConnectionTestRequest:
-      description: 未保存的物理 Catalog 连接测试请求
+      description: 未保存的物理 Catalog 连接测试请求；公共绑定忽略未声明字段，仅 connector_type 和非 null connector_config 必需
       type: object
       required:
         - connector_type
@@ -1084,17 +1104,17 @@ components:
           type: integer
           format: int64
         health_check_result:
-          description: 检查详情；成功统一记录 `Connection test succeeded.`，表示对应连接器 TestConnection 通过，实际检查范围由连接器定义。通用 HTTP 连接器仅检查 TCP/TLS，不验证认证或业务请求。失败时保留经过敏感配置值脱敏和长度限制的连接器错误信息。创建或更新时指定 `allow_unhealthy=true` 而连接失败，仍记录固定文案 `Connection test failed.`。
+          description: 检查详情；成功统一记录 `Connection test succeeded.`，表示对应连接器 TestConnection 通过，实际检查范围由连接器定义。通用 HTTP 连接器有 login_request 时验证登录，没有时仅检查 TCP/TLS；不验证业务 Resource。失败时保留连接器提供的安全摘要，通用 HTTP 连接器的摘要不含上游响应正文。创建或更新时指定 `allow_unhealthy=true` 而连接失败，仍记录固定文案 `Connection test failed.`。
           type: string
     TestConnectionResult:
-      description: 连接测试结果
+      description: 配置决定的连接测试结果；API 有登录请求时验证登录，没有时验证 TCP/TLS，不执行 Resource 业务请求
       type: object
       required:
         - success
       properties:
         success:
-          description: 是否连通
+          description: 配置所要求的连接或登录验证是否通过
           type: boolean
         message:
-          description: 详情；失败时为经过敏感配置值脱敏和长度限制的连接器错误信息
+          description: 详情。失败时为受长度限制的连接器安全摘要。通用 HTTP 连接器的摘要不含上游响应正文。
           type: string

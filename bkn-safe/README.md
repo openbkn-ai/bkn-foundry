@@ -300,7 +300,7 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 
 启用 `SAFE_SEED_ON_START` 时，启动会预置应用账户 `bkn-project-dataset-storage`
 （固定 UUID `e68bf3bc-3754-4b64-9fbd-e8919e544112`，无密码、不能登录），并只授予
-`catalog:*` 的 `create`。专业版 BKN 项目在未配置存储账户时用它创建自己的文档
+`catalog:*` 的 `create`。BKN 项目在未配置存储账户时用它创建自己的文档
 数据目录，目录内的权限来自创建者授权，不由 seed 授予。账户只在缺失时创建：
 管理员禁用后重启不会恢复启用；删除后重启会重新创建。账户名已被其他账户占用时
 只记日志，不阻断启动。
@@ -316,6 +316,23 @@ resolver 只能在此基础上收窄；core 会再次取最小档，不能通过
 升级需同时使用撤掉业务溯源 bootstrap Job 的 Trace Chart 和不再注入专用
 bootstrap Secret 的 bkn-agent Chart/镜像；不要单独删库或回滚到会重新创建
 账户的旧版 Safe。旧 Helm keep Secret 可留存，不再被新版本引用。
+
+## Background execution delegation
+
+The internal [execution-grant API](../docs/api/bkn-safe/execution-grants.yaml)
+lets a service run a background execution for a person after that person's own
+sign-in has lapsed, for example a scenario regression that outlasts the access
+token. While the person's token is still valid, the service issues a short-lived
+`bex_` credential bound to one knowledge network, one Agent and one run (at most
+six hours). The credential resolves to the delegator and holds no permission of
+its own: every introspection rechecks that the delegator is an enabled person who
+may still `view_detail` the network, and the services it reaches check the
+delegator's live permissions as usual. Only the secret's hash is stored; revoking
+clears it and leaves a tombstone, so a late issue cannot restore the grant.
+Callers that accept the credential must hold each request to the returned
+`kn_id` and `agent_id`. The `execution_grants` table is created at startup;
+[`20261120-execution-grants.sql`](server/migrations/20261120-execution-grants.sql)
+applies the same schema by hand.
 
 ## Project build delegation (K4)
 

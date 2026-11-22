@@ -510,6 +510,9 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
 	}
+	if err := p.aliasedSnapshots(query.Return); err != nil {
+		return nil, err
+	}
 	if query.Carried != nil {
 		if err := p.planCarried(query.Carried); err != nil {
 			return nil, err
@@ -615,13 +618,25 @@ func (p *planner) keepRelationshipsDistinct(pattern Pattern) error {
 // another hop, and a condition cannot ask that after the fact. Like the rule
 // itself this looks inside one MATCH only -- two undirected hops in separate
 // clauses never had to be distinct.
+//
+// Hops are compared by the relation type they resolved to, not by what the
+// query wrote: one relation type may be written by id in one hop and by name in
+// the other, and two relation types may share a name.
 func (p *planner) refuseUndirectedRepeats(pattern Pattern) error {
+	relationTypes := make([]string, len(pattern.Edges))
+	for i, edge := range pattern.Edges {
+		relationType, err := p.relationTypeOf(edge, edge.Left, edge.Right)
+		if err != nil {
+			return err
+		}
+		relationTypes[i] = relationType.RTID
+	}
 	for i, edge := range pattern.Edges {
 		if edge.Direction != Undirected {
 			continue
 		}
 		for j, other := range pattern.Edges {
-			if i == j || other.Clause != edge.Clause || other.Type != edge.Type {
+			if i == j || other.Clause != edge.Clause || relationTypes[j] != relationTypes[i] {
 				continue
 			}
 			return planErrorf(edge.Pos,
@@ -744,9 +759,9 @@ func (p *planner) addTable(node NodeRef) error {
 // leaves that open, so every reading the object types allow is kept and the
 // row matches if any of them holds.
 func (p *planner) addJoin(edge EdgeRef, left, right int) error {
-	relationType, err := p.schema.ResolveRelationType(edge.Type)
+	relationType, err := p.relationTypeOf(edge, left, right)
 	if err != nil {
-		return &PlanError{Pos: edge.Pos, Err: err}
+		return err
 	}
 	switch relationType.Type {
 	case interfaces.RELATION_TYPE_DIRECT:
@@ -848,6 +863,29 @@ func (p *planner) bindRelationship(edge EdgeRef, relationType *interfaces.Relati
 		mappings: mappings, digest: relationDigest(relationType, mappings), pos: edge.Pos,
 	}
 	return nil
+}
+
+// relationTypeOf resolves the relation type an edge names. A name several
+// relation types share settles on the one that joins the object types at the
+// edge's ends the way its arrow reads.
+func (p *planner) relationTypeOf(edge EdgeRef, left, right int) (*interfaces.RelationType, error) {
+	relationType, err := p.schema.ResolveRelationType(edge.Type, func(rt *interfaces.RelationType) bool {
+		for _, forwards := range p.readings(edge.Direction) {
+			source, target := left, right
+			if !forwards {
+				source, target = right, left
+			}
+			if p.objectType[source].OTID == rt.SourceObjectTypeID &&
+				p.objectType[target].OTID == rt.TargetObjectTypeID {
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
+		return nil, &PlanError{Pos: edge.Pos, Err: err}
+	}
+	return relationType, nil
 }
 
 // readings lists the ways an edge may be read: one for a directed pattern,

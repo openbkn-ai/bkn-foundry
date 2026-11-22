@@ -13,12 +13,12 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, ToolException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
-from app import dao, public_auth
+from app import dao, observability, public_auth
 from app.auth import Account
 from app.core.context_loader import _MCP_RECEIPT_TRUST_TOKEN
 from app.core.public_chat import PublicChat, project
@@ -510,7 +510,7 @@ def test_credential_identity_contract(monkeypatch, kind, info, expected):
     asyncio.run(run())
 
 
-def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
+def test_tool_scope_keeps_calls_on_the_run_network_and_drops_unscoped_code(monkeypatch):
     async def run():
         calls = []
 
@@ -542,8 +542,10 @@ def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
         # Tools that cannot enforce the network are never offered to the model.
         assert [tool.name for tool in guarded] == ["query"]
         assert await guarded[0].ainvoke({"kn_id": "network-1"}) == "ok"
-        assert "ToolScopeMismatch" in await guarded[0].ainvoke({"kn_id": "network-2"})
-        assert calls == [{"kn_id": "network-1"}]
+        # Another network, as a model miscopying the id writes it, is the run's
+        # network all the same: the call never leaves it.
+        assert await guarded[0].ainvoke({"kn_id": "network-2"}) == "ok"
+        assert calls == [{"kn_id": "network-1"}, {"kn_id": "network-1"}]
 
     asyncio.run(run())
 
@@ -950,6 +952,84 @@ def test_http_cancel_stops_active_stream_and_persists_terminal(monkeypatch):
             assert (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()[
                 "status"
             ] == "cancelled"
+
+    asyncio.run(run())
+
+
+def without_heartbeats(text):
+    return "".join(
+        f"{block}\n\n"
+        for block in text.split("\n\n")
+        if block and not block.startswith(":")
+    )
+
+
+def test_quiet_stream_sends_heartbeats_and_still_ends_with_the_result(monkeypatch):
+    """#3272: a run quiet for longer than a proxy's read timeout lost its connection and was
+    cancelled; comment lines now keep the stream alive between the events."""
+    from app.config import config
+
+    async def run():
+        async with environment(monkeypatch) as (client, _, _calls):
+
+            async def quiet(session, agent, req, account_id, account_type, *, public):
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+                public.answer.append("Answer")
+                public.prompt_version = 1
+
+                async def events():
+                    # A model thinking, or a tool running, sends nothing for a while.
+                    await asyncio.sleep(0.3)
+                    yield public.event("token", {"content": "Answer"})
+                    yield "event: done\ndata: {}\n\n"
+
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", quiet)
+            monkeypatch.setattr(config, "SSE_HEARTBEAT_S", 0.05)
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            assert response.status_code == 200, response.text
+            blocks = response.text.split("\n\n")
+            beats = [i for i, block in enumerate(blocks) if block == ": ping"]
+            token = next(i for i, block in enumerate(blocks) if block.startswith("event: token"))
+            assert beats and beats[0] < token
+            events = parse_sse(without_heartbeats(response.text))
+            assert [e for e, _ in events] == ["meta", "token", "usage", "result", "terminal"]
+            assert [d["sequence"] for _, d in events] == [1, 2, 3, 4, 5]
+            assert events[-1][1]["status"] == "succeeded"
+
+    asyncio.run(run())
+
+
+def test_cancel_reaches_a_quiet_run_while_heartbeats_are_sent(monkeypatch):
+    from app.config import config
+
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            started = asyncio.Event()
+
+            async def blocking(session, agent, req, account_id, account_type, *, public):
+                await dao.touch_thread(session, req.thread_id, agent.agent_id, account_id)
+
+                async def events():
+                    started.set()
+                    await asyncio.Event().wait()
+                    yield "unused"
+
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", blocking)
+            monkeypatch.setattr(config, "SSE_HEARTBEAT_S", 0.02)
+            pending = asyncio.create_task(client.post(URL, json=BODY, headers=AUTH))
+            await asyncio.wait_for(started.wait(), 2)
+            await asyncio.sleep(0.1)
+            async with factory() as session:
+                run_id = (await session.execute(select(TaskRow))).scalar_one().f_task_id
+            assert (await client.post(f"{URL}/{run_id}/cancel", headers=AUTH)).status_code == 200
+            stream = await asyncio.wait_for(pending, 2)
+            assert ": ping" in stream.text.split("\n\n")
+            assert parse_sse(without_heartbeats(stream.text))[-1][1]["status"] == "cancelled"
+            assert (await client.get(f"{URL}/{run_id}", headers=AUTH)).json()["status"] == "cancelled"
 
     asyncio.run(run())
 
@@ -1424,7 +1504,7 @@ def test_public_tool_error_and_failure_details_follow_request_language(
 
             async def blocked(session, agent, req, account_id, account_type, *, public):
                 async def query(**kwargs):
-                    pytest.fail("a foreign network must not be queried")
+                    pytest.fail("a draft the run did not ask for must not be read")
 
                 tool = StructuredTool.from_function(
                     coroutine=query,
@@ -1432,7 +1512,10 @@ def test_public_tool_error_and_failure_details_follow_request_language(
                     description="Query",
                     args_schema={
                         "type": "object",
-                        "properties": {"kn_id": {"type": "string"}},
+                        "properties": {
+                            "kn_id": {"type": "string"},
+                            "branch": {"type": "string"},
+                        },
                     },
                     metadata={
                         "bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN
@@ -1441,7 +1524,7 @@ def test_public_tool_error_and_failure_details_follow_request_language(
                 guarded = public.guard_tools([tool])[0]
 
                 async def events():
-                    result = await guarded.ainvoke({"kn_id": "network-2"})
+                    result = await guarded.ainvoke({"kn_id": "network-1", "branch": "draft"})
                     message = ToolMessage(
                         content=result,
                         tool_call_id="blocked",
@@ -2277,6 +2360,200 @@ def test_tool_events_tell_unreachable_calls_from_tool_errors():
     asyncio.run(run())
 
 
+def test_replayed_messages_are_not_reported_again():
+    """Summarization's update carries earlier replies and results again
+    (bkn-foundry issue 3282): they are not new calls, failures or tokens."""
+    from langchain_core.messages import HumanMessage, RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+
+    earlier = [
+        HumanMessage(content="Earlier question", id="h1"),
+        AIMessage(
+            content="",
+            id="ai-1",
+            tool_calls=[{"name": "query", "args": {}, "id": "old"}],
+            usage_metadata={"input_tokens": 90, "output_tokens": 10, "total_tokens": 100},
+        ),
+        ToolMessage(content="failed", tool_call_id="old", name="query", status="error", id="t1"),
+        AIMessage(content="Earlier answer", id="ai-2", usage_metadata={"input_tokens": 5, "output_tokens": 5, "total_tokens": 10}),
+    ]
+    public = PublicChat("run", "network-1")
+    public.remember(earlier)
+    new_call = AIMessage(
+        content="",
+        id="ai-3",
+        tool_calls=[{"name": "query", "args": {}, "id": "new"}],
+        usage_metadata={"input_tokens": 40, "output_tokens": 10, "total_tokens": 50},
+    )
+    # A tools node's result has no message id until the thread saves it.
+    result = ToolMessage(content="ok", tool_call_id="new", name="query")
+    saved = result.model_copy(update={"id": "t2"})
+
+    def summarized(*kept):
+        return {
+            "TurnSummarization.before_model": {
+                "messages": [
+                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                    HumanMessage(content="Summary", id="s"),
+                    *kept,
+                ]
+            }
+        }
+
+    events = parse_sse(
+        "".join(
+            [
+                *public.updates(summarized(*earlier[1:], HumanMessage(content="Now", id="h2"))),
+                *public.updates({"model": {"messages": [new_call]}}),
+                *public.updates({"tools": {"messages": [result]}}),
+                # A second summary in the same question keeps this run's own messages.
+                *public.updates(summarized(*earlier[1:], new_call, saved)),
+            ]
+        )
+    )
+    assert [(name, data["tool_call_id"]) for name, data in events] == [
+        ("tool_started", "new"),
+        ("tool_finished", "new"),
+    ]
+    assert events[1][1]["status"] == "succeeded"
+    assert public.usage["total_tokens"] == 50
+    # An earlier answer kept by the summary is not this question's answer.
+    assert public.final is None
+
+
+def test_interrupted_call_closed_by_a_fill_is_not_a_failure_of_this_run():
+    interrupted = AIMessage(
+        content="", id="ai-1", tool_calls=[{"name": "query", "args": {}, "id": "cut"}]
+    )
+    public = PublicChat("run", "network-1")
+    public.remember([interrupted])
+    fills = public.interrupted_messages([interrupted])
+    assert not list(public.updates({"tools": {"messages": fills}}))
+
+
+def test_summarized_thread_reports_only_the_current_questions_calls(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import context_budget, graph
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    class Eager(context_budget.TurnSummarization):
+        # Summarize earlier questions as soon as there are any.
+        def __init__(self, model, **kwargs):
+            super().__init__(
+                model, trigger=("tokens", 1), keep=("messages", 5), trim_tokens_to_summarize=4000
+            )
+
+    def usage(total):
+        return {"input_tokens": total - 1, "output_tokens": 1, "total_tokens": total}
+
+    def call(*ids):
+        return AIMessage(
+            content="",
+            tool_calls=[{"name": "query", "args": {"kn_id": "network-1", "q": i}, "id": i} for i in ids],
+        )
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, factory, _):
+            async def query(kn_id: str, q: str) -> str:
+                """Read the selected network."""
+                if q == "bad":
+                    raise ToolException("no such record")
+                return "found"
+
+            tool = StructuredTool.from_function(
+                coroutine=query,
+                name="query",
+                metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+            )
+
+            async def tools(*args, **kwargs):
+                return [tool]
+
+            saver = MemorySaver()
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield saver
+
+            first = call("good", "bad")
+            first.usage_metadata = usage(100)
+            second = call("again")
+            second.usage_metadata = usage(50)
+            model = Model(
+                responses=[
+                    first,
+                    AIMessage(content="Answer one", usage_metadata=usage(10)),
+                    second,
+                    AIMessage(content="Answer two", usage_metadata=usage(20)),
+                ]
+            )
+            summary_calls = []
+
+            class Summaries(FakeMessagesListChatModel):
+                def _generate(self, messages, *args, **kwargs):
+                    summary_calls.append(messages)
+                    return super()._generate(messages, *args, **kwargs)
+
+            summaries = Summaries(
+                responses=[
+                    AIMessage(content=f"Summary {i}", usage_metadata=usage(1000))
+                    for i in range(4)
+                ]
+            )
+            monkeypatch.setattr(context_budget, "TurnSummarization", Eager)
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(
+                graph,
+                "build_chat_model",
+                lambda *args, **kwargs: summaries if kwargs.get("streaming") is False else model,
+            )
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+
+            def report(response):
+                events = parse_sse(response.text)
+                assert events[-1][1]["status"] == "succeeded", response.text
+                finished = [data for name, data in events if name == "tool_finished"]
+                return (
+                    [data["tool_call_id"] for name, data in events if name == "tool_started"],
+                    [data["tool_call_id"] for data in finished],
+                    sum(data["status"] == "failed" for data in finished),
+                    next(data for name, data in events if name == "result")["content"],
+                )
+
+            started, finished, failed, result = report(
+                await client.post(URL, json=BODY, headers=AUTH)
+            )
+            assert (started, finished, failed) == (["good", "bad"], ["good", "bad"], 1)
+            assert result["usage"]["total_tokens"] == 110
+            assert not summary_calls
+
+            async with factory() as session:
+                thread_id = (await session.execute(select(TaskRow))).scalar_one().f_parent_thread_id
+            started, finished, failed, result = report(
+                await client.post(
+                    URL,
+                    json={**BODY, "client_request_id": "request-2", "thread_id": thread_id},
+                    headers=AUTH,
+                )
+            )
+            # The earlier question's calls, kept by the summary, are not reported
+            # again: no failure from them, no tokens from them.
+            assert summary_calls
+            assert (started, finished, failed) == (["again"], ["again"], 0)
+            assert result["answer"] == "Answer two"
+            # Every model call of this question, the summaries included.
+            assert result["usage"]["total_tokens"] == 50 + 20 + 1000 * len(summary_calls)
+
+    asyncio.run(run())
+
+
 def test_execution_model_choice_is_optional_and_bounded():
     assert ExecutionRequest.model_validate(BODY).model_id is None
     chosen = ExecutionRequest.model_validate({**BODY, "model_id": "chat-model-1"})
@@ -2502,10 +2779,12 @@ def test_tool_scope_pins_network_version_like_kn_id():
             {"kn_version": "running"},
             {"kn_version": "3"},
             {"draft_revision": 6},
-            {"kn_id": "network-2"},
         ):
             assert "ToolScopeMismatch" in await guarded.ainvoke(rewrite)
         assert len(calls) == 3
+        # The network is the run's whatever the model wrote.
+        assert await guarded.ainvoke({"kn_id": "network-2"}) == "ok"
+        assert calls[-1] == pinned
 
     asyncio.run(run())
 
@@ -2713,5 +2992,110 @@ def test_public_run_opens_context_loader_on_the_requested_version(monkeypatch, b
             assert len(opened) == 1
             versions = {k: opened[0][k] for k in ("kn_version", "draft_revision") if k in opened[0]}
             assert versions == expected
+
+    asyncio.run(run())
+
+
+def _with_execution_grants(monkeypatch, active=True):
+    """bkn-safe answers execution credentials issued for user-1 on kn-1."""
+    old = public_auth._post
+
+    async def post(url, **kwargs):
+        if url.endswith("/execution-grants/introspect"):
+            token = kwargs["json"]["token"]
+            if not active or token != "bex_run-1_secret":
+                return {"active": False}
+            return {
+                "active": True,
+                "sub": "user-1",
+                "account_type": "other",
+                "delegation_id": "run-1",
+                "kn_id": BODY["context"]["kn_id"],
+                "agent_id": "studio_smart_qa",
+            }
+        return await old(url, **kwargs)
+
+    monkeypatch.setattr(public_auth, "_post", post)
+
+
+DELEGATED = {"Authorization": "Bearer bex_run-1_secret", "Accept-Language": "en-US"}
+
+
+def test_an_execution_credential_runs_for_its_delegator_on_its_network_only(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, calls):
+            _with_execution_grants(monkeypatch)
+            response = await client.post(URL, json=BODY, headers=DELEGATED)
+            assert response.status_code == 200
+            run_id = parse_sse(response.text)[0][1]["run_id"]
+            assert len(calls) == 1
+            # The run is the delegator's: a sign-in of the same person reads it.
+            assert (await client.get(f"{URL}/{run_id}", headers=AUTH)).status_code == 200
+            assert (await client.get(f"{URL}/{run_id}", headers=DELEGATED)).status_code == 200
+            # Another network or another Agent is refused before anything runs.
+            other_network = {**BODY, "context": {**BODY["context"], "kn_id": "kn-other"}}
+            assert (await client.post(URL, json=other_network, headers=DELEGATED)).status_code == 403
+            other_agent = {**BODY, "agent_id": "eval_assistant"}
+            assert (await client.post(URL, json=other_agent, headers=DELEGATED)).status_code == 403
+            assert len(calls) == 1
+            # A run of the same person on another network is not reached with it,
+            # neither read nor cancelled; the person's own sign-in reaches it.
+            elsewhere = {**other_network, "client_request_id": "request-2"}
+            response = await client.post(URL, json=elsewhere, headers=AUTH)
+            other_run = parse_sse(response.text)[0][1]["run_id"]
+            assert (await client.get(f"{URL}/{other_run}", headers=DELEGATED)).status_code == 404
+            assert (await client.post(f"{URL}/{other_run}/cancel", headers=DELEGATED)).status_code == 404
+            assert (await client.get(f"{URL}/{other_run}", headers=AUTH)).status_code == 200
+
+    asyncio.run(run())
+
+
+def test_an_execution_credential_is_refused_when_inactive_or_off_the_execution_routes(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, calls):
+            _with_execution_grants(monkeypatch, active=False)
+            assert (await client.post(URL, json=BODY, headers=DELEGATED)).status_code == 401
+            _with_execution_grants(monkeypatch)
+            # Agent settings and the metric designer take no execution credential.
+            assert (
+                await client.get("/api/bkn-agent/v1/me/agents/studio_smart_qa/setting", headers=DELEGATED)
+            ).status_code == 401
+            assert not calls
+
+    asyncio.run(run())
+
+
+def test_an_execution_credential_resolves_to_its_delegator_with_its_scope(monkeypatch):
+    async def run():
+        _with_execution_grants(monkeypatch)
+        request = Request(
+            {
+                "type": "http",
+                "headers": [
+                    (b"authorization", b"Bearer bex_run-1_secret"),
+                    (b"x-account-id", b"spoof"),
+                    (b"x-bkn-delegation-id", b"spoof"),
+                ],
+            }
+        )
+        token = observability.set_context(observability.TraceContext(trace_id="t" * 32, request_id="r", traceparent="00-" + "t" * 32 + "-" + "s" * 16 + "-01", entry_boundary="public"))
+        try:
+            account = await public_auth.get_execution_account(request)
+            # The trace records the grant the run acts under, not a header a caller sent.
+            assert observability.current_context().delegation_id == "run-1"
+            assert observability.current_context().account_id == "user-1"
+        finally:
+            observability.reset_context(token)
+        assert (account.account_id, account.account_type) == ("user-1", "user")
+        assert account.delegation.kn_id == BODY["context"]["kn_id"]
+        headers = dict(request.scope["headers"])
+        assert headers[b"x-account-id"] == b"user-1"
+        assert b"x-bkn-delegation-id" not in headers
+        # The same credential is no sign-in for any other route.
+        with pytest.raises(HTTPException) as error:
+            await public_auth.get_public_account(
+                Request({"type": "http", "headers": [(b"authorization", b"Bearer bex_run-1_secret")]})
+            )
+        assert error.value.status_code == 401
 
     asyncio.run(run())

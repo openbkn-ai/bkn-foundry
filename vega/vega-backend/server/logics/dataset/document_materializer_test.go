@@ -123,7 +123,7 @@ func TestMaterializeDocument(t *testing.T) {
 		mfs := vmock.NewMockModelFactoryService(ctrl)
 		ds := &datasetService{mfs: mfs}
 		var input map[string]any
-		require.NoError(t, common.DecodePreciseJSON(strings.NewReader(`{"content_vector":[0.1,0.2]}`), &input))
+		require.NoError(t, common.DecodeJSON(strings.NewReader(`{"content_vector":[0.1,0.2]}`), &input))
 
 		document, err := ds.materializeDocument(context.Background(), resource, input)
 
@@ -140,7 +140,7 @@ func TestMaterializeDocument(t *testing.T) {
 			}},
 		}
 		var input map[string]any
-		require.NoError(t, common.DecodePreciseJSON(strings.NewReader(`{"_vector":[0.1,0.2]}`), &input))
+		require.NoError(t, common.DecodeJSON(strings.NewReader(`{"_vector":[0.1,0.2]}`), &input))
 
 		document, err := (&datasetService{}).materializeDocument(context.Background(), resource, input)
 

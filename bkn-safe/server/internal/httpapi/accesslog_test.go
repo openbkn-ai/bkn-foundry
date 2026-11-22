@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -56,7 +57,7 @@ func newLogoutTestRouter(recorder accesslog.Recorder, actorID string) *gin.Engin
 		c.Set(ctxAccessorID, actorID)
 		c.Next()
 	})
-	registerLogout(r.Group("/api/safe/v1/me"), recorder, nil)
+	registerLogout(r.Group("/api/safe/v1/me"), logoutFunc(func(context.Context, string, string, string) (string, error) { return actorID, nil }), recorder, nil)
 	return r
 }
 
@@ -112,5 +113,69 @@ func TestCredentialFailureUsesResolvedAccountOrProducesNoFact(t *testing.T) {
 	recordLogin(context, provider, recorder, nil, "unknown", "failure", "invalid_credentials")
 	if len(recorder.entries) != 1 {
 		t.Fatalf("unknown credential attempt entered business stream: %#v", recorder.entries)
+	}
+}
+
+// Logout identity is resolved by the revoker even when a previous attempt
+// already revoked the bearer; unrelated auth middleware must not prevent retries.
+type logoutFunc func(context.Context, string, string, string) (string, error)
+
+func (f logoutFunc) Logout(ctx context.Context, access, refresh, idToken string) (string, error) {
+	return f(ctx, access, refresh, idToken)
+}
+
+func TestLogoutFailureDoesNotPublishSuccess(t *testing.T) {
+	for _, scenario := range []string{"unavailable", "invalid", "inactive", "no-recorder", "not-configured", "bad-json"} {
+		t.Run(scenario, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			r := gin.New()
+			recorder := &recordingAccessRecorder{}
+			var store accesslog.Recorder = recorder
+			var revoker StudioSessionLogout = logoutFunc(func(_ context.Context, access, refresh, idToken string) (string, error) {
+				if access != "old-access" || refresh != "current-refresh" {
+					t.Error("credentials were not forwarded")
+				}
+				switch scenario {
+				case "unavailable":
+					return "", errors.New("unavailable")
+				case "invalid":
+					return "", auth.ErrLogoutToken
+				case "inactive":
+					return "", nil
+				}
+				return "user-1", nil
+			})
+			if scenario == "not-configured" {
+				revoker = nil
+			}
+			if scenario == "no-recorder" {
+				store = nil
+			}
+			registerLogout(r.Group("/api/safe/v1/me"), revoker, store, nil)
+			payload := `{"refresh_token":"current-refresh"}`
+			if scenario == "bad-json" {
+				payload = `{`
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/safe/v1/me/logout", strings.NewReader(payload))
+			request.Header.Set("Authorization", "Bearer old-access")
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			r.ServeHTTP(response, request)
+			want := http.StatusNoContent
+			switch scenario {
+			case "unavailable", "not-configured":
+				want = http.StatusServiceUnavailable
+			case "invalid":
+				want = http.StatusUnauthorized
+			case "bad-json":
+				want = http.StatusBadRequest
+			}
+			if response.Code != want {
+				t.Fatalf("status %d, want %d: %s", response.Code, want, response.Body)
+			}
+			if len(recorder.entries) != 0 {
+				t.Fatalf("failed/inactive logout published success: %v", recorder.entries)
+			}
+		})
 	}
 }

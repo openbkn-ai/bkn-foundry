@@ -80,6 +80,14 @@ class PublicChat:
     # The run's built-in provider state, when the Agent mounts one.
     builtin_run: Any = None
     tool_starts: dict[str, float] = field(default_factory=dict)
+    # What was already reported, so each model reply and tool call is reported
+    # once. Summarization rewrites the thread as a summary plus the messages it
+    # keeps, and that update carries earlier replies and results again; they
+    # are neither new model calls nor new tool runs. Seeded with the thread's
+    # history before the run (remember), then grown as the run reports.
+    seen_messages: set[str] = field(default_factory=set)
+    started_calls: set[str] = field(default_factory=set)
+    finished_calls: set[str] = field(default_factory=set)
     # Reasoning arrives a token or two per chunk; it is sent in pieces instead.
     reasoning_parts: list[str] = field(default_factory=list)
     reasoning_since: float = 0.0
@@ -179,16 +187,35 @@ class PublicChat:
             if content:
                 yield content
         if final is not None:
-            if final.usage_metadata:
-                for key in ("input_tokens", "output_tokens", "total_tokens"):
-                    value = final.usage_metadata.get(key)
-                    if isinstance(value, int):
-                        self.usage[key] = self.usage.get(key, 0) + value
+            self.count_usage(final)
             answer = self.text(final.content)
             self.final = answer
             await graph.aupdate_state(
                 cfg, {"messages": [*fills, AIMessage(content=answer)]}
             )
+
+    def remember(self, messages: list) -> None:
+        """Mark the thread's messages from before this run as reported."""
+        for message in messages:
+            if message.id:
+                self.seen_messages.add(message.id)
+            if isinstance(message, AIMessage):
+                calls = {call["id"] for call in message.tool_calls}
+            elif isinstance(message, ToolMessage):
+                calls = {message.tool_call_id}
+            else:
+                continue
+            # A call saved without its result (an interrupted run) is closed by
+            # this run with a fill, which is not a tool run of this run either.
+            self.started_calls |= calls
+            self.finished_calls |= calls
+
+    def count_usage(self, message: AIMessage) -> None:
+        if message.usage_metadata:
+            for key in ("input_tokens", "output_tokens", "total_tokens"):
+                value = message.usage_metadata.get(key)
+                if isinstance(value, int):
+                    self.usage[key] = self.usage.get(key, 0) + value
 
     def updates(self, update: dict):
         for state in update.values():
@@ -196,15 +223,18 @@ class PublicChat:
                 continue
             for message in state.get("messages", []):
                 if isinstance(message, AIMessage):
-                    if message.usage_metadata:
-                        for key in ("input_tokens", "output_tokens", "total_tokens"):
-                            value = message.usage_metadata.get(key)
-                            if isinstance(value, int):
-                                self.usage[key] = self.usage.get(key, 0) + value
+                    if message.id in self.seen_messages:
+                        continue
+                    if message.id:
+                        self.seen_messages.add(message.id)
+                    self.count_usage(message)
                     self.final = (
                         None if message.tool_calls else self.text(message.content)
                     )
                     for call in message.tool_calls:
+                        if call["id"] in self.started_calls:
+                            continue
+                        self.started_calls.add(call["id"])
                         self.tool_starts[call["id"]] = time.monotonic()
                         yield self.event(
                             "tool_started",
@@ -215,6 +245,11 @@ class PublicChat:
                             },
                         )
                 elif isinstance(message, ToolMessage):
+                    # A tools node reports its result without a message id; the
+                    # call id is what a later copy of the result shares.
+                    if message.tool_call_id in self.finished_calls:
+                        continue
+                    self.finished_calls.add(message.tool_call_id)
                     progress = self.builtin_progress(message.name)
                     yield self.event(
                         "tool_finished",
@@ -351,7 +386,11 @@ class PublicChat:
                         )
                     for name, value in pinned.items():
                         if name == "kn_id":
-                            same = kwargs.get(name, value) == value
+                            # The run names its network; the call goes there
+                            # whatever the model wrote. A model copying the id
+                            # can get a character wrong, and refusing that
+                            # would only have it send the same id again.
+                            same = True
                         else:
                             # A version may come as "3" or 3; an explicit
                             # null is replaced by the pinned value. Without a

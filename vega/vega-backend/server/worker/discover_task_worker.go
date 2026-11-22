@@ -413,7 +413,7 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 			return nil, fmt.Errorf("serialize index metadata: %w", err)
 		}
 		meta := &interfaces.IndexMeta{}
-		if err := common.UnmarshalPreciseJSON(data, meta); err != nil {
+		if err := common.UnmarshalJSON(data, meta); err != nil {
 			return nil, fmt.Errorf("decode index metadata: %w", err)
 		}
 		if meta.Name == "" {

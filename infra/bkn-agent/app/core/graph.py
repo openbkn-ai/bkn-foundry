@@ -261,9 +261,11 @@ async def stream_chat(
                             turn_messages = [("user", req.message)]
                             if public:
                                 state = await graph.aget_state(cfg)
-                                turn_messages = public.interrupted_messages(
-                                    state.values.get("messages", [])
-                                ) + turn_messages
+                                history = state.values.get("messages", [])
+                                # Earlier questions' replies and tool calls come
+                                # back in summarization's update; not this run's.
+                                public.remember(history)
+                                turn_messages = public.interrupted_messages(history) + turn_messages
                             out_of_steps = False
                             # The public surface keeps part of the time budget to
                             # close the turn with an answer; legacy callers never
@@ -289,7 +291,10 @@ async def stream_chat(
                                             chunk, meta = item
                                         if public and meta.get("langgraph_node") not in (None, "model"):
                                             # Summarization calls a model inside middleware;
-                                            # that text is not part of the answer.
+                                            # that text is not part of the answer, but the
+                                            # call is one this run made, so its usage counts.
+                                            if meta.get("lc_source") == "summarization" and isinstance(chunk, AIMessage):
+                                                public.count_usage(chunk)
                                             continue
                                         if public and isinstance(chunk, AIMessageChunk):
                                             thinking = chunk.additional_kwargs.get("reasoning_content")

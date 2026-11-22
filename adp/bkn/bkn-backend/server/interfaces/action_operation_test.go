@@ -25,6 +25,20 @@ func TestActionOperationRequiresNewDefinition(t *testing.T) {
 	}
 }
 
+func TestToolActionConditionRequiresOwnObject(t *testing.T) {
+	at := &ActionType{ActionTypeWithKeyField: ActionTypeWithKeyField{
+		OperationConfig: &ActionOperationConfig{Type: ActionOperationTool},
+		Condition:       &ActionCondCfg{ObjectTypeID: "hosts", Field: "cpu", Operation: ">", Value: "0.9"},
+	}}
+	if err := ValidateActionOperation(at); err != nil {
+		t.Fatal(err)
+	}
+	at.Condition.ObjectTypeID = ""
+	if err := ValidateActionOperation(at); err == nil {
+		t.Fatal("tool conditions must declare the object type they guard")
+	}
+}
+
 func TestActionOperationRejectsObsoleteMappingFields(t *testing.T) {
 	var config ActionOperationConfig
 	if err := json.Unmarshal([]byte(`{"type":"relation","source_parameter":"order_id"}`), &config); err == nil {

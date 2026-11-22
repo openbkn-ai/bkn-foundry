@@ -42,7 +42,7 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 		return ""
 	}
 	sourceMetadata := make(map[string]any)
-	err = common.UnmarshalPreciseJSON(data, &sourceMetadata)
+	err = common.UnmarshalJSON(data, &sourceMetadata)
 	if err != nil {
 		return ""
 	}

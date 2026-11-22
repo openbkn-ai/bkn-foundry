@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -104,8 +105,8 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
 	var req interfaces.CatalogHealthCheckScheduleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

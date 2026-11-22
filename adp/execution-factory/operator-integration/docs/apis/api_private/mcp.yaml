@@ -352,7 +352,11 @@ components:
               - $ref: "#/components/schemas/ImageContent"
               - $ref: "#/components/schemas/AudioContent"
               - $ref: "#/components/schemas/EmbeddedResource"
-        isError:
+        structuredContent:
+          type: object
+          additionalProperties: true
+          description: 上游工具返回的结构化结果；仅在上游提供时返回
+        is_error:
           type: boolean
           description: 是否为错误
     McpProxyToolListResponse:

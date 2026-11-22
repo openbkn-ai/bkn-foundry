@@ -43,3 +43,64 @@ func TestResolveActionConditionValues(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 }
+
+func TestResolveActionConditionValuesRejectsEmptySearchValues(t *testing.T) {
+	for _, operation := range []string{"like", "not_like", "prefix", "not_prefix", "regex"} {
+		for _, source := range []string{"", "const", "property", "input"} {
+			t.Run(operation+"/"+source, func(t *testing.T) {
+				definition := &cond.CondCfg{Name: "name", Operation: operation, ValueFrom: source, Value: ""}
+				if source == "property" || source == "input" {
+					definition.Value = "pattern"
+				}
+				for _, logical := range []string{"", "and", "or"} {
+					t.Run(logical, func(t *testing.T) {
+						condition := definition
+						if logical != "" {
+							condition = &cond.CondCfg{Operation: logical, SubConds: []*cond.CondCfg{
+								{Name: "name", Operation: "==", Value: "alpha"}, definition,
+							}}
+						}
+						resolved, err := ResolveActionConditionValues(condition, map[string]any{"pattern": ""}, map[string]any{"pattern": ""})
+						if err == nil || resolved != nil || !strings.Contains(err.Error(), operation) || !strings.Contains(err.Error(), "non-empty string") {
+							t.Fatalf("expected invalid empty %s condition, resolved=%#v err=%v", operation, resolved, err)
+						}
+						if source == "property" || source == "input" {
+							if !strings.Contains(err.Error(), source) || !strings.Contains(err.Error(), "pattern") {
+								t.Fatalf("missing reference context: %v", err)
+							}
+							if definition.Value != "pattern" || definition.ValueFrom != source {
+								t.Fatalf("stored reference was mutated: %#v", definition)
+							}
+						}
+					})
+				}
+			})
+		}
+	}
+}
+
+func TestResolveActionConditionValuesPreservesAllowedEmptyAndSearchValues(t *testing.T) {
+	for _, operation := range []string{"like", "not_like", "prefix", "not_prefix", "regex", "==", "!=", "in", "not_in"} {
+		values := []any{" ", "%", ".*"}
+		switch operation {
+		case "==", "!=":
+			values = []any{""}
+		case "in", "not_in":
+			values = []any{[]any{""}}
+		}
+		for _, source := range []string{"", "const", "property", "input"} {
+			t.Run(operation+"/"+source, func(t *testing.T) {
+				for _, value := range values {
+					definition := &cond.CondCfg{Name: "name", Operation: operation, ValueFrom: source, Value: value}
+					if source == "property" || source == "input" {
+						definition.Value = "pattern"
+					}
+					resolved, err := ResolveActionConditionValues(definition, map[string]any{"pattern": value}, map[string]any{"pattern": value})
+					if err != nil || resolved == nil || !reflect.DeepEqual(resolved.Value, value) {
+						t.Fatalf("value %#v must be preserved, resolved=%#v err=%v", value, resolved, err)
+					}
+				}
+			})
+		}
+	}
+}

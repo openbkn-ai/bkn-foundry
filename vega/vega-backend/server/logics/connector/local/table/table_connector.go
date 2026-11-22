@@ -166,6 +166,18 @@ func QueryBinaryContentColumns(resource *interfaces.Resource, params *interfaces
 // ScanSQLRow reads one SQL result row using standard database/sql driver values.
 // Binary bytes stay intact; other byte values retain their exact text representation.
 func ScanSQLRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	return scanSQLRow(rows, columns, nil)
+}
+
+// ScanTableReadRow 按结构化查询的投影保留请求的二进制列。
+func ScanTableReadRow(rows *sql.Rows, columns []interfaces.ColumnInfo, binaryContentColumns map[string]bool) (map[string]any, error) {
+	if binaryContentColumns == nil {
+		binaryContentColumns = map[string]bool{}
+	}
+	return scanSQLRow(rows, columns, binaryContentColumns)
+}
+
+func scanSQLRow(rows *sql.Rows, columns []interfaces.ColumnInfo, binaryContentColumns map[string]bool) (map[string]any, error) {
 	if !rows.Next() {
 		return nil, rows.Err()
 	}
@@ -180,8 +192,14 @@ func ScanSQLRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any
 	row := make(map[string]any, len(values))
 	for i, column := range columns {
 		value := values[i]
-		if data, ok := value.([]byte); ok && column.Type != interfaces.DataType_Binary {
-			value = string(data)
+		if data, ok := value.([]byte); ok {
+			preserveBinary := column.Type == interfaces.DataType_Binary
+			if binaryContentColumns != nil {
+				preserveBinary = binaryContentColumns[column.Name]
+			}
+			if !preserveBinary {
+				value = string(data)
+			}
 		}
 		row[column.Name] = value
 	}
@@ -224,7 +242,7 @@ func ColumnMetadata(r *interfaces.Resource) (map[string]interfaces.TableColumnMe
 	columns, ok := raw.([]interfaces.TableColumnMeta)
 	if !ok {
 		encoded, err := sonic.Marshal(raw)
-		if err != nil || sonic.Unmarshal(encoded, &columns) != nil {
+		if err != nil || common.UnmarshalJSON(encoded, &columns) != nil {
 			return nil, fmt.Errorf("invalid stored source column metadata")
 		}
 	}

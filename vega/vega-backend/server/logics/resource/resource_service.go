@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/http"
 	"reflect"
 	"slices"
@@ -22,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mohae/deepcopy"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -141,21 +141,24 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if resourceBuiltin != parentCatalog.Builtin {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("resource built_in must match its catalog built_in value")
 	}
-	if req.Category != interfaces.ResourceCategoryDataset && req.Category != interfaces.ResourceCategoryLogicalView {
+	if req.Category != interfaces.ResourceCategoryDataset && req.Category != interfaces.ResourceCategoryLogicalView && req.Category != interfaces.ResourceCategoryAPI {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_CategoryNotCreatable).
-			WithErrorDetails("only dataset and logical_view resources can be created by users; physical resources require discovery")
+			WithErrorDetails("only dataset, logical_view and api resources can be created by users; other physical resources require discovery")
 	}
 	resource, err := rs.InternalCreate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
-	return resource, nil
+	return redactAPIResource(resource), nil
 }
 
 // prepareNewResource 按类别准备并初始化记录；HTTP 基础字段和公开 Dataset 类型规则仍由请求层负责。
 // 内部物理资源保留连接器给出的源 Schema，不执行用户建模的默认值或能力校验。
 func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+	if req.Category != interfaces.ResourceCategoryAPI && (req.APIEffectType != "" || req.APIDefinition != nil) {
+		return nil, unsupportedResourceUpdateError(ctx, "API definition fields are only accepted for API resources")
+	}
 	id := req.ID
 	if id == "" {
 		generatedID, err := uuid.NewV7()
@@ -220,6 +223,13 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 		if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 			return nil, err
 		}
+	case interfaces.ResourceCategoryAPI:
+		resource.SourceIdentifier = resource.ID
+		var err error
+		resource, err = PrepareAPIResourceCreate(ctx, resource, req)
+		if err != nil {
+			return nil, err
+		}
 	case interfaces.ResourceCategoryLogicalView:
 		logicalType, fields, err := PrepareLogicalView(ctx, req)
 		if err != nil {
@@ -240,6 +250,22 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).WithErrorDetails("failed to encode resource definition")
 	}
 	return resource, nil
+}
+
+func invalidAPIResourceError(ctx context.Context, details string) error {
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		WithErrorDetails(details)
+}
+
+func decodeResourceSummaryType(summary *interfaces.ResourceSummary) {
+	summary.LogicalType = ""
+	summary.APIEffectType = ""
+	switch summary.Category {
+	case interfaces.ResourceCategoryLogicalView:
+		summary.LogicalType = summary.LogicType
+	case interfaces.ResourceCategoryAPI:
+		summary.APIEffectType = summary.LogicType
+	}
 }
 
 // mapFilterabilityError 仅转换过滤能力错误，不读取业务对象或选择执行通道。
@@ -277,6 +303,9 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		resource = deepcopy.Copy(resource).(*interfaces.Resource)
+	}
 	decodeResourceLogicFields(resource)
 	completeResourceFilterability(resource)
 	populateResourceColumnCount(resource)
@@ -308,7 +337,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 	span.SetStatus(codes.Ok, "")
-	return resource, nil
+	return redactAPIResource(resource), nil
 }
 
 func (rs *resourceService) CheckResourcePermission(ctx context.Context, resourceID string, op string) error {
@@ -408,6 +437,9 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 	resources := make([]*interfaces.Resource, 0, len(resourcesByID))
 	for _, id := range ids {
 		if resource, exists := resourcesByID[id]; exists {
+			if resource.Category == interfaces.ResourceCategoryAPI {
+				resource = deepcopy.Copy(resource).(*interfaces.Resource)
+			}
 			resources = append(resources, resource)
 		}
 	}
@@ -449,6 +481,9 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		logger.Warnf("Failed to populate resource account names: %v", err)
 	}
 	rs.populateResourceRowCounts(ctx, resources, includeRowCount)
+	for i, resource := range resources {
+		resources[i] = redactAPIResource(resource)
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
@@ -493,11 +528,23 @@ func decodeResourceLogicFields(resource *interfaces.Resource) {
 	}
 	resource.LogicalType = ""
 	resource.LogicalViewDefinition = nil
+	resource.APIEffectType = ""
+	resource.APIDefinition = nil
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		// Storage represents an absent index configuration as {}.
+		if resource.IndexConfig != nil && reflect.DeepEqual(*resource.IndexConfig, interfaces.ResourceIndexConfig{}) {
+			resource.IndexConfig = nil
+		}
+		resource.APIEffectType = resource.LogicType
+		if resource.LogicDefinitionStr != "" {
+			_ = common.UnmarshalJSON([]byte(resource.LogicDefinitionStr), &resource.APIDefinition)
+		}
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		resource.LogicalType = resource.LogicType
 		if resource.LogicDefinitionStr != "" {
 			// Preserve the existing read behavior; view validation handles invalid stored definitions.
-			_ = common.UnmarshalPreciseJSON([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
+			_ = common.UnmarshalJSON([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
 		}
 	}
 }
@@ -514,6 +561,18 @@ func completeResourceFilterability(resource *interfaces.Resource) {
 
 // encodeResourceLogicFields leaves other categories' stored values intact.
 func encodeResourceLogicFields(resource *interfaces.Resource) error {
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		if resource.APIDefinition == nil {
+			return fmt.Errorf("api_definition is required")
+		}
+		encoded, err := json.Marshal(resource.APIDefinition)
+		if err != nil {
+			return err
+		}
+		resource.LogicType = resource.APIEffectType
+		resource.LogicDefinitionStr = string(encoded)
+		return nil
+	}
 	if resource.Category != interfaces.ResourceCategoryLogicalView {
 		return nil
 	}
@@ -654,9 +713,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 		for _, id := range batchIDs {
 			if summary, exists := summariesByID[id]; exists {
-				if summary.Category == interfaces.ResourceCategoryLogicalView {
-					summary.LogicalType = summary.LogicType
-				}
+				decodeResourceSummaryType(summary)
 				summaries = append(summaries, summary)
 			}
 		}
@@ -694,9 +751,7 @@ func (rs *resourceService) InternalList(ctx context.Context, params interfaces.R
 		return nil, err
 	}
 	for _, summary := range summaries {
-		if summary.Category == interfaces.ResourceCategoryLogicalView {
-			summary.LogicalType = summary.LogicType
-		}
+		decodeResourceSummaryType(summary)
 	}
 	span.SetStatus(codes.Ok, "")
 	return summaries, nil
@@ -732,6 +787,9 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 	decodeResourceLogicFields(resource)
 	completeResourceFilterability(resource)
+	if resource.Category == interfaces.ResourceCategoryAPI && req.ExpectedUpdateTime > 0 && resource.UpdateTime != req.ExpectedUpdateTime {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
@@ -760,7 +818,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		span.SetStatus(codes.Error, "Invalid resource update scope")
 		return err
 	}
-	if req.SchemaDefinition != nil && resource.Category != interfaces.ResourceCategoryLogicalView {
+	if req.SchemaDefinition != nil && resource.Category != interfaces.ResourceCategoryLogicalView && resource.Category != interfaces.ResourceCategoryAPI {
 		filterabilityEnabled := false
 		for _, property := range req.SchemaDefinition {
 			if *property.Filterable {
@@ -825,7 +883,15 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 	previousFingerprint := ""
-	keyFieldsChanged := req.IndexConfig != nil && indexConfigKeyFieldsChanged(resource.IndexConfig, req.IndexConfig)
+	var primaryKeysChanged, incrementalKeysChanged bool
+	if req.IndexConfig != nil {
+		var previousConfig interfaces.ResourceIndexConfig
+		if resource.IndexConfig != nil {
+			previousConfig = *resource.IndexConfig
+		}
+		primaryKeysChanged = !slices.Equal(previousConfig.PrimaryKeyFields, req.IndexConfig.PrimaryKeyFields)
+		incrementalKeysChanged = !slices.Equal(previousConfig.IncrementalFields, req.IndexConfig.IncrementalFields)
+	}
 	if buildRelevantChanged {
 		previousFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
@@ -836,6 +902,13 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 
 	switch resource.Category {
+	case interfaces.ResourceCategoryAPI:
+		sourceIdentifier := resource.SourceIdentifier
+		resource, err = PrepareAPIResourceUpdate(ctx, resource, req)
+		if err != nil {
+			return err
+		}
+		resource.SourceIdentifier = sourceIdentifier
 	case interfaces.ResourceCategoryLogicalView:
 		resource.SchemaDefinition = req.SchemaDefinition
 		resource.LogicalType = req.LogicalType
@@ -909,13 +982,15 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 
 	now := time.Now().UnixMilli()
 	resource.Updater = accountInfo
-	resource.UpdateTime = now
+	resource.UpdateTime = max(now, resource.UpdateTime+1)
 
 	completeResourceFilterability(resource)
-	if err := encodeResourceLogicFields(resource); err != nil {
-		span.SetStatus(codes.Error, "Encode resource definition failed")
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-			WithErrorDetails("failed to encode resource definition")
+	if resource.Category != interfaces.ResourceCategoryAPI {
+		if err := encodeResourceLogicFields(resource); err != nil {
+			span.SetStatus(codes.Error, "Encode resource definition failed")
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+				WithErrorDetails("failed to encode resource definition")
+		}
 	}
 
 	tx, err := rs.db.BeginTx(ctx, nil)
@@ -956,30 +1031,28 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			return err
 		}
 	}
-	indexContractChanged := buildRelevantChanged && previousFingerprint != currentFingerprint &&
-		resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable
-	if indexContractChanged {
-		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-			interfaces.ResourceLocalIndexStatusStale, resource.LocalIndexName, "")
+	nextIndexStatus := resource.LocalIndexStatus
+	if HasAvailableLocalIndex(resource) {
+		switch {
+		case buildRelevantChanged && previousFingerprint != currentFingerprint:
+			nextIndexStatus = interfaces.ResourceLocalIndexStatusStale
+		case resource.Category == interfaces.ResourceCategoryTable && primaryKeysChanged:
+			nextIndexStatus = interfaces.ResourceLocalIndexStatusReadOnly
+		}
+	}
+	clearCheckpoint := resource.SyncMark != "" && (primaryKeysChanged || incrementalKeysChanged)
+	if nextIndexStatus != resource.LocalIndexStatus || clearCheckpoint {
+		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID, nextIndexStatus, resource.LocalIndexName, "",
+			resource.UpdateTime, resource.UpdateTime)
 		if err != nil || !updated {
-			span.SetStatus(codes.Error, "Mark resource local index stale failed")
+			span.SetStatus(codes.Error, "Update resource local index state failed")
 			if err != nil {
-				otellog.LogError(ctx, "Mark resource local index stale failed", err)
+				otellog.LogError(ctx, "Update resource local index state failed", err)
 			}
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails("failed to mark resource local index stale")
+				WithErrorDetails("failed to update resource local index state")
 		}
-		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
-		resource.SyncMark = ""
-	} else if keyFieldsChanged {
-		if resource.SyncMark != "" {
-			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
-				resource.LocalIndexStatus, resource.LocalIndexName, "")
-			if err != nil || !updated {
-				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-					WithErrorDetails("failed to clear resource incremental checkpoint")
-			}
-		}
+		resource.LocalIndexStatus = nextIndexStatus
 		resource.SyncMark = ""
 	}
 	if err := tx.Commit(); err != nil {
@@ -1006,48 +1079,6 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	return nil
 }
 
-// jsonNumbersEqual compares JSON-backed values without treating float64 and
-// json.Number representations of the same number as a schema change.
-func jsonNumbersEqual(current, next any) bool {
-	currentValue, err := comparableJSONValue(current)
-	if err != nil {
-		return false
-	}
-	nextValue, err := comparableJSONValue(next)
-	return err == nil && reflect.DeepEqual(currentValue, nextValue)
-}
-
-func comparableJSONValue(value any) (any, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	var decoded any
-	if err := common.UnmarshalPreciseJSON(encoded, &decoded); err != nil {
-		return nil, err
-	}
-	return normalizeJSONNumbers(decoded), nil
-}
-
-func normalizeJSONNumbers(value any) any {
-	switch v := value.(type) {
-	case json.Number:
-		if number, ok := new(big.Rat).SetString(string(v)); ok {
-			return struct{ Number string }{number.RatString()}
-		}
-		return v
-	case []any:
-		for i := range v {
-			v[i] = normalizeJSONNumbers(v[i])
-		}
-	case map[string]any:
-		for key := range v {
-			v[key] = normalizeJSONNumbers(v[key])
-		}
-	}
-	return value
-}
-
 func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
 	for _, property := range schema {
 		for _, feature := range property.Features {
@@ -1063,17 +1094,6 @@ func hasMissingVectorFeatureDimensions(schema []*interfaces.Property) bool {
 		}
 	}
 	return false
-}
-
-func indexConfigKeyFieldsChanged(current, requested *interfaces.ResourceIndexConfig) bool {
-	if requested == nil {
-		return false
-	}
-	if current == nil {
-		return len(requested.PrimaryKeyFields) > 0 || len(requested.IncrementalFields) > 0
-	}
-	return !slices.Equal(current.PrimaryKeyFields, requested.PrimaryKeyFields) ||
-		!slices.Equal(current.IncrementalFields, requested.IncrementalFields)
 }
 
 func resourceLocalIndexMappingFingerprint(resource *interfaces.Resource) (string, error) {
@@ -1109,6 +1129,9 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 		span.SetStatus(codes.Error, "Resource not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		resource = deepcopy.Copy(resource).(*interfaces.Resource)
+	}
 	decodeResourceLogicFields(resource)
 	completeResourceFilterability(resource)
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
@@ -1117,21 +1140,28 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 	}
 	if resource.Enabled == enabled {
 		span.SetStatus(codes.Ok, "")
-		return resource, nil
+		return redactAPIResource(resource), nil
 	}
 
 	accountInfo := interfaces.AccountInfo{}
 	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
 		accountInfo = v.(interfaces.AccountInfo)
 	}
-	if err := rs.ra.UpdateEnabled(ctx, resource.ID, enabled, time.Now().UnixMilli(), accountInfo); err != nil {
+	expectedUpdateTime := resource.UpdateTime
+	updateTime := max(time.Now().UnixMilli(), expectedUpdateTime+1)
+	rowsAffected, err := rs.ra.UpdateEnabled(ctx, resource.ID, enabled, expectedUpdateTime, updateTime, accountInfo)
+	if err != nil {
 		span.SetStatus(codes.Error, "Set resource enabled failed")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
+	if rowsAffected == 0 {
+		span.SetStatus(codes.Error, "Resource update conflict")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
 
 	span.SetStatus(codes.Ok, "")
-	return resource, nil
+	return redactAPIResource(resource), nil
 }
 
 // UpdateStatus updates a Resource's status.
@@ -1364,12 +1394,16 @@ func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx 
 	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
 }
 
-func (rs *resourceService) InternalUpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
-	localIndexStatus string, localIndexName string, syncMark string) (bool, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateLocalIndexState")
+func (rs *resourceService) InternalPublishLocalIndex(ctx context.Context, tx *sql.Tx, id, indexName, syncMark string,
+	expectedUpdateTime int64) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalPublishLocalIndex")
 	defer span.End()
 
-	return rs.ra.UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+	// Discovery also uses this version. Advance it so a scan based on the
+	// previously published index cannot commit after the replacement.
+	updateTime := max(time.Now().UnixMilli(), expectedUpdateTime+1)
+	return rs.ra.UpdateLocalIndexState(ctx, tx, id, interfaces.ResourceLocalIndexStatusAvailable,
+		indexName, syncMark, expectedUpdateTime, updateTime)
 }
 
 func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
@@ -1377,6 +1411,9 @@ func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
 	defer span.End()
 
+	if resource != nil && resource.Category == interfaces.ResourceCategoryAPI {
+		return invalidAPIResourceError(ctx, "API resource schema and definition are managed by users")
+	}
 	completeResourceFilterability(resource)
 	if err := encodeResourceLogicFields(resource); err != nil {
 		span.SetStatus(codes.Error, "Encode resource definition failed")
@@ -1400,6 +1437,9 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource is required")
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+	}
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		return invalidAPIResourceError(ctx, "API resources do not support discovery updates")
 	}
 	ownedTx := false
 	if tx == nil {
@@ -1426,6 +1466,9 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 		span.SetStatus(codes.Error, "Resource not found")
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	if current.Category == interfaces.ResourceCategoryAPI {
+		return invalidAPIResourceError(ctx, "API resources do not support discovery updates")
+	}
 	storedProperties := make(map[string]*interfaces.Property, len(current.SchemaDefinition))
 	for _, property := range current.SchemaDefinition {
 		storedProperties[property.Name] = property
@@ -1445,6 +1488,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 			WithErrorDetails(fmt.Sprintf("invalid discovered resource index configuration: %v", err))
 	}
 
+	resource.UpdateTime = max(resource.UpdateTime, expectedUpdateTime+1)
 	rowsAffected, err := rs.ra.UpdateDiscoveryMetadata(ctx, tx, resource, expectedUpdateTime)
 	if err != nil {
 		return err
@@ -1452,9 +1496,9 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	if rowsAffected == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if (previousFingerprintErr != nil || previousFingerprint != currentFingerprint) && current.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
+	if (previousFingerprintErr != nil || previousFingerprint != currentFingerprint) && HasAvailableLocalIndex(current) {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, current.ID,
-			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "")
+			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "", resource.UpdateTime, resource.UpdateTime)
 		if err != nil || !updated {
 			span.SetStatus(codes.Error, "Mark discovered resource local index stale failed")
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -1614,6 +1658,19 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 	if req.Category != resource.Category {
 		return false, unsupportedResourceUpdateError(ctx, "category cannot be updated")
 	}
+	if resource.Category != interfaces.ResourceCategoryAPI && (req.APIEffectType != "" || req.APIDefinition != nil) {
+		return false, unsupportedResourceUpdateError(ctx, "API definition fields are only accepted for API resources")
+	}
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		if req.LogicalType != "" || req.LogicalViewDefinition != nil {
+			return false, invalidAPIResourceError(ctx, "logical-view fields are not accepted for API resources")
+		}
+		if req.IndexConfig != nil || req.Schema != "" && req.Schema != resource.Schema ||
+			req.SourceMetadata != nil && !common.JSONNumbersEqual(req.SourceMetadata, resource.SourceMetadata) {
+			return false, invalidAPIResourceError(ctx, "API source metadata and local-index configuration cannot be changed")
+		}
+		return false, nil
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if req.LogicalType != resource.LogicalType {
 			return false, unsupportedResourceUpdateError(ctx, "logical_type cannot be changed")
@@ -1647,8 +1704,8 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 				comparableSchemas[i][j] = &copy
 			}
 		}
-		return !jsonNumbersEqual(resource.LogicalViewDefinition, req.LogicalViewDefinition) ||
-			!jsonNumbersEqual(comparableSchemas[0], comparableSchemas[1]), nil
+		return !common.JSONNumbersEqual(resource.LogicalViewDefinition, req.LogicalViewDefinition) ||
+			!common.JSONNumbersEqual(comparableSchemas[0], comparableSchemas[1]), nil
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {
@@ -2010,7 +2067,7 @@ func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Prop
 		requestedComparable.Description = ""
 		requestedComparable.Features = nil
 		requestedComparable.Filterable = nil
-		if !jsonNumbersEqual(currentComparable, requestedComparable) {
+		if !common.JSONNumbersEqual(currentComparable, requestedComparable) {
 			return false, unsupportedResourceUpdateError(ctx, "schema_definition can only update field display_name, description, filterable, and features")
 		}
 		if !mutableFeaturesEqual(currentProp.Features, requestedProp.Features) {
@@ -2081,7 +2138,7 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 			currentCopy[i].Config = config
 		}
 	}
-	return jsonNumbersEqual(currentCopy, requestedCopy)
+	return common.JSONNumbersEqual(currentCopy, requestedCopy)
 }
 
 // InitializeJSONIndexAttributes 为 JSON 字段记录托管索引仅保存原值的统一策略。

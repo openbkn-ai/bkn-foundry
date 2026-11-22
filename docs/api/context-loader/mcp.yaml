@@ -10,33 +10,26 @@ info:
     `bkn_finish_interaction`。每轮 start 都提交完整问题、固定的 `agent_name` 和 `conversation_mode`：没有当前
     Conversation 时用 `new` 且不传 `conversation_id`；按显式 id 延续时用 `continue` 并传入 start 返回的 id。
     宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的
-    结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、
-    `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
-    `get_action_info`、`execute_action`、`get_action_execution`、
-    `list_action_executions`、`list_knowledge_networks`、
-    `get_kn_detail`、`get_object_types`、`get_relation_types`、
-    `list_skills`、`get_skill_content`、`read_skill_file`、
-    `search_capabilities`、`execute_tool`。
+    结果，不关闭可跨轮、跨日复用的 Conversation。全部工具见下文「工具目录」。
     `run_sql`、`list_resources`、`describe_resource` 已移除：它们按调用者
     自己的数据资源授权返回物理列，绕开知识网络的属性级规则。MCP（`tools/list`、
     `tools/call`、按需网关与沙箱能力面）和 REST（`POST /kn/run_sql`、
     `POST /kn/list_resources`、`POST /kn/describe_resource`，现返回 404）都不再提供。
-    另有一个默认不装配的 `execute_skill`：它在沙箱内用 Python 执行技能包里的脚本，只有显式开启
-    （`EXECUTE_SKILL_ENABLED=true`）才出现在 `tools/list` 与 `GET /mcp/info`，
-    未开启时与「没编译进来」无异。该开关是技能执行能力的总闸，同时决定
-    `/kn/execute_skill` 这条 REST 路由是否注册。业务工具必须显式携带服务自描述 schema 中的 `bkn_context`，
+    业务工具必须显式携带服务自描述 schema 中的 `bkn_context`，
     其中只要求权威返回的 `conversation_id` 和 `interaction_id`；Operation key、租约、
     重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；
     关闭 Trace 采集时，start_interaction 仍创建会话与交互并返回真实 ID；
     业务工具继续携带这些 ID 执行，但不新增 Operation、回执或证据；
     finish_interaction 仍结束交互。Trace Core 不可用时，无法创建受管控会话，
-    start_interaction 不返回 ID；调用方先重试 start，不会伪造 ID；
-    各工具的语义与参数含义见本目录下对应的 REST 文档。
+    start_interaction 不返回 ID；调用方先重试 start，不会伪造 ID。
 
     **接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，
     协议流程 `initialize` → `tools/list` → `tools/call`（JSON-RPC 2.0）。
     鉴权与 REST 一致：`Authorization: Bearer <token>`，OAuth access token 或
-    `bak_` 前缀的 AppKey。宿主适配器可选使用
+    `bak_` 前缀的 AppKey。MCP 端点还接受 `bex_` 前缀的执行凭据：它由 bkn-safe
+    签发给后台运行（例如场景回归），代表发起人本人；每次工具调用都只能针对签发时
+    绑定的那个知识网络，`list_knowledge_networks` 会被拒绝，其他路由一律不接受。
+    宿主适配器可选使用
     `X-OpenBKN-Host-Conversation-Key` 和 `X-OpenBKN-Client-Invocation-Id`，或对应的
     `openbkn.ai/host-conversation-key`、`openbkn.ai/client-invocation-id` MCP `_meta`
     提示会话关联与调用幂等；`client-invocation-id` 可用于 start 和每一次业务工具调用，
@@ -51,6 +44,82 @@ info:
     端点，鉴权、受管生命周期和工具语义与 `/mcp` 相同，面向每次模型调用都携带全部
     工具定义的宿主。它只公布 14 个工具，其余能力经按需网关使用，见下文
     `/mcp-compact` 与 `GET /mcp-compact/info`。
+
+    ### 工具目录
+
+    下表是社区版的全部工具，与服务内嵌的工具元数据一一对应；部署实际公布的目录以
+    `GET /mcp/info` 为准，许可证覆盖的企业版工具会额外出现在其中。「精简入口」一列
+    说明该工具在 `/mcp-compact` 上是直接公布、经按需网关使用，还是只在精简入口提供。
+    「参数与返回」一列指向同目录下的 REST 文档，工具的语义与参数含义以其中的同名接口
+    为准；MCP 侧另需 `bkn_context`，查询类工具还可用 `response_format`（`json` 或
+    `toon`）选择结果格式。逐字段的入参与输出 schema 以 `GET /mcp/info` 为准。
+    没有 REST 接口的工具在下文单独说明。
+
+    | 工具 | 分组 | 用途 | 精简入口 | 参数与返回 |
+    | --- | --- | --- | --- | --- |
+    | `bkn_start_interaction` | lifecycle | 为当前用户问题开始一次受管 Interaction，返回业务工具所需的 `bkn_context` | 直接公布 | 本文开头 |
+    | `bkn_finish_interaction` | lifecycle | 回复用户前结束当前 Interaction；Conversation 可继续使用 | 直接公布 | 本文开头 |
+    | `list_knowledge_networks` | discovery | 列出当前账号可见的知识网络，取得其余工具所需的 `kn_id` | 直接公布 | 知识网络浏览 API |
+    | `get_kn_detail` | discovery | 取知识网络 Schema：概念组、对象类、关系类与行动类；规模过大的网络只返回导航壳 | 直接公布 | 知识网络浏览 API |
+    | `search_schema` | discovery | 按自然语言检索相关的对象类、关系类、行动类与指标 | 直接公布 | Schema 检索 API |
+    | `get_object_types` | discovery | 按 id 取对象类完整定义及可见的 `related_metrics`；不传 id 时分页列举对象类索引 | 经网关 | 知识网络浏览 API |
+    | `get_relation_types` | discovery | 按 id 取关系类完整定义（含 `mapping_rules`）；不传 id 时分页列举 | 经网关 | 知识网络浏览 API |
+    | `search_instance` | query | 用一句自然语言直接召回实例，并附带读懂这些实例所需的对象类精简定义 | 直接公布 | 对象实例查询 API |
+    | `query_object_instance` | query | 已知对象类时按条件过滤实例，支持排序、选择字段与 cursor 翻页 | 直接公布 | 对象实例查询 API |
+    | `query_instance_subgraph` | query | 沿已知关系路径拉取实例子图，支持多跳 | 直接公布 | 实例子图查询 API |
+    | `explore_subgraph` | query | 不预先知道路径时，从起点对象类按方向与跳数探索关联子图 | 经网关 | 实例子图查询 API |
+    | `get_logic_properties_values` | query | 为一批实例计算对象类上定义的逻辑属性 | 经网关 | 逻辑属性求值 API（`/kn/logic-property-resolver`） |
+    | `run_cypher` | query | 用对象类名与关系类名写 Cypher，服务端编译为一条只读 SQL 执行；适合聚合、排名与多跳问题 | 直接公布 | Cypher 查询 API |
+    | `query_metric` | query | 按已发布对象指标 V1 的固定口径取数，支持过滤、分组、排序、分页与时间范围 | 直接公布 | 逻辑属性求值 API（`/kn/query_metric`） |
+    | `drill_through_metric` | query | 分页查看 `query_metric` 某个结果桶中参与计算的对象实例 | 直接公布 | 本文，见下文 |
+    | `get_action_info` | action | 按行动类 ID 取业务定义、入参 schema 与结果 schema | 经网关 | 行动类定义查询与执行 API |
+    | `execute_action` | action | 执行行动；执行是异步的，返回 `execution_id` | 经网关 | 行动类定义查询与执行 API |
+    | `get_action_execution` | action | 按 `execution_id` 查询一次执行的整体状态与逐条结果 | 经网关 | 行动类定义查询与执行 API |
+    | `list_action_executions` | action | 按行动类、状态与触发方式分页列出执行历史 | 经网关 | 行动类定义查询与执行 API |
+    | `list_skills` | skill | 浏览平台已发布的 Skill；不受知识网络挂载约束，结果是目录而非权限 | 经网关 | Skill 读取与执行 API |
+    | `get_skill_content` | skill | 读技能主文档 SKILL.md 与技能包文件清单 | 经网关 | Skill 读取与执行 API |
+    | `read_skill_file` | skill | 读技能包内的单个文件 | 经网关 | Skill 读取与执行 API |
+    | `execute_skill` | skill | 在沙箱内用 Python 执行技能包里的脚本；默认不装配，见下文 | 经网关（开启时） | Skill 读取与执行 API |
+    | `search_capabilities` | tool | 在同一个排序空间里检索该网络已挂载的 Skill、函数工具（含 API 工具）与 MCP 工具 | 经网关 | 能力检索与调用 API |
+    | `execute_tool` | tool | 调用一个已挂载到该网络的函数工具或 MCP 工具，返回工具原始响应 | 经网关 | 能力检索与调用 API |
+    | `run_code` | execution | 在沙箱内执行一段 Python，脚本里可直接把业务工具当函数调用 | 经网关 | 本文，见下文 |
+    | `run_shell` | execution | 在沙箱内执行一条 shell 命令，用于查看环境与 `run_code` 落盘的文件 | 经网关 | 本文，见下文 |
+    | `search_native_tools` | gateway | 按要做的事查找按需工具，返回候选与可直接执行的 `ready` | 仅精简入口 | `/mcp-compact` |
+    | `describe_native_tool` | gateway | 取一个按需工具的参数 schema 与调用模板 | 仅精简入口 | `/mcp-compact` |
+    | `execute_native_tool` | gateway | 按目标工具名执行一个按需工具 | 仅精简入口 | `/mcp-compact` |
+
+    除 `list_knowledge_networks`、`list_skills`、两个生命周期工具和三个网关工具外，
+    其余工具都要求 `kn_id`。
+
+    **`execute_skill` 的开关**：默认不装配，只有显式开启（`EXECUTE_SKILL_ENABLED=true`）
+    才出现在 `tools/list` 与 `GET /mcp/info`，未开启时与「没编译进来」无异。该开关是
+    技能执行能力的总闸，同时决定 `/kn/execute_skill` 这条 REST 路由是否注册。
+
+    **`drill_through_metric`**：只对 `query_metric` 返回、且 `available_actions` 含
+    `participants` 的结果桶可用；`drill` 只表示还能按分析维度继续下钻，不代表能查看参与
+    实例，`status=no_data` 的桶不提供参与实例。入参：
+
+    - `kn_id`、`metric_id`、`version`（必填）：与产生该桶的 `query_metric` 调用一致；
+    - `query`（必填）：产生该桶时 `query_metric` 使用的完整 `query`，服务端会重新校验；
+    - `bucket_key`（必填）：`query_metric` 对应结果条目返回的不透明桶键；
+    - `page_size`（1–100，默认 100）与 `cursor`（上一页返回的 `next_cursor`）：翻页。
+
+    返回 `participants[]`（每项含 `instance_identity` 与 `role`）、`next_cursor`、
+    `bucket_value`、`evaluated_at`、`status`（`ok` 或 `partial`）与 `warnings[]`。
+
+    **`run_code` 与 `run_shell`**：两者在沙箱内执行，共用一个按会话隔离的工作目录。
+
+    - `run_code`：入参 `code`（Python 源码，最多 102400 个 Unicode 字符，系统包装与
+      工具桩不计入）与 `timeout`（秒，默认 60）。只返回脚本 print 到 stdout 的内容，
+      中间结果不进入模型上下文，过滤与聚合应在脚本内完成。脚本内可直接把业务工具当函数调用，
+      无需 import；参数与各工具的输入 schema 一致，但不传 `bkn_context`（由运行时
+      注入），`response_format` 固定为 `json`，返回值即该工具输出 schema 描述的对象，
+      调用失败抛 `ToolError`。工具的描述按当前工具面动态生成，列出可调用的函数名。
+    - `run_shell`：入参 `command`（交给 `sh -c` 执行，可用管道与 `&&`）与 `timeout`
+      （秒，默认 60），返回 stdout 与 stderr。只用于查看环境与文件；读取知识网络数据应调用对应的业务工具。
+
+    `GET /mcp/info` 返回的 `toolkit_version` 是这一工具面的内容哈希，与沙箱镜像中的
+    `__toolkit_version__` 同源，用于判断镜像是否滞后于服务端。
 
     **权限说明（`permission_guidance`）**：`query_object_instance` 与
     `get_logic_properties_values` 在访问权限影响调用时附带该对象，两个入口相同。
@@ -214,7 +283,7 @@ paths:
         `/mcp-compact` 的自描述，结构与 `GET /mcp/info` 相同，区别只有：
 
         - `endpoint` 指向精简入口；
-        - `tools` 只含本入口公布的 11 个工具，schema 与本入口 `tools/list` 一致
+        - `tools` 只含本入口公布的 14 个工具，schema 与本入口 `tools/list` 一致
           （业务工具无输出 schema，`bkn_context` 只声明两个 ID，见 `/mcp-compact`）；
         - 不返回 `toolkit_version`：该哈希描述的是 `/mcp` 公布的工具面，也是沙箱镜像
           构建时对齐的对象；本入口经网关可达沙箱执行工具，但不公布它们，要比对版本

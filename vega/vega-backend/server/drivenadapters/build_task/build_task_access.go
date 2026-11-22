@@ -123,7 +123,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		return nil, err
 	}
 	if indexConfigJSON != "" {
-		if err := sonic.UnmarshalString(indexConfigJSON, &buildTask.IndexConfig); err != nil {
+		if err := common.UnmarshalJSON([]byte(indexConfigJSON), &buildTask.IndexConfig); err != nil {
 			return nil, err
 		}
 	}
@@ -346,7 +346,7 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 }
 
 func (bta *buildTaskAccess) SetProgress(ctx context.Context, tx *sql.Tx, id string,
-	progress interfaces.BuildTaskProgress, lastProgressTime int64) (bool, error) {
+	progress interfaces.BuildTaskProgress, allowedStatuses []string, lastProgressTime int64) (bool, error) {
 	updateColumns := map[string]any{"f_last_progress_time": lastProgressTime}
 	if progress.TotalCount != nil {
 		updateColumns["f_total_count"] = *progress.TotalCount
@@ -361,11 +361,8 @@ func (bta *buildTaskAccess) SetProgress(ctx context.Context, tx *sql.Tx, id stri
 		updateColumns["f_failure_detail"] = *progress.FailureDetail
 	}
 	return bta.update(ctx, tx, updateColumns, map[string]any{
-		"f_id": id,
-		"f_status": []string{
-			interfaces.BuildTaskStatusRunning,
-			interfaces.BuildTaskStatusStopping,
-		},
+		"f_id":     id,
+		"f_status": allowedStatuses,
 	})
 }
 
@@ -406,16 +403,13 @@ func (bta *buildTaskAccess) MarkStopping(ctx context.Context, tx *sql.Tx, id str
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, allowedStatuses []string, finishTime int64) (bool, error) {
 	return bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusStopped,
 		"f_finish_time": finishTime,
 	}, map[string]any{
-		"f_id": id,
-		"f_status": []string{
-			interfaces.BuildTaskStatusPending,
-			interfaces.BuildTaskStatusStopping,
-		},
+		"f_id":     id,
+		"f_status": allowedStatuses,
 	})
 }
 
@@ -426,18 +420,14 @@ func (bta *buildTaskAccess) MarkCompleted(ctx context.Context, tx *sql.Tx, id st
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkFailed(ctx context.Context, tx *sql.Tx, id string, detail string, finishTime int64) (bool, error) {
+func (bta *buildTaskAccess) MarkFailed(ctx context.Context, tx *sql.Tx, id string, detail string, allowedStatuses []string, finishTime int64) (bool, error) {
 	return bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusFailed,
 		"f_error_msg":   detail,
 		"f_finish_time": finishTime,
 	}, map[string]any{
-		"f_id": id,
-		"f_status": []string{
-			interfaces.BuildTaskStatusPending,
-			interfaces.BuildTaskStatusRunning,
-			interfaces.BuildTaskStatusStopping,
-		},
+		"f_id":     id,
+		"f_status": allowedStatuses,
 	})
 }
 

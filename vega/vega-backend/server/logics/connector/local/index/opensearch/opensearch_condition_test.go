@@ -92,6 +92,12 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 						}
 						cfg := &interfaces.FilterCondCfg{Field: "name", Operation: operation, Value: tc.pattern}
 						condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, map[string]*interfaces.Property{"name": field})
+						if tc.pattern == "" {
+							var invalid *interfaces.ConditionBuildError
+							require.ErrorAs(t, err, &invalid)
+							assert.Nil(t, condition)
+							return
+						}
 						require.NoError(t, err)
 						got, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, []*interfaces.Property{field})
 						require.NoError(t, err)

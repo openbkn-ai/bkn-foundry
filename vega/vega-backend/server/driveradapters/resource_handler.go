@@ -166,22 +166,15 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.ResourceRequest
-	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid resource request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	if err := ValidateResourceRequest(ctx, &req); err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-
-	if err := validateCreateResourceCategory(ctx, req.Category); err != nil {
+	if err := ValidateCreateResourceRequest(ctx, &req); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -191,7 +184,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	resource, err := r.rs.Create(ctx, &req)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, resourceErrorForTelemetry(req.Category, httpErr))
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -321,30 +314,15 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 	id := c.Param("id")
 
 	var req interfaces.ResourceRequest
-	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
+	if err := common.BindJSON(c.Request.Body, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid resource request body")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
-	if req.ID != "" && req.ID != id {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_ID).
-			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", id, req.ID))
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	req.ID = id
-
-	if err := ValidateResourceRequest(ctx, &req); err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
-	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+	if err := ValidateUpdateResourceRequest(ctx, &req, id); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -353,7 +331,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 
 	if err := r.rs.Update(ctx, &req); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		oteltrace.AddHttpAttrs4HttpError(span, resourceErrorForTelemetry(req.Category, httpErr))
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -366,6 +344,22 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler UpdateResource Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// resourceErrorForTelemetry 为 API Resource 保留安全的诊断信息，正文只随原错误响应返回。
+func resourceErrorForTelemetry(category string, httpErr *httperrors.HTTPError) *httperrors.HTTPError {
+	if category != interfaces.ResourceCategoryAPI {
+		return httpErr
+	}
+	safeErr := *httpErr
+	safeErr.ErrorDetails = "API resource operation failed"
+	safeErr.Metadata = make(map[string]any, 2)
+	for _, field := range []string{"stage", "upstream_status"} {
+		if value, ok := httpErr.Metadata[field]; ok {
+			safeErr.Metadata[field] = value
+		}
+	}
+	return &safeErr
 }
 
 // EnableResourceByEx handles POST /api/vega-backend/v1/resources/:id/enable.
@@ -556,7 +550,7 @@ func readResourceDiscoverStrategy(c *gin.Context) (string, error) {
 		Strategy string `json:"strategy"`
 	}{Strategy: interfaces.DiscoverStrategyFullSync}
 	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&request); err != nil {
+		if err := common.BindJSON(c.Request.Body, &request); err != nil {
 			return "", err
 		}
 	}

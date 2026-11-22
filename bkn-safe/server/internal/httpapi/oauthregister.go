@@ -4,8 +4,8 @@
 
 package httpapi
 
-// MCP clients (WorkBuddy, Claude Code, Cursor, …) sign in to the Context Loader
-// MCP endpoint by the MCP authorization flow: on a 401 they look up the
+// MCP clients (WorkBuddy, Claude Code, Cursor, …) sign in to the platform's MCP
+// endpoints by the MCP authorization flow: on a 401 they look up the
 // protected-resource metadata (RFC 9728), then the authorization server's
 // metadata (RFC 8414), register themselves (RFC 7591) and open the browser on
 // Hydra's authorize endpoint. Hydra has no protected-resource document, and its
@@ -35,8 +35,6 @@ import (
 
 const (
 	oauthRegisterPath = "/api/safe/v1/oauth/register"
-	// mcpResourcePrefix covers Context Loader's /mcp and /mcp-compact endpoints.
-	mcpResourcePrefix = "/api/agent-retrieval/v1/mcp"
 	// dynamicClientScope is granted to every self-registered client. "offline"
 	// is what makes Hydra issue a refresh token, so the agent can renew alone.
 	dynamicClientScope    = "openid offline offline_access"
@@ -49,6 +47,26 @@ const (
 // them from the protected-resource document; without "offline" Hydra issues
 // no refresh token and the agent has to sign in again every hour.
 var mcpScopes = []string{"openid", "offline"}
+
+// mcpResources are the MCP endpoints clients sign in to, by path prefix. The
+// first also names the root document.
+var mcpResources = []struct{ prefix, name string }{
+	{"/api/agent-retrieval/v1/mcp", "OpenBKN Context Loader"}, // /mcp and /mcp-compact
+	{"/api/workshop/v1/mcp", "OpenBKN Workshop"},              // licensed editions only
+}
+
+// mcpResourceName names the MCP endpoint a path is under; false when it is none.
+func mcpResourceName(path string) (string, bool) {
+	if path == "" || path == "/" {
+		return mcpResources[0].name, true
+	}
+	for _, r := range mcpResources {
+		if strings.HasPrefix(path, r.prefix) {
+			return r.name, true
+		}
+	}
+	return "", false
+}
 
 // DynamicClientRegistrar creates the Hydra client behind a registration.
 type DynamicClientRegistrar interface {
@@ -118,12 +136,13 @@ func (h *oauthRegistration) authorizationServer(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
-// protectedResource describes the Context Loader MCP endpoint. Clients check
-// that `resource` matches the URL they connected to, so it is built from the
-// request's own origin; the document grants nothing by itself.
+// protectedResource describes one MCP endpoint. Clients check that `resource`
+// matches the URL they connected to, so it is built from the request's own
+// origin; the document grants nothing by itself.
 func (h *oauthRegistration) protectedResource(c *gin.Context) {
 	path := c.Param("resource")
-	if path != "" && path != "/" && !strings.HasPrefix(path, mcpResourcePrefix) {
+	name, ok := mcpResourceName(path)
+	if !ok {
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -143,7 +162,7 @@ func (h *oauthRegistration) protectedResource(c *gin.Context) {
 		"authorization_servers":    []string{strings.TrimSuffix(issuer, "/")},
 		"scopes_supported":         mcpScopes,
 		"bearer_methods_supported": []string{"header"},
-		"resource_name":            "OpenBKN Context Loader",
+		"resource_name":            name,
 	})
 }
 

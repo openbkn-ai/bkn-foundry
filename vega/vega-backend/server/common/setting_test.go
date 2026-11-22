@@ -21,20 +21,32 @@ import (
 )
 
 func TestCatalogHealthCheckConfig(t *testing.T) {
-	t.Run("unmarshals shared connection test and schedule settings", func(t *testing.T) {
+	t.Run("unmarshals worker, timeout and schedule settings", func(t *testing.T) {
 		vp := viper.New()
 		vp.Set("catalogHealthCheck", map[string]any{
 			"workerEnabled": true,
-			"timeout":       "30s",
+			"timeout":       "45s",
 			"cronExpr":      "0 * * * *",
 		})
 		setting := &AppSetting{}
 
 		require.NoError(t, vp.Unmarshal(setting))
 		assert.True(t, setting.CatalogHealthCheck.WorkerEnabled)
-		assert.Equal(t, 30*time.Second, setting.CatalogHealthCheck.Timeout)
+		assert.Equal(t, 45*time.Second, setting.CatalogHealthCheck.Timeout)
 		assert.Equal(t, "0 * * * *", setting.CatalogHealthCheck.CronExpr)
 	})
+}
+
+func TestCatalogHealthCheckTimeout(t *testing.T) {
+	previous := catalogHealthCheckTimeout.Load()
+	t.Cleanup(func() { catalogHealthCheckTimeout.Store(previous) })
+
+	catalogHealthCheckTimeout.Store(int64(45 * time.Second))
+	assert.Equal(t, 45*time.Second, CatalogHealthCheckTimeout())
+	for _, invalid := range []time.Duration{0, -time.Second} {
+		catalogHealthCheckTimeout.Store(int64(invalid))
+		assert.Equal(t, 30*time.Second, CatalogHealthCheckTimeout())
+	}
 }
 
 func TestSetServiceSettings(t *testing.T) {

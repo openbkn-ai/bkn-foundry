@@ -1180,6 +1180,20 @@ func unsupportedSource(err error) bool {
 // graph values -- is refused, saying why.
 func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	if relation := optionalBacking(compiled.plan); relation != "" {
+		// The general refusal lists OPTIONAL MATCH as available, which it is
+		// but over this relation; name the relation instead.
+		if relationType := compiled.schema.relationTypesByID[relation]; relationType != nil && relationType.RTName != "" {
+			relation = relationType.RTName
+		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
+			"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceOptionalLink", map[string]any{"relation": relation})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(localizedText)
+	}
 	if compiled.plan.SQLOnly || !graphOutsideSQL(compiled.graph) {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource", nil)
 		if renderErr != nil {

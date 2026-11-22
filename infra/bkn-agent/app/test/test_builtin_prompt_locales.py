@@ -21,10 +21,6 @@ from app.test import test_shared_agent_seeds as seeds
 
 ENGLISH_ORIGINALS = {
     "object_metric_designer",
-    "bkn-project-requirements",
-    "bkn-project-answer-judge",
-    "bkn-project-ontology-ask",
-    "bkn-project-draft-naming",
 }
 
 # Official historical template from commit ab9ae6d64 (VM Prompt v3/v4).
@@ -132,7 +128,7 @@ def test_official_locale_migration_preserves_versions_and_is_idempotent():
 
 
 @pytest.mark.parametrize(
-    "agent_id", ["resource-semantic-understanding", "bkn-project-requirements"]
+    "agent_id", ["resource-semantic-understanding", "object_metric_designer"]
 )
 def test_source_language_migration_preserves_unmarked_legacy_data(agent_id):
     with official_database() as db:
@@ -142,7 +138,7 @@ def test_source_language_migration_preserves_unmarked_legacy_data(agent_id):
             "WHERE a.f_agent_id=?",
             (agent_id,),
         ).fetchone()
-        expected = "en-US" if agent_id == "bkn-project-requirements" else "zh-CN"
+        expected = "en-US" if agent_id == "object_metric_designer" else "zh-CN"
         for version, content, creator, language in (
             (101, row["f_content"], row["f_create_user"], None),
             (102, row["f_content"], "administrator", None),

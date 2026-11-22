@@ -34,9 +34,9 @@ error_messages = {
     },
     "BknAgent.Execution.ToolScopeMismatch": {
         "code": "BknAgent.Execution.ToolScopeMismatch",
-        "description": "工具请求了其他知识网络，调用已拒绝。",
-        "detail": "工具请求了其他知识网络，调用已拒绝。",
-        "solution": "请仅查询当前知识网络。",
+        "description": "工具请求了本次运行未指定的网络版本或草稿，调用已拒绝。",
+        "detail": "工具请求了本次运行未指定的网络版本或草稿，调用已拒绝。",
+        "solution": "去掉 kn_version、draft_revision 和 branch 参数后重新调用，本次运行会自动带上。",
     },
     "BknAgent.Auth.TokenRequired": {
         "code": "BknAgent.Auth.TokenRequired",

@@ -8,9 +8,11 @@ package interfaces
 
 const (
 	ResourceLocalIndexStatusAvailable = "available"
-	// ResourceLocalIndexStatusUnavailable means the managed index behind the resource cannot serve
-	// anything. Vega sets it when a schema update is classified as build-related, which also clears
-	// the index name: the row survives, the index behind it does not.
+	// ResourceLocalIndexStatusReadOnly means the published index can serve queries while a full rebuild is pending.
+	ResourceLocalIndexStatusReadOnly = "readonly"
+	// ResourceLocalIndexStatusStale means the published index is incompatible with the current resource configuration.
+	ResourceLocalIndexStatusStale = "stale"
+	// ResourceLocalIndexStatusUnavailable means the resource has no available managed index.
 	ResourceLocalIndexStatusUnavailable = "unavailable"
 
 	FieldFeatureType_Keyword  = "keyword"

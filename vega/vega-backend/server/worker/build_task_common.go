@@ -130,7 +130,7 @@ func normalizeJSONValue(value any) (any, error) {
 		return text, nil // 空字符串是内容，不用空值替代。
 	}
 	var parsed any
-	if err := common.UnmarshalPreciseJSON([]byte(text), &parsed); err != nil {
+	if err := common.UnmarshalJSON([]byte(text), &parsed); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 	return parsed, nil

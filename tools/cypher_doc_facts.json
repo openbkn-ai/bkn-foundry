@@ -35,6 +35,21 @@
       "name": "UNION works on datasets, part by part",
       "zh": "(?:UNION|数据集)[^。]{0,20}每段各自读取",
       "en": "(?:UNION|datasets)[^.]{0,40}each part read on its own"
+    },
+    {
+      "name": "a shared relation type name resolves by the pattern's ends",
+      "zh": "同名.{0,100}按名称.{0,60}箭头方向.{0,60}歧义",
+      "en": "share a name.{0,200}the way the arrow reads.{0,120}ambiguous"
+    },
+    {
+      "name": "a relation through a link table works in MATCH, not in OPTIONAL MATCH, on datasets",
+      "zh": "关联表.{0,80}MATCH.{0,40}OPTIONAL MATCH",
+      "en": "link table.{0,120}MATCH.{0,40}OPTIONAL MATCH"
+    },
+    {
+      "name": "object_properties keys may be the alias a node is returned as",
+      "zh": "变量[^。]{0,40}返回[^。]{0,6}别名",
+      "en": "variable[^.]{0,60}alias (?:the node|it) is returned as"
     }
   ]
 }

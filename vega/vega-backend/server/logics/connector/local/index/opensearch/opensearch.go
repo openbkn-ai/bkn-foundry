@@ -27,6 +27,11 @@ import (
 
 const defaultBulkRequestMaxBytes = 32 * 1024 * 1024
 
+var (
+	_ interfaces.IndexConnector            = (*OpenSearchConnector)(nil)
+	_ interfaces.IndexReadSessionConnector = (*OpenSearchConnector)(nil)
+)
+
 type bulkRequestError struct {
 	statusCode int
 	detail     string
@@ -200,10 +205,13 @@ func (c *OpenSearchConnector) Ping(ctx context.Context) error {
 	}
 
 	req := opensearchapi.InfoRequest{}
-	resp, err := req.Do(ctx, c.client)
+	requestCtx, cancel := context.WithTimeout(ctx, common.CatalogHealthCheckTimeout())
+	defer cancel()
+
+	resp, err := req.Do(requestCtx, c.client)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if requestCtx.Err() != nil {
+			return requestCtx.Err()
 		}
 		if errors.Is(err, context.Canceled) {
 			return context.Canceled
@@ -494,7 +502,7 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 	}
 
 	var result map[string]any
-	if err := common.DecodePreciseJSON(resp.Body, &result); err != nil {
+	if err := common.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
@@ -535,7 +543,7 @@ func (c *OpenSearchConnector) GetDocuments(ctx context.Context, indexName string
 			Source map[string]any `json:"_source"`
 		} `json:"docs"`
 	}
-	if err := common.DecodePreciseJSON(resp.Body, &result); err != nil {
+	if err := common.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Documents) != len(docIDs) {
@@ -634,7 +642,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 
 	// Check if any documents have failed to update
 	var result map[string]interface{}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := common.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
@@ -703,7 +711,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName str
 		return fmt.Errorf("failed to delete documents: %s", resp.String())
 	}
 	var result map[string]any
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := common.DecodeJSON(resp.Body, &result); err != nil {
 		return fmt.Errorf("decode delete documents response: %w", err)
 	}
 	if hasErrors, ok := result["errors"].(bool); ok && hasErrors {
@@ -783,7 +791,7 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexN
 			Status int `json:"status"`
 		} `json:"failures"`
 	}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&response); err != nil {
+	if err := common.DecodeJSON(resp.Body, &response); err != nil {
 		return nil, fmt.Errorf("invalid delete-by-query response: %w", err)
 	}
 	if response.Deleted == nil || response.VersionConflicts == nil || response.TimedOut == nil ||
@@ -987,7 +995,7 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, indexNam
 			} `json:"index"`
 		} `json:"items"`
 	}
-	if err := sonic.ConfigDefault.NewDecoder(response.Body).Decode(&decoded); err != nil {
+	if err := common.DecodeJSON(response.Body, &decoded); err != nil {
 		return results, err
 	}
 	if len(decoded.Items) != len(documents) {

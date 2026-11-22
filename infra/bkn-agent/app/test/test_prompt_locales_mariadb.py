@@ -18,16 +18,11 @@ from app.test.test_builtin_prompt_locales import (
     LEGACY_SMART_QA,
 )
 from app.test.test_shared_agent_seeds import (
-    ANSWER_JUDGE,
-    ANSWER_JUDGE_EXPECT,
-    ANSWER_JUDGE_REASON,
     BUILTIN_LOCALES,
     CLAIM_LOCALES,
     METRIC_DESIGN_LOCALE,
     MIGRATIONS,
-    ONTOLOGY_ASK,
     PROMPT_INDEX,
-    REQUIREMENTS,
     SOURCE_LANGUAGE,
     selected_migrations,
     statements,
@@ -81,25 +76,11 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert cursor.fetchall() == ()
         with db.cursor() as cursor:
             cursor.execute("SELECT f_source_language FROM t_agent_prompt_version LIMIT 0")
-        with db.cursor() as cursor:
-            # Both install paths reach the official Ask AI v7.
-            cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='bkn-project-ontology-ask' AND f_current=1")
-            assert cursor.fetchone() == (7,)
         before_locales_rerun = saved_rows()
         apply(BUILTIN_LOCALES)
         apply(BUILTIN_LOCALES)
-        apply(REQUIREMENTS)
-        apply(REQUIREMENTS)
-        apply(ANSWER_JUDGE)
-        apply(ANSWER_JUDGE)
-        apply(ANSWER_JUDGE_EXPECT)
-        apply(ANSWER_JUDGE_EXPECT)
         apply(SOURCE_LANGUAGE)
         apply(SOURCE_LANGUAGE)
-        apply(ANSWER_JUDGE_REASON)
-        apply(ANSWER_JUDGE_REASON)
-        apply(ONTOLOGY_ASK)
-        apply(ONTOLOGY_ASK)
         assert saved_rows() == before_locales_rerun
         with db.cursor() as cursor:
             cursor.execute("SELECT a.f_agent_id, v.f_content, v.f_localized_content, p.f_current_version, v.f_source_language FROM t_agent a "
@@ -114,12 +95,11 @@ def test_claim_locale_migration_on_mariadb(upgrade):
             assert {row[0] for row in rows} == set(CORE_BUILTIN_AGENT_IDS)
             for agent_id, canonical, variants, current, source_language in rows:
                 expected = "en-US" if agent_id in ENGLISH_ORIGINALS else "zh-CN"
-                # New seeds (the analysis writer, the eval assistant), ontology v6, graph explorer v2 and resource
-                # semantic understanding v7 explicitly set their source language on both install paths; unchanged
+                # New seeds (the analysis writer, the eval assistant), graph explorer v2 and resource semantic
+                # understanding v7 explicitly set their source language on both install paths; unchanged
                 # historical heads preserve NULL.
                 has_explicit_source = upgrade == "fresh" or agent_id in {
-                    "bkn-project-ontology-ask", "graph_explorer", "analysis_writer", "eval_assistant",
-                    "bkn-project-draft-naming", "resource-semantic-understanding"}
+                    "graph_explorer", "analysis_writer", "eval_assistant", "resource-semantic-understanding"}
                 assert source_language == (expected if has_explicit_source else None), agent_id
                 cursor.execute("SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id=%s AND f_initial=1", (agent_id,))
                 initial = cursor.fetchone()

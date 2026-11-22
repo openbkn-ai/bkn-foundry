@@ -6,6 +6,7 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -26,11 +28,12 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 	t.Run("keeps dynamic attributes and nested fields", func(t *testing.T) {
 		var prop Property
 
-		err := sonic.Unmarshal([]byte(`{
+		err := common.UnmarshalJSON([]byte(`{
 			"type": "text",
 			"index": false,
 			"analyzer": "ik_max_word",
 			"meta": {"description": "商品标题"},
+			"numeric_metadata": 9007199254740993,
 			"fields": {
 				"keyword": {"type": "keyword", "ignore_above": 256}
 			},
@@ -44,6 +47,7 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		assert.Equal(t, false, prop.Attributes["index"])
 		assert.Equal(t, "ik_max_word", prop.Attributes["analyzer"])
 		assert.Equal(t, map[string]any{"description": "商品标题"}, prop.Attributes["meta"])
+		assert.Equal(t, json.Number("9007199254740993"), prop.Attributes["numeric_metadata"])
 		out := map[string]interfaces.IndexFieldMeta{}
 		parseProperties("", map[string]Property{"title": prop}, out)
 		assert.Equal(t, "商品标题", out["title"].Description)
@@ -63,7 +67,7 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		assert.Equal(t, "ik_max_word", attributes["analyzer"])
 		require.Contains(t, prop.Fields, "keyword")
 		assert.Equal(t, "keyword", prop.Fields["keyword"].Type)
-		assert.Equal(t, float64(256), prop.Fields["keyword"].Attributes["ignore_above"])
+		assert.Equal(t, json.Number("256"), prop.Fields["keyword"].Attributes["ignore_above"])
 		require.Contains(t, prop.Properties, "title")
 		assert.Equal(t, "keyword", prop.Properties["title"].Type)
 	})
@@ -161,7 +165,11 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 			"products": {
 				"mappings": {
 					"_meta": {"description": "产品索引", "version": "1.0", "owner": {"team": "search"}},
-					"properties": {"title": {"type": "text"}}
+					"properties": {
+						"title": {"type": "text"},
+						"payload": {"properties": {"n": {"type": "long"}}},
+						"disabled": {"type": "object", "enabled": false}
+					}
 				}
 			}
 		}`))
@@ -181,7 +189,10 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 		"version":     "1.0",
 		"owner":       map[string]any{"team": "search"},
 	}, index.MappingMeta)
-	require.Contains(t, index.Mapping, "title")
+	assert.Len(t, index.Mapping, 2)
+	assert.Contains(t, index.Mapping, "title")
+	assert.Contains(t, index.Mapping, "payload.n")
+	assert.Equal(t, []string{"disabled", "payload"}, index.ObjectFields)
 }
 
 func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
@@ -240,11 +251,12 @@ func TestFetchMappingsDefaultsMissingMappingMetaToEmpty(t *testing.T) {
 	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
 	require.NoError(t, err)
 	connector := &OpenSearchConnector{client: client}
-	index := &interfaces.IndexMeta{Name: "products", Description: "索引描述", MappingMeta: map[string]any{"old": true}}
+	index := &interfaces.IndexMeta{Name: "products", Description: "索引描述", MappingMeta: map[string]any{"old": true}, ObjectFields: []string{"removed"}}
 
 	require.NoError(t, connector.fetchMappings(context.Background(), index))
 	assert.Equal(t, "索引描述", index.Description)
 	assert.Empty(t, index.MappingMeta)
+	assert.Empty(t, index.ObjectFields)
 }
 
 func TestFetchMappingsReturnsErrorForInvalidJSON(t *testing.T) {
@@ -299,14 +311,15 @@ func TestOpenSearchConnectorCountRows(t *testing.T) {
 		wantError    bool
 		noRequest    bool
 	}{
-		{name: "count", body: `{"count":42,"_shards":{"failed":0}}`, count: 42},
-		{name: "empty", body: `{"count":0,"_shards":{"failed":0}}`},
-		{name: "large count", body: `{"count":9007199254740993,"_shards":{"failed":0}}`, count: 9007199254740993},
+		{name: "count", body: `{"count":42,"_shards":{"total":1,"successful":1,"failed":0}}`, count: 42},
+		{name: "empty", body: `{"count":0,"_shards":{"total":1,"successful":1,"failed":0}}`},
+		{name: "large count", body: `{"count":9007199254740993,"_shards":{"total":1,"successful":1,"failed":0}}`, count: 9007199254740993},
 		{name: "http error", status: 403, body: `{"error":"private source details"}`, wantError: true},
 		{name: "transport error", transportErr: context.DeadlineExceeded, wantError: true},
-		{name: "failed shard", body: `{"count":4,"_shards":{"failed":1}}`, wantError: true},
-		{name: "missing count", body: `{"_shards":{"failed":0}}`, wantError: true},
-		{name: "negative count", body: `{"count":-1,"_shards":{"failed":0}}`, wantError: true},
+		{name: "failed shard", body: `{"count":4,"_shards":{"total":2,"successful":1,"failed":1}}`, wantError: true},
+		{name: "unavailable shard", body: `{"count":4,"_shards":{"total":2,"successful":1,"failed":0}}`, wantError: true},
+		{name: "missing count", body: `{"_shards":{"total":1,"successful":1,"failed":0}}`, wantError: true},
+		{name: "negative count", body: `{"count":-1,"_shards":{"total":1,"successful":1,"failed":0}}`, wantError: true},
 		{name: "missing shards", body: `{"count":42}`, wantError: true},
 		{name: "invalid json", body: `{`, wantError: true},
 		{name: "nil index", noRequest: true, wantError: true},
@@ -384,8 +397,6 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 	index := &interfaces.IndexMeta{Name: "products"}
 
 	require.NoError(t, connector.fetchMappings(t.Context(), index))
-	queryTypes := map[string]string{}
-	require.NoError(t, connector.fetchMappingsForQuery(t.Context(), "products", queryTypes))
 	for name, want := range map[string]string{
 		"age_alias": "long", "date_alias": "date", "name_alias": "keyword",
 		"missing_alias": "", "cycle_alias": "", "chain_alias": "", "object_alias": "", "invalid_alias": "",
@@ -395,14 +406,13 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 			assert.Equal(t, "alias", field.Type)
 			assert.Equal(t, want, field.ResolvedType)
 			assert.Contains(t, field.Attributes, "path")
-			assert.Equal(t, connector.MapType(want), queryTypes[name])
 			encoded, err := sonic.Marshal(field)
 			require.NoError(t, err)
 			assert.NotContains(t, string(encoded), "ResolvedType")
 		})
 	}
 	for _, name := range []string{"age_alias", "date_alias"} {
-		property := &interfaces.Property{Name: name, Type: queryTypes[name]}
+		property := &interfaces.Property{Name: name, Type: connector.MapType(index.Mapping[name].ResolvedType)}
 		cfg := &interfaces.FilterCondCfg{Field: name, ValueFrom: interfaces.ValueFrom_Const, Value: []any{1, 10}}
 		condition, err := (&filter_condition.RangeCond{}).New(t.Context(), cfg,
 			map[string]*interfaces.Property{name: property})

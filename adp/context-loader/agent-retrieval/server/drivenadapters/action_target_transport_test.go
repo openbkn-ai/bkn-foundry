@@ -34,6 +34,12 @@ func TestActionTransportForwardsExplicitTargetsAndPreciseValues(t *testing.T) {
 			if execute && (values["governance_request_id"] != "request-1" || values["governance_permit_id"] != "permit-1" || values["governance_plan_digest"] != "digest-1") {
 				t.Fatalf("lost governance references: %#v", values)
 			}
+			if execute && values["trigger_type"] != "agent" {
+				t.Fatalf("an execution through the Context Loader must be marked as started by an Agent: %#v", values["trigger_type"])
+			}
+			if !execute && values["trigger_type"] != nil {
+				t.Fatalf("discovery must not carry a trigger type: %#v", values["trigger_type"])
+			}
 			if execute && headers["x-http-method-override"] != "" {
 				t.Fatal("execution must be a real POST")
 			}

@@ -167,6 +167,79 @@ func TestResolveFulltextWildcardFields(t *testing.T) {
 }
 
 func TestNewFilterCondition(t *testing.T) {
+	t.Run("检索条件拒绝空字符串且保留非空模式", func(t *testing.T) {
+		for _, operation := range []string{OperationLike, OperationNotLike, OperationRegex, OperationPrefix,
+			OperationNotPrefix, OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				t.Run("直接构造操作符也拒绝空串", func(t *testing.T) {
+					cfg := constCfg("name", operation, "")
+					cfg.RemainCfg = map[string]any{"fields": []any{"name"}}
+					condition, err := OperationMap[operation].New(t.Context(), cfg, testFieldsMap())
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.ErrorContains(t, err, operation)
+					assert.Nil(t, condition)
+					assert.Equal(t, "", cfg.Value)
+				})
+				for _, nested := range []bool{false, true} {
+					cfg := constCfg("name", operation, "")
+					cfg.RemainCfg = map[string]any{"fields": []any{"name"}}
+					root := cfg
+					if nested {
+						root = &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{{
+							Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{cfg},
+						}}}
+					}
+					condition, err := NewFilterCondition(t.Context(), root, testFieldsMap())
+					var invalid *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &invalid)
+					assert.ErrorContains(t, err, operation)
+					assert.Nil(t, condition)
+					assert.Equal(t, "", cfg.Value)
+				}
+				for _, value := range []string{"   ", "%", "_", ".*", "foo", "苹果😀"} {
+					cfg := constCfg("name", operation, value)
+					cfg.RemainCfg = map[string]any{"fields": []any{"name"}}
+					condition, err := NewFilterCondition(t.Context(), cfg, testFieldsMap())
+					require.NoError(t, err)
+					require.NotNil(t, condition)
+					assert.Equal(t, operation, condition.GetOperation())
+					assert.Equal(t, value, cfg.Value)
+					condition, err = OperationMap[operation].New(t.Context(), cfg, testFieldsMap())
+					require.NoError(t, err)
+					require.NotNil(t, condition)
+					assert.Equal(t, operation, condition.GetOperation())
+					assert.Equal(t, value, cfg.Value)
+				}
+			})
+		}
+	})
+	t.Run("精确比较及集合成员保留空字符串", func(t *testing.T) {
+		for _, operation := range []string{OperationEqual, OperationEqual2, OperationNotEqual, OperationNotEqual2,
+			OperationIn, OperationNotIn, OperationContain, OperationNotContain} {
+			var value any = ""
+			if operation == OperationIn || operation == OperationNotIn || operation == OperationContain || operation == OperationNotContain {
+				value = []any{""}
+			}
+			cfg := constCfg("name", operation, value)
+			condition, err := NewFilterCondition(t.Context(), cfg, testFieldsMap())
+			require.NoError(t, err)
+			assert.NotNil(t, condition)
+			assert.Equal(t, value, cfg.Value)
+		}
+	})
+	t.Run("全文条件的非字符串值保持既有行为", func(t *testing.T) {
+		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			for _, value := range []any{0, false} {
+				cfg := constCfg("name", operation, value)
+				cfg.RemainCfg = map[string]any{"fields": []any{"name"}}
+				condition, err := NewFilterCondition(t.Context(), cfg, testFieldsMap())
+				require.NoError(t, err)
+				assert.NotNil(t, condition)
+				assert.Equal(t, value, cfg.Value)
+			}
+		}
+	})
 	t.Run("Feature 只使用实际物理目标的过滤开关", func(t *testing.T) {
 		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch, OperationEqual, OperationEqual2, OperationLike, OperationKnnVector} {
 			t.Run(operation, func(t *testing.T) {
@@ -777,7 +850,7 @@ func TestInCond(t *testing.T) {
 func TestLikeCond(t *testing.T) {
 	t.Run("SQL LIKE 模式保持原值并拒绝孤立转义", func(t *testing.T) {
 		for _, operation := range []string{OperationLike, OperationNotLike} {
-			for _, pattern := range []string{"", "%", "_", "%ali%", "ali%", "%ali", "object_type", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`} {
+			for _, pattern := range []string{"   ", "%", "_", "%ali%", "ali%", "%ali", "object_type", "中文_😀%", ".*", `a*b?c`, `50\%`, `a\_b`, `a\\b`, `a\nb`} {
 				t.Run(operation+"/"+pattern, func(t *testing.T) {
 					cfg := constCfg("name", operation, pattern)
 					condition, err := NewFilterCondition(t.Context(), cfg, testFieldsMap())

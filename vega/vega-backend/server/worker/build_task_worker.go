@@ -31,6 +31,8 @@ const (
 
 var errIncrementalBatchResourceInvalid = errors.New("incremental batch resource is invalid")
 
+var runningOrStoppingStatuses = []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}
+
 // BuildTaskWorker schedules persisted build tasks and dispatches their mode-specific execution.
 type BuildTaskWorker struct {
 	bts interfaces.BuildTaskService
@@ -140,9 +142,9 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 			var changed bool
 			if task.Status == interfaces.BuildTaskStatusRunning {
 				changed, err = btw.bts.InternalMarkFailed(ctx, nil, task.ID,
-					"build task interrupted by service restart")
+					"build task interrupted by service restart", nil)
 			} else {
-				changed, err = btw.bts.InternalMarkStopped(ctx, nil, task.ID)
+				changed, err = btw.bts.InternalMarkStopped(ctx, nil, task.ID, nil)
 			}
 			if err != nil {
 				return fmt.Errorf("recover interrupted build task %s: %w", task.ID, err)
@@ -246,7 +248,9 @@ func (btw *BuildTaskWorker) runBatchTasks(ctx context.Context) {
 			if btw.stopped.Load() {
 				return
 			}
-			btw.runBatchSafely(ctx, taskID)
+			if err := btw.runBatchTask(ctx, taskID); err != nil {
+				logger.Errorf("Run batch build task failed: id=%s, error=%v", taskID, err)
+			}
 			btw.removeInFlight(taskID)
 			btw.bts.RequestDispatch()
 		}
@@ -269,18 +273,6 @@ func (btw *BuildTaskWorker) runStreamingTasks(ctx context.Context) {
 	}
 }
 
-func (btw *BuildTaskWorker) runBatchSafely(ctx context.Context, taskID string) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			logger.Errorf("Run batch build task panicked: id=%s, error=%v", taskID, recovered)
-			btw.failTask(ctx, taskID, fmt.Sprintf("batch build task panicked: %v", recovered))
-		}
-	}()
-	if err := btw.runBatchTask(ctx, taskID); err != nil {
-		logger.Errorf("Run batch build task failed: id=%s, error=%v", taskID, err)
-	}
-}
-
 func (btw *BuildTaskWorker) runStreamingSafely(ctx context.Context, taskID string) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -293,7 +285,23 @@ func (btw *BuildTaskWorker) runStreamingSafely(ctx context.Context, taskID strin
 	}
 }
 
-func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) error {
+func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) (err error) {
+	var claimed bool
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		failure := fmt.Errorf("batch build task panicked: %v", recovered)
+		var statusErr error
+		if claimed {
+			_, statusErr = markBatchBuildFailed(ctx, btw.bts, taskID, failure.Error())
+		} else {
+			_, statusErr = btw.bts.InternalMarkFailed(ctx, nil, taskID, failure.Error(), []string{interfaces.BuildTaskStatusPending})
+		}
+		err = errors.Join(failure, statusErr)
+	}()
+
 	task, err := btw.bts.InternalGetByID(ctx, taskID)
 	if err != nil {
 		return err
@@ -319,27 +327,24 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		}
 		return nil
 	}
-	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 ||
-		len(resource.IndexConfig.IncrementalFields) == 0 {
-		err = errors.New("batch build resource requires primary_key_fields and incremental_fields")
+	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
+		err = errors.New("batch build resource requires primary_key_fields")
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
-	if task.IndexConfig == nil || len(task.IndexConfig.PrimaryKeyFields) == 0 ||
-		len(task.IndexConfig.IncrementalFields) == 0 {
-		err = errors.New("batch build task snapshot requires primary_key_fields and incremental_fields")
-		btw.failTask(taskCtx, taskID, err.Error())
-		return err
-	}
-	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
+	if task.IndexConfig == nil || len(task.IndexConfig.PrimaryKeyFields) == 0 {
+		err = errors.New("batch build task snapshot requires primary_key_fields")
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
 	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
-		if err := validateIncrementalBatchResource(resource, task); err != nil {
-			btw.failTask(taskCtx, taskID, err.Error())
-			return err
-		}
+		err = validateIncrementalBatchResource(resource, task)
+	} else {
+		err = validateBuildTaskResourceFingerprint(resource, task)
+	}
+	if err != nil {
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
 	}
 	catalog, err := btw.bbw.cs.InternalGetByID(taskCtx, resource.CatalogID, true)
 	if err != nil {
@@ -364,7 +369,6 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
-	var claimed bool
 	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		claimed, resource, err = btw.claimIncrementalBatchTask(taskCtx, task, resource)
 	} else {
@@ -380,8 +384,16 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		logger.Infof("Batch build task was not claimed for running: id=%s", taskID)
 		return nil
 	}
+	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental && resource.SyncMark == "" {
+		prepared, err := btw.prepareIncrementalBaseline(taskCtx, task, resource, catalog)
+		if err != nil || !prepared {
+			return err
+		}
+	}
 	if err := btw.bbw.Run(taskCtx, task, resource, catalog); err != nil {
-		btw.failTask(taskCtx, taskID, err.Error())
+		if _, statusErr := markBatchBuildFailed(taskCtx, btw.bts, taskID, err.Error()); statusErr != nil {
+			logger.Errorf("Retry batch build task status update failed: id=%s, error=%v", taskID, statusErr)
+		}
 		return err
 	}
 	return nil
@@ -412,6 +424,10 @@ func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task 
 		return false, resource, fmt.Errorf("%w: %w", errIncrementalBatchResourceInvalid, err)
 	}
 
+	if task.IndexName != current.LocalIndexName {
+		return false, resource, fmt.Errorf("%w: resource local index changed before incremental build", errIncrementalBatchResourceInvalid)
+	}
+
 	claimed, err := btw.bts.InternalMarkRunning(ctx, tx, task.ID)
 	if err != nil {
 		return false, resource, err
@@ -419,20 +435,24 @@ func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task 
 	if !claimed {
 		return false, resource, nil
 	}
-	progress := interfaces.BuildTaskProgress{SyncedMark: &current.SyncMark}
-	updated, err := btw.bts.InternalSetProgress(ctx, tx, task.ID, progress)
-	if err != nil {
-		return false, resource, fmt.Errorf("initialize incremental task checkpoint: %w", err)
-	}
-	if !updated {
-		return false, resource, fmt.Errorf("initialize incremental task checkpoint: task status changed")
+	if current.SyncMark != "" {
+		progress := interfaces.BuildTaskProgress{SyncedMark: &current.SyncMark}
+		updated, err := btw.bts.InternalSetProgress(ctx, tx, task.ID, progress, runningOrStoppingStatuses)
+		if err != nil {
+			return false, resource, fmt.Errorf("initialize incremental task checkpoint: %w", err)
+		}
+		if !updated {
+			return false, resource, fmt.Errorf("initialize incremental task checkpoint: task status changed")
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, resource, fmt.Errorf("commit incremental claim transaction: %w", err)
 	}
 	committed = true
 	task.Status = interfaces.BuildTaskStatusRunning
-	task.SyncedMark = current.SyncMark
+	if current.SyncMark != "" {
+		task.SyncedMark = current.SyncMark
+	}
 	return true, current, nil
 }
 
@@ -440,11 +460,23 @@ func validateIncrementalBatchResource(resource *interfaces.Resource, task *inter
 	if resource == nil {
 		return fmt.Errorf("incremental build resource was deleted")
 	}
+	if resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
+		return errors.New("published local index is read-only; run a full build before starting incremental builds")
+	}
+	if resource.IndexConfig == nil || len(resource.IndexConfig.IncrementalFields) == 0 {
+		return errors.New("incremental build resource requires incremental_fields")
+	}
+	if task == nil || task.IndexConfig == nil || len(task.IndexConfig.IncrementalFields) == 0 {
+		return errors.New("incremental build task snapshot requires incremental_fields")
+	}
 	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
 		return err
 	}
-	if !resourcelogic.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
-		return fmt.Errorf("incremental build requires an available local index and committed checkpoint")
+	if !resourcelogic.HasWritableLocalIndex(resource) {
+		return errors.New("incremental build requires an available local index")
+	}
+	if resource.SyncMark == "" {
+		return nil
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
 	if err != nil {
@@ -488,7 +520,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 }
 
 func (btw *BuildTaskWorker) failTask(ctx context.Context, taskID, detail string) {
-	if _, err := btw.bts.InternalMarkFailed(ctx, nil, taskID, detail); err != nil {
+	if _, err := btw.bts.InternalMarkFailed(ctx, nil, taskID, detail, nil); err != nil {
 		logger.Errorf("Mark build task failed: id=%s, error=%v", taskID, err)
 	}
 }

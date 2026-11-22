@@ -165,6 +165,8 @@ Body highlights: `tables` (required: `resource_id` + optional `alias`), `joins` 
 
 Common `filter_condition` operations: `==`/`eq`, `!=`/`not_eq`, `>`/`gt`, `>=`/`gte`, `<`/`lt`, `<=`/`lte`, `in`/`not_in`, `like`/`not_like` (only if the field is typed as string in schema), `range`, `null`/`not_null`, nested `and`/`or` via `sub_conditions`. Leaf nodes usually include `field`, `operation`, `value`, `value_from` (`"const"` for literals).
 
+Structured `like`, `not_like`, `regex`, `prefix`, `not_prefix`, `match`, `match_phrase`, and `multi_match` conditions reject an empty string `value: ""` with a parameter error on every query channel. Whitespace is preserved, and valid patterns such as LIKE `%` or regex `.*` remain supported. Use `== ""` to find empty strings and `!= ""` to exclude them; empty strings in collections remain allowed. Saved fixed conditions are never silently removed or rewritten: edit invalid conditions explicitly before saving or executing them.
+
 Single-table example:
 
 ```bash

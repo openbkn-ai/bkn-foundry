@@ -10,8 +10,42 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"gorm.io/gorm"
 )
+
+func TestRoleDeletionAndIdentityCleanupShareTransaction(t *testing.T) {
+	_, e, db := newTestServer(t)
+	svc := newAdminWriteServices(e, db)
+	id, err := svc.CreateRole(t.Context(), adminwrite.RoleSpec{Name: "Imported"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := true
+	if err := identity.RegisterCleanup(db, identity.Cleanup{Role: func(tx *gorm.DB, roleID string) error {
+		if roleID != id {
+			t.Errorf("cleanup role: %s", roleID)
+		}
+		if fail {
+			return errors.New("cleanup failure")
+		}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteRole(t.Context(), id); err == nil {
+		t.Fatal("cleanup failure ignored")
+	}
+	var count int64
+	if err := db.Model(&model.Role{}).Where("id = ?", id).Count(&count).Error; err != nil || count != 1 {
+		t.Fatal("role deletion did not roll back")
+	}
+	fail = false
+	if err := svc.DeleteRole(t.Context(), id); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAdminWriteRoleIdentifierIsUniqueAfterNormalization(t *testing.T) {
 	_, e, db := newTestServer(t)

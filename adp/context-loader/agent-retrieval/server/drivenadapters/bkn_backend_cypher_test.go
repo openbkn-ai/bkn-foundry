@@ -96,7 +96,7 @@ func TestRunCypherQueryWrapsForbiddenWithSourceDetails(t *testing.T) {
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("RunCypherQuery() error = %T %v, want *HTTPError", err, err)
 			}
-			if httpErr.HTTPCode != http.StatusForbidden || httpErr.ErrorCode != "agentRetrieval.Forbidden.CommonExternalServerError" {
+			if httpErr.HTTPCode != http.StatusForbidden || httpErr.ErrorCode != "Public.Forbidden" {
 				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.ErrorCode, code)
 			}
 			source, ok := httpErr.ErrorDetails.(httperrors.BaseError)
@@ -105,6 +105,51 @@ func TestRunCypherQueryWrapsForbiddenWithSourceDetails(t *testing.T) {
 			}
 			if source.Metadata == nil {
 				t.Fatal("machine-readable permission metadata was lost")
+			}
+		})
+	}
+}
+
+// A query bkn-backend refuses is the caller's to rewrite, not a dependency
+// outage (bkn-foundry issue 3283): its own code and details stay, and the
+// outer error no longer says "dependency service error". A 5xx still does.
+func TestRunCypherQueryReportsARefusedQueryAsTheCallers(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		code   string
+		want   string
+	}{
+		{status: http.StatusBadRequest, code: "BknBackend.Cypher.Unsupported", want: "Public.BadRequest"},
+		{status: http.StatusBadRequest, code: "BknBackend.Cypher.InvalidQuery", want: "Public.BadRequest"},
+		{status: http.StatusNotFound, code: "BknBackend.KnowledgeNetwork.NotFound", want: "Public.NotFound"},
+		{status: http.StatusInternalServerError, code: "BknBackend.Cypher.InternalError",
+			want: "agentRetrieval.InternalServerError.CommonExternalServerError"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockLogger := mocks.NewMockLogger(ctrl)
+			mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+			mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+			mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+			mockHTTPClient.EXPECT().
+				PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+				Return(tc.status, []byte(`{"error_code":"`+tc.code+`","description":"refused","error_details":"why"}`), nil)
+
+			client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+			_, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+				KnID: "kn-1", Query: "MATCH (n:a)-[:r]->(m:b) RETURN n.x",
+			})
+
+			var httpErr *httperrors.HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("RunCypherQuery() error = %T %v, want *HTTPError", err, err)
+			}
+			if httpErr.HTTPCode != tc.status || httpErr.ErrorCode != tc.want {
+				t.Fatalf("RunCypherQuery() error = %d %s, want %d %s", httpErr.HTTPCode, httpErr.ErrorCode, tc.status, tc.want)
+			}
+			source, ok := httpErr.ErrorDetails.(httperrors.BaseError)
+			if !ok || source.ErrorCode != tc.code || source.ErrorDetails != "why" {
+				t.Fatalf("details = %v, want bkn-backend's own code and details", httpErr.ErrorDetails)
 			}
 		})
 	}

@@ -88,8 +88,11 @@ func ValidateActionOperation(at *ActionType) error {
 			return fmt.Errorf("object creation cannot have an applicability condition")
 		}
 	case ActionOperationTool:
-		if at.ObjectTypeID != "" || at.Condition != nil {
-			return fmt.Errorf("tool operations cannot bind an object type or condition")
+		if at.ObjectTypeID != "" {
+			return fmt.Errorf("tool operations cannot bind an object type")
+		}
+		if at.Condition != nil && at.Condition.ObjectTypeID == "" {
+			return fmt.Errorf("tool operation conditions must declare their own object_type_id")
 		}
 	default:
 		return fmt.Errorf("unsupported operation_config.type %q", cfg.Type)

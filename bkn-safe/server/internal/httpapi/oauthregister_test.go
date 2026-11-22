@@ -137,6 +137,28 @@ func TestProtectedResourceMetadataNamesTheMCPEndpointAndOfflineScope(t *testing.
 	}
 }
 
+// An Agent given only Workshop's MCP URL signs in the same way.
+func TestProtectedResourceMetadataNamesTheWorkshopMCPEndpoint(t *testing.T) {
+	r, _ := registrationEngine(t, OAuthDynamicRegistration{})
+	w := serve(r, http.MethodGet, "/.well-known/oauth-protected-resource/api/workshop/v1/mcp", "",
+		map[string]string{"X-Forwarded-Proto": "https"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	meta := decode(t, w)
+	if meta["resource"] != "https://10.211.55.4/api/workshop/v1/mcp" || meta["resource_name"] != "OpenBKN Workshop" {
+		t.Fatalf("resource = %v, resource_name = %v", meta["resource"], meta["resource_name"])
+	}
+	scopes, _ := json.Marshal(meta["scopes_supported"])
+	if !strings.Contains(string(scopes), `"offline"`) {
+		t.Fatalf("scopes_supported lacks offline: %s", scopes)
+	}
+
+	if w := serve(r, http.MethodGet, "/.well-known/oauth-protected-resource/api/workshop/v1/apps", "", nil); w.Code != http.StatusNotFound {
+		t.Fatalf("Workshop REST path: status %d, want 404", w.Code)
+	}
+}
+
 func TestRegistrationAcceptsWorkBuddyAndAlwaysAllowsRefresh(t *testing.T) {
 	r, reg := registrationEngine(t, OAuthDynamicRegistration{})
 	w := serve(r, http.MethodPost, oauthRegisterPath, workBuddyRegistration, nil)

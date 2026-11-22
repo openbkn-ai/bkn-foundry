@@ -78,7 +78,7 @@ func Boot() *Application {
 		appSetting:      appSetting,
 		db:              db,
 		otelProviders:   otelProviders,
-		auth:            auth.NewHydraAuthAccess(appSetting.HydraAdminSetting),
+		auth:            auth.NewHydraAuthAccess(appSetting.HydraAdminSetting, appSetting.BknSafeUrl),
 		refresh:         refresh,
 		stop:            make(chan struct{}),
 		routeExtensions: make(map[string]func(*gin.Engine)),

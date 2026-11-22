@@ -13,7 +13,7 @@ var buildTaskZhCN = i18n.I18nMessages{
 		"VegaBackend.BuildTask.InvalidParameter.ResourceID":              "资源ID无效。请检查 resource_id 是否提供且存在",
 		"VegaBackend.BuildTask.InvalidParameter.Mode":                    "构建任务模式无效。mode 必须为 streaming / batch 之一",
 		"VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields":        "主键字段无效。请在资源 index_config 中配置至少一个不重复、存在于 schema 且类型受支持的 primary_key_fields 字段",
-		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "增量字段无效。请在资源 index_config 中配置至少一个不重复、存在于 schema 且类型受支持的 incremental_fields 字段",
+		"VegaBackend.BuildTask.InvalidParameter.IncrementalFields":       "增量字段无效。已配置的字段必须不重复、存在于资源 schema 且类型受支持。增量构建至少需要配置一个增量字段",
 		"VegaBackend.BuildTask.StreamingUnsupported":                     "暂不支持流式构建任务。请改为创建批量构建任务",
 		"VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields": "资源字段不满足索引构建要求。请根据错误详情检查字段类型、精度和配置后重试",
 		"VegaBackend.BuildTask.InvalidParameter.Analyzer":                "全文分词器不可用。请选择 OpenSearch 已安装的分词器，或将受影响字段改为使用资源默认分词器",

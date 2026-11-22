@@ -13,6 +13,7 @@ import (
 	context "context"
 	sql "database/sql"
 	reflect "reflect"
+	time "time"
 
 	interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	sqlbuilder "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
@@ -706,6 +707,158 @@ func (m *MockTableConnector) ValidateBuildSchema(resource *interfaces.Resource) 
 func (mr *MockTableConnectorMockRecorder) ValidateBuildSchema(resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockTableConnector)(nil).ValidateBuildSchema), resource)
+}
+
+// MockTableReadSessionConnector is a mock of TableReadSessionConnector interface.
+type MockTableReadSessionConnector struct {
+	ctrl     *gomock.Controller
+	recorder *MockTableReadSessionConnectorMockRecorder
+	isgomock struct{}
+}
+
+// MockTableReadSessionConnectorMockRecorder is the mock recorder for MockTableReadSessionConnector.
+type MockTableReadSessionConnectorMockRecorder struct {
+	mock *MockTableReadSessionConnector
+}
+
+// NewMockTableReadSessionConnector creates a new mock instance.
+func NewMockTableReadSessionConnector(ctrl *gomock.Controller) *MockTableReadSessionConnector {
+	mock := &MockTableReadSessionConnector{ctrl: ctrl}
+	mock.recorder = &MockTableReadSessionConnectorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTableReadSessionConnector) EXPECT() *MockTableReadSessionConnectorMockRecorder {
+	return m.recorder
+}
+
+// BeginReadTx mocks base method.
+func (m *MockTableReadSessionConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BeginReadTx", ctx)
+	ret0, _ := ret[0].(*sql.Tx)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BeginReadTx indicates an expected call of BeginReadTx.
+func (mr *MockTableReadSessionConnectorMockRecorder) BeginReadTx(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginReadTx", reflect.TypeOf((*MockTableReadSessionConnector)(nil).BeginReadTx), ctx)
+}
+
+// ClassifyQueryError mocks base method.
+func (m *MockTableReadSessionConnector) ClassifyQueryError(err error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClassifyQueryError", err)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClassifyQueryError indicates an expected call of ClassifyQueryError.
+func (mr *MockTableReadSessionConnectorMockRecorder) ClassifyQueryError(err any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClassifyQueryError", reflect.TypeOf((*MockTableReadSessionConnector)(nil).ClassifyQueryError), err)
+}
+
+// OpenSQLRead mocks base method.
+func (m *MockTableReadSessionConnector) OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder) (interfaces.QueryPageSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenSQLRead", ctx, query, countQuery)
+	ret0, _ := ret[0].(interfaces.QueryPageSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenSQLRead indicates an expected call of OpenSQLRead.
+func (mr *MockTableReadSessionConnectorMockRecorder) OpenSQLRead(ctx, query, countQuery any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenSQLRead", reflect.TypeOf((*MockTableReadSessionConnector)(nil).OpenSQLRead), ctx, query, countQuery)
+}
+
+// OpenTableRead mocks base method.
+func (m *MockTableReadSessionConnector) OpenTableRead(arg0 context.Context, arg1 *interfaces.Resource, arg2 *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenTableRead", arg0, arg1, arg2)
+	ret0, _ := ret[0].(interfaces.QueryPageSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenTableRead indicates an expected call of OpenTableRead.
+func (mr *MockTableReadSessionConnectorMockRecorder) OpenTableRead(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenTableRead", reflect.TypeOf((*MockTableReadSessionConnector)(nil).OpenTableRead), arg0, arg1, arg2)
+}
+
+// ScanTableReadRow mocks base method.
+func (m *MockTableReadSessionConnector) ScanTableReadRow(rows *sql.Rows, columns []interfaces.ColumnInfo, fields map[string]*interfaces.Property, binaryMode *string, binaryContentColumns map[string]bool) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScanTableReadRow", rows, columns, fields, binaryMode, binaryContentColumns)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScanTableReadRow indicates an expected call of ScanTableReadRow.
+func (mr *MockTableReadSessionConnectorMockRecorder) ScanTableReadRow(rows, columns, fields, binaryMode, binaryContentColumns any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanTableReadRow", reflect.TypeOf((*MockTableReadSessionConnector)(nil).ScanTableReadRow), rows, columns, fields, binaryMode, binaryContentColumns)
+}
+
+// MockIndexReadSessionConnector is a mock of IndexReadSessionConnector interface.
+type MockIndexReadSessionConnector struct {
+	ctrl     *gomock.Controller
+	recorder *MockIndexReadSessionConnectorMockRecorder
+	isgomock struct{}
+}
+
+// MockIndexReadSessionConnectorMockRecorder is the mock recorder for MockIndexReadSessionConnector.
+type MockIndexReadSessionConnectorMockRecorder struct {
+	mock *MockIndexReadSessionConnector
+}
+
+// NewMockIndexReadSessionConnector creates a new mock instance.
+func NewMockIndexReadSessionConnector(ctrl *gomock.Controller) *MockIndexReadSessionConnector {
+	mock := &MockIndexReadSessionConnector{ctrl: ctrl}
+	mock.recorder = &MockIndexReadSessionConnectorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIndexReadSessionConnector) EXPECT() *MockIndexReadSessionConnectorMockRecorder {
+	return m.recorder
+}
+
+// OpenIndexRead mocks base method.
+func (m *MockIndexReadSessionConnector) OpenIndexRead(arg0 context.Context, arg1 string, arg2 *interfaces.Resource, arg3 *interfaces.ResourceDataQueryParams, arg4 time.Duration) (interfaces.QueryPageSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenIndexRead", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].(interfaces.QueryPageSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenIndexRead indicates an expected call of OpenIndexRead.
+func (mr *MockIndexReadSessionConnectorMockRecorder) OpenIndexRead(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenIndexRead", reflect.TypeOf((*MockIndexReadSessionConnector)(nil).OpenIndexRead), arg0, arg1, arg2, arg3, arg4)
+}
+
+// OpenRawIndexRead mocks base method.
+func (m *MockIndexReadSessionConnector) OpenRawIndexRead(arg0 context.Context, arg1 *interfaces.Resource, arg2 map[string]any, arg3 time.Duration) (interfaces.QueryPageSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OpenRawIndexRead", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(interfaces.QueryPageSession)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OpenRawIndexRead indicates an expected call of OpenRawIndexRead.
+func (mr *MockIndexReadSessionConnectorMockRecorder) OpenRawIndexRead(arg0, arg1, arg2, arg3 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenRawIndexRead", reflect.TypeOf((*MockIndexReadSessionConnector)(nil).OpenRawIndexRead), arg0, arg1, arg2, arg3)
 }
 
 // MockFileConnector is a mock of FileConnector interface.
@@ -1961,33 +2114,33 @@ func (mr *MockIndexConnectorMockRecorder) ExecuteQuery(ctx, indexName, resource,
 }
 
 // ExecuteQueryWithDsl mocks base method.
-func (m *MockIndexConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName, dsl string) (*interfaces.ResourceDataQueryResult, error) {
+func (m *MockIndexConnector) ExecuteQueryWithDsl(ctx context.Context, resource *interfaces.Resource, dsl string) (*interfaces.ResourceDataQueryResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteQueryWithDsl", ctx, resourceName, dsl)
+	ret := m.ctrl.Call(m, "ExecuteQueryWithDsl", ctx, resource, dsl)
 	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ExecuteQueryWithDsl indicates an expected call of ExecuteQueryWithDsl.
-func (mr *MockIndexConnectorMockRecorder) ExecuteQueryWithDsl(ctx, resourceName, dsl any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) ExecuteQueryWithDsl(ctx, resource, dsl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQueryWithDsl", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteQueryWithDsl), ctx, resourceName, dsl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQueryWithDsl", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteQueryWithDsl), ctx, resource, dsl)
 }
 
 // ExecuteRawQuery mocks base method.
-func (m *MockIndexConnector) ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+func (m *MockIndexConnector) ExecuteRawQuery(ctx context.Context, resource *interfaces.Resource, query map[string]any) (*interfaces.RawQueryResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteRawQuery", ctx, indexName, query)
+	ret := m.ctrl.Call(m, "ExecuteRawQuery", ctx, resource, query)
 	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ExecuteRawQuery indicates an expected call of ExecuteRawQuery.
-func (mr *MockIndexConnectorMockRecorder) ExecuteRawQuery(ctx, indexName, query any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) ExecuteRawQuery(ctx, resource, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawQuery", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteRawQuery), ctx, indexName, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawQuery", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteRawQuery), ctx, resource, query)
 }
 
 // GetCategory mocks base method.
@@ -2399,6 +2552,21 @@ func (mr *MockAPIConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockAPIConnector)(nil).Connect), ctx)
 }
 
+// ExecuteQuery mocks base method.
+func (m *MockAPIConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteQuery", ctx, resource, params)
+	ret0, _ := ret[0].(*interfaces.ResourceDataQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteQuery indicates an expected call of ExecuteQuery.
+func (mr *MockAPIConnectorMockRecorder) ExecuteQuery(ctx, resource, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteQuery", reflect.TypeOf((*MockAPIConnector)(nil).ExecuteQuery), ctx, resource, params)
+}
+
 // GetCategory mocks base method.
 func (m *MockAPIConnector) GetCategory() string {
 	m.ctrl.T.Helper()
@@ -2594,4 +2762,18 @@ func (m *MockAPIConnector) ValidateBuildSchema(resource *interfaces.Resource) er
 func (mr *MockAPIConnectorMockRecorder) ValidateBuildSchema(resource any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockAPIConnector)(nil).ValidateBuildSchema), resource)
+}
+
+// ValidateDefinition mocks base method.
+func (m *MockAPIConnector) ValidateDefinition(ctx context.Context, definition *interfaces.APIDefinition, schemaDefinition []*interfaces.Property) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateDefinition", ctx, definition, schemaDefinition)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateDefinition indicates an expected call of ValidateDefinition.
+func (mr *MockAPIConnectorMockRecorder) ValidateDefinition(ctx, definition, schemaDefinition any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateDefinition", reflect.TypeOf((*MockAPIConnector)(nil).ValidateDefinition), ctx, definition, schemaDefinition)
 }

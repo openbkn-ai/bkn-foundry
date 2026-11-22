@@ -54,6 +54,9 @@ func (c *RegexCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if !ok {
 		return nil, fmt.Errorf("condition [regex] right value is not a string value: %v", cfg.Value)
 	}
+	if val == "" {
+		return nil, interfaces.NewConditionBuildError("condition [regex] right value must be a non-empty string")
+	}
 	regexp, err := regexp2.Compile(val, regexp2.RE2)
 	if err != nil {
 		return nil, fmt.Errorf("condition [regex] regular expression error: %s", err.Error())

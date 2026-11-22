@@ -2562,18 +2562,16 @@ func setObjectTypeIndexStatus(objectType *interfaces.ObjectType, state, sourceSt
 
 func indexStateForVegaResource(resource *interfaces.VegaResource) string {
 	switch resource.LocalIndexStatus {
-	case interfaces.ResourceLocalIndexStatusAvailable:
+	case interfaces.ResourceLocalIndexStatusAvailable, interfaces.ResourceLocalIndexStatusReadOnly:
 		return interfaces.ObjectTypeIndexStateAvailable
-	case interfaces.ResourceLocalIndexStatusUnavailable, "stale":
+	case interfaces.ResourceLocalIndexStatusUnavailable, interfaces.ResourceLocalIndexStatusStale:
 		return interfaces.ObjectTypeIndexStateUnavailable
 	default:
 		return interfaces.ObjectTypeIndexStateUnknown
 	}
 }
 
-// configuredIndexFeatures reads configuration rather than capabilities: VegaResourceIndexCaps
-// intentionally hides declared features until an index is available, while this projection needs
-// to show users what they configured even while a build is pending or stale.
+// configuredIndexFeatures also displays configured features while the local index is unavailable.
 func configuredIndexFeatures(resource *interfaces.VegaResource, indexState string) map[string][]interfaces.ObjectTypeIndexFeature {
 	featuresByField := make(map[string][]interfaces.ObjectTypeIndexFeature)
 	if resource == nil {
@@ -2803,6 +2801,11 @@ func (ots *objectTypeService) processConditionOperations(_ *interfaces.ObjectTyp
 	dataView *interfaces.DataView) []string {
 	var ops []string
 	switch prop.Type {
+	case "integer", "unsigned integer", "float", "decimal":
+		// A numeric Dataset column executes comparisons such as >= even without a
+		// keyword or vector index; leaving the baseline empty hid that capability
+		// from BKN's object detail and blocked numeric Eval filters (#3286).
+		ops = interfaces.NUMERIC_COMPARE_OPS
 	case "keyword":
 		ops = interfaces.DSL_KEYWORD_OPS
 	case "varchar", "string":

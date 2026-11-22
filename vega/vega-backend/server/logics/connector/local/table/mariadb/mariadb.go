@@ -35,7 +35,8 @@ const (
 )
 
 var (
-	_ interfaces.TableConnector = (*MariaDBConnector)(nil)
+	_ interfaces.TableConnector            = (*MariaDBConnector)(nil)
+	_ interfaces.TableReadSessionConnector = (*MariaDBConnector)(nil)
 
 	// SYSTEM_DBS are excluded from discovery when no databases are configured.
 	SYSTEM_DBS = []string{
@@ -278,6 +279,18 @@ func (c *MariaDBConnector) connectionString() string {
 // Connect opens an instance-level pool and reuses it after a successful ping.
 // A failed ping closes the candidate pool before returning the error.
 func (c *MariaDBConnector) Connect(ctx context.Context) error {
+	return c.connect(ctx, 0)
+}
+
+// BeginReadTx 为流式查询建立只读的可重复读事务。
+func (c *MariaDBConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+}
+
+func (c *MariaDBConnector) connect(ctx context.Context, pingTimeout time.Duration) error {
 	if c.connected {
 		return nil
 	}
@@ -287,9 +300,9 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 		return connectionError(ctx, "mariadb connection failed", err)
 	}
 
-	if err := db.PingContext(ctx); err != nil {
+	if err := pingMariaDBConnection(ctx, db, pingTimeout, "mariadb connection failed"); err != nil {
 		_ = db.Close()
-		return connectionError(ctx, "mariadb connection failed", err)
+		return err
 	}
 
 	c.db = db
@@ -310,17 +323,31 @@ func (c *MariaDBConnector) Close(ctx context.Context) error {
 
 // Ping establishes a connection if needed and checks it with the caller's context.
 func (c *MariaDBConnector) Ping(ctx context.Context) error {
-	if err := c.Connect(ctx); err != nil {
+	pingTimeout := common.CatalogHealthCheckTimeout()
+	if err := c.connect(ctx, pingTimeout); err != nil {
 		return err
 	}
 
-	return connectionError(ctx, "mariadb ping failed", c.db.PingContext(ctx))
+	return pingMariaDBConnection(ctx, c.db, pingTimeout, "mariadb ping failed")
+}
+
+func pingMariaDBConnection(ctx context.Context, db *sql.DB, timeout time.Duration, operation string) error {
+	pingCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		pingCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	if err := db.PingContext(pingCtx); err != nil {
+		return connectionError(pingCtx, operation, err)
+	}
+	return nil
 }
 
 // TestConnection checks connectivity and visibility of every configured database.
 // Without a configured scope, only connectivity is checked.
 func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
-	if err := c.Connect(ctx); err != nil {
+	if err := c.connect(ctx, common.CatalogHealthCheckTimeout()); err != nil {
 		return err
 	}
 

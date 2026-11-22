@@ -54,8 +54,17 @@ func (o *operatorIntegrationClient) callerAuthorizationHeader(
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
 	}
 	header["Authorization"] = "Bearer " + token
+	// An execution credential is accepted by the Execution Factory only for the network it was
+	// issued for, which the request names.
+	if auth, ok := common.GetAccountAuthContextFromCtx(ctx); ok && auth != nil && auth.TokenInfo != nil && auth.TokenInfo.DelegatedKnID != "" {
+		header[executionKnHeader] = auth.TokenInfo.DelegatedKnID
+	}
 	return header, nil
 }
+
+// executionKnHeader names, to the Execution Factory, the knowledge network a call made with an
+// execution credential acts on.
+const executionKnHeader = "X-Kn-ID"
 
 // capabilityAuthorizationHeader authenticates a caller-scoped Execution
 // Factory request. Public traffic forwards the original bearer token; internal

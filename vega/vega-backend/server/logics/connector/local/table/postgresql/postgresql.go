@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	_ interfaces.TableConnector = (*PostgresqlConnector)(nil)
+	_ interfaces.TableConnector            = (*PostgresqlConnector)(nil)
+	_ interfaces.TableReadSessionConnector = (*PostgresqlConnector)(nil)
 
 	sessionTimeoutPattern = regexp.MustCompile(`^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*(us|ms|s|min|h|d)?$`)
 
@@ -308,6 +309,18 @@ func (c *PostgresqlConnector) connectionString() string {
 // Connect opens and verifies a pool, then detects metadata-query compatibility.
 // Failed initialization closes the candidate pool before returning the error.
 func (c *PostgresqlConnector) Connect(ctx context.Context) error {
+	return c.connect(ctx, 0)
+}
+
+// BeginReadTx 为流式查询建立只读的可重复读事务。
+func (c *PostgresqlConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+}
+
+func (c *PostgresqlConnector) connect(ctx context.Context, pingTimeout time.Duration) error {
 	if c.connected {
 		return nil
 	}
@@ -317,9 +330,9 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 		return connectionError(ctx, "failed to open PostgreSQL connection", err)
 	}
 
-	if err := db.PingContext(ctx); err != nil {
+	if err := pingPostgresqlConnection(ctx, db, pingTimeout); err != nil {
 		_ = db.Close()
-		return connectionError(ctx, "failed to ping PostgreSQL connection", err)
+		return err
 	}
 
 	compatibility, err := detectPostgresqlCompatibility(ctx, db)
@@ -349,18 +362,29 @@ func (c *PostgresqlConnector) Close(ctx context.Context) error {
 
 // Ping connects if necessary and checks source availability.
 func (c *PostgresqlConnector) Ping(ctx context.Context) error {
-	if err := c.Connect(ctx); err != nil {
+	pingTimeout := common.CatalogHealthCheckTimeout()
+	if err := c.connect(ctx, pingTimeout); err != nil {
 		return fmt.Errorf("failed to connect for ping: %w", err)
 	}
-	if err := c.db.PingContext(ctx); err != nil {
-		return connectionError(ctx, "failed to ping PostgreSQL connection", err)
+	return pingPostgresqlConnection(ctx, c.db, pingTimeout)
+}
+
+func pingPostgresqlConnection(ctx context.Context, db *sql.DB, timeout time.Duration) error {
+	pingCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		pingCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	if err := db.PingContext(pingCtx); err != nil {
+		return connectionError(pingCtx, "failed to ping PostgreSQL connection", err)
 	}
 	return nil
 }
 
 // TestConnection verifies the connection and checks configured schemas.
 func (c *PostgresqlConnector) TestConnection(ctx context.Context) error {
-	if err := c.Connect(ctx); err != nil {
+	if err := c.connect(ctx, common.CatalogHealthCheckTimeout()); err != nil {
 		return fmt.Errorf("failed to connect for connection test: %w", err)
 	}
 	if len(c.config.Schemas) > 0 {

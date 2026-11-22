@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"context"
+	"time"
 )
 
 type AnalyzerCapability struct {
@@ -51,4 +52,7 @@ type LocalIndexManager interface {
 	DeleteDocument(ctx context.Context, indexName string, docID string) error
 	DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error
 	DeleteDocumentsByQuery(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) (*DeleteByQueryResult, error)
+
+	// OpenDocumentRead opens a paging session for documents in a managed index.
+	OpenDocumentRead(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams, keepAlive time.Duration) (QueryPageSession, error)
 }

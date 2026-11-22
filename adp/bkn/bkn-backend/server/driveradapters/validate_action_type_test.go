@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -604,7 +605,7 @@ func Test_ValidateActionType(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
-		Convey("Failed with empty ObjectTypeID but having condition\n", func() {
+		Convey("Success with tool condition declaring its own object type\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         "at1",
@@ -620,12 +621,10 @@ func Test_ValidateActionType(t *testing.T) {
 				},
 			}
 			err := ValidateActionType(ctx, at, true)
-			So(err, ShouldNotBeNil)
-			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(err, ShouldBeNil)
 		})
 
-		Convey("Rejects empty ObjectTypeID and condition when strictMode false\n", func() {
+		Convey("Accepts tool condition with its own object type when strictMode false\n", func() {
 			at := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID:         "at1",
@@ -641,7 +640,27 @@ func Test_ValidateActionType(t *testing.T) {
 				},
 			}
 			err := ValidateActionType(ctx, at, false)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Failed with tool condition missing its own object type\n", func() {
+			at := &interfaces.ActionType{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+					ATID:         "at1",
+					ATName:       "action1",
+					ActionType:   interfaces.ACTION_TYPE_ADD,
+					ObjectTypeID: "",
+					Condition: &interfaces.ActionCondCfg{
+						Field:     "field1",
+						Operation: cond.OperationEq,
+						Value:     "value1",
+					}, OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+				},
+			}
+			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
 		Convey("Failed with empty ObjectTypeID but parameter using property (strict)\n", func() {
@@ -1026,6 +1045,83 @@ func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
+	}
+}
+
+func TestValidateActionTypeRejectsEmptySearchConstants(t *testing.T) {
+	for _, operation := range []string{cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex} {
+		for _, valueFrom := range []string{"", "const"} {
+			for _, logicalOperation := range []string{"", cond.OperationAnd, cond.OperationOr} {
+				t.Run(operation+"/"+valueFrom+"/"+logicalOperation, func(t *testing.T) {
+					condition := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: valueFrom, Value: ""}
+					if logicalOperation != "" {
+						condition = &interfaces.ActionCondCfg{Operation: logicalOperation, SubConds: []*interfaces.ActionCondCfg{
+							{Field: "name", Operation: cond.OperationEq, Value: "valid"},
+							condition,
+						}}
+					}
+					action := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+						ATID: "at1", ATName: "action1", ActionType: interfaces.ACTION_TYPE_MODIFY,
+						ObjectTypeID: "ot1", OperationConfig: &interfaces.ActionOperationConfig{Type: "object"},
+						Condition: condition,
+					}}
+					err := ValidateActionType(context.Background(), action, true)
+					httpErr, ok := err.(*httperrors.HTTPError)
+					if !ok {
+						t.Fatalf("error = %v, want *httperrors.HTTPError", err)
+					}
+					if httpErr.HTTPCode != http.StatusBadRequest || httpErr.ErrorCode != berrors.BknBackend_ActionType_InvalidParameter {
+						t.Fatalf("error = %#v, want HTTP 400 with ActionType.InvalidParameter", httpErr)
+					}
+					if action.Condition != condition {
+						t.Fatal("validation replaced the rejected condition")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestActionSearchConditionValidValues(t *testing.T) {
+	for _, operation := range []string{cond.OperationLike, cond.OperationNotLike, cond.OperationPrefix, cond.OperationNotPrefix, cond.OperationRegex} {
+		for _, valueFrom := range []string{"", "const", "property", "input"} {
+			values := []string{" ", "apple", "%apple%", `a\%_`}
+			if valueFrom == "property" || valueFrom == "input" {
+				values = []string{"name", `parameter\`}
+			}
+			for _, value := range values {
+				cfg := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: valueFrom, Value: value}
+				if err := validateActionCondition(context.Background(), cfg, "object"); err != nil {
+					t.Errorf("%s from %q with %q: %v", operation, valueFrom, value, err)
+				}
+				if cfg.Value != value {
+					t.Errorf("%s from %q changed value %q to %q", operation, valueFrom, value, cfg.Value)
+				}
+			}
+			if valueFrom == "property" || valueFrom == "input" {
+				for _, value := range []string{"", " "} {
+					cfg := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: valueFrom, Value: value}
+					if err := validateActionCondition(context.Background(), cfg, "object"); err == nil {
+						t.Errorf("%s accepted empty %s reference %q", operation, valueFrom, value)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestActionNonSearchConditionsAllowEmptyStrings(t *testing.T) {
+	for _, operation := range []string{cond.OperationEq, cond.OperationNotEq, cond.OperationIn, cond.OperationNotIn, cond.OperationContain, cond.OperationNotContain} {
+		for _, valueFrom := range []string{"", "const"} {
+			var value any = ""
+			if operation != cond.OperationEq && operation != cond.OperationNotEq {
+				value = []any{""}
+			}
+			cfg := &interfaces.ActionCondCfg{Field: "name", Operation: operation, ValueFrom: valueFrom, Value: value}
+			if err := validateActionCondition(context.Background(), cfg, "object"); err != nil {
+				t.Errorf("%s from %q rejected an empty string value: %v", operation, valueFrom, err)
+			}
+		}
 	}
 }
 

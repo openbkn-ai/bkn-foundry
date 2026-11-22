@@ -64,22 +64,37 @@ Edit `claude_desktop_config.json`:
 
 ### Available MCP Tools
 
-Once configured, MCP clients can discover and call these tools (your deployment is authoritative — run `openbkn context info` to see the live catalog):
+Once configured, MCP clients can discover and call these tools (your deployment is authoritative — run `openbkn context info` to see the live catalog; tools covered by an enterprise licence appear in addition):
 
 | Tool | Purpose |
 |------|---------|
-| `search_schema` | Search object / relation / action / metric schemas |
+| `bkn_start_interaction` / `bkn_finish_interaction` | Session lifecycle (business traceability) |
+| `list_knowledge_networks` | List knowledge networks |
 | `get_kn_detail` | Fetch a KN's schema — `summary` skeleton, then drill down |
-| `get_object_types` / `get_relation_types` | Full definitions for given ids; `get_object_types` lists the object type index by page when given none |
+| `search_schema` | Search object / relation / action / metric schemas |
+| `get_object_types` / `get_relation_types` | Full definitions for given ids; with no ids, list the index by page |
+| `search_instance` | Recall instances from one natural-language question, with the trimmed object types needed to read them |
 | `query_object_instance` | Query object instances with conditions |
-| `query_instance_subgraph` | Query the relation subgraph around instances |
+| `query_instance_subgraph` | Query the relation subgraph around instances along known paths |
+| `explore_subgraph` | Explore what an object type connects to by direction and hop count, without knowing the path |
 | `get_logic_properties_values` | Compute derived property values |
+| `run_cypher` | Query in Cypher over object type and relation type names; suited to aggregation, ranking and multi-hop questions |
+| `query_metric` | Read a published object metric under its fixed definition |
+| `drill_through_metric` | Page through the object instances that make up one `query_metric` result bucket |
 | `get_action_info` | Get action type definition, input schema and result schema (`output_schema`) |
 | `execute_action` | Execute an action type |
 | `get_action_execution` / `list_action_executions` | Action execution status and history |
+| `list_skills` | Browse the platform's published Skills (not scoped by knowledge network mounts) |
+| `get_skill_content` / `read_skill_file` | Read a Skill's SKILL.md and individual files of its bundle |
+| `execute_skill` | Run a script of a Skill bundle in the sandbox; not assembled unless `EXECUTE_SKILL_ENABLED=true` |
 | `search_capabilities` | Rank every capability the network mounted — Skills, Function tools, API tools and MCP tools — in one space |
-| `list_knowledge_networks` | List knowledge networks |
-| `bkn_start_interaction` / `bkn_finish_interaction` | Session lifecycle (business traceability) |
+| `execute_tool` | Invoke a Function or MCP tool mounted on the network |
+| `run_code` / `run_shell` | Run Python code or a shell command in the sandbox; Python scripts can call the business tools directly |
+| `search_native_tools` / `describe_native_tool` / `execute_native_tool` | On-demand gateway, offered only on the compact entry `/mcp-compact` |
+
+The input, output and intended use of every tool are described in the "工具目录" (tool catalog) section of the API reference [Context Loader · MCP service API](../../../docs/api/context-loader/mcp.yaml).
+
+**Compact entry**: `https://<access-address>/api/agent-retrieval/v1/mcp-compact` is a second MCP endpoint with the same authentication, managed session and tool semantics as `/mcp`, meant for hosts that send every tool definition with each model call. It publishes 14 tools: the two lifecycle tools; nine query tools — `list_knowledge_networks`, `get_kn_detail`, `search_schema`, `search_instance`, `query_object_instance`, `query_metric`, `drill_through_metric`, `run_cypher` and `query_instance_subgraph`; and the three gateway tools. The other tools are left out of `tools/list`: find one with `search_native_tools`, then run it by name with `execute_native_tool`.
 
 `run_sql`, `list_resources` and `describe_resource` have been removed, from MCP and from REST
 (`POST /kn/run_sql` and the other two now answer 404): they answered with physical columns
@@ -88,7 +103,7 @@ network applies. Aggregate with `run_cypher`; read a modelled figure with `query
 
 On a knowledge network of more than 200 object types or more than 600 relation types, `get_kn_detail` answers with its navigation shell: the concept groups, a count per concept kind and a `notice`, with the three concept arrays null (`detail_level=full` included). The full schema of such a network runs past a megabyte, which no model can read; at that size narrow to 1-3 concept groups first, then fetch concepts with `search_schema`. When the network defines no concept groups, the notice points straight at `search_schema`. To walk every object type of such a network instead, call `get_object_types` with no `ids` to list the object type index (id/name/comment, 50 per page; the response carries `total_count` and `next_offset`), then name the ids you want.
 
-Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
+Every tool except `list_knowledge_networks`, `list_skills`, the lifecycle tools and the gateway tools requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
 
 For a managed session, call `bkn_start_interaction` first: use `conversation_mode=new` without
 `conversation_id` when there is no current Conversation; use `conversation_mode=continue` with

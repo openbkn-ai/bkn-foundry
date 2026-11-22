@@ -111,6 +111,39 @@ func TestActionDiscoveryLoadsOnlyExplicitTargetsWithFullPropertyAccess(t *testin
 	}
 }
 
+func TestConditionedToolPreviewEchoesExplicitIdentities(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	object := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "hosts", PrimaryKeys: []string{"id"}, DataProperties: []cond.DataProperty{{Name: "id", Type: "string"}, {Name: "status", Type: "string"}},
+	}}
+	action := interfaces.ActionType{ATID: "alert_hosts", OperationConfig: &interfaces.ActionOperationConfig{Type: "tool"},
+		Condition:  &cond.CondCfg{ObjectTypeID: "hosts", Name: "status", Operation: "==", Value: "critical"},
+		Parameters: []interfaces.Parameter{{Name: "message", Type: "string", ValueFrom: "const", Value: "cpu critical"}},
+	}
+	models.EXPECT().GetActionType(gomock.Any(), "kn", "main", "alert_hosts").Return(action, nil, true, nil)
+	// The schema side needs the condition object; the preview echo must not
+	// scan instances or enforce the condition before execution.
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "hosts").Return(object, true, nil)
+	service := &actionTypeService{omAccess: models}
+	response, err := service.GetActionsByActionTypeID(context.Background(), &interfaces.ActionQuery{
+		KNID: "kn", Branch: "main", ActionTypeID: "alert_hosts",
+		InstanceIdentities: []map[string]any{{"id": "h1"}, {"id": "h2"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Actions) != 2 || response.TotalCount != 2 {
+		t.Fatalf("preview must echo each explicit identity: %#v", response)
+	}
+	if !reflect.DeepEqual(response.Actions[1].InstanceIdentity, map[string]any{"id": "h2"}) {
+		t.Fatalf("second preview identity = %#v", response.Actions[1].InstanceIdentity)
+	}
+	if response.Actions[0].Parameters["message"] != "cpu critical" {
+		t.Fatalf("tool parameters = %#v", response.Actions[0].Parameters)
+	}
+}
+
 func TestActionDiscoveryRejectsUnmigratedDefinition(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)

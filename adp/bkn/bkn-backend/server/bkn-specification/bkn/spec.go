@@ -189,12 +189,18 @@ func (o parseOptions) knownObjectSections() map[string]bool {
 
 var parameterValueSources = map[string]bool{"property": true, "input": true, "const": true}
 
+// isRelationEndIdentity tells the value sources a relation action takes its two ends' identities
+// from (§8.9); only action parameters may use them.
+func isRelationEndIdentity(valueFrom string) bool {
+	return valueFrom == "source_identity" || valueFrom == "target_identity"
+}
+
 // checkParameterValueSource is the 3.0 rule for a parameter row. Execution switches on ValueFrom
 // and silently drops a parameter whose ValueFrom is anything but property, input or const, so a
 // 3.0 package refuses such a row at import instead. The common mistake — the value source written
 // in Source — gets its own message.
 func checkParameterValueSource(owner string, p Parameter) error {
-	if owner == "action" && (p.ValueFrom == "source_identity" || p.ValueFrom == "target_identity") {
+	if owner == "action" && isRelationEndIdentity(p.ValueFrom) {
 		return nil
 	}
 	if parameterValueSources[strings.ToLower(strings.TrimSpace(p.ValueFrom))] {

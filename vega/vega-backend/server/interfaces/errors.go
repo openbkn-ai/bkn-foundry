@@ -294,3 +294,25 @@ func NewDeleteByQueryIncompleteError(result *DeleteByQueryResult) *DeleteByQuery
 	return &DeleteByQueryIncompleteError{Result: result}
 }
 func (*DeleteByQueryIncompleteError) Error() string { return "delete-by-query did not complete" }
+
+// APIResourceError 保存可记录的失败分类和说明。ResponseDetails 仅用于对外错误响应。
+type APIResourceError struct {
+	Stage           string
+	Details         string
+	HTTPStatus      int
+	ResponseDetails string
+}
+
+func NewAPIResourceError(stage, details string, status int) *APIResourceError {
+	return &APIResourceError{Stage: stage, Details: details, HTTPStatus: status}
+}
+
+func (e *APIResourceError) Error() string { return e.Details }
+
+// PublicDetails 返回对外响应详情，必要时携带受长度限制的上游正文。
+func (e *APIResourceError) PublicDetails() string {
+	if e.ResponseDetails != "" {
+		return e.ResponseDetails
+	}
+	return e.Details
+}

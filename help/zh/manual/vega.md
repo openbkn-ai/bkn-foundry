@@ -163,6 +163,8 @@ openbkn call /api/vega-backend/v1/resources/query -X POST -d '<json>'
 
 `filter_condition` 常用 `operation`：`==`/`eq`、`!=`/`not_eq`、`>`/`gt`、`>=`/`gte`、`<`/`lt`、`<=`/`lte`、`in`/`not_in`、`like`/`not_like`（仅当该字段在 schema 中为 string 类型）、`range`、`null`/`not_null`；逻辑组合用 `and`/`or` 嵌套 `sub_conditions`。叶子条件通常含 `field`、`operation`、`value`、`value_from`（常量填 `"const"`）。
 
+结构化条件的 `like`、`not_like`、`regex`、`prefix`、`not_prefix`、`match`、`match_phrase`、`multi_match` 不接受空字符串 `value: ""`，各查询通道均返回参数错误。纯空格不会被 trim，合法的 LIKE `%` 或正则 `.*` 仍可使用。查询空字符串使用 `== ""`，排除空字符串使用 `!= ""`；集合里的空字符串仍允许。历史固定条件不会被自动删除或改写，需要显式编辑为合法条件后再保存或执行。
+
 单表示例：
 
 ```bash

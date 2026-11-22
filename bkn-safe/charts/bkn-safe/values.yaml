@@ -34,8 +34,9 @@ service:
 # Only the hydra provider pages (login/consent/device) and the self-service
 # change-password endpoint are browser/CLI-facing and go through the ingress.
 # The internal APIs (/api/safe/v1/authz, /api/safe/v1/directory,
-# /api/safe/v1/internal/license, /api/safe/in/v1/managed-proxy-accounts and
-# /api/safe/in/v1/proxy-grant-sources) stay
+# /api/safe/v1/internal/license, /api/safe/in/v1/managed-proxy-accounts,
+# /api/safe/in/v1/proxy-grant-sources, /api/safe/in/v1/build-grants,
+# /api/safe/in/v1/execution-grants and the /introspect endpoints) stay
 # ClusterIP, called service-to-service — do
 # NOT expose those at the gateway. The licence group is tokenless by design (its
 # boundary is the network, see networkPolicy below), so putting it behind the

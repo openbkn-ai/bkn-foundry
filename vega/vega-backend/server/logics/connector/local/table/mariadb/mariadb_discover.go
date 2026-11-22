@@ -716,7 +716,7 @@ func (c *MariaDBConnector) DecodeTableMeta(metadata map[string]any) (*interfaces
 	}
 
 	table := interfaces.TableMeta{}
-	if err := common.UnmarshalPreciseJSON(data, &table); err != nil {
+	if err := common.UnmarshalJSON(data, &table); err != nil {
 		return nil, fmt.Errorf("decode table metadata: %w", err)
 	}
 	if _, ok := metadata["description"]; !ok {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/identity"
 	"net/mail"
 	"strings"
 
@@ -33,6 +34,7 @@ type DepartmentWriteInput struct {
 // DepartmentDetail is the admin API view of a single department (snake_case JSON).
 type DepartmentDetail struct {
 	ID          string `json:"id"`
+	Source      string `json:"source"`
 	Name        string `json:"name"`
 	ParentID    string `json:"parent_id"`
 	Type        string `json:"type"`
@@ -118,6 +120,14 @@ func (s *Service) GetDepartmentDetail(ctx context.Context, id string) (*Departme
 		}
 	}
 	out := departmentDetailFrom(*d, managerName)
+	sources, err := identity.DepartmentSources(s.db.WithContext(ctx), []string{id})
+	if err != nil {
+		return nil, err
+	}
+	out.Source = sources[id]
+	if out.Source == "" {
+		out.Source = "local"
+	}
 	return &out, nil
 }
 

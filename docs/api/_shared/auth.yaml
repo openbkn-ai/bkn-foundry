@@ -33,3 +33,9 @@ components:
         BKN management REST APIs under `/api/bkn-backend/v1` require OAuth,
         including read-only GET requests, and do not support AppKeys.
         An active key in Safe does not imply acceptance by another service.
+        An execution credential with the `bex_` prefix is not a key a person
+        issues: bkn-safe issues it to a background run, bound to one knowledge
+        network and one Agent. Only bkn-agent's execution routes, the Context
+        Loader MCP endpoints, and the Execution Factory routes an answer uses
+        (running Functions; listing, reading and running mounted tools, MCP
+        proxies and Skills, with `X-Kn-ID` naming the bound network) accept it.

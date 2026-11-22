@@ -293,7 +293,7 @@ func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t 
 	}
 	resource := &interfaces.VegaResource{
 		ID:               "r1",
-		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusReadOnly,
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
 			{Name: "fulltext_summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext, RefProperty: "summary"}}},
@@ -306,8 +306,9 @@ func TestProcessObjectTypeDetailsProjectsVegaIndexStatusAndConfiguredFeatures(t 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable {
-		t.Fatalf("index status = %#v, want available", objectType.IndexStatus)
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable ||
+		objectType.IndexStatus.SourceStatus != interfaces.ResourceLocalIndexStatusReadOnly {
+		t.Fatalf("index status = %#v, want available with readonly source status", objectType.IndexStatus)
 	}
 	encoded, err := json.Marshal(objectType)
 	if err != nil {
@@ -334,7 +335,7 @@ func TestProcessObjectTypeDetailsKeepsConfiguredFeaturesWhenIndexIsUnavailable(t
 		DataProperties: []*interfaces.DataProperty{{Name: "summary", MappedField: &interfaces.Field{Name: "summary"}}},
 	}}
 	resource := &interfaces.VegaResource{
-		ID: "r1", LocalIndexStatus: "stale",
+		ID: "r1", LocalIndexStatus: interfaces.ResourceLocalIndexStatusStale,
 		SchemaDefinition: []*interfaces.Property{{Name: "summary", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext}}}},
 	}
 
@@ -343,8 +344,9 @@ func TestProcessObjectTypeDetailsKeepsConfiguredFeaturesWhenIndexIsUnavailable(t
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateUnavailable {
-		t.Fatalf("index status = %#v, want unavailable", objectType.IndexStatus)
+	if objectType.IndexStatus == nil || objectType.IndexStatus.State != interfaces.ObjectTypeIndexStateUnavailable ||
+		objectType.IndexStatus.SourceStatus != interfaces.ResourceLocalIndexStatusStale {
+		t.Fatalf("index status = %#v, want unavailable with stale source status", objectType.IndexStatus)
 	}
 	features := objectType.DataProperties[0].IndexFeatures
 	if len(features) != 1 || features[0].Available == nil || *features[0].Available {
