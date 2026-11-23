@@ -8,8 +8,12 @@ name: ci-vega-backend
 # coverage, race detection, and compilation.
 
 on:
+  # Feature branches are covered by pull_request; running on their pushes too
+  # tests the same commit twice.
   push:
-    branches: ["**"]
+    branches:
+      - main
+      - "release/**"
     paths:
       - "vega/vega-backend/**"
       - ".github/workflows/ci-vega-backend.yml"

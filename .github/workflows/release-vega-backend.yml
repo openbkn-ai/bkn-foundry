@@ -40,6 +40,9 @@ jobs:
 
   verify:
     needs: version
+    # ci-vega-backend already runs these unit tests on pull requests, together
+    # with race detection and lint; the image build below still runs there.
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/reusable-release-verify.yml
     with:
       go-mod-file: server/go.mod
@@ -48,6 +51,7 @@ jobs:
 
   image:
     needs: [version, verify]
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:
@@ -61,6 +65,8 @@ jobs:
 
   chart:
     needs: [version, image]
+    # A skipped verify would otherwise skip this job too, even after image succeeds.
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.image.result == 'success' }}
     uses: ./.github/workflows/reusable-chart.yml
     with:
       chart-name: vega-backend
