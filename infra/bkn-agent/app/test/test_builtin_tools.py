@@ -341,13 +341,56 @@ def test_graph_explorer_reads_the_canvas_and_validates_its_result():
         builtin_tools.get("graph_explorer").result(run)
 
 
-def test_graph_explorer_canvas_is_bounded_and_strict():
+def test_graph_explorer_canvas_takes_what_the_web_sends():
+    # A long label, a field a newer Web sends, one bad item or a setting out of range used to
+    # refuse the whole question with BknAgent.Execution.ContextInvalid.
     from app.core import graph_explorer_tools as graph
 
-    with pytest.raises(ValidationError):
-        graph.CanvasContext(canvas_id="c1", revision=1, unexpected=True)
-    with pytest.raises(ValidationError):
-        graph.CanvasContext(canvas_id="c1", revision=-1)
+    model = builtin_tools.get("graph_explorer").context_model
+    label = "第一行\n" + "很长的说明" * 400
+    long_id = "n" * 600
+    canvas = model.model_validate(
+        {
+            "canvas_id": "c1",
+            "revision": -1,
+            "sent_by_a_newer_web": {"x": 1},
+            "nodes": [
+                {"id": "n1", "object_type_id": "ot", "label": label},
+                {"id": "", "object_type_id": "ot"},
+                {"id": long_id, "object_type_id": "ot"},
+                {"id": "n3"},
+            ],
+            "edges": [
+                {"id": "e1", "relation_type_id": "r", "source": "n1", "target": long_id},
+                {"id": "e2", "relation_type_id": "r", "source": "n1", "target": "n3"},
+            ],
+            "selected_ids": ["n1", 7, "", "n3"],
+            "view": None,
+            "object_types": [{"id": "ot", "name": "名" * 300}, {"name": "no id"}],
+            "limits": {"max_nodes": 99999, "expand_threshold": -5},
+            "analysis_cards": [{"no": 1, "title": "标题" * 200, "kind": "k" * 50}, {"no": 0, "title": "bad"}],
+        }
+    )
+    assert canvas.revision == 0
+    # The invalid nodes are left out, and so is the edge to one of them; long texts stay whole.
+    assert [n.id for n in canvas.nodes] == ["n1", long_id]
+    assert canvas.nodes[0].label == label
+    assert [e.id for e in canvas.edges] == ["e1"]
+    assert canvas.selected_ids == ["n1"]
+    assert canvas.view == {}
+    assert [(t.id, t.name) for t in canvas.object_types] == [("ot", "名" * 300)]
+    assert (canvas.limits.max_nodes, canvas.limits.expand_threshold) == (graph.MAX_NODES, 0)
+    assert [(c.no, c.title) for c in canvas.analysis_cards] == [(1, "标题" * 200)]
+    # Outside an analysis there are no cards; inside one with no valid card there still is one.
+    assert model.model_validate({"canvas_id": "c1", "revision": 0}).analysis_cards is None
+    endless = model.model_validate({"canvas_id": "c1", "revision": 0, "limits": {"max_nodes": float("inf")}})
+    assert endless.limits.max_nodes == graph.NODE_LIMIT
+    assert model.model_validate({"canvas_id": "c1", "revision": 0, "analysis_cards": [{"no": 0}]}).analysis_cards == []
+
+    # Only a canvas without an id or a revision is refused.
+    for broken in ({"revision": 1}, {"canvas_id": "", "revision": 1}, {"canvas_id": "c1"}, "c1"):
+        with pytest.raises(ValidationError):
+            model.model_validate(broken)
 
 
 def test_admin_lists_tools_by_source():

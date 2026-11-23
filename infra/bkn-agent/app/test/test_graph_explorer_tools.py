@@ -977,6 +977,44 @@ def test_card_instructions_list_cards_by_number():
     assert "- #19 图表 (chart)" in text and "- #20 merge (merge)" in text
 
 
+def test_card_instructions_list_the_latest_cards_with_short_titles():
+    cards = [{"no": no, "title": "标题" * 100, "kind": "chart"} for no in range(1, 151)]
+    run, tools = _analysis_run(cards)
+    text = "\n".join(graph._card_instructions(run))
+    assert "has 150 cards; the latest 100 are listed" in text
+    assert "- #51 " in text and "- #50 " not in text
+    latest = next(line for line in text.splitlines() if line.startswith("- #150 "))
+    assert latest == f"- #150 {'标题' * 29}标… (chart)"
+    # A card left out of the list can still be edited.
+    assert _invoke(tools["edit_analysis_cards"], remove=[3]) == {"removed": [3]}
+
+
+def test_the_model_reads_long_labels_shortened_and_the_canvas_keeps_them_whole():
+    label = "  泵壳   PH-01\n" + "说明" * 300
+    run, tools = _canvas_run()
+    run.context.nodes[0].label = label
+    items = _invoke(tools["canvas_state"])["nodes"]["items"]
+    assert next(n for n in items if n["id"] == "teams-1")["label"] == "泵壳 PH-01"
+    assert run.context.nodes[0].label == label
+    assert graph._brief("a  b\n c") == "a b c"
+    assert graph._brief("x" * 200) == "x" * 119 + "…"
+    assert graph._summary([{"id": "n", "object_type_id": "t", "label": "y" * 500}])["items"][0]["label"] == "y" * 119 + "…"
+
+
+def test_a_large_view_is_read_condensed():
+    groups = [{"id": f"g{i}", "ids": [f"n{j}" for j in range(400)]} for i in range(5)]
+    view = {"canvas": {"layout": "force", "manual_groups": groups}, "selected_ids": [f"n{i}" for i in range(3000)]}
+    run, tools = _canvas_run(view=view)
+    read = _invoke(tools["view_state"])["view"]
+    assert read["canvas"]["layout"] == "force"
+    assert read["canvas"]["manual_groups"][0]["ids"][-1] == "(350 more)"
+    assert read["selected_ids"][-1] == "(2950 more)"
+    # A view that fits is read as it is; the run keeps the whole one.
+    assert run.context.view == view
+    _, small = _canvas_run(view={"canvas": {"layout": "force"}})
+    assert _invoke(small["view_state"])["view"] == {"canvas": {"layout": "force"}}
+
+
 def test_card_edits_name_listed_cards_only():
     run, tools = _analysis_run([{"no": 19, "title": "图表", "kind": "chart"}, {"no": 20, "kind": "merge"}])
     edited = _invoke(tools["edit_analysis_cards"], remove=[19, 19], rename=[{"no": 20, "title": " 合并结果 "}])

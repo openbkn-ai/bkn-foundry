@@ -26,7 +26,7 @@ from typing import Annotated, Any, Literal, Optional
 from typing_extensions import Required, TypedDict
 
 from langchain_core.tools import StructuredTool, ToolException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.core import builtin_tools, context_loader
 from app.core import graph_explorer_data as data
@@ -49,6 +49,12 @@ TABLE_ROWS = 200
 TABLE_CHARS = 12_000
 PROPERTY_CAP = 8
 VALUE_CAP = 120
+# A card title as the model reads it, as long as one it gives (CardRename, show_html).
+CARD_TITLE_CAP = 60
+# Cards the instructions list, the latest ones; edit_analysis_cards takes any card.
+CARD_LIST = 100
+# view_state's answer in characters; past it its lists and maps keep their first SAMPLE entries.
+VIEW_CHARS = 20_000
 # Identities per query_object_instance request, paths per query_instance_subgraph.
 ID_BATCH = 50
 PATH_BATCH = 5
@@ -75,15 +81,21 @@ Layout = Literal["force", "chain", "dagre", "tree", "radial", "circular", "grid"
 Grouping = Literal["none", "concept", "type", "manual", "relation"]
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
-_Id = Field(min_length=1, max_length=512)
+# Ids are matched, never shortened, so they have no length bound; texts are kept
+# whole and shortened only where the model reads them (_brief).
+_Id = Field(min_length=1)
+
+# Object types a canvas lists, and cards an analysis lists; past these the first are kept.
+MAX_CANVAS_OBJECT_TYPES = 1000
+MAX_CARDS = 1000
 
 
 class CanvasNode(BaseModel):
     model_config = {"extra": "ignore"}
     id: str = _Id
     # An object type id, or `@value:<name>` for a value a derived edge ends at.
-    object_type_id: str = Field(min_length=1, max_length=512)
-    label: Optional[str] = Field(default=None, max_length=500)
+    object_type_id: str = _Id
+    label: Optional[str] = None
     # Primary key values; needed to name an instance with a composite key.
     identity: Optional[dict[str, Any]] = None
 
@@ -91,7 +103,7 @@ class CanvasNode(BaseModel):
 class CanvasEdge(BaseModel):
     model_config = {"extra": "ignore"}
     id: str = _Id
-    relation_type_id: str = Field(min_length=1, max_length=128)
+    relation_type_id: str = _Id
     source: str = _Id
     target: str = _Id
 
@@ -103,15 +115,15 @@ class CanvasAggregate(BaseModel):
     model_config = {"extra": "ignore"}
     id: str = _Id
     seed_id: str = _Id
-    relation_type_id: str = Field(min_length=1, max_length=128)
+    relation_type_id: str = _Id
     total: int = Field(ge=0)
     on_canvas: int = Field(default=0, ge=0)
 
 
 class ObjectTypeRef(BaseModel):
     model_config = {"extra": "ignore"}
-    id: str = Field(min_length=1, max_length=128)
-    name: Optional[str] = Field(default=None, max_length=200)
+    id: str = _Id
+    name: Optional[str] = None
 
 
 class CanvasLimits(BaseModel):
@@ -124,6 +136,25 @@ class CanvasLimits(BaseModel):
     # into an aggregate.
     expand_threshold: int = Field(default=EXPAND_THRESHOLD, ge=0, le=MAX_NODES)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _within_range(cls, value: Any) -> Any:
+        """A setting out of range is taken to the nearest bound, one that is not a
+        number falls back to the default."""
+        if not isinstance(value, dict):
+            return {}
+        value = dict(value)
+        for name, low in (("max_nodes", 1), ("expand_threshold", 0)):
+            setting = value.pop(name, None)
+            if isinstance(setting, bool) or not isinstance(setting, (int, float)):
+                continue
+            try:
+                value[name] = min(max(int(setting), low), MAX_NODES)
+            except (OverflowError, ValueError):
+                # Infinity or NaN, which Python's JSON reads: the default.
+                pass
+        return value
+
 
 class AnalysisCard(BaseModel):
     """A card of the analysis the question is asked in, as the user sees it."""
@@ -131,29 +162,72 @@ class AnalysisCard(BaseModel):
     model_config = {"extra": "ignore"}
     # The number the user names the card by, shown as `#<no>`.
     no: int = Field(ge=1)
-    title: str = Field(default="", max_length=200)
-    kind: str = Field(default="", max_length=40)
+    title: str = ""
+    kind: str = ""
+
+
+def _valid(model: type[BaseModel], items: Any, bound: int) -> tuple[list, list]:
+    """The items of a list that are valid, up to bound, and the ones that are not."""
+    kept, bad = [], []
+    for item in items if isinstance(items, list) else []:
+        try:
+            kept.append(model.model_validate(item))
+        except ValidationError:
+            bad.append(item)
+    return kept[:bound], bad
 
 
 class CanvasContext(BaseModel):
-    """context.canvas of a graph explorer execution."""
+    """context.canvas of a graph explorer execution.
 
-    model_config = {"extra": "forbid"}
-    canvas_id: str = Field(min_length=1, max_length=100)
+    Only a canvas without an id or revision is refused. Anything else the Web
+    sends is taken: fields this version does not know are ignored, an item that is
+    not valid is left out (with the edges ending at a node left out), a list past
+    its bound keeps its first items, and long texts are kept whole."""
+
+    model_config = {"extra": "ignore"}
+    canvas_id: str = _Id
     revision: int = Field(ge=0)
-    nodes: list[CanvasNode] = Field(default_factory=list, max_length=MAX_NODES)
-    edges: list[CanvasEdge] = Field(default_factory=list, max_length=MAX_EDGES)
-    aggregates: list[CanvasAggregate] = Field(default_factory=list, max_length=MAX_NODES)
-    selected_ids: list[str] = Field(default_factory=list, max_length=MAX_NODES)
+    nodes: list[CanvasNode] = Field(default_factory=list)
+    edges: list[CanvasEdge] = Field(default_factory=list)
+    aggregates: list[CanvasAggregate] = Field(default_factory=list)
+    selected_ids: list[str] = Field(default_factory=list)
     # Layout, grouping, labels, analysis panel and the like, as the Web holds
     # them; the view tools read and update it.
     view: dict[str, Any] = Field(default_factory=dict)
     # The network's object types the view tools may name.
-    object_types: list[ObjectTypeRef] = Field(default_factory=list, max_length=1000)
+    object_types: list[ObjectTypeRef] = Field(default_factory=list)
     limits: CanvasLimits = Field(default_factory=CanvasLimits)
     # The cards of the analysis the question is asked in; absent outside an
     # analysis, where the card tool is not offered.
-    analysis_cards: Optional[list[AnalysisCard]] = Field(default=None, max_length=1000)
+    analysis_cards: Optional[list[AnalysisCard]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_what_is_valid(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        value = dict(value)
+        if isinstance(value.get("revision"), int) and not isinstance(value["revision"], bool):
+            value["revision"] = max(0, value["revision"])
+        value["nodes"], bad_nodes = _valid(CanvasNode, value.get("nodes"), MAX_NODES)
+        left_out = {item.get("id") for item in bad_nodes if isinstance(item, dict)}
+        edges, _ = _valid(CanvasEdge, value.get("edges"), MAX_EDGES)
+        value["edges"] = [e for e in edges if e.source not in left_out and e.target not in left_out]
+        value["aggregates"], _ = _valid(CanvasAggregate, value.get("aggregates"), MAX_NODES)
+        selected = value.get("selected_ids")
+        value["selected_ids"] = (
+            [i for i in selected if isinstance(i, str) and i and i not in left_out][:MAX_NODES]
+            if isinstance(selected, list)
+            else []
+        )
+        if not isinstance(value.get("view"), dict):
+            value["view"] = {}
+        value["object_types"], _ = _valid(ObjectTypeRef, value.get("object_types"), MAX_CANVAS_OBJECT_TYPES)
+        # Absent means the question is not asked in an analysis; an analysis stays one.
+        if value.get("analysis_cards") is not None:
+            value["analysis_cards"], _ = _valid(AnalysisCard, value["analysis_cards"], MAX_CARDS)
+        return value
 
 
 # Largest HTML a card of an analysis keeps (the Web's limit too).
@@ -212,6 +286,35 @@ def _warn(run: builtin_tools.Run, message: str) -> None:
 
 def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _brief(value: Any, cap: int = VALUE_CAP) -> str:
+    """A text as the model reads it: whitespace collapsed and, when longer than cap,
+    its first line cut to cap with an ellipsis. Only the model's copy is shortened;
+    the Web gets the text back whole."""
+    whole = " ".join(text(value).split())
+    if len(whole) <= cap:
+        return whole
+    first = next((line for line in text(value).splitlines() if line.strip()), "")
+    short = " ".join(first.split())
+    return short if len(short) <= cap else short[: cap - 1] + "…"
+
+
+def _condensed(value: Any) -> Any:
+    """A value too long to read whole: each list and map keeps its first SAMPLE
+    entries and says how many more there are. Texts, ids among them, stay whole."""
+    if isinstance(value, list):
+        out = [_condensed(v) for v in value[:SAMPLE]]
+        if len(value) > SAMPLE:
+            out.append(f"({len(value) - SAMPLE} more)")
+        return out
+    if isinstance(value, dict):
+        items = list(value.items())
+        out = {k: _condensed(v) for k, v in items[:SAMPLE]}
+        if len(items) > SAMPLE:
+            out["…"] = f"({len(items) - SAMPLE} more)"
+        return out
+    return value
 
 
 def _table(columns: list[Any], rows: list[Any]) -> dict[str, Any]:
@@ -542,7 +645,8 @@ def _summary(nodes: list[dict], with_properties: bool = True) -> dict:
     a few properties, for the first ITEM_LIMIT of them."""
     items = []
     for node in nodes[:ITEM_LIMIT]:
-        item = {"id": node["id"], "type": node["object_type_id"], "label": node.get("label")}
+        label = node.get("label")
+        item = {"id": node["id"], "type": node["object_type_id"], "label": None if label is None else _brief(label)}
         if node.get("identity"):
             item["key"] = node["identity"]
         if node.get("computed"):
@@ -1208,7 +1312,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         nodes = [n for n in every if not wanted or n["object_type_id"] in wanted]
         offset = max(0, offset)
         limit = min(max(1, limit), PAGE_LIMIT)
-        page = nodes[offset : offset + limit]
+        page = [{**n, "label": _brief(n["label"])} if n.get("label") else n for n in nodes[offset : offset + limit]]
         end = offset + len(page)
         edges = [e.model_dump() for e in canvas.edges] + [
             {"id": e["id"], "relation_type_id": e["relation_type_id"], "source": e["source"],
@@ -1243,14 +1347,17 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         group, property or type is ambiguous, ask instead of guessing."""
         canvas = _canvas(run)
         planned = [a for a in _actions(run) if a["type"] != "merge_subgraph"]
-        return _dump(
-            {
-                "view": canvas.view,
-                **({"planned_view_actions": planned} if planned else {}),
-                "selected_ids": _selected(run)[:SAMPLE],
-                "object_types": [t.model_dump(exclude_none=True) for t in canvas.object_types],
-            }
-        )
+        answer = {
+            "view": canvas.view,
+            **({"planned_view_actions": planned} if planned else {}),
+            "selected_ids": _selected(run)[:SAMPLE],
+            "object_types": [
+                {"id": t.id, **({"name": _brief(t.name)} if t.name else {})} for t in canvas.object_types
+            ],
+        }
+        # A large canvas's view (selection, groups, every type's properties) would crowd the
+        # conversation; the view tools still take any id, listed here or not.
+        return _dump(_condensed(answer) if len(_dump(answer)) > VIEW_CHARS else answer)
 
 
     async def remove_instances(
@@ -1690,7 +1797,12 @@ def _card_instructions(run: builtin_tools.Run) -> list[str]:
     cards = getattr(_canvas(run), "analysis_cards", None)
     if cards is None:
         return []
-    listed = [f"- #{card.no} {card.title or card.kind} ({card.kind})" for card in cards]
+    listed = [
+        f"- #{card.no} {_brief(card.title or card.kind, CARD_TITLE_CAP)} ({_brief(card.kind, CARD_TITLE_CAP)})"
+        for card in cards[-CARD_LIST:]
+    ]
+    if len(cards) > CARD_LIST:
+        listed.insert(0, f"(This analysis has {len(cards)} cards; the latest {CARD_LIST} are listed.)")
     return [
         "",
         "This question is asked in an analysis made of cards. `#<number>` in the user's message names a card,"
