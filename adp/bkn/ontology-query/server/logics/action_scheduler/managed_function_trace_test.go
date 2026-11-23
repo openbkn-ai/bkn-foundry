@@ -529,3 +529,95 @@ func TestManagedActionFunctionRunsWithoutOriginInteraction(t *testing.T) {
 	}
 	finish("handed_off")
 }
+
+// partialOriginTraceServer serves Trace Core for an action whose origin is not a
+// complete triple: any /operations GET is a test failure and every Function
+// operation input must be free of origin_* keys.
+func partialOriginTraceServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet:
+			t.Errorf("incomplete origin must not verify an operation: %s", r.URL.Path)
+			http.NotFound(w, r)
+		case strings.HasSuffix(r.URL.Path, "/conversations:ensure-current"):
+			_, _ = w.Write([]byte(`{"conversation_id":"conv_action"}`))
+		case strings.HasSuffix(r.URL.Path, "/interactions"):
+			_, _ = w.Write([]byte(`{"interaction_id":"int_action","lease_token":"lease-1","lease_epoch":1}`))
+		case strings.HasSuffix(r.URL.Path, "/operations:ensure"):
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			input := body["input"].(map[string]any)["inline"].(map[string]any)
+			for key := range input {
+				if strings.HasPrefix(key, "origin_") {
+					t.Errorf("partial origin leaked into Function input: %#v", input)
+				}
+			}
+			_, _ = w.Write([]byte(`{"operation":{"operation_id":"op_function","attempt":1},"receipt":{"receipt_id":"receipt-1"},"execute":true}`))
+		case strings.HasSuffix(r.URL.Path, "/attempts/1:complete"), strings.HasSuffix(r.URL.Path, "/finish"):
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Errorf("unexpected Trace Core route: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func TestManagedActionFunctionDropsIncompleteOrigin(t *testing.T) {
+	cases := map[string]interfaces.CallerRuntimeCredential{
+		"conversation and interaction only": {ConversationID: "conv_label", InteractionID: "int_label"},
+		"interaction only":                  {InteractionID: "int_label"},
+		"conversation only":                 {ConversationID: "conv_label"},
+		"parent operation only":             {ParentOperationID: "op_label"},
+		"conversation and parent":           {ConversationID: "conv_label", ParentOperationID: "op_label"},
+	}
+	for name, origin := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := partialOriginTraceServer(t)
+			defer server.Close()
+			client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+			credential := origin
+			credential.Authorization = "Bearer token"
+			credential.ApplicationPrincipalID = "app-1"
+			ctx, finish, err := client.Open(context.Background(), &interfaces.ActionExecution{
+				ID: "exec-partial", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+			}, credential)
+			if err != nil {
+				t.Fatalf("incomplete origin must not fail the action: %v", err)
+			}
+			_, err = client.Run(withActionInvocation(ctx, 0), "function-1", func(runCtx context.Context) (any, error) {
+				caller, ok := interfaces.CallerRuntimeCredentialFromContext(runCtx)
+				if !ok || caller.ConversationID != "conv_action" || caller.InteractionID != "int_action" ||
+					caller.ParentOperationID != "op_function" {
+					t.Errorf("Function has no managed context: %#v", caller)
+				}
+				return "ok", nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			finish("handed_off")
+		})
+	}
+}
+
+func TestManagedActionFunctionRejectsMismatchedOrigin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"conversation_id":"conv_other","interaction_id":"int_original"}`))
+	}))
+	defer server.Close()
+	client := &actionTraceClient{baseURL: server.URL, http: server.Client()}
+	_, _, err := client.Open(context.Background(), &interfaces.ActionExecution{
+		ID: "exec-1", Executor: interfaces.AccountInfo{ID: "user-1", Type: "user"},
+	}, interfaces.CallerRuntimeCredential{
+		Authorization: "Bearer token", ApplicationPrincipalID: "app-1",
+		ConversationID: "conv_original", InteractionID: "int_original", ParentOperationID: "op_original",
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not belong to the supplied interaction") {
+		t.Fatalf("mismatched origin was accepted: %v", err)
+	}
+}

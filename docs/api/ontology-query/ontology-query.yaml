@@ -4808,6 +4808,7 @@ components:
             省略时取请求头 `bkn-conversation-id` / `bkn-interaction-id`（Context Loader / MCP 路径无需改动）；
             body 与请求头同时带值且不一致返回 400；值须为 1-128 位以字母或数字开头、仅含字母数字及 `.` `_` `:` `-` 的字符串，否则返回 400；
             body 中只传 `interaction_id` 不传 `conversation_id` 返回 400；只带请求头 `bkn-interaction-id`、没有 conversation id 时不报错，两个 id 都不记录（与请求头值不合法时的处理相同）。定时触发（trigger_type=scheduled）的执行两者恒为空。
+            Function 行动：只有 `bkn-conversation-id`、`bkn-interaction-id` 与 `bkn-parent-operation-id` 三者齐全时，才会向 Trace Core 校验父操作并作为来源（origin）写入 Function 操作输入；不齐全（如只带 conversation/interaction 请求头）时，来源被忽略，行动照常执行，已记录的两个 id 仍只是关联标签。
           type: object
           properties:
             conversation_id:

@@ -61,6 +61,12 @@ func (e *actionTraceAPIError) Error() string {
 	return fmt.Sprintf("Trace Core rejected %s with status %d, code %s", e.path, e.statusCode, e.code)
 }
 
+// hasCompleteOrigin reports whether the credential carries the full
+// conversation/interaction/operation triple needed to treat it as provenance.
+func hasCompleteOrigin(credential interfaces.CallerRuntimeCredential) bool {
+	return credential.ConversationID != "" && credential.InteractionID != "" && credential.ParentOperationID != ""
+}
+
 type actionTraceSessionKey struct{}
 type actionInvocationKey struct{}
 
@@ -90,10 +96,16 @@ func (c *actionTraceClient) Open(ctx context.Context, execution *interfaces.Acti
 	}
 	ctx = interfaces.WithCallerRuntimeCredential(ctx, credential)
 	session := &actionTraceSession{client: c, execution: execution, credential: credential}
-	if credential.ConversationID != "" || credential.InteractionID != "" || credential.ParentOperationID != "" {
-		if credential.ConversationID == "" || credential.InteractionID == "" || credential.ParentOperationID == "" {
-			return ctx, noop, errors.New("origin managed interaction is incomplete")
-		}
+	if !hasCompleteOrigin(credential) && (credential.ConversationID != "" ||
+		credential.InteractionID != "" || credential.ParentOperationID != "") {
+		// Partial values are caller-owned correlation labels, not Trace provenance.
+		// Drop them from the session so no half-formed origin reaches the Function.
+		logger.Infof("Action %s dropped an incomplete origin context; running without origin provenance", execution.ID)
+		session.credential.ConversationID = ""
+		session.credential.InteractionID = ""
+		session.credential.ParentOperationID = ""
+	}
+	if hasCompleteOrigin(credential) {
 		var origin struct {
 			ConversationID string `json:"conversation_id"`
 			InteractionID  string `json:"interaction_id"`
@@ -204,7 +216,7 @@ func (c *actionTraceClient) Run(ctx context.Context, toolID string,
 		"kn_id": session.execution.KNID, "action_type_id": session.execution.ActionTypeID,
 		"action_execution_id": session.execution.ID, "invocation": ordinal,
 	}
-	if session.credential.ConversationID != "" && session.credential.InteractionID != "" {
+	if hasCompleteOrigin(session.credential) {
 		input["origin_conversation_id"] = session.credential.ConversationID
 		input["origin_interaction_id"] = session.credential.InteractionID
 		input["origin_operation_id"] = session.credential.ParentOperationID
