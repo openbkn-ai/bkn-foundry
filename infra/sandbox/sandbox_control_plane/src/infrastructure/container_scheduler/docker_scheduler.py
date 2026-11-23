@@ -174,12 +174,23 @@ chmod 600 /tmp/.passwd-s3fs
 # 1) Briefly mount the whole bucket as root (no allow_other) to create the session prefix,
 #    then unmount immediately. s3fs cannot mount a prefix that does not exist yet, and user
 #    code never sees this temporary mount point.
+#    s3fs can exit its FUSE loop right after mounting (for example on 404 NoSuchBucket), which
+#    leaves a dead mount whose only symptom is "Software caused connection abort". Print the
+#    direct reason and clean the temporary mount up before failing.
+s3_init_fail() {{
+    echo "s3fs init mount of bucket {s3_bucket} failed: $1" >&2
+    echo "Check that the bucket exists (NoSuchBucket) and that the credentials may access it." >&2
+    umount /mnt/s3-init 2>/dev/null || fusermount -u /mnt/s3-init 2>/dev/null || \\
+        umount -l /mnt/s3-init 2>/dev/null || true
+    rmdir /mnt/s3-init 2>/dev/null || true
+    exit 1
+}}
 mkdir -p /mnt/s3-init
-s3fs {s3_bucket} /mnt/s3-init \\
+S3FS_OUT=$(s3fs {s3_bucket} /mnt/s3-init \\
     -o passwd_file=/tmp/.passwd-s3fs \\
     -o url={s3_endpoint_url or "https://s3.amazonaws.com"} \\
-    {path_style_option}
-mkdir -p "/mnt/s3-init/{s3_prefix}"
+    {path_style_option} 2>&1) || s3_init_fail "s3fs exited non-zero: $S3FS_OUT"
+MKDIR_OUT=$(mkdir -p "/mnt/s3-init/{s3_prefix}" 2>&1) || s3_init_fail "cannot create prefix (possible NoSuchBucket): $MKDIR_OUT $S3FS_OUT"
 umount /mnt/s3-init || fusermount -u /mnt/s3-init
 rmdir /mnt/s3-init
 

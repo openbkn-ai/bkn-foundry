@@ -16,6 +16,15 @@ class IStorageService(ABC):
     Talks to S3-compatible object storage.
     """
 
+    async def ensure_ready(self) -> None:
+        """
+        Make sure the backing storage is usable before a session starts
+
+        The default is a no-op, for adapters with nothing to prepare. Adapters
+        that can be unavailable raise StorageError with a clear reason.
+        """
+        return None
+
     @abstractmethod
     async def upload_file(
         self, s3_path: str, content: bytes, content_type: str = "application/octet-stream"

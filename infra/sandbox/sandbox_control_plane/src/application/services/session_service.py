@@ -99,6 +99,11 @@ class SessionService:
         # 1. Verify the template
         template = await self._validate_template(command.template_id)
 
+        # 1b. Make sure storage is ready, so no executor starts against a missing bucket.
+        # Raises StorageError (mapped to 503) when the bucket cannot be confirmed.
+        if self._storage_service:
+            await self._storage_service.ensure_ready()
+
         # 2. Resolve the session id, given or generated
         if command.id:
             # A given id: check for a collision

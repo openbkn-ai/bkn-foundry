@@ -12,6 +12,7 @@ from src.application.commands.install_session_dependencies import (
 )
 from src.application.services.session_service import SessionService
 from src.shared.errors.domain import ConflictError
+from src.shared.errors.infrastructure import StorageError
 from src.application.commands.create_session import CreateSessionCommand
 from src.application.commands.execute_code import ExecuteCodeCommand
 from src.application.dtos.session_dto import SessionDTO
@@ -83,6 +84,8 @@ async def create_session(
 
     except ConflictError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except StorageError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
