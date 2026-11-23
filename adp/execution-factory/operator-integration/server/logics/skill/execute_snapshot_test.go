@@ -94,16 +94,17 @@ func TestExecuteSkillRunsTheSelectedSnapshotInAReusedSession(t *testing.T) {
 		}
 
 		var current skillPackageVersion
-		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil).AnyTimes()
-		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-3311", interfaces.AuthResourceTypeSkill).
-			Return(nil).AnyTimes()
-		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-3311").DoAndReturn(
-			func(context.Context, *sql.Tx, string) (*model.SkillRepositoryDB, error) {
-				return &model.SkillRepositoryDB{
+		registry.releaseRepo = &stubSkillReleaseRepo{
+			selectBySkillID: func(context.Context, *sql.Tx, string) (*model.SkillReleaseDB, error) {
+				return &model.SkillReleaseDB{
 					SkillID: "skill-3311", Name: "repro", Version: current.version,
 					Status: interfaces.BizStatusPublished.String(),
 				}, nil
-			}).AnyTimes()
+			},
+		}
+		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil).AnyTimes()
+		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-3311", interfaces.AuthResourceTypeSkill).
+			Return(nil).AnyTimes()
 		mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-3311", gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, _ string, version string) ([]*model.SkillFileIndexDB, error) {
 				So(version, ShouldEqual, current.version)
@@ -209,9 +210,9 @@ func TestExecuteSkillRefusesAPartlyPlacedPackage(t *testing.T) {
 
 		mockAuthService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 		mockAuthService.EXPECT().CheckExecutePermission(gomock.Any(), gomock.Any(), "skill-partial", interfaces.AuthResourceTypeSkill).Return(nil)
-		mockSkillRepo.EXPECT().SelectSkillByID(gomock.Any(), gomock.Nil(), "skill-partial").Return(&model.SkillRepositoryDB{
+		registry.releaseRepo = publishedRelease(&model.SkillReleaseDB{
 			SkillID: "skill-partial", Name: "partial", Version: "v1", Status: interfaces.BizStatusPublished.String(),
-		}, nil)
+		})
 		mockFileRepo.EXPECT().SelectSkillFileBySkillID(gomock.Any(), gomock.Nil(), "skill-partial", "v1").Return([]*model.SkillFileIndexDB{
 			{SkillID: "skill-partial", RelPath: SkillMD, StorageKey: "md"},
 			{SkillID: "skill-partial", RelPath: "scripts/run.py", StorageKey: "run"},
