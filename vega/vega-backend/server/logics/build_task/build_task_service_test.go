@@ -1493,6 +1493,90 @@ func TestCreateIncrementalBuildWithPublishedIndex(t *testing.T) {
 	}
 }
 
+func TestCreateBuildTaskWithActiveKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name, executeType, activeType string
+		scheduled, wantQueued         bool
+	}{
+		{"scheduled full waits for keys", interfaces.BuildTaskExecuteTypeFull, interfaces.BuildTaskExecuteTypeKeys, true, true},
+		{"scheduled incremental waits for keys", interfaces.BuildTaskExecuteTypeIncremental, interfaces.BuildTaskExecuteTypeKeys, true, true},
+		{"scheduled full skips another full", interfaces.BuildTaskExecuteTypeFull, interfaces.BuildTaskExecuteTypeFull, true, false},
+		{"manual full still detects active keys", interfaces.BuildTaskExecuteTypeFull, interfaces.BuildTaskExecuteTypeKeys, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access := vmock.NewMockBuildTaskAccess(ctrl)
+			resources := vmock.NewMockResourceService(ctrl)
+			catalogs := vmock.NewMockCatalogService(ctrl)
+			service := &buildTaskService{
+				bta: access, rs: resources, cs: catalogs,
+				cf: buildTaskTestConnectorFactory(t), dispatchCh: make(chan struct{}, 1),
+			}
+			resource := buildTaskTestResource()
+			resource.LocalIndexName = "vega-build-published"
+			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+			resource.SyncMark = `{"mode":"batch","cursor":[]}`
+			resources.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+			catalogs.EXPECT().CheckCatalogPermission(gomock.Any(), resource.CatalogID,
+				[]string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+			catalogs.EXPECT().GetByID(gomock.Any(), resource.CatalogID, false).
+				Return(&interfaces.Catalog{ID: resource.CatalogID, Enabled: true}, nil)
+			access.EXPECT().InternalList(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+					if tc.activeType == params.ExcludeExecuteType {
+						return nil, nil
+					}
+					return []*interfaces.BuildTaskSummary{{ID: "active-task", ExecuteType: tc.activeType}}, nil
+				})
+
+			req := &interfaces.CreateBuildTaskRequest{
+				ResourceID: resource.ID, Mode: interfaces.BuildTaskModeBatch, ExecuteType: tc.executeType,
+			}
+			if tc.scheduled {
+				req.TriggerType = interfaces.BuildTaskTriggerScheduled
+				req.ScheduleID = "schedule-1"
+			}
+			if tc.wantQueued {
+				access.EXPECT().Create(gomock.Any(), gomock.Cond(func(task *interfaces.BuildTask) bool {
+					return task.Status == interfaces.BuildTaskStatusPending && task.ScheduleID == req.ScheduleID
+				})).Return(nil)
+			}
+			id, err := service.Create(t.Context(), req)
+			if tc.wantQueued {
+				require.NoError(t, err)
+				assert.NotEmpty(t, id)
+				assert.Len(t, service.dispatchCh, 1)
+				return
+			}
+			httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_Exist)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Empty(t, id)
+			assert.Empty(t, service.dispatchCh)
+		})
+	}
+}
+
+func TestValidateBuildTaskRejectsPrimaryKeySchemaDrift(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		schema []*interfaces.Property
+	}{
+		{name: "key was removed", schema: []*interfaces.Property{{Name: "other", Type: interfaces.DataType_Integer}}},
+		{name: "key has an unsupported type", schema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Boolean}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resource := buildTaskTestResource()
+			resource.IndexConfig.IncrementalFields = nil
+			resource.SchemaDefinition = tc.schema
+
+			err := validateBuildTaskKeyRequirements(t.Context(), resource, interfaces.BuildTaskExecuteTypeFull)
+
+			httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		})
+	}
+}
+
 func TestNormalizeCreateBuildTaskExecuteType(t *testing.T) {
 	t.Run("defaults to full", func(t *testing.T) {
 		executeType, err := normalizeCreateBuildTaskExecuteType(context.Background(), &interfaces.CreateBuildTaskRequest{

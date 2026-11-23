@@ -152,4 +152,6 @@ type BuildTasksQueryParams struct {
 	ExcludeCatalogIDs []string
 	// ExcludeResourceIDs is internal to worker dispatch.
 	ExcludeResourceIDs []string
+	// ExcludeExecuteType is internal to build admission.
+	ExcludeExecuteType string
 }

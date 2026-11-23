@@ -174,8 +174,8 @@ paths:
         - PostgreSQL、MySQL/MariaDB 的 InnoDB 表、HANA、Oracle 和 SQL Server 在每次 `full` 执行中使用同一源端事务统计总数并打开结果集，逐批消费该结果集。
           Oracle 事务读会话要求非 SYS 账号。SQL Server 使用 SERIALIZABLE，读事务可能阻塞源端写入。中断后从任务游标开启新事务，跨运行的批次可能看到不同的数据。
           Doris 等不支持事务读会话的来源继续逐批执行查询。
-        - Resource 保存时校验主键字段是否存在、是否重复以及字段类型。构建任务要求 Resource 已配置主键。
-          已配置的增量字段必须存在于 Resource 的 schema 中、不能重复且必须使用受支持的类型，否则返回 400。
+        - 构建任务要求 Resource 已配置主键。Resource 层在保存配置和构建准入时校验主键及增量字段。
+          字段必须存在于当前 schema 中、不能重复且必须使用受支持的类型，否则构建接口返回 400。
         - `index_name` 由服务端分配并在详情、列表响应中返回；请求体不接受该字段。
         - 创建后 status = `pending`。
 

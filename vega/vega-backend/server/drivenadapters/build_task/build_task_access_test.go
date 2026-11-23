@@ -765,6 +765,25 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, task.ID, got[0].ID)
 	})
+	t.Run("excludes active keys before the query limit", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+strings.Join(buildTaskSummaryColumns(), ", ")+
+			" FROM t_build_task WHERE f_status IN (?,?) AND f_execute_type <> ? AND f_resource_id = ? ORDER BY f_create_time DESC, f_id DESC LIMIT 2 OFFSET 0")).
+			WithArgs(interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskExecuteTypeKeys, "resource-1").
+			WillReturnRows(sqlmock.NewRows(buildTaskSummaryColumns()))
+
+		got, err := access.InternalList(t.Context(), interfaces.BuildTasksQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
+			Statuses:              []string{interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning},
+			ExcludeExecuteType:    interfaces.BuildTaskExecuteTypeKeys,
+			ResourceID:            "resource-1",
+		})
+
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	t.Run("returns query error", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()

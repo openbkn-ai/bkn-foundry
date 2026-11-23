@@ -613,6 +613,9 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 	if params.ExecuteType != "" {
 		builder = builder.Where(sq.Eq{"f_execute_type": params.ExecuteType})
 	}
+	if params.ExcludeExecuteType != "" {
+		builder = builder.Where(sq.NotEq{"f_execute_type": params.ExcludeExecuteType})
+	}
 	if len(params.ExcludeResourceIDs) > 0 {
 		builder = builder.Where(sq.NotEq{"f_resource_id": params.ExcludeResourceIDs})
 	}

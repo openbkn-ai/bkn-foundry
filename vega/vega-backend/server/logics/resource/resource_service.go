@@ -1732,7 +1732,7 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
 
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property,
 	indexConfig *interfaces.ResourceIndexConfig, category string) error {
-	if err := validateIndexConfigKeyFields(ctx, schema, indexConfig); err != nil {
+	if err := ValidateIndexConfigKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
 	defaultEmbeddingModelID := ""
@@ -1883,14 +1883,17 @@ func fulltextAnalyzerConfigValue(config map[string]any) string {
 	return value
 }
 
-func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
+// ValidateIndexConfigKeyFields 校验资源配置中的主键和增量字段是否仍与当前 schema 一致。
+func ValidateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
 	if indexConfig == nil {
 		return nil
 	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(schema))
 	for _, prop := range schema {
-		schemaFields[prop.Name] = prop
+		if prop != nil {
+			schemaFields[prop.Name] = prop
+		}
 	}
 	primaryKeys := make(map[string]struct{}, len(indexConfig.PrimaryKeyFields))
 	for _, field := range indexConfig.PrimaryKeyFields {

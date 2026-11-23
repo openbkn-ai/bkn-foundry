@@ -209,7 +209,8 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	}
 
 	if executeType != interfaces.BuildTaskExecuteTypeKeys {
-		if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, ""); err != nil {
+		scheduled := req.ScheduleID != "" && req.TriggerType == interfaces.BuildTaskTriggerScheduled
+		if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, "", scheduled); err != nil {
 			span.SetStatus(codes.Error, "Resource already has active build task")
 			return "", err
 		}
@@ -274,33 +275,21 @@ func validateBuildTaskKeyRequirements(ctx context.Context, resource *interfaces.
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).
 			WithErrorDetails("incremental build requires at least one incremental_fields entry")
 	}
-	if len(resource.IndexConfig.IncrementalFields) == 0 {
-		return nil
+	err := resourcelogic.ValidateIndexConfigKeyFields(ctx, resource.SchemaDefinition, resource.IndexConfig)
+	var validationErr *httperrors.HTTPError
+	if !errors.As(err, &validationErr) {
+		return err
 	}
-
-	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
-	for _, prop := range resource.SchemaDefinition {
-		if prop == nil {
-			continue
-		}
-		schemaFields[prop.Name] = prop
+	switch validationErr.ErrorCode {
+	case verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields:
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).
+			WithErrorDetails(validationErr.ErrorDetails)
+	case verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields:
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).
+			WithErrorDetails(validationErr.ErrorDetails)
+	default:
+		return err
 	}
-
-	incrementalKeys := make(map[string]struct{}, len(resource.IndexConfig.IncrementalFields))
-	for _, fieldName := range resource.IndexConfig.IncrementalFields {
-		prop, exists := schemaFields[fieldName]
-		if !exists {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q is not in the resource schema", fieldName))
-		}
-		if _, duplicate := incrementalKeys[fieldName]; duplicate {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields contains duplicate field %q", fieldName))
-		}
-		if !interfaces.IndexConfig_IsIncrementalFieldType(prop.Type) {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q has unsupported type %q", fieldName, prop.Type))
-		}
-		incrementalKeys[fieldName] = struct{}{}
-	}
-	return nil
 }
 
 // ValidateKeys validates complete primary keys and keeps the first occurrence of each tuple.
@@ -417,12 +406,16 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 	return req.ExecuteType, nil
 }
 
-func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID string, excludeTaskID string) error {
-	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
+func (bts *buildTaskService) rejectIfResourceHasActiveTask(ctx context.Context, resourceID, excludeTaskID string, ignoreActiveKeys bool) error {
+	params := interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 2},
 		ResourceID:            resourceID,
 		Statuses:              activeBuildTaskStatuses,
-	})
+	}
+	if ignoreActiveKeys {
+		params.ExcludeExecuteType = interfaces.BuildTaskExecuteTypeKeys
+	}
+	tasks, err := bts.InternalList(ctx, params)
 	if err != nil {
 		otellog.LogError(ctx, "Check active build task failed", err)
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
@@ -953,7 +946,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 	}
 
 	if buildTask.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
-		if err := bts.rejectIfResourceHasActiveTask(ctx, buildTask.ResourceID, buildTask.ID); err != nil {
+		if err := bts.rejectIfResourceHasActiveTask(ctx, buildTask.ResourceID, buildTask.ID, false); err != nil {
 			span.SetStatus(codes.Error, "Resource already has active build task")
 			return err
 		}
