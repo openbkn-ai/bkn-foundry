@@ -1,5 +1,6 @@
 """Regression tests for #3327: bucket readiness after a failed startup init."""
 import asyncio
+import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -164,6 +165,78 @@ class TestEnsureReady:
 
         with pytest.raises(StorageError):
             await storage.ensure_ready()
+
+    async def test_callers_queued_behind_a_failed_check_share_its_failure(self, storage, client):
+        def unreachable(**_):
+            time.sleep(0.05)  # keep the lock held while the other callers queue up
+            raise _conn_error()
+
+        client.head_bucket.side_effect = unreachable
+
+        results = await asyncio.gather(
+            *(storage.ensure_ready() for _ in range(5)), return_exceptions=True
+        )
+
+        assert all(isinstance(r, StorageError) for r in results)
+        assert client.head_bucket.call_count == 1
+
+        # A later session checks again instead of reusing the old failure
+        client.head_bucket.side_effect = None
+        client.head_bucket.return_value = {}
+        await storage.ensure_ready()
+
+        assert client.head_bucket.call_count == 2
+        assert storage.is_ready
+
+
+class TestReadyCheckClient:
+    """The readiness check must not stack botocore retries on the startup retries"""
+
+    @pytest.fixture
+    def clients(self):
+        settings = Mock()
+        settings.s3_endpoint_url = "http://minio:9000"
+        settings.s3_access_key_id = "k"
+        settings.s3_secret_access_key = "s"
+        settings.s3_region = "us-east-1"
+        settings.s3_bucket = "sandbox-workspace"
+        main, ready = Mock(), Mock()
+        main.meta.region_name = ready.meta.region_name = "us-east-1"
+        with patch.object(s3_storage.boto3, "client", side_effect=[main, ready]) as factory:
+            with patch.object(s3_storage, "get_settings", return_value=settings):
+                storage = S3Storage()
+        return storage, main, ready, factory
+
+    def test_ready_client_has_short_timeouts_and_no_internal_retries(self, clients):
+        _, _, _, factory = clients
+        main_call, ready_call = factory.call_args_list
+
+        assert "config" not in main_call.kwargs  # file operations keep the defaults
+        config = ready_call.kwargs["config"]
+        assert config.connect_timeout == s3_storage.READY_CHECK_CONNECT_TIMEOUT_SECONDS
+        assert config.read_timeout == s3_storage.READY_CHECK_READ_TIMEOUT_SECONDS
+        assert config.retries == {"total_max_attempts": 1}
+        assert ready_call.kwargs["endpoint_url"] == "http://minio:9000"
+
+    async def test_initialize_and_ensure_ready_use_the_ready_client(self, clients):
+        storage, main, ready, _ = clients
+        ready.head_bucket.side_effect = _conn_error()
+
+        await storage.initialize()
+        with pytest.raises(StorageError):
+            await storage.ensure_ready()
+
+        assert ready.head_bucket.call_count == s3_storage.INIT_MAX_ATTEMPTS + 1
+        main.head_bucket.assert_not_called()
+
+    async def test_file_operations_keep_the_default_client(self, clients):
+        storage, main, ready, _ = clients
+        main.head_bucket.return_value = {}
+
+        await storage.upload_file("sessions/s1/a.txt", b"x")
+
+        main.head_bucket.assert_called_once_with(Bucket="sandbox-workspace")
+        ready.head_bucket.assert_not_called()
 
 
 class TestSessionCreationEnsuresStorage:

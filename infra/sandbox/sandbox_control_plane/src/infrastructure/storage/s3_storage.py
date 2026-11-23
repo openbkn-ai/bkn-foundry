@@ -11,6 +11,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from src.domain.services.storage import IStorageService
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 INIT_MAX_ATTEMPTS = 5
 INIT_BACKOFF_BASE_SECONDS = 1.0
 INIT_BACKOFF_MAX_SECONDS = 8.0
+
+# The bucket check runs while the control plane starts, before /health is served,
+# so it gets short timeouts and no botocore-internal retries. A default client
+# retries a connection error 5 times on its own, which multiplied by the startup
+# retries above outlasts a liveness probe that has no startupProbe in front of it.
+READY_CHECK_CONNECT_TIMEOUT_SECONDS = 3
+READY_CHECK_READ_TIMEOUT_SECONDS = 5
 
 # Error codes meaning "the bucket does not exist" (AWS and MinIO differ)
 _BUCKET_MISSING_CODES = {"404", "NoSuchBucket", "NotFound"}
@@ -51,18 +59,31 @@ class S3Storage(IStorageService):
         """
         settings = get_settings()
 
+        client_kwargs = {
+            "endpoint_url": settings.s3_endpoint_url or None,  # AWS S3 needs no endpoint_url
+            "aws_access_key_id": settings.s3_access_key_id,
+            "aws_secret_access_key": settings.s3_secret_access_key,
+            "region_name": settings.s3_region,
+        }
         # Initialize the S3 client
-        self._client = boto3.client(
+        self._client = boto3.client("s3", **client_kwargs)
+        # Client for the bucket readiness check only; file operations keep the defaults
+        self._ready_client = boto3.client(
             "s3",
-            endpoint_url=settings.s3_endpoint_url or None,  # AWS S3 needs no endpoint_url
-            aws_access_key_id=settings.s3_access_key_id,
-            aws_secret_access_key=settings.s3_secret_access_key,
-            region_name=settings.s3_region,
+            config=Config(
+                connect_timeout=READY_CHECK_CONNECT_TIMEOUT_SECONDS,
+                read_timeout=READY_CHECK_READ_TIMEOUT_SECONDS,
+                retries={"total_max_attempts": 1},
+            ),
+            **client_kwargs,
         )
         self._bucket = settings.s3_bucket
         # Set once the bucket is confirmed to exist; later sessions skip the HEAD
         self._ready = False
         self._ready_lock = asyncio.Lock()
+        # Failed checks so far, and the latest failure, shared with callers queued behind it
+        self._ready_failures = 0
+        self._last_ready_error: Exception | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -135,11 +156,25 @@ class S3Storage(IStorageService):
         return str(error)
 
     async def _ensure_bucket_ready(self) -> None:
-        """Serialized bucket check and create; sets the ready flag on success"""
+        """
+        Serialized bucket check and create; sets the ready flag on success
+
+        A caller that queued behind a check which then failed gets that failure
+        instead of running a check of its own, so while storage is unreachable
+        concurrent sessions all fail together rather than one check after another.
+        """
+        failures_before = self._ready_failures
         async with self._ready_lock:
             if self._ready:
                 return
-            await self._ensure_bucket_exists()
+            if self._ready_failures != failures_before and self._last_ready_error is not None:
+                raise self._last_ready_error
+            try:
+                await self._ensure_bucket_exists(self._ready_client)
+            except Exception as e:
+                self._ready_failures += 1
+                self._last_ready_error = e
+                raise
             self._ready = True
 
     def _parse_s3_path(self, s3_path: str) -> tuple[str, str]:
@@ -180,10 +215,17 @@ class S3Storage(IStorageService):
         """
         return f"s3://{bucket}/{key}"
 
-    async def _ensure_bucket_exists(self) -> None:
-        """Make sure the bucket exists, creating it when it does not (never recreates one)"""
+    async def _ensure_bucket_exists(self, client=None) -> None:
+        """
+        Make sure the bucket exists, creating it when it does not (never recreates one)
+
+        Args:
+            client: S3 client to check with; the default client when not given
+        """
+        if client is None:
+            client = self._client
         try:
-            await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)
+            await asyncio.to_thread(client.head_bucket, Bucket=self._bucket)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code not in _BUCKET_MISSING_CODES:
@@ -191,15 +233,15 @@ class S3Storage(IStorageService):
                 raise
             # The bucket does not exist, so create it
             try:
-                if self._client.meta.region_name == "us-east-1":
+                if client.meta.region_name == "us-east-1":
                     # us-east-1 needs no LocationConstraint
-                    await asyncio.to_thread(self._client.create_bucket, Bucket=self._bucket)
+                    await asyncio.to_thread(client.create_bucket, Bucket=self._bucket)
                 else:
                     await asyncio.to_thread(
-                        self._client.create_bucket,
+                        client.create_bucket,
                         Bucket=self._bucket,
                         CreateBucketConfiguration={
-                            "LocationConstraint": self._client.meta.region_name
+                            "LocationConstraint": client.meta.region_name
                         },
                     )
                 logger.info(f"Created S3 bucket: {self._bucket}")
@@ -209,7 +251,7 @@ class S3Storage(IStorageService):
                     return
                 if create_code == "BucketAlreadyExists":
                     # Someone else may own the name: only a successful HEAD makes it ours
-                    await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)
+                    await asyncio.to_thread(client.head_bucket, Bucket=self._bucket)
                     return
                 logger.error(f"Failed to create bucket {self._bucket}: {create_error}")
                 raise
