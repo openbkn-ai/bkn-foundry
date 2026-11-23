@@ -144,10 +144,17 @@ def test_agent_limits_max_output_tokens_bounds():
 
     from app.models import AgentLimits
 
-    assert AgentLimits(max_output_tokens=8192).max_output_tokens == 8192
+    from app.models import MAX_OUTPUT_TOKENS_UPPER_BOUND
+
+    assert MAX_OUTPUT_TOKENS_UPPER_BOUND == 1_000_000
     assert AgentLimits().max_output_tokens is None
-    with pytest.raises(ValidationError):
-        AgentLimits(max_output_tokens=0)
+    assert AgentLimits(max_output_tokens=None).max_output_tokens is None
+    # The old fixed 65536 ceiling is gone; the model's own limit applies at run time.
+    for ok in (10, 1024, 8192, 65535, 65536, 65537, 131072, 1_000_000):
+        assert AgentLimits(max_output_tokens=ok).max_output_tokens == ok
+    for bad in (0, 9, 1_000_001):
+        with pytest.raises(ValidationError):
+            AgentLimits(max_output_tokens=bad)
 
 
 def test_max_output_tokens_floor_aligns_mf_model_api():
@@ -262,5 +269,31 @@ def test_export_rejects_dirty_agent_with_clear_error(monkeypatch):
                         json={"agent_ids": ["a1"]})
         assert r.status_code == 400
         assert "DirtyAgent" in r.json()["code"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_over_bound_max_output_tokens_is_400_in_error_format():
+    """Past the sanity bound the API answers 400 in the standard error envelope."""
+    from fastapi.testclient import TestClient
+
+    from app.db import get_session
+    from app.main import app
+
+    async def fake_session():
+        yield object()
+
+    app.dependency_overrides[get_session] = fake_session
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.post(
+            "/api/bkn-agent/v1/agents",
+            headers={"x-account-id": "u", "x-account-type": "user"},
+            json={"name": "n", "mode": "chat", "limits": {"max_output_tokens": 1_000_001}},
+        )
+        assert r.status_code == 400
+        body = r.json()
+        assert body["code"] == "BknAgent.ParamError.FormatError"
+        assert "max_output_tokens" in body["detail"]
     finally:
         app.dependency_overrides.clear()
