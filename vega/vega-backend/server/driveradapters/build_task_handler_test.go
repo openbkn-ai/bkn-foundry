@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -144,6 +145,34 @@ func Test_BuildTaskRestHandler_GetBuildTask(t *testing.T) {
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
 		assert.Contains(t, w.Body.String(), `"status":"running"`)
+		assert.NotContains(t, w.Body.String(), `"keys":`)
+	})
+
+	t.Run("returns persisted keys with exact integer values", func(t *testing.T) {
+		engine, bts, _ := setupBuildTaskHandlerTest(t)
+		bts.EXPECT().GetByID(gomock.Any(), "task-keys").
+			Return(&interfaces.BuildTask{
+				ID:          "task-keys",
+				Mode:        interfaces.BuildTaskModeBatch,
+				ExecuteType: interfaces.BuildTaskExecuteTypeKeys,
+				Keys: []map[string]any{{
+					"tenant": "north",
+					"id":     json.Number("18446744073709551615"),
+				}},
+			}, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/build-tasks/task-keys", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		var body struct {
+			Keys []map[string]json.RawMessage `json:"keys"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.Len(t, body.Keys, 1)
+		assert.Equal(t, `"north"`, string(body.Keys[0]["tenant"]))
+		assert.Equal(t, "18446744073709551615", string(body.Keys[0]["id"]))
 	})
 }
 
@@ -303,7 +332,11 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 				assert.Equal(t, 20, params.Limit)
 				assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
 				assert.Equal(t, "DESC", params.Direction)
-				return []*interfaces.BuildTaskSummary{}, int64(0), nil
+				return []*interfaces.BuildTaskSummary{{
+					ID:          "task-keys",
+					Mode:        interfaces.BuildTaskModeBatch,
+					ExecuteType: interfaces.BuildTaskExecuteTypeKeys,
+				}}, int64(1), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -312,6 +345,8 @@ func Test_BuildTaskRestHandler_ListBuildTasks(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"execute_type":"keys"`)
+		assert.NotContains(t, w.Body.String(), `"keys":`)
 	})
 
 	t.Run("success with explicit query params", func(t *testing.T) {

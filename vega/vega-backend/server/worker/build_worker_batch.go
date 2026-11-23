@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -28,7 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	model_factory "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/sync_checkpoint"
 )
 
@@ -49,7 +50,7 @@ type batchBuildWorker struct {
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	lim := local_index.NewLocalIndexManager(appSetting)
-	rs := resource.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
+	rs := resourcelogic.NewResourceService(appSetting, dataset.NewDatasetService(appSetting))
 	return &batchBuildWorker{
 		appSetting: appSetting,
 		bts:        build_task.NewBuildTaskService(appSetting, rs),
@@ -73,7 +74,12 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
-	err := bbw.executeBuild(ctx, catalog, resource, buildTaskInfo)
+	var err error
+	if buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeKeys {
+		err = bbw.reconcileKeys(ctx, catalog, resource, buildTaskInfo)
+	} else {
+		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo)
+	}
 	if err != nil {
 		if errors.Is(err, errBuildTaskMarkedFailed) {
 			logger.Infof("Build task failed during final configuration check: %s", taskID)
@@ -245,7 +251,7 @@ func (bbw *batchBuildWorker) commitIncrementalProgress(ctx context.Context, reso
 	return nil
 }
 
-func (bbw *batchBuildWorker) completeIncrementalBuildTask(ctx context.Context, taskID string) error {
+func (bbw *batchBuildWorker) completeInPlaceBuildTask(ctx context.Context, taskID string) error {
 	completed, err := bbw.bts.InternalMarkCompleted(ctx, nil, taskID)
 	if err != nil {
 		return fmt.Errorf("update build task status: %w", err)
@@ -553,12 +559,9 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				if _, exists := indexDocuments[docID]; exists {
 					return fmt.Errorf("build document ID: duplicate primary key values %q", docID)
 				}
-				doc, err = local_index.EncodeDecimalDocument(validationResource, doc)
+				doc, err = encodeBatchBuildDocument(validationResource, resource, doc)
 				if err != nil {
 					return fmt.Errorf("build document %q: %w", docID, err)
-				}
-				if err := normalizeBuildDocumentFields(doc, resource.SchemaDefinition, nil); err != nil {
-					return fmt.Errorf("normalize document for local index: %w", err)
 				}
 				indexDocuments[docID] = doc
 			}
@@ -624,7 +627,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 	if isIncremental {
-		if err := bbw.completeIncrementalBuildTask(ctx, buildTaskInfo.ID); err != nil {
+		if err := bbw.completeInPlaceBuildTask(ctx, buildTaskInfo.ID); err != nil {
 			return fmt.Errorf("complete incremental build task: %w", err)
 		}
 		return nil
@@ -634,6 +637,226 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 	return nil
+}
+
+func (bbw *batchBuildWorker) reconcileKeys(ctx context.Context, catalog *interfaces.Catalog,
+	resource *interfaces.Resource, task *interfaces.BuildTask) error {
+	keys, err := build_task.ValidateKeys(resource, task.Keys)
+	if err != nil {
+		return err
+	}
+	params, requested, err := buildKeyReadParams(ctx, resource, keys)
+	if err != nil {
+		return err
+	}
+	indexName := task.IndexName
+	if err := requireManagedLocalIndex(ctx, bbw.lim, indexName); err != nil {
+		return errors.New("published index is unavailable; run a full build")
+	}
+	zero := int64(0)
+	total := int64(len(keys))
+	progress := interfaces.BuildTaskProgress{TotalCount: &total, SyncedCount: &zero}
+	updated, err := bbw.bts.InternalSetProgress(ctx, nil, task.ID, progress, runningOrStoppingStatuses)
+	if err != nil {
+		return errors.New("could not record keys build progress")
+	}
+	if !updated {
+		return nil
+	}
+
+	rows, err := bbw.readKeyRows(ctx, catalog, resource, params, len(keys))
+	if err != nil {
+		return err
+	}
+	documents, missing, err := prepareKeyIndexChanges(resource, requested, rows)
+	if err != nil {
+		return err
+	}
+	embedding := buildTaskEmbeddingConfig(task)
+	if len(documents) > 0 && len(embedding) > 0 {
+		pipeline := &embeddingPipeline{mfs: bbw.mfs}
+		if err := pipeline.enrich(ctx, documents, embedding); err != nil {
+			return errors.New("could not generate vectors for keys build")
+		}
+	}
+
+	if bbw.isStopping() {
+		return ErrWorkerManagerStopping
+	}
+	current, err := bbw.rs.InternalGetByID(ctx, nil, resource.ID)
+	if err != nil {
+		return errors.New("could not recheck the published index")
+	}
+	if !resourcelogic.HasWritableLocalIndex(current) || !current.Enabled || current.LocalIndexName != indexName ||
+		validateBuildTaskResourceFingerprint(current, task) != nil {
+		return errors.New("published index or resource configuration changed during keys build")
+	}
+	status, err := bbw.bts.InternalGetStatusByID(ctx, task.ID)
+	if err != nil {
+		return errors.New("could not recheck keys task status")
+	}
+	if status == interfaces.BuildTaskStatusStopping {
+		_, err = bbw.bts.InternalMarkStopped(ctx, nil, task.ID, []string{interfaces.BuildTaskStatusStopping})
+		return err
+	}
+	if status != interfaces.BuildTaskStatusRunning {
+		return nil
+	}
+
+	if len(documents) > 0 {
+		if err := indexBuildDocuments(ctx, bbw.lim, indexName, documents); err != nil {
+			return errors.New("could not write all found keys to the published index")
+		}
+	}
+	if len(missing) > 0 {
+		if err := bbw.lim.DeleteDocuments(ctx, indexName, missing); err != nil {
+			return errors.New("could not delete all absent keys from the published index")
+		}
+	}
+	// The managed OpenSearch bulk write and delete paths refresh before returning.
+	progress = interfaces.BuildTaskProgress{SyncedCount: &total}
+	if _, err := bbw.bts.InternalSetProgress(ctx, nil, task.ID, progress, runningOrStoppingStatuses); err != nil {
+		return errors.New("could not record keys build completion")
+	}
+	return bbw.completeInPlaceBuildTask(ctx, task.ID)
+}
+
+func (bbw *batchBuildWorker) readKeyRows(ctx context.Context, catalog *interfaces.Catalog, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, limit int) ([]map[string]any, error) {
+	connector, err := bbw.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
+	if err != nil {
+		return nil, errors.New("could not initialize the source connector")
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	source, ok := connector.(interfaces.TableReadSessionConnector)
+	if !ok {
+		return nil, errors.New("source connector does not support table read sessions")
+	}
+	if err := connector.Connect(ctx); err != nil {
+		return nil, errors.New("could not connect to the source")
+	}
+	session, err := source.OpenTableRead(ctx, resource, params)
+	if err != nil {
+		return nil, errors.New("could not open a source key read session")
+	}
+	page, readErr := session.ReadPage(ctx, limit)
+	closeErr := session.Close()
+	if readErr != nil || closeErr != nil || page == nil || page.HasMore || len(page.Entries) > limit {
+		return nil, errors.New("could not complete the source key read")
+	}
+	return page.Entries, nil
+}
+
+func buildKeyReadParams(ctx context.Context, resource *interfaces.Resource,
+	keys []map[string]any) (*interfaces.ResourceDataQueryParams, map[string]struct{}, error) {
+	fields := resource.IndexConfig.PrimaryKeyFields
+	branches := make([]*interfaces.FilterCondCfg, 0, len(keys))
+	requested := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		tuple, err := extractKeyValues(fields, key)
+		if err != nil {
+			return nil, nil, err
+		}
+		id, err := generateDocumentID(tuple)
+		if err != nil {
+			return nil, nil, err
+		}
+		requested[id] = struct{}{}
+		conditions := make([]*interfaces.FilterCondCfg, 0, len(tuple))
+		for _, value := range tuple {
+			conditions = append(conditions, &interfaces.FilterCondCfg{
+				Field: value.Key, Operation: filter_condition.OperationEqual, Value: value.Value,
+				ValueFrom: interfaces.ValueFrom_Const,
+			})
+		}
+		branches = append(branches, combineKeyConditions("and", conditions))
+	}
+	props := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+	for _, prop := range resource.SchemaDefinition {
+		if prop == nil {
+			continue
+		}
+		copied := *prop
+		if slices.Contains(fields, prop.Name) {
+			// Internal PK lookup is independent of user-configured filter exposure.
+			copied.Filterable = new(true)
+		}
+		props[prop.Name] = &copied
+	}
+	filter := combineKeyConditions("or", branches)
+	actual, err := filter_condition.NewFilterCondition(ctx, filter, props)
+	if err != nil {
+		return nil, nil, errors.New("could not construct a source primary key lookup")
+	}
+	return &interfaces.ResourceDataQueryParams{
+		OutputFields:  buildIndexableFieldNames(resource.SchemaDefinition),
+		FilterCondCfg: filter, ActualFilterCond: actual,
+	}, requested, nil
+}
+
+func combineKeyConditions(operation string, conditions []*interfaces.FilterCondCfg) *interfaces.FilterCondCfg {
+	if len(conditions) == 1 {
+		return conditions[0]
+	}
+	return &interfaces.FilterCondCfg{Operation: operation, SubConds: conditions}
+}
+
+func prepareKeyIndexChanges(resource *interfaces.Resource, requested map[string]struct{}, rows []map[string]any) (
+	map[string]map[string]any, []string, error) {
+	columns, err := table.ColumnMetadata(resource)
+	if err != nil {
+		return nil, nil, errors.New("could not read source column metadata")
+	}
+	schema, err := local_index.DecimalIndexSchema(resource.SchemaDefinition, columns)
+	if err != nil {
+		return nil, nil, errors.New("could not prepare the index schema")
+	}
+	validationResource := &interfaces.Resource{SchemaDefinition: schema}
+	documents := make(map[string]map[string]any, len(rows))
+	for _, row := range rows {
+		tuple, err := extractKeyValues(resource.IndexConfig.PrimaryKeyFields, row)
+		if err != nil {
+			return nil, nil, errors.New("source row is missing its primary key")
+		}
+		id, err := generateDocumentID(tuple)
+		if err != nil {
+			return nil, nil, errors.New("could not encode source primary key")
+		}
+		if _, found := requested[id]; !found {
+			// SQL collation can deem two different strings equal. Never delete the
+			// requested ID when the result actually has a different identity.
+			return nil, nil, errors.New("source returned a row whose primary key does not exactly match the request")
+		}
+		if _, duplicate := documents[id]; duplicate {
+			return nil, nil, errors.New("source returned multiple rows with the same primary key")
+		}
+		document, err := encodeBatchBuildDocument(validationResource, resource, row)
+		if err != nil {
+			return nil, nil, errors.New("could not encode a source row for the local index")
+		}
+		documents[id] = document
+	}
+
+	var missing []string
+	for id := range requested {
+		if _, found := documents[id]; !found {
+			missing = append(missing, id)
+		}
+	}
+	slices.Sort(missing)
+	return documents, missing, nil
+}
+
+func encodeBatchBuildDocument(validationResource, resource *interfaces.Resource, doc map[string]any) (map[string]any, error) {
+	document, err := local_index.EncodeDecimalDocument(validationResource, doc)
+	if err != nil {
+		return nil, err
+	}
+	if err := normalizeBuildDocumentFields(document, resource.SchemaDefinition, nil); err != nil {
+		return nil, err
+	}
+	return document, nil
 }
 
 func formatEmbeddingFields(config map[string]*interfaces.SmallModel) string {

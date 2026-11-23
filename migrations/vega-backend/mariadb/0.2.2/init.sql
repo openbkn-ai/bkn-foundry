@@ -276,6 +276,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     -- 任务索引配置
     f_index_name              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '任务目标索引名',
     f_index_config            MEDIUMTEXT NOT NULL COMMENT '索引配置快照(JSON)',
+    f_keys                    MEDIUMTEXT NULL COMMENT '按主键同步的任务输入(JSON)',
 
     -- 任务状态
     f_status                  VARCHAR(20) NOT NULL COMMENT '任务状态: pending, running, stopping, stopped, completed, failed, cancelled',

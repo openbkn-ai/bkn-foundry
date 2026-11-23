@@ -258,11 +258,11 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 	}
 
 	t.Run("allows an empty key configuration", func(t *testing.T) {
-		require.NoError(t, validateIndexConfigKeyFields(context.Background(), schema, nil))
+		require.NoError(t, ValidateIndexConfigKeyFields(context.Background(), schema, nil))
 	})
 
 	t.Run("allows configured primary and incremental fields", func(t *testing.T) {
-		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+		err := ValidateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields:  []string{"id"},
 			IncrementalFields: []string{"updated_at", "id"},
 		})
@@ -270,7 +270,7 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 	})
 
 	t.Run("rejects primary keys absent from schema", func(t *testing.T) {
-		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+		err := ValidateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields: []string{"missing_id"},
 		})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
@@ -278,13 +278,22 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 		require.Contains(t, httpErr.ErrorDetails, `primary_key_fields field "missing_id"`)
 	})
 
+	t.Run("rejects unsupported primary key types", func(t *testing.T) {
+		err := ValidateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields: []string{"body"},
+		})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
+		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		require.Contains(t, httpErr.ErrorDetails, `unsupported type "text"`)
+	})
+
 	t.Run("rejects duplicate primary keys and unsupported incremental types", func(t *testing.T) {
-		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+		err := ValidateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields: []string{"id", "id"},
 		})
 		_ = requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 
-		err = validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+		err = ValidateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			IncrementalFields: []string{"body"},
 		})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields)

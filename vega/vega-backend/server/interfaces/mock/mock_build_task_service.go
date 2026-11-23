@@ -206,18 +206,18 @@ func (mr *MockBuildTaskServiceMockRecorder) InternalMarkFailed(ctx, tx, id, deta
 }
 
 // InternalMarkRunning mocks base method.
-func (m *MockBuildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+func (m *MockBuildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalMarkRunning", ctx, tx, id)
+	ret := m.ctrl.Call(m, "InternalMarkRunning", ctx, tx, id, indexName)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalMarkRunning indicates an expected call of InternalMarkRunning.
-func (mr *MockBuildTaskServiceMockRecorder) InternalMarkRunning(ctx, tx, id any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) InternalMarkRunning(ctx, tx, id, indexName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkRunning), ctx, tx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalMarkRunning", reflect.TypeOf((*MockBuildTaskService)(nil).InternalMarkRunning), ctx, tx, id, indexName)
 }
 
 // InternalMarkStopped mocks base method.

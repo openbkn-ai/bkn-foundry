@@ -237,18 +237,18 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkPending(ctx, tx, id, reset any) *
 }
 
 // MarkRunning mocks base method.
-func (m *MockBuildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id string, startTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string, startTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkRunning", ctx, tx, id, startTime)
+	ret := m.ctrl.Call(m, "MarkRunning", ctx, tx, id, indexName, startTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkRunning indicates an expected call of MarkRunning.
-func (mr *MockBuildTaskAccessMockRecorder) MarkRunning(ctx, tx, id, startTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkRunning(ctx, tx, id, indexName, startTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkRunning), ctx, tx, id, startTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkRunning", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkRunning), ctx, tx, id, indexName, startTime)
 }
 
 // MarkStopped mocks base method.

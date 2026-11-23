@@ -18,8 +18,8 @@ const (
 	BuildTaskModeStreaming string = "streaming" // Flow cytometry
 	BuildTaskModeBatch     string = "batch"     // Batch production
 
-	BuildTaskTriggerManual    = "manual"
-	BuildTaskTriggerScheduled = "scheduled"
+	BuildTaskTriggerManual    string = "manual"
+	BuildTaskTriggerScheduled string = "scheduled"
 
 	BuildTaskSortCreateTime       string = "create_time"
 	BuildTaskSortStartTime        string = "start_time"
@@ -28,6 +28,9 @@ const (
 
 	BuildTaskExecuteTypeIncremental string = "incremental" // Increment
 	BuildTaskExecuteTypeFull        string = "full"        // Full quantity
+	BuildTaskExecuteTypeKeys        string = "keys"
+
+	MaxBuildTaskKeys = 100
 
 	EmptyDocumentID string = "empty_document"
 
@@ -60,7 +63,8 @@ type BuildTask struct {
 	ResourceID       string                `json:"resource_id"`
 	Status           string                `json:"status"`
 	Mode             string                `json:"mode"`                   // Task mode: streaming/batch
-	ExecuteType      string                `json:"execute_type,omitempty"` // Batch execution type: incremental/full; not applicable to streaming.
+	ExecuteType      string                `json:"execute_type,omitempty"` // Batch execution type: full, incremental, or keys.
+	Keys             []map[string]any      `json:"keys,omitempty"`         // Persisted input for a keys task.
 	IndexName        string                `json:"index_name,omitempty"`   // Server-assigned target local index name.
 	TotalCount       int64                 `json:"total_count"`            // Total number of documents
 	SyncedCount      int64                 `json:"synced_count"`           // Number of synchronized documents
@@ -88,9 +92,7 @@ type BuildTaskSummary struct {
 	ScheduleID       string      `json:"schedule_id"`
 	TriggerType      string      `json:"trigger_type"`
 	ResourceID       string      `json:"resource_id"`
-	ResourceName     string      `json:"resource_name,omitempty"`
 	CatalogID        string      `json:"catalog_id"`
-	CatalogName      string      `json:"catalog_name,omitempty"`
 	Status           string      `json:"status"`
 	Mode             string      `json:"mode"`
 	ExecuteType      string      `json:"execute_type,omitempty"`
@@ -104,6 +106,9 @@ type BuildTaskSummary struct {
 	StartTime        int64       `json:"start_time,omitempty"`
 	FinishTime       int64       `json:"finish_time,omitempty"`
 	LastProgressTime int64       `json:"last_progress_time,omitempty"`
+
+	ResourceName string `json:"resource_name,omitempty"`
+	CatalogName  string `json:"catalog_name,omitempty"`
 }
 
 // BuildTaskProgress describes persisted execution progress without changing task status.
@@ -117,11 +122,12 @@ type BuildTaskProgress struct {
 // CreateBuildTaskRequest represents the request to create a build task.
 type CreateBuildTaskRequest struct {
 	// 调度来源仅允许服务端赋值，HTTP 请求不能伪造计划来源。
-	ScheduleID  string `json:"-"`
-	TriggerType string `json:"-"`
-	ResourceID  string `json:"resource_id" binding:"required"`                                    // Associate Resource ID
-	Mode        string `json:"mode" binding:"required,oneof=streaming batch"`                     // Task mode: streaming/batch
-	ExecuteType string `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full"` // Execution type, batch only; default full
+	ScheduleID  string           `json:"-"`
+	TriggerType string           `json:"-"`
+	ResourceID  string           `json:"resource_id" binding:"required"`                                         // Associate Resource ID
+	Mode        string           `json:"mode" binding:"required,oneof=streaming batch"`                          // Task mode: streaming/batch
+	ExecuteType string           `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full keys"` // Execution type, batch only; default full
+	Keys        []map[string]any `json:"keys,omitempty"`
 }
 
 // StartBuildTaskRequest represents the optional body for POST /build-tasks/{id}/start.
@@ -144,4 +150,8 @@ type BuildTasksQueryParams struct {
 	// page agree without an IN list that grows with the table count.
 	CatalogIDs        []string
 	ExcludeCatalogIDs []string
+	// ExcludeResourceIDs is internal to worker dispatch.
+	ExcludeResourceIDs []string
+	// ExcludeExecuteType is internal to build admission.
+	ExcludeExecuteType string
 }

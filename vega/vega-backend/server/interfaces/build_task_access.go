@@ -33,7 +33,7 @@ type BuildTaskAccess interface {
 	// MarkPending transitions a stopped or failed build task to pending.
 	MarkPending(ctx context.Context, tx *sql.Tx, id string, reset bool) (bool, error)
 	// MarkRunning transitions a pending build task to running.
-	MarkRunning(ctx context.Context, tx *sql.Tx, id string, startTime int64) (bool, error)
+	MarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string, startTime int64) (bool, error)
 	// MarkStopping transitions a running build task to stopping.
 	MarkStopping(ctx context.Context, tx *sql.Tx, id string) (bool, error)
 	// MarkStopped transitions a build task in an allowed status to stopped.
