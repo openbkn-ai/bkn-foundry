@@ -2355,7 +2355,7 @@ func TestExecuteSkillUploadsBeforeShellExecution(t *testing.T) {
 				So(entries["SKILL.md"], ShouldContainSubstring, "name: demo-skill")
 				So(entries["refs/guide.md"], ShouldEqual, "guide body")
 				return &interfaces.UploadSkillArchiveResp{
-					SessionID:    sessionID,
+					SessionID:          sessionID,
 					WorkDir:            req.WorkDir,
 					FileName:           req.FileName,
 					UploadedPath:       req.WorkDir,
