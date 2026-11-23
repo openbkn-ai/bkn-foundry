@@ -16,7 +16,7 @@ var EnUS = i18n.I18nMessages{
 		"BknBackend.KNVersion.InvalidVersion":        "Invalid knowledge network version. Use draft, running or a version number; a versioned network accepts only the main or draft branch.",
 		"BknBackend.KNVersion.VersionNotFound":       "The knowledge network version does not exist.",
 		"BknBackend.KNVersion.VersionPurged":         "The knowledge network version has been purged and its content is no longer available.",
-		"BknBackend.KNVersion.EditionRestricted":     "This version operation requires the Professional edition. The Community edition keeps only the running and the previous version.",
+		"BknBackend.KNVersion.EditionRestricted":     "This version operation requires the Enterprise edition. The Community and Professional editions keep only the running and the previous version.",
 		"BknBackend.KNVersion.VersioningDisabling":   "Versioning is being disabled for this knowledge network. Writes, version operations and reads of the draft or older versions are paused.",
 		"BknBackend.KNVersion.DraftRevisionMismatch": "The draft has changed. Reload the draft and retry.",
 	},

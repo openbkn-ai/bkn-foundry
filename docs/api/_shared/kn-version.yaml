@@ -151,7 +151,7 @@ components:
           description: The version that ran before, or 0 when none is kept.
         full_history:
           type: boolean
-          description: false in the Community edition, which keeps only the running and the previous version.
+          description: false below the Enterprise edition, which keeps only the running and the previous version.
         draft:
           type: object
           properties:

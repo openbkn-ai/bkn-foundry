@@ -49,7 +49,7 @@ type service struct {
 	// ums names the accounts on version reads; nil leaves them as ids.
 	ums accountNamer
 
-	// fullHistory reports the Professional edition, which keeps every version.
+	// fullHistory reports the Enterprise edition, which keeps every version.
 	fullHistory func() bool
 	now         func() int64
 }
@@ -64,7 +64,7 @@ func NewKNVersionService(appSetting *common.AppSetting, pub interfaces.KNMainPub
 			pub: pub,
 			ums: user_mgmt.NewUserMgmtService(appSetting),
 			fullHistory: func() bool {
-				return entitlement.AtLeast(licverify.EditionProfessional)
+				return keepsFullHistory(entitlement.Current())
 			},
 			now: func() int64 { return time.Now().UnixMilli() },
 		}
@@ -841,15 +841,23 @@ func (s *service) deleteVersionIndex(ctx context.Context, knID string, version i
 	}
 }
 
-// editionAllows reports whether the Community edition may use version k: only the running and
-// the previous version are kept there.
+// keepsFullHistory reports whether edition keeps every version: Enterprise and above. Below it
+// only the running and the previous version are kept, and deprecate, restore and purge are refused.
+func keepsFullHistory(edition licverify.Edition) bool {
+	return edition.AtLeast(licverify.EditionEnterprise)
+}
+
+// editionAllows reports whether an edition below Enterprise may use version k: only the running
+// and the previous version are kept there.
 func (s *service) editionAllows(state *interfaces.KNVersionState, k int) bool {
 	return s.fullHistory() || k == state.RunningVersion || k == state.PreviousVersion
 }
 
+// editionRestricted refuses a version operation the edition in force does not offer; the details
+// name that edition.
 func editionRestricted(ctx context.Context) error {
 	return newHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KNVersion_EditionRestricted).
-		WithErrorDetails(map[string]any{"edition": string(licverify.EditionCommunity)})
+		WithErrorDetails(map[string]any{"edition": string(entitlement.Current())})
 }
 
 // lockVersion locks version k and checks it exists.
@@ -1027,7 +1035,7 @@ func (s *service) ResetDraft(ctx context.Context, knID string, req *interfaces.K
 	return result.(*interfaces.KNVersioningView), nil
 }
 
-// changeStatus runs deprecate, restore and purge, which only the Professional edition offers.
+// changeStatus runs deprecate, restore and purge, which only the Enterprise edition offers.
 func (s *service) changeStatus(ctx context.Context, knID string, k int, req *interfaces.KNVersionStatusRequest,
 	eventType, permissionOp string, apply func(context.Context, *sql.Tx, *interfaces.KNVersionState, *interfaces.KNVersion) error) (*interfaces.KNVersion, error) {
 	if !s.fullHistory() {

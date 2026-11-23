@@ -300,7 +300,7 @@ func TestVersionLifecycle(t *testing.T) {
 		t.Fatalf("after reset: %+v", view.Draft)
 	}
 
-	// Professional status changes.
+	// Status changes, which need the full history (Enterprise).
 	_, err = f.svc.Purge(f.ctx, f.knID, 1, &interfaces.KNVersionStatusRequest{})
 	wantCode(t, err, berrors.BknBackend_KNVersion_VersionProtected)
 	if _, err := f.svc.Deprecate(f.ctx, f.knID, 2, &interfaces.KNVersionStatusRequest{}); err != nil {
