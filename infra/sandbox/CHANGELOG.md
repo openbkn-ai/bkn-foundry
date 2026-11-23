@@ -8,6 +8,12 @@ All new features and capabilities added in this branch (`feature/803264`) are do
 
 - Resolve the sandbox REST origin from an explicit `BKN_BASE_URL` or installer-discovered gateway, without deriving it from the MCP endpoint. Preserve operator overrides on upgrade and allow REST gateway egress independently from the MCP listener.
 
+- Allow executor egress to a hostNetwork REST gateway. kube-router (the k3s
+  default) never selects hostNetwork Pods through `podSelector`, so the
+  discovered ingress-nginx rule matched nothing and OSDK calls were refused.
+  `networkPolicy.gateway.ipBlocks` adds node addresses on a numeric port; the
+  chart rejects a named port with `ipBlocks`.
+
 - Build sandbox templates with the matching reviewed, merged OSDK schema fix.
   Pin the complete commit SHA; the main and release clients keep their own
   schema contracts.

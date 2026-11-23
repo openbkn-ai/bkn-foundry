@@ -292,6 +292,13 @@ networkPolicy:
     namespace: ingress-nginx
     podSelector: {}
     port: http
+    # Node addresses of a hostNetwork gateway, for example
+    # [{cidr: 192.0.2.10/32}]. NetworkPolicy implementations such as k3s
+    # kube-router never select hostNetwork Pods through podSelector, so the
+    # rule above alone matches nothing. Requires a numeric port: named ports
+    # cannot resolve for ipBlock destinations. The complete installer fills
+    # both from the controller Pods and node InternalIPs.
+    ipBlocks: []
   # Session dependencies are installed from an HTTPS package index when an
   # executor starts. Preserve that path without reopening cluster/private
   # destinations. Disable this when all dependencies are prebuilt into images.

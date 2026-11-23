@@ -75,19 +75,34 @@ spec:
           port: {{ .Values.networkPolicy.bkn.port }}
     {{- end }}
     {{- if .Values.networkPolicy.gateway.enabled }}
-    {{- if not .Values.networkPolicy.gateway.podSelector }}
-    {{- fail "networkPolicy.gateway.podSelector is required when gateway egress is enabled" }}
+    {{- $gateway := .Values.networkPolicy.gateway }}
+    {{- if not (or $gateway.podSelector $gateway.ipBlocks) }}
+    {{- fail "networkPolicy.gateway.podSelector or networkPolicy.gateway.ipBlocks is required when gateway egress is enabled" }}
+    {{- end }}
+    {{- /*
+    A hostNetwork gateway answers on node addresses. NetworkPolicy
+    implementations such as kube-router never match hostNetwork Pods with
+    podSelector, and a named port cannot resolve for an ipBlock destination.
+    */}}
+    {{- if and $gateway.ipBlocks (kindIs "string" $gateway.port) }}
+    {{- fail "networkPolicy.gateway.port must be a number when networkPolicy.gateway.ipBlocks is set" }}
     {{- end }}
     - to:
+        {{- if $gateway.podSelector }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gateway.namespace | quote }}
+              kubernetes.io/metadata.name: {{ $gateway.namespace | quote }}
           podSelector:
             matchLabels:
-              {{- toYaml .Values.networkPolicy.gateway.podSelector | nindent 14 }}
+              {{- toYaml $gateway.podSelector | nindent 14 }}
+        {{- end }}
+        {{- range $gateway.ipBlocks }}
+        - ipBlock:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
       ports:
         - protocol: TCP
-          port: {{ .Values.networkPolicy.gateway.port }}
+          port: {{ $gateway.port }}
     {{- end }}
     {{- if and .Values.networkPolicy.publicHttps.enabled .Values.networkPolicy.publicHttps.ipBlocks }}
     - to:

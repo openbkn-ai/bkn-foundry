@@ -85,7 +85,7 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
 | `networkPolicy.bkn.enabled` | Allow an optional BKN deployment through agent-retrieval port 30780 | `false` |
 | `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from the MCP Service FQDN or uses the Sandbox namespace for a short service name | `""` |
-| `networkPolicy.gateway` | Independent REST gateway namespace, Pod selector and target port. Complete installation discovers these from the ingress controller Service; configure them explicitly for a custom gateway. | disabled until configured or discovered |
+| `networkPolicy.gateway` | Independent REST gateway namespace, Pod selector, target port and, for a hostNetwork gateway, node `ipBlocks` with a numeric port. Complete installation discovers these from the ingress controller Service and Pods; configure them explicitly for a custom gateway. | disabled until configured or discovered |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
 
 ## Executor Egress Isolation
@@ -158,6 +158,17 @@ the matching Pod selector and target port to the independent gateway egress rule
 Discovery never uses `BKN_SANDBOX_MCP_URL`. Missing or ambiguous controllers stop
 the installation before rollout; configure the origin and egress rule explicitly
 for another gateway implementation or a cluster without Service discovery access.
+
+A gateway that runs with `hostNetwork: true` (the installer's default ingress-nginx
+mode) answers on node addresses, not Pod addresses. NetworkPolicy implementations
+such as the kube-router controller built into k3s never select hostNetwork Pods
+through `podSelector`, so a selector-only rule matches nothing and executors get
+`Connection refused`. When the discovered controller Pods use hostNetwork, the
+installer also sets `networkPolicy.gateway.ipBlocks` to every node InternalIP and
+replaces the named target port with the numeric container port. Only that port
+is opened on the nodes. Rerun the installer after adding nodes. For a manual
+configuration, list each node that can host the gateway and use a numeric port;
+the chart rejects a named port together with `ipBlocks`.
 
 `controlPlane.gateway` stores installer-owned discovery defaults in Helm values,
 not additional environment variables. Standalone Helm installation has no installer
