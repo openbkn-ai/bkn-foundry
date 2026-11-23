@@ -62,21 +62,6 @@ error_messages = {
         "detail": "此 Agent 使用了公共执行范围尚不支持的能力。",
         "solution": "请使用已支持的内置 Agent 配置。",
     },
-    "BknAgent.Execution.ContextMissing": {
-        "code": "BknAgent.Execution.ContextMissing",
-        "description_template": "此 Agent 需要 context.{field}。",
-        "description": "此 Agent 需要更多请求上下文。",
-        "detail_template": "此 Agent 需要 context.{field}。",
-        "detail": "此 Agent 需要更多请求上下文。",
-        "solution": "请提供该 Agent 内置工具所需的上下文。",
-    },
-    "BknAgent.Execution.ContextInvalid": {
-        "code": "BknAgent.Execution.ContextInvalid",
-        "description": "请求上下文不符合此 Agent 的要求。",
-        "detail_template": "上下文无效或不应提供：{field}",
-        "detail": "请求上下文不符合此 Agent 的要求。",
-        "solution": "只提供该 Agent 使用的上下文，并符合其格式。",
-    },
     "BknAgent.Execution.ResultInvalid": {
         "code": "BknAgent.Execution.ResultInvalid",
         "description": "执行结果未通过校验。",

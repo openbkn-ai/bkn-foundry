@@ -316,10 +316,11 @@ def test_headers_and_invalid_token_cannot_start_run(monkeypatch, headers):
         {"skills": ["x"]},
         {"model": "x"},
         {"response_format": {"type": "object"}},
-        {"context": {"kn_id": "network-1", "bkn_context": {}}},
     ],
 )
 def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extra):
+    # A lifecycle sent in context (bkn_context) is ignored instead; see
+    # test_context_fields_this_version_does_not_know_are_ignored.
     async def run():
         async with environment(monkeypatch) as (client, _, calls):
             assert (
@@ -2722,23 +2723,66 @@ def test_execution_scope_rejects_malformed_network_versions(monkeypatch, context
 
 
 @pytest.mark.parametrize(
-    "context",
+    "field",
     [
-        {"draft_revision": 7},
-        {"kn_version": "running", "draft_revision": 7},
-        {"kn_version": "3", "draft_revision": 7},
+        {"sent_by_a_newer_page": {"x": 1}},
+        # A lifecycle the caller sends never replaces the one Context Loader opens for the run.
+        {"bkn_context": {"conversation_id": "someone-else", "interaction_id": "theirs"}},
     ],
 )
-def test_draft_revision_without_draft_version_is_422_and_never_runs(monkeypatch, context):
+def test_context_fields_this_version_does_not_know_are_ignored(monkeypatch, field):
+    # These used to answer 400 BknAgent.ParamError.FormatError.
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):
+            body = {**BODY, "context": {"kn_id": "network-1", **field}}
+            response = await client.post(URL, json=body, headers=AUTH)
+            assert response.status_code == 200, response.text
+            meta = parse_sse(response.text)[0][1]
+            async with factory() as session:
+                stored = (await session.get(TaskRow, meta["run_id"])).f_input["request"]["context"]
+            assert stored == {"kn_id": "network-1", "canvas": None}
+            # Without the field it is the same request.
+            again = await client.post(URL, json=BODY, headers=AUTH)
+            assert parse_sse(again.text)[0][1]["run_id"] == meta["run_id"]
+            assert len(calls) == 1
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "context, read",
+    [
+        # Alone, a draft revision reads the draft.
+        ({"draft_revision": 7}, ("draft", 7)),
+        # Beside another version it has nothing to pin and is dropped.
+        ({"kn_version": "running", "draft_revision": 7}, ("running", None)),
+        ({"kn_version": "3", "draft_revision": 7}, ("3", None)),
+    ],
+)
+def test_draft_revision_without_draft_version_still_runs(monkeypatch, context, read):
+    # These used to answer 422 BknAgent.Execution.ContextInvalid.
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            seen = []
+            chat = executions.stream_chat
+
+            async def recording(session, agent, req, account_id, account_type, *, public):
+                seen.append((public.kn_version, public.draft_revision))
+                return await chat(session, agent, req, account_id, account_type, public=public)
+
+            monkeypatch.setattr(executions, "stream_chat", recording)
             body = {**BODY, "context": {"kn_id": "network-1", **context}}
             response = await client.post(URL, json=body, headers=AUTH)
-            assert response.status_code == 422, response.text
-            assert response.json()["code"] == "BknAgent.Execution.ContextInvalid"
-            assert calls == []
+            assert response.status_code == 200, response.text
+            assert seen == [read]
+            meta = parse_sse(response.text)[0][1]
             async with factory() as session:
-                assert (await session.execute(select(TaskRow))).scalars().all() == []
+                stored = (await session.get(TaskRow, meta["run_id"])).f_input["request"]["context"]
+            assert (stored.get("kn_version"), stored.get("draft_revision")) == read
+            # The same request again is the same execution, not a new one.
+            again = await client.post(URL, json=body, headers=AUTH)
+            assert parse_sse(again.text)[0][1]["run_id"] == meta["run_id"]
+            assert len(calls) == 1
 
     asyncio.run(run())
 

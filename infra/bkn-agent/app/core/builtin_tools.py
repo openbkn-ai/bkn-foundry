@@ -50,7 +50,8 @@ class Provider:
     # Every tool name this provider can build; an Agent may mount a subset.
     tool_names: frozenset[str]
     # The ExecutionScope field this provider reads (for example "canvas") and
-    # the model it must validate against.
+    # the model it must validate against. The model must accept {}: a context
+    # that is absent or not valid is read as empty, never refused.
     context_key: str
     context_model: type[BaseModel]
     # Builds this execution's tools. Called once per run.

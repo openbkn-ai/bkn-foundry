@@ -21,9 +21,10 @@ from app.test.test_public_execution import AUTH, BODY, URL, environment, parse_s
 
 
 class CanvasContext(BaseModel):
+    # A provider's context model accepts {}; this one refuses what it does not know.
     model_config = {"extra": "forbid"}
-    canvas_id: str
-    revision: int
+    canvas_id: str = ""
+    revision: int = 0
 
 
 def _tool(name, run):
@@ -230,27 +231,29 @@ def test_invalid_fragment_fails_the_execution(monkeypatch):
     asyncio.run(run())
 
 
-def test_provider_context_is_required_validated_and_not_sent_elsewhere(monkeypatch):
+def test_provider_context_never_refuses_the_question(monkeypatch):
+    # Each of these used to answer 400 BknAgent.Execution.ContextInvalid or ContextMissing.
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):
-            # An Agent without the provider must not receive canvas context.
+            # An Agent without the provider ignores canvas context.
             body = {**BODY, "context": {"kn_id": "network-1", "canvas": CANVAS}}
             response = await client.post(URL, json=body, headers=AUTH)
-            assert response.status_code == 400
-            assert response.json()["code"] == "BknAgent.Execution.ContextInvalid"
+            assert response.status_code == 200, response.text
+            assert parse_sse(response.text)[-1][1]["status"] == "succeeded"
+            assert len(calls) == 1
 
+            # An Agent with it reads a missing or invalid canvas as an empty one.
             await _use_builtin(factory, [{"type": "builtin", "provider": "test_canvas"}])
-            missing = await client.post(URL, json=BODY, headers=AUTH)
-            assert missing.status_code == 400
-            assert missing.json()["code"] == "BknAgent.Execution.ContextMissing"
-            wrong = await client.post(
-                URL,
-                json={**BODY, "context": {"kn_id": "network-1", "canvas": {"canvas_id": "c1"}}},
-                headers=AUTH,
-            )
-            assert wrong.status_code == 400
-            assert wrong.json()["code"] == "BknAgent.Execution.ContextInvalid"
-            assert calls == []
+            monkeypatch.setattr(executions, "stream_chat", _chat_calling("show_instances"))
+            for request_id, canvas in (("request-2", None), ("request-3", {"canvas_id": "c1", "unknown": 1})):
+                context = {"kn_id": "network-1", **({"canvas": canvas} if canvas else {})}
+                sent = {**BODY, "client_request_id": request_id, "context": context}
+                events = parse_sse((await client.post(URL, json=sent, headers=AUTH)).text)
+                assert events[-1][1]["status"] == "succeeded", events
+                assert dict(events)["result"]["content"]["canvas_result"] == {
+                    "canvas_id": "",
+                    "actions": ["show_instances"],
+                }
 
     asyncio.run(run())
 
@@ -341,13 +344,61 @@ def test_graph_explorer_reads_the_canvas_and_validates_its_result():
         builtin_tools.get("graph_explorer").result(run)
 
 
-def test_graph_explorer_canvas_is_bounded_and_strict():
+def test_graph_explorer_canvas_takes_what_the_web_sends():
+    # A long label, a field a newer Web sends, one bad item or a setting out of range used to
+    # refuse the whole question with BknAgent.Execution.ContextInvalid.
     from app.core import graph_explorer_tools as graph
 
-    with pytest.raises(ValidationError):
-        graph.CanvasContext(canvas_id="c1", revision=1, unexpected=True)
-    with pytest.raises(ValidationError):
-        graph.CanvasContext(canvas_id="c1", revision=-1)
+    model = builtin_tools.get("graph_explorer").context_model
+    label = "第一行\n" + "很长的说明" * 400
+    long_id = "n" * 600
+    canvas = model.model_validate(
+        {
+            "canvas_id": "c1",
+            "revision": -1,
+            "sent_by_a_newer_web": {"x": 1},
+            "nodes": [
+                {"id": "n1", "object_type_id": "ot", "label": label},
+                {"id": "", "object_type_id": "ot"},
+                {"id": long_id, "object_type_id": "ot"},
+                {"id": "n3"},
+            ],
+            "edges": [
+                {"id": "e1", "relation_type_id": "r", "source": "n1", "target": long_id},
+                {"id": "e2", "relation_type_id": "r", "source": "n1", "target": "n3"},
+            ],
+            "selected_ids": ["n1", 7, "", "n3"],
+            "view": None,
+            "object_types": [{"id": "ot", "name": "名" * 300}, {"name": "no id"}],
+            "limits": {"max_nodes": 99999, "expand_threshold": -5},
+            "analysis_cards": [{"no": 1, "title": "标题" * 200, "kind": "k" * 50}, {"no": 0, "title": "bad"}],
+        }
+    )
+    assert canvas.revision == 0
+    # The invalid nodes are left out, and so is the edge to one of them; long texts stay whole.
+    assert [n.id for n in canvas.nodes] == ["n1", long_id]
+    assert canvas.nodes[0].label == label
+    assert [e.id for e in canvas.edges] == ["e1"]
+    assert canvas.selected_ids == ["n1"]
+    assert canvas.view == {}
+    assert [(t.id, t.name) for t in canvas.object_types] == [("ot", "名" * 300)]
+    assert (canvas.limits.max_nodes, canvas.limits.expand_threshold) == (graph.MAX_NODES, 0)
+    assert [(c.no, c.title) for c in canvas.analysis_cards] == [(1, "标题" * 200)]
+    # Outside an analysis there are no cards; inside one with no valid card there still is one.
+    assert model.model_validate({"canvas_id": "c1", "revision": 0}).analysis_cards is None
+    endless = model.model_validate({"canvas_id": "c1", "revision": 0, "limits": {"max_nodes": float("inf")}})
+    assert endless.limits.max_nodes == graph.NODE_LIMIT
+    assert model.model_validate({"canvas_id": "c1", "revision": 0, "analysis_cards": [{"no": 0}]}).analysis_cards == []
+
+    # Nothing is refused: a canvas without an id, a revision, or one that is not a map reads as empty.
+    for sent, read in (
+        ({}, ("", 0)),
+        ({"revision": 1}, ("", 1)),
+        ({"canvas_id": 123, "revision": "seven"}, ("123", 0)),
+        ("c1", ("", 0)),
+    ):
+        canvas = model.model_validate(sent)
+        assert (canvas.canvas_id, canvas.revision) == read
 
 
 def test_admin_lists_tools_by_source():
