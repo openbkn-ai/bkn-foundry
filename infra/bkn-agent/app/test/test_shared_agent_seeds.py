@@ -61,6 +61,8 @@ CONCEPT_BUDGET = MIGRATIONS / "0.2.1/38-concept-extraction-execution-budget.sql"
 GRAPH_EXPLORER_V2 = MIGRATIONS / "0.2.2/04-graph-explorer-count-first-v2.sql"
 ANALYSIS_WRITER = MIGRATIONS / "0.2.2/05-seed-analysis-writer.sql"
 SEMANTIC_DROP_API_NAME = MIGRATIONS / "0.2.2/07-semantic-drop-api-name.sql"
+# 04 again with its v1 hashes taken after removing CR (bkn-foundry#3295).
+GRAPH_EXPLORER_V2_CRLF = MIGRATIONS / "0.2.2/23-graph-explorer-count-first-v2-crlf.sql"
 
 
 def statements(path):
@@ -530,7 +532,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PUBLISH_BUILTINS),
                 ],
             ],
-            ["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]],
+            ["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(GRAPH_EXPLORER_V2_CRLF)]],
         ],
         "0.2.2",
         True,
@@ -1500,7 +1502,7 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_only_the_022_deltas():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(GRAPH_EXPLORER_V2_CRLF)]]], "0.2.2", True]
 
 
 def test_installed_022_selects_nothing_more():
@@ -3975,10 +3977,81 @@ def test_graph_explorer_count_first_v2_does_not_take_over_an_operator_version():
         apply(db, GRAPH_EXPLORER_V2)
         assert snapshot(db) == before
 
+def with_crlf_graph_v1(db, extra=""):
+    """Store graph explorer's v1 body and translations with CRLF line endings, as some
+    environments hold the official text (bkn-foundry#3295); extra customizes the body."""
+    row = graph_prompt_version(db, 1)
+    crlf = lambda text: text.replace("\r\n", "\n").replace("\n", "\r\n")
+    locales = row["f_localized_content"]
+    if locales:
+        locales = json.dumps({k: crlf(v) for k, v in json.loads(locales).items()}, ensure_ascii=False)
+    db.execute(
+        "UPDATE t_agent_prompt_version SET f_content=?,f_localized_content=? WHERE f_prompt_id='graph_explorer_prompt' AND f_version=1",
+        (crlf(row["f_content"]) + extra, locales),
+    )
+    assert "\r\n" in graph_prompt_version(db, 1)["f_content"]
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_graph_explorer_crlf_v1_is_upgraded_by_23_not_04(start):
+    with database() as db, database() as fresh:
+        graph_v1_state(db, start)
+        with_crlf_graph_v1(db)
+        old = graph_prompt_version(db, 1)
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2)
+        assert snapshot(db) == before
+        apply(db, GRAPH_EXPLORER_V2_CRLF)
+        assert item_from_db(db, "graph_explorer") == item_from_db(fresh, "graph_explorer")
+        new = graph_prompt_version(db, 2)
+        assert new["f_content"] == graph_prompt_version(fresh, 2)["f_content"]
+        assert new["f_localized_content"] == graph_prompt_version(fresh, 2)["f_localized_content"]
+        assert graph_prompt_version(db, 1) == old
+        rows = db.execute(
+            "SELECT f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='graph_explorer' ORDER BY f_version"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(1, 0, 0), (2, 1, 1)]
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2_CRLF)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("start", ["upgraded", "installed"])
+def test_graph_explorer_crlf_script_leaves_a_04_upgrade_alone(start):
+    with database() as db:
+        graph_v1_state(db, start)
+        apply(db, GRAPH_EXPLORER_V2)
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2_CRLF)
+        assert snapshot(db) == before
+
+
+def test_graph_explorer_crlf_script_keeps_a_custom_prompt():
+    with database() as db:
+        graph_v1_state(db, "upgraded")
+        with_crlf_graph_v1(db, extra="\r\ncustom rule")
+        before = snapshot(db)
+        apply(db, GRAPH_EXPLORER_V2_CRLF)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("limit", range(1, 9))
+def test_graph_explorer_crlf_script_resumes_interrupted_upgrades(limit):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            graph_v1_state(connection, "upgraded")
+            with_crlf_graph_v1(connection)
+        apply(expected, GRAPH_EXPLORER_V2_CRLF)
+        apply(db, GRAPH_EXPLORER_V2_CRLF, limit=limit)
+        apply(db, GRAPH_EXPLORER_V2_CRLF)
+        assert snapshot(db) == snapshot(expected)
+
+
 def test_eval_assistant_delta_preserves_existing_defaults():
     fresh, upgrade = selected_migrations("0.2.1")
     assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
-    assert upgrade == [[["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME)]]], "0.2.2", True]
+    assert upgrade == [[["0.2.2", [str(GRAPH_EXPLORER_V2), str(ANALYSIS_WRITER), str(EVAL_ASSISTANT), str(SEMANTIC_DROP_API_NAME), str(GRAPH_EXPLORER_V2_CRLF)]]], "0.2.2", True]
     with database() as db:
         apply(db, MIGRATIONS / "0.2.1/init.sql")
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='eval_assistant'").fetchone()[0] == 0
