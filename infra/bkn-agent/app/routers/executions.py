@@ -210,12 +210,13 @@ async def _execute_impl(
         raise not_found("agent", req.agent_id)
     if req.context.purpose and req.agent_id != "eval_assistant":
         raise err(409, "BknAgent.Execution.Unsupported")
+    # A draft revision belongs to the draft: alone it reads the draft; beside another
+    # version it has nothing to pin and is dropped, so the question still runs.
     if req.context.draft_revision is not None and req.context.kn_version != "draft":
-        raise err(
-            422,
-            "BknAgent.Execution.ContextInvalid",
-            field="draft_revision requires kn_version=draft",
-        )
+        if req.context.kn_version is None:
+            req.context.kn_version = "draft"
+        else:
+            req.context.draft_revision = None
     # An execution credential acts only on the network and Agent it was issued for.
     if account.delegation is not None and (
         metric_request
@@ -546,34 +547,20 @@ async def _execute_impl(
     return _response(events())
 
 
-# Context every Agent accepts; any other field belongs to a builtin provider.
-_SCOPE_FIELDS = {"kn_id", "purpose", "kn_version", "draft_revision"}
-
-
 def _provider_context(req: ExecutionRequest, provider):
-    """The request context a builtin provider needs, validated; other Agents
-    must not be sent provider context at all."""
-    given = {
-        name
-        for name in type(req.context).model_fields
-        if name not in _SCOPE_FIELDS and getattr(req.context, name) is not None
-    }
-    expected = {provider.context_key} if provider else set()
-    if given - expected:
-        raise err(400, "BknAgent.Execution.ContextInvalid", field=", ".join(sorted(given - expected)))
+    """The request context a builtin provider reads. What a page sends never refuses
+    the question: context an Agent has no provider for is ignored, and a provider's
+    context that is missing or not valid is read as empty."""
     if provider is None:
         return None
-    value = getattr(req.context, provider.context_key)
-    if value is None:
-        raise err(400, "BknAgent.Execution.ContextMissing", field=provider.context_key)
+    value = getattr(req.context, provider.context_key, None)
     try:
-        return provider.context_model.model_validate(value)
+        return provider.context_model.model_validate(value or {})
     except ValidationError as exc:
-        raise err(
-            400,
-            "BknAgent.Execution.ContextInvalid",
-            field=f"{provider.context_key}: {exc.errors()[0].get('msg', '')}"[:300],
+        logger.warning(
+            "%s context not valid, read as empty: %s", provider.name, exc.errors()[0].get("msg", "")
         )
+        return provider.context_model.model_validate({})
 
 
 _HEARTBEAT = b": ping\n\n"

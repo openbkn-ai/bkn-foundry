@@ -2491,10 +2491,9 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Draft Revision
-          description: Draft revision the run must read; only with kn_version=draft
-            (422 otherwise). A read after the draft moved on fails instead of mixing
-            revisions.
-      additionalProperties: false
+          description: Draft revision the run must read. Without kn_version the run
+            reads the draft; with a kn_version other than draft it is ignored. A read
+            after the draft moved on fails instead of mixing revisions.
       type: object
       required:
       - kn_id

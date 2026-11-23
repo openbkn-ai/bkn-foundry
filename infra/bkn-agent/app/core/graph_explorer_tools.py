@@ -180,14 +180,15 @@ def _valid(model: type[BaseModel], items: Any, bound: int) -> tuple[list, list]:
 class CanvasContext(BaseModel):
     """context.canvas of a graph explorer execution.
 
-    Only a canvas without an id or revision is refused. Anything else the Web
-    sends is taken: fields this version does not know are ignored, an item that is
-    not valid is left out (with the edges ending at a node left out), a list past
-    its bound keeps its first items, and long texts are kept whole."""
+    Nothing the Web sends is refused: an absent canvas is an empty one, fields
+    this version does not know are ignored, an item that is not valid is left out
+    (with the edges ending at a node left out), a list past its bound keeps its
+    first items, and long texts are kept whole."""
 
     model_config = {"extra": "ignore"}
-    canvas_id: str = _Id
-    revision: int = Field(ge=0)
+    # Handed back with the result, for the Web to match it to the canvas it sent.
+    canvas_id: str = ""
+    revision: int = Field(default=0, ge=0)
     nodes: list[CanvasNode] = Field(default_factory=list)
     edges: list[CanvasEdge] = Field(default_factory=list)
     aggregates: list[CanvasAggregate] = Field(default_factory=list)
@@ -205,11 +206,11 @@ class CanvasContext(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _keep_what_is_valid(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        value = dict(value)
-        if isinstance(value.get("revision"), int) and not isinstance(value["revision"], bool):
-            value["revision"] = max(0, value["revision"])
+        value = dict(value) if isinstance(value, dict) else {}
+        canvas_id = value.get("canvas_id")
+        value["canvas_id"] = "" if canvas_id is None else text(canvas_id)
+        revision = value.get("revision")
+        value["revision"] = max(0, revision) if isinstance(revision, int) and not isinstance(revision, bool) else 0
         value["nodes"], bad_nodes = _valid(CanvasNode, value.get("nodes"), MAX_NODES)
         left_out = {item.get("id") for item in bad_nodes if isinstance(item, dict)}
         edges, _ = _valid(CanvasEdge, value.get("edges"), MAX_EDGES)

@@ -411,7 +411,9 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 
 
 class ExecutionScope(BaseModel):
-    model_config = {"extra": "forbid"}
+    # A field this version does not know (sent by a newer page) is ignored and not
+    # stored, so the request runs and its retries still match.
+    model_config = {"extra": "ignore"}
     kn_id: str = Field(min_length=1, max_length=128, pattern=_ID_PATTERN)
     # Analysis is inference over backend-collected evidence, never a tool runner.
     purpose: Optional[Literal["eval_root_cause"]] = Field(
@@ -419,8 +421,8 @@ class ExecutionScope(BaseModel):
         description="Root cause analysis for eval_assistant only. Disables all tools and skills; evidence is collected by Eval before execution.",
     )
     # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
-    # Required by an Agent that mounts the graph_explorer builtin provider, which
-    # validates it; other Agents must not receive it.
+    # Read by an Agent that mounts the graph_explorer builtin provider, as an empty
+    # canvas when absent or not valid; other Agents ignore it.
     canvas: Optional[dict[str, Any]] = None
     # Which definitions of the network the run reads. Both are sent to Context
     # Loader as headers and pinned into every scoped tool call like kn_id.
@@ -436,9 +438,9 @@ class ExecutionScope(BaseModel):
         default=None,
         ge=0,
         description=(
-            "Draft revision the run must read; only with kn_version=draft (422"
-            " otherwise). A read after the draft moved on fails instead of mixing"
-            " revisions."
+            "Draft revision the run must read. Without kn_version the run reads the"
+            " draft; with a kn_version other than draft it is ignored. A read after"
+            " the draft moved on fails instead of mixing revisions."
         ),
     )
 
