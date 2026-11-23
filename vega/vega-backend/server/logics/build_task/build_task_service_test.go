@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -42,9 +43,10 @@ func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
 		mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{bta: mockBTA}
 		tx := &sql.Tx{}
-		mockBTA.EXPECT().MarkRunning(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
+		indexName := "published-index"
+		mockBTA.EXPECT().MarkRunning(gomock.Any(), tx, "task-1", &indexName, gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalMarkRunning(context.Background(), tx, "task-1")
+		updated, err := service.InternalMarkRunning(context.Background(), tx, "task-1", &indexName)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -856,27 +858,6 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("rejects an unsupported build key type before creating a task", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockRS := vmock.NewMockResourceService(ctrl)
-		mockCS := vmock.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
-		service := &buildTaskService{cf: buildTaskTestConnectorFactory(t), rs: mockRS, cs: mockCS}
-
-		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-			ID:               "resource-1",
-			CatalogID:        "catalog-1",
-			Category:         interfaces.ResourceCategoryTable,
-			IndexConfig:      &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"body"}, IncrementalFields: []string{"body"}},
-			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
-		}, nil)
-
-		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
-		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.ErrorDetails, `unsupported type "text"`)
-	})
-
 	t.Run("rejects disabled catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
@@ -1333,6 +1314,110 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 	})
 }
 
+func TestValidateKeys(t *testing.T) {
+	resource := &interfaces.Resource{
+		IndexConfig: &interfaces.ResourceIndexConfig{PrimaryKeyFields: []string{"tenant", "id"}},
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "tenant", Type: interfaces.DataType_String}, {Name: "id", Type: interfaces.DataType_UnsignedInteger},
+		},
+	}
+	key := map[string]any{"id": json.Number("18446744073709551615"), "tenant": "acme"}
+	t.Run("uses only the configured key fields to validate keys", func(t *testing.T) {
+		resource := *resource
+		resource.SchemaDefinition = append(resource.SchemaDefinition, nil)
+		got, err := ValidateKeys(&resource, []map[string]any{key})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"id": ^uint64(0), "tenant": "acme"}}, got)
+	})
+	t.Run("rejects overflow without exposing the raw key", func(t *testing.T) {
+		const overflow = "18446744073709551616"
+		got, err := ValidateKeys(resource, []map[string]any{{"tenant": "acme", "id": json.Number(overflow)}})
+		require.ErrorContains(t, err, `primary key field "id"`)
+		assert.NotContains(t, err.Error(), overflow)
+		assert.Nil(t, got)
+	})
+	t.Run("deduplicates normalized tuples and preserves distinct tenants", func(t *testing.T) {
+		sameKey := map[string]any{"tenant": "acme", "id": ^uint64(0)}
+		otherKey := map[string]any{"tenant": "other", "id": ^uint64(0)}
+		got, err := ValidateKeys(resource, []map[string]any{key, sameKey, otherKey})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{sameKey, otherKey}, got)
+		assert.Equal(t, json.Number("18446744073709551615"), key["id"])
+	})
+	for _, test := range []struct {
+		name string
+		keys []map[string]any
+	}{
+		{name: "no keys"},
+		{name: "too many raw entries", keys: make([]map[string]any, interfaces.MaxBuildTaskKeys+1)},
+		{name: "partial key", keys: []map[string]any{{"id": json.Number("1")}}},
+		{name: "unexpected field", keys: []map[string]any{{"id": json.Number("1"), "user": "acme"}}},
+		{name: "empty string", keys: []map[string]any{{"id": json.Number("1"), "tenant": ""}}},
+		{name: "oversized string", keys: []map[string]any{{"id": json.Number("1"), "tenant": strings.Repeat("a", maxBuildTaskKeyValueBytes+1)}}},
+		{name: "negative unsigned integer", keys: []map[string]any{{"id": json.Number("-1"), "tenant": "acme"}}},
+		{name: "floating key", keys: []map[string]any{{"id": json.Number("1.5"), "tenant": "acme"}}},
+		{name: "null key", keys: []map[string]any{{"id": nil, "tenant": "acme"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ValidateKeys(resource, test.keys)
+			require.Error(t, err)
+			assert.Nil(t, got)
+		})
+	}
+}
+
+func TestBuildTaskServiceCreateKeys(t *testing.T) {
+	for _, test := range []struct {
+		name, executeType, localStatus, code string
+		keys                                 []map[string]any
+		status                               int
+	}{
+		{name: "persists keys without requiring cursor or reserving an old index", executeType: "keys",
+			localStatus: interfaces.ResourceLocalIndexStatusAvailable, keys: []map[string]any{{"id": json.Number("27")}}},
+		{name: "keys required", executeType: "keys", localStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			status: http.StatusBadRequest, code: verrors.VegaBackend_BuildTask_InvalidKeys},
+		{name: "readonly index is rejected", executeType: "keys", localStatus: interfaces.ResourceLocalIndexStatusReadOnly,
+			keys: []map[string]any{{"id": json.Number("27")}}, status: http.StatusConflict, code: verrors.VegaBackend_BuildTask_KeysIndexUnavailable},
+		{name: "other builds reject keys", executeType: "full",
+			keys: []map[string]any{{"id": json.Number("27")}}, status: http.StatusBadRequest, code: verrors.VegaBackend_BuildTask_InvalidKeys},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			access, resources, catalogs := vmock.NewMockBuildTaskAccess(ctrl), vmock.NewMockResourceService(ctrl), vmock.NewMockCatalogService(ctrl)
+			service := &buildTaskService{bta: access, rs: resources, cs: catalogs,
+				cf: buildTaskTestConnectorFactory(t), lim: vmock.NewMockLocalIndexManager(ctrl), dispatchCh: make(chan struct{}, 1)}
+			resource := buildTaskTestResource()
+			resource.IndexConfig.IncrementalFields = nil
+			resource.LocalIndexStatus = test.localStatus
+			resource.LocalIndexName = "vega-build-published"
+			resources.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+			catalogs.EXPECT().CheckCatalogPermission(gomock.Any(), resource.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).
+				Return(true, nil, nil)
+			if test.status == 0 {
+				catalogs.EXPECT().GetByID(gomock.Any(), resource.CatalogID, false).
+					Return(&interfaces.Catalog{ID: resource.CatalogID, Enabled: true}, nil)
+				access.EXPECT().Create(gomock.Any(), gomock.Cond(func(task *interfaces.BuildTask) bool {
+					return task != nil && task.Status == interfaces.BuildTaskStatusPending &&
+						task.IndexName == "" && task.SyncedMark == "" && task.TotalCount == 1 &&
+						len(task.Keys) == 1 && task.Keys[0]["id"] == int64(27)
+				})).Return(nil)
+			}
+			id, err := service.Create(t.Context(), &interfaces.CreateBuildTaskRequest{
+				ResourceID: resource.ID, Mode: interfaces.BuildTaskModeBatch, ExecuteType: test.executeType, Keys: test.keys,
+			})
+			if test.status != 0 {
+				assert.Equal(t, test.status, requireHTTPError(t, err, test.code).HTTPCode)
+				assert.Empty(t, id)
+				assert.Empty(t, service.dispatchCh)
+				return
+			}
+			require.NoError(t, err)
+			assert.NotEmpty(t, id)
+			assert.Len(t, service.dispatchCh, 1)
+		})
+	}
+}
+
 func TestCreateIncrementalBuildWithPublishedIndex(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -1341,8 +1426,8 @@ func TestCreateIncrementalBuildWithPublishedIndex(t *testing.T) {
 		scheduled   bool
 		wantHTTP    int
 	}{
-		{name: "queues without scanning when checkpoint is missing", indexStatus: interfaces.ResourceLocalIndexStatusAvailable},
-		{name: "queues missing checkpoint for a scheduled build", indexStatus: interfaces.ResourceLocalIndexStatusAvailable, scheduled: true},
+		{name: "rejects a missing checkpoint before scheduling", indexStatus: interfaces.ResourceLocalIndexStatusAvailable, wantHTTP: http.StatusConflict},
+		{name: "rejects a missing checkpoint for a scheduled build", indexStatus: interfaces.ResourceLocalIndexStatusAvailable, scheduled: true, wantHTTP: http.StatusConflict},
 		{name: "uses a committed baseline", indexStatus: interfaces.ResourceLocalIndexStatusAvailable, mark: `{"mode":"batch","cursor":[]}`},
 		{name: "rejects an invalid committed baseline", indexStatus: interfaces.ResourceLocalIndexStatusAvailable, mark: "invalid", wantHTTP: http.StatusConflict},
 		{name: "rejects an unavailable index", wantHTTP: http.StatusConflict},
@@ -1455,12 +1540,12 @@ func TestValidateIncrementalAdmission(t *testing.T) {
 			resource.SyncMark = validMark
 			return resource
 		}(), wantErr: true},
-		{name: "allows recovery when a published index has no checkpoint", resource: func() *interfaces.Resource {
+		{name: "rejects a published index with no checkpoint", resource: func() *interfaces.Resource {
 			resource := buildTaskTestResource()
 			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 			resource.LocalIndexName = "resource-1-index"
 			return resource
-		}()},
+		}(), wantErr: true},
 		{name: "rejects recovery on a read-only published index", resource: func() *interfaces.Resource {
 			resource := buildTaskTestResource()
 			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusReadOnly
@@ -1701,8 +1786,10 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		status       int
 	}{
 		{
-			name:   "queues incremental restart for recovery when the baseline is missing",
+			name:   "rejects incremental restart when the baseline is missing",
 			fields: []string{"id"},
+			code:   verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable,
+			status: http.StatusConflict,
 		},
 		{
 			name:   "rejects incremental restart with an invalid committed baseline",
@@ -1715,6 +1802,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			name:         "rejects incremental restart against a superseded index",
 			fields:       []string{"id"},
 			indexChanged: true,
+			mark:         `{"mode":"batch","cursor":[]}`,
 			code:         verrors.VegaBackend_BuildTask_IndexConfigChanged,
 			status:       http.StatusConflict,
 		},

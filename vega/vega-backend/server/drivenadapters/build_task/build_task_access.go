@@ -46,6 +46,7 @@ func buildTaskColumns() []string {
 		"f_execute_type",
 		"f_index_name",
 		"f_index_config",
+		"f_keys",
 
 		"f_status",
 		"f_total_count",
@@ -95,6 +96,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 	buildTask := &interfaces.BuildTask{}
 	var creatorID, creatorType string
 	var indexConfigJSON string
+	var keysJSON sql.NullString
 
 	err := scanner.Scan(
 		&buildTask.ID,
@@ -106,6 +108,7 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.ExecuteType,
 		&buildTask.IndexName,
 		&indexConfigJSON,
+		&keysJSON,
 		&buildTask.Status,
 		&buildTask.TotalCount,
 		&buildTask.SyncedCount,
@@ -128,6 +131,11 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		}
 	}
 
+	if keysJSON.Valid {
+		if err := common.UnmarshalJSON([]byte(keysJSON.String), &buildTask.Keys); err != nil {
+			return nil, errors.New("decode persisted build task keys failed")
+		}
+	}
 	buildTask.Creator = interfaces.AccountInfo{ID: creatorID, Type: creatorType}
 	return buildTask, nil
 }
@@ -190,6 +198,15 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 		return err
 	}
 
+	var keysJSON any
+	if len(buildTask.Keys) > 0 {
+		encoded, err := sonic.MarshalString(buildTask.Keys)
+		if err != nil {
+			return fmt.Errorf("encode build task keys: %w", err)
+		}
+		keysJSON = encoded
+	}
+
 	sqlStr, vals, err := sq.Insert(BUILD_TASK_TABLE_NAME).
 		Columns(buildTaskColumns()...).
 		Values(
@@ -202,6 +219,7 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.ExecuteType,
 			buildTask.IndexName,
 			indexConfigJSON,
+			keysJSON,
 			buildTask.Status,
 			buildTask.TotalCount,
 			buildTask.SyncedCount,
@@ -389,12 +407,19 @@ func (bta *buildTaskAccess) MarkPending(ctx context.Context, tx *sql.Tx, id stri
 	})
 }
 
-func (bta *buildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id string, startTime int64) (bool, error) {
-	return bta.update(ctx, tx, map[string]any{
+func (bta *buildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string, startTime int64) (bool, error) {
+	updateColumns := map[string]any{
 		"f_status":     interfaces.BuildTaskStatusRunning,
 		"f_error_msg":  "",
 		"f_start_time": startTime,
-	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusPending})
+	}
+	if indexName != nil {
+		updateColumns["f_index_name"] = *indexName
+	}
+	return bta.update(ctx, tx, updateColumns, map[string]any{
+		"f_id":     id,
+		"f_status": interfaces.BuildTaskStatusPending,
+	})
 }
 
 func (bta *buildTaskAccess) MarkStopping(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
@@ -587,6 +612,9 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 	}
 	if params.ExecuteType != "" {
 		builder = builder.Where(sq.Eq{"f_execute_type": params.ExecuteType})
+	}
+	if len(params.ExcludeResourceIDs) > 0 {
+		builder = builder.Where(sq.NotEq{"f_resource_id": params.ExcludeResourceIDs})
 	}
 	if params.ResourceID != "" {
 		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})

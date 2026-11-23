@@ -1438,7 +1438,7 @@ components:
         incremental_fields:
           description: |
             Ordered cursor fields. Required for incremental builds. A full build with these fields establishes an incremental baseline when it publishes the index, including when the source is empty.
-            A full build without them clears any existing incremental baseline when it publishes the index and uses the primary key for its task checkpoints.
+            A full build without them clears any existing incremental baseline when it publishes the index and uses the primary key for its task checkpoints. A missing incremental baseline requires a new full build after configuring incremental fields.
           type: array
           items:
             type: string

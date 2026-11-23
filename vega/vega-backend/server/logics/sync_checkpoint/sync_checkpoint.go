@@ -11,9 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -97,15 +95,15 @@ func ValidateCursor(checkpoint *SyncCheckpoint, incrementalFields []string, sche
 		return fmt.Errorf("validate batch checkpoint: expected %d cursor values, got %d", len(incrementalFields), len(checkpoint.Cursor))
 	}
 
-	properties := make(map[string]*interfaces.Property, len(schema))
+	schemaTypes := make(map[string]string, len(schema))
 	for _, property := range schema {
 		if property == nil || property.Name == "" {
 			return fmt.Errorf("validate batch checkpoint: resource schema contains an invalid property")
 		}
-		if _, exists := properties[property.Name]; exists {
+		if _, exists := schemaTypes[property.Name]; exists {
 			return fmt.Errorf("validate batch checkpoint: resource schema contains duplicate property %q", property.Name)
 		}
-		properties[property.Name] = property
+		schemaTypes[property.Name] = property.Type
 	}
 
 	for i, field := range incrementalFields {
@@ -113,71 +111,17 @@ func ValidateCursor(checkpoint *SyncCheckpoint, incrementalFields []string, sche
 		if cursorValue.Key != field {
 			return fmt.Errorf("validate batch checkpoint: expected key %q at position %d, got %q", field, i, cursorValue.Key)
 		}
-		property, exists := properties[field]
+		dataType, exists := schemaTypes[field]
 		if !exists {
 			return fmt.Errorf("validate batch checkpoint: build key %q is absent from the resource schema", field)
 		}
-		value, err := convertCursorValue(cursorValue.Value, property.Type)
+		value, err := interfaces.NormalizeIndexKeyValue(cursorValue.Value, dataType)
 		if err != nil {
 			return fmt.Errorf("validate batch checkpoint key %q: %w", field, err)
 		}
 		cursorValue.Value = value
 	}
 	return nil
-}
-
-func convertCursorValue(value any, dataType string) (any, error) {
-	if value == nil {
-		return nil, fmt.Errorf("cursor value must not be null")
-	}
-
-	switch dataType {
-	case interfaces.DataType_Integer:
-		switch number := value.(type) {
-		case json.Number:
-			parsed, err := strconv.ParseInt(number.String(), 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("cursor value %q is not a valid integer", number.String())
-			}
-			return parsed, nil
-		case int64:
-			return number, nil
-		default:
-			return nil, fmt.Errorf("cursor value must be a JSON integer, got %T", value)
-		}
-	case interfaces.DataType_UnsignedInteger:
-		switch number := value.(type) {
-		case json.Number:
-			parsed, err := strconv.ParseUint(number.String(), 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("cursor value %q is not a valid unsigned integer", number.String())
-			}
-			return parsed, nil
-		case uint64:
-			return number, nil
-		default:
-			return nil, fmt.Errorf("cursor value must be a JSON unsigned integer, got %T", value)
-		}
-	case interfaces.DataType_Date, interfaces.DataType_Time, interfaces.DataType_Datetime:
-		text, ok := value.(string)
-		if !ok {
-			return nil, fmt.Errorf("cursor value must be a JSON string, got %T", value)
-		}
-		// time.Time 经 checkpoint JSON 往返会变成 RFC3339 字符串。在内部边界恢复载体，
-		// 供过滤层按源字段解释墙上时间；公共 API 的日期/时间格式要求保持不变。
-		if native, err := time.Parse(time.RFC3339Nano, text); err == nil {
-			return native, nil
-		}
-		return text, nil
-	case interfaces.DataType_String, interfaces.DataType_Timestamp:
-		text, ok := value.(string)
-		if !ok {
-			return nil, fmt.Errorf("cursor value must be a JSON string, got %T", value)
-		}
-		return text, nil
-	default:
-		return nil, fmt.Errorf("resource type %q is not supported as a build key", dataType)
-	}
 }
 
 func decodeStrictJSON(reader io.Reader, target any) error {

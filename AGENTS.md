@@ -42,6 +42,8 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 
 ## Database migration versions
 
-- Generate initialization and upgrade SQL under the version read from the repository-root `VERSION` file. Do not invent or increment a migration version to make a pending script run; a product version change requires explicit authorization.
-- Update that version's complete `init.sql` and append the next available numbered upgrade script. Check the migrator's existing checkpoint selection for installations already on that version, and report unsupported checkpoints rather than silently changing the version or migration executor.
+- The repository-root `VERSION` identifies the next version to be released. Use its value for database initialization and upgrade scripts unless the requester explicitly specifies another migration version upfront. Changing `VERSION` requires explicit authorization.
+- Update that version's complete `init.sql` and append the next available numbered upgrade script.
+- Review compatibility for clean installs and upgrades from earlier supported releases. Include environments deployed ahead of the next release only when the requester explicitly asks for that compatibility.
+- Check the existing migrator's checkpoint selection for the upgrade paths in scope and report unsupported checkpoints on those paths. Changing the migration executor requires separate authorization.
 - Do not add or run tests for SQL migration files unless the user explicitly requests them; review the SQL directly and report any unverified execution behavior.

@@ -6,7 +6,12 @@
 
 package interfaces
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"time"
+)
 
 // PRIMARY_KEY_TYPES are scalar types whose values have a stable document-ID
 // representation across the supported table connectors.
@@ -82,4 +87,59 @@ type BuildTaskFieldIndexFeature struct {
 
 type BuildTaskFulltextConfig struct {
 	Analyzer string `json:"analyzer,omitempty"`
+}
+
+// NormalizeIndexKeyValue 校验单个索引键值，并转换为字段对应的 Go 类型。
+func NormalizeIndexKeyValue(value any, dataType string) (any, error) {
+	if value == nil {
+		return nil, fmt.Errorf("key value must not be null")
+	}
+
+	switch dataType {
+	case DataType_Integer:
+		switch number := value.(type) {
+		case json.Number:
+			parsed, err := strconv.ParseInt(number.String(), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("key value %q is not a valid integer", number.String())
+			}
+			return parsed, nil
+		case int64:
+			return number, nil
+		default:
+			return nil, fmt.Errorf("key value must be a JSON integer, got %T", value)
+		}
+	case DataType_UnsignedInteger:
+		switch number := value.(type) {
+		case json.Number:
+			parsed, err := strconv.ParseUint(number.String(), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("key value %q is not a valid unsigned integer", number.String())
+			}
+			return parsed, nil
+		case uint64:
+			return number, nil
+		default:
+			return nil, fmt.Errorf("key value must be a JSON unsigned integer, got %T", value)
+		}
+	case DataType_Date, DataType_Time, DataType_Datetime:
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("key value must be a JSON string, got %T", value)
+		}
+		// time.Time 经 checkpoint JSON 往返会变成 RFC3339 字符串。在内部边界恢复载体，
+		// 供过滤层按源字段解释墙上时间；公共 API 的日期/时间格式要求保持不变。
+		if native, err := time.Parse(time.RFC3339Nano, text); err == nil {
+			return native, nil
+		}
+		return text, nil
+	case DataType_String, DataType_Timestamp:
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("key value must be a JSON string, got %T", value)
+		}
+		return text, nil
+	default:
+		return nil, fmt.Errorf("resource type %q is not supported as a build key", dataType)
+	}
 }

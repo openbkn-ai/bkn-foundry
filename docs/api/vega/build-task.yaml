@@ -96,6 +96,7 @@ paths:
             enum:
               - full
               - incremental
+              - keys
         - name: offset
           description: 分页偏移量，>=0，默认 0
           in: query
@@ -149,27 +150,32 @@ paths:
     post:
       summary: 创建构建任务
       description: |
-        为指定 Resource 创建构建任务。同一 Resource 同时只能有一个 active BuildTask
-        （`pending` / `running` / `stopping`）；已存在 active Task 时返回 400
-        `VegaBackend.BuildTask.Exist`。终态 Task 不阻止创建新任务。
+        为指定 Resource 创建构建任务。同资源的批处理串行执行。创建 full 或 incremental 时，
+        已有 active Task（`pending` / `running` / `stopping`）返回 400 `VegaBackend.BuildTask.Exist`。
+        keys 任务可在资源忙碌时排队，轮到执行时解析当前发布索引。
 
         - 当前版本暂不支持 `streaming` 模式。
         - `batch` 模式要求 `primary_key_fields` 非空。`incremental` 还要求 `incremental_fields` 非空。
           `full` 可省略 `incremental_fields`。未配置时，任务依旧记录主键游标供断点续跑，
           构建期间的源端变更可能遗漏，可通过再次全量刷新补齐。
         - `incremental` 要求 `local_status=available` 的已发布本地索引。`readonly` 的旧索引仍可查询，须全量重建后才能继续增量。
-          缺少可写索引或已有非空基线校验失败时，
-          返回 409 `VegaBackend.BuildTask.IncrementalBaselineUnavailable`。
-          基线为空时，任务先入队。worker 使用 Resource 当前发布的索引，按增量字段和补齐的主键字段倒序取首条。
-          首条记录须能形成有效游标。只有查询完整且精确总数为 0 时，才恢复为空游标。
-          当前支持整数主键及整数、日期和日期时间游标字段。
-          恢复失败时，任务状态变为 `failed`。任务详情的 `error_msg` 区分游标字段不支持恢复、已发布索引查询失败、索引游标值无效等原因。
-          字段不支持或游标值无效时，可以配置增量字段后发起全量构建以建立基线。
-          时间字段按索引的毫秒精度排序，续跑时可能重读同一毫秒内的部分记录。游标之前的变更和源端删除可能不会反映到索引中。
+          缺少可写索引、基线为空或基线无效时返回 409 `VegaBackend.BuildTask.IncrementalBaselineUnavailable`，
+          应按当前配置执行全量。空表全量提交的有效空游标可以用于增量；后台不从索引恢复基线。
+          游标之前的变更和源端删除可能不会反映到索引中。
+        - `keys` 要求一个已发布且可写的本地索引以及非空 `keys`。每项是完整主键对象，
+          最多接收 100 项，重复主键只计算一次。整数值须保持精确 JSON 整数，字符串值为 1 至 4096 字节。
+          传给其他执行类型的非空或空数组均无效。无效输入返回 400 `VegaBackend.BuildTask.InvalidKeys`。
+          不可写的索引返回 409 `VegaBackend.BuildTask.KeysIndexUnavailable`。
+          调用方应在源端变更已提交后创建任务。Catalog 须连接到能读到已提交变更的源库。
+          Worker 执行时检查源连接器是否支持表读取会话。缺少此能力时，任务标记为 `failed`，索引内容保留。
+          任务通过连接器的表读取会话，一次查询读取去重后的整组主键。
+          对账以 Catalog 连接账号可见的数据为准。查询失败或结果不完整时任务失败，索引内容保留。
+          任务完成代表结果已可搜索。按 key 同步不读取或推进扫描游标。
         - PostgreSQL、MySQL/MariaDB 的 InnoDB 表、HANA、Oracle 和 SQL Server 在每次 `full` 执行中使用同一源端事务统计总数并打开结果集，逐批消费该结果集。
           Oracle 事务读会话要求非 SYS 账号。SQL Server 使用 SERIALIZABLE，读事务可能阻塞源端写入。中断后从任务游标开启新事务，跨运行的批次可能看到不同的数据。
           Doris 等不支持事务读会话的来源继续逐批执行查询。
-        - 已配置的主键字段和增量字段必须存在于 Resource 的 schema 中，各组字段不能重复且必须使用受支持的类型，否则返回 400。
+        - Resource 保存时校验主键字段是否存在、是否重复以及字段类型。构建任务要求 Resource 已配置主键。
+          已配置的增量字段必须存在于 Resource 的 schema 中、不能重复且必须使用受支持的类型，否则返回 400。
         - `index_name` 由服务端分配并在详情、列表响应中返回；请求体不接受该字段。
         - 创建后 status = `pending`。
 
@@ -221,6 +227,7 @@ paths:
           type: string
     get:
       summary: 获取构建任务详情
+      description: 按主键任务返回持久化的 `keys`，供调用方核对同步范围。
       responses:
         "200":
           description: ok
@@ -287,9 +294,9 @@ paths:
         worker 实际开始执行时会清空 `error_msg`。
 
         按原执行类型重新校验 Resource 构建字段。`full` 需要主键。`incremental` 还需要增量字段
-        和任务所对应的 `local_status=available` 的已发布本地索引。缺少可写索引或已有非空基线校验失败时，返回 409
-        `VegaBackend.BuildTask.IncrementalBaselineUnavailable`。基线为空时，任务可重新入队，
-        worker 会在读取源端前尝试从已发布索引恢复。恢复失败时，通过任务详情查看 `failed` 状态和 `error_msg`。
+        和任务所对应的 `local_status=available` 的已发布本地索引。缺少可写索引、基线为空或基线无效时，
+        返回 409 `VegaBackend.BuildTask.IncrementalBaselineUnavailable`。按当前配置完成全量后可创建新的增量任务。
+        `keys` 以原始主键集合重新回源，允许排队并在执行时选择当前索引。它只接受默认的 `reset=false`。
 
         **响应 status 滞后**：HTTP 202 表示"启动指令已被接受并入队"，**不**表示
         status 已切换为 `running`。worker 实际执行时才会写为 `running`，
@@ -481,8 +488,12 @@ components:
           enum:
             - incremental
             - full
+            - keys
+        keys:
+          description: 仅在按主键任务详情中返回。每项是去重后保存的完整主键，整数保持为精确的 JSON 整数。
+          $ref: "#/components/schemas/BuildTaskKeys"
         index_name:
-          description: 服务端分配的目标物理索引名。Full 任务为新的 `vega-build-<uuidv7>`；Incremental 任务为创建时快照的 Resource 当前索引名。
+          description: 服务端分配的目标物理索引名。Full 任务为新的 `vega-build-<uuidv7>`；Incremental 任务为创建时快照的 Resource 当前索引名；keys 任务入队时可以为空，执行时填写。
           type: string
         total_count:
           description: 总数
@@ -493,7 +504,7 @@ components:
           type: integer
           format: int64
         synced_mark:
-          description: 不透明的任务续跑 checkpoint，仅用于展示和透传。调用方不得解析其内部结构
+          description: 不透明的任务续跑 checkpoint，仅用于展示和透传。keys 任务为空。调用方不得解析其内部结构
           type: string
         error_msg:
           description: 错误或取消原因（仅在 failed/cancelled 状态下有意义）
@@ -522,7 +533,7 @@ components:
         index_config:
           $ref: "#/components/schemas/BuildTaskIndexConfig"
     BuildTaskSummary:
-      description: 构建任务列表摘要；索引配置快照和 failure_detail 请调用单条详情接口获取。
+      description: 构建任务列表摘要；keys、索引配置快照和 failure_detail 请调用单条详情接口获取。
       type: object
       required: [id, resource_id, catalog_id, trigger_type, status, mode, total_count, synced_count, synced_mark, creator, create_time]
       properties:
@@ -657,12 +668,28 @@ components:
           enum:
             - incremental
             - full
+            - keys
+        keys:
+          description: 仅对 keys 任务必填。每个对象必须包含 Resource 的所有主键字段。
+          $ref: "#/components/schemas/BuildTaskKeys"
+    BuildTaskKeys:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          oneOf:
+            - type: string
+              minLength: 1
+            - type: integer
     StartBuildTaskRequest:
       description: 启动构建任务请求体（可选）
       type: object
       properties:
         reset:
-          description: 仅对原始 `execute_type=full` 的任务有效；为 true 时清空进度并从头执行。incremental 任务传 true 返回 409 冲突
+          description: 仅对原始 `execute_type=full` 的任务有效；为 true 时清空进度并从头执行。incremental 或 keys 任务传 true 返回 409 冲突
           type: boolean
           default: false
     ListBuildTasks:

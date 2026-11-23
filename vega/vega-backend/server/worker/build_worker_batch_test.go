@@ -864,6 +864,205 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 	})
 }
 
+func TestBatchBuildWorkerReconcileKeys(t *testing.T) {
+	const checkpoint = `{"mode":"batch","cursor":[{"key":"id","value":1},{"key":"tenant","value":"north"}]}`
+	const largeID int64 = 9007199254740993
+	found := map[string]any{"tenant": "north", "id": largeID, "title": "new title"}
+	foundID, err := generateDocumentID([]interfaces.KeyValue{
+		{Key: "tenant", Value: "north"}, {Key: "id", Value: largeID},
+	})
+	require.NoError(t, err)
+	missingID, err := generateDocumentID([]interfaces.KeyValue{
+		{Key: "tenant", Value: "south"}, {Key: "id", Value: int64(7)},
+	})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name     string
+		page     *interfaces.QueryPage
+		openErr  error
+		readErr  error
+		closeErr error
+		recheck  bool
+		newIndex bool
+		indexErr bool
+		wantErr  string
+	}{
+		{name: "refreshes found key and deletes absent key from current index", recheck: true,
+			page: &interfaces.QueryPage{Entries: []map[string]any{found}}},
+		{name: "incomplete page cannot cause deletions",
+			page: &interfaces.QueryPage{HasMore: true}, wantErr: "could not complete the source key read"},
+		{name: "query permission failure cannot cause deletions",
+			openErr: errors.New("permission denied"), wantErr: "could not open a source key read session"},
+		{name: "read failure cannot cause deletions",
+			readErr: errors.New("source unavailable"), wantErr: "could not complete the source key read"},
+		{name: "session close failure cannot cause deletions",
+			page: &interfaces.QueryPage{}, closeErr: errors.New("connection failed"), wantErr: "could not complete the source key read"},
+		{name: "collation-equivalent row cannot cause deletion of exact key",
+			page:    &interfaces.QueryPage{Entries: []map[string]any{{"tenant": "NORTH", "id": largeID}}},
+			wantErr: "primary key does not exactly match"},
+		{name: "fails if published index changes during read", recheck: true, newIndex: true,
+			page: &interfaces.QueryPage{Entries: []map[string]any{found}}, wantErr: "published index or resource configuration changed"},
+		{name: "does not report completion after a partial write failure", recheck: true, indexErr: true,
+			page: &interfaces.QueryPage{Entries: []map[string]any{found}}, wantErr: "could not write all found keys"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bts := vmock.NewMockBuildTaskService(ctrl)
+			indexes := vmock.NewMockLocalIndexManager(ctrl)
+			resources := vmock.NewMockResourceService(ctrl)
+			factory := vmock.NewMockConnectorFactory(ctrl)
+			session := vmock.NewMockQueryPageSession(ctrl)
+			resource := workerTestResource()
+			resource.Enabled = true
+			resource.CatalogID = "catalog-1"
+			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+			resource.LocalIndexName = "current-index"
+			resource.SyncMark = checkpoint
+			resource.SchemaDefinition = append(resource.SchemaDefinition,
+				&interfaces.Property{Name: "tenant", Type: interfaces.DataType_String},
+				&interfaces.Property{Name: "title", Type: interfaces.DataType_String},
+			)
+			resource.IndexConfig.PrimaryKeyFields = []string{"tenant", "id"}
+			task := workerTestFullTask(t, resource)
+			task.IndexConfig.PrimaryKeyFields = resource.IndexConfig.PrimaryKeyFields
+			task.ExecuteType = interfaces.BuildTaskExecuteTypeKeys
+			task.IndexName = resource.LocalIndexName
+			task.Keys = []map[string]any{
+				{"id": json.Number("9007199254740993"), "tenant": "north"},
+				{"tenant": "south", "id": json.Number("7")},
+				{"tenant": "north", "id": json.Number("9007199254740993")},
+			}
+			catalog := &interfaces.Catalog{ConnectorType: "postgresql", Enabled: true}
+			connector := &streamTableConnector{vmock.NewMockTableConnector(ctrl), vmock.NewMockTableReadSessionConnector(ctrl)}
+			open := func(_ context.Context, gotResource *interfaces.Resource,
+				params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+				assert.Same(t, resource, gotResource)
+				assert.ElementsMatch(t, []string{"id", "tenant", "title"}, params.OutputFields)
+				assert.False(t, params.NeedTotal)
+				assert.Zero(t, params.Paging.Offset)
+				require.NotNil(t, params.ActualFilterCond)
+				filter := params.FilterCondCfg
+				require.NotNil(t, filter)
+				assert.Equal(t, "or", filter.Operation)
+				require.Len(t, filter.SubConds, 2)
+				for i, tuple := range []struct {
+					tenant string
+					id     int64
+				}{{"north", largeID}, {"south", 7}} {
+					branch := filter.SubConds[i]
+					assert.Equal(t, "and", branch.Operation)
+					require.Len(t, branch.SubConds, 2)
+					assert.Equal(t, "tenant", branch.SubConds[0].Field)
+					assert.Equal(t, tuple.tenant, branch.SubConds[0].Value)
+					assert.Equal(t, "id", branch.SubConds[1].Field)
+					assert.Equal(t, tuple.id, branch.SubConds[1].Value)
+				}
+				if tc.openErr != nil {
+					return nil, tc.openErr
+				}
+				return session, nil
+			}
+			worker := &batchBuildWorker{bts: bts, rs: resources, cf: factory, lim: indexes}
+
+			total := int64(2)
+			zero := int64(0)
+			initial := bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID,
+				interfaces.BuildTaskProgress{TotalCount: &total, SyncedCount: &zero},
+				runningOrStoppingStatuses).Return(true, nil)
+			calls := []any{
+				indexes.EXPECT().CheckIndexExist(gomock.Any(), resource.LocalIndexName).Return(true, nil),
+				initial,
+				factory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).Return(connector, nil),
+				connector.MockTableConnector.EXPECT().Connect(gomock.Any()).Return(nil),
+				connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).DoAndReturn(open),
+			}
+			if tc.openErr == nil {
+				calls = append(calls, session.EXPECT().ReadPage(gomock.Any(), 2).Return(tc.page, tc.readErr),
+					session.EXPECT().Close().Return(tc.closeErr))
+			}
+			calls = append(calls, connector.MockTableConnector.EXPECT().Close(gomock.Any()).Return(nil))
+			if tc.recheck {
+				currentResource := *resource
+				if tc.newIndex {
+					currentResource.LocalIndexName = "replacement-index"
+				}
+				calls = append(calls, resources.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(&currentResource, nil))
+				if !tc.newIndex {
+					documents := []interfaces.DocumentWrite{{ID: foundID, Document: found}}
+					status := 200
+					if tc.indexErr {
+						status = 500
+					}
+					calls = append(calls,
+						bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil),
+						indexes.EXPECT().IndexDocuments(gomock.Any(), resource.LocalIndexName, documents).
+							Return([]interfaces.DocumentWriteResult{{ID: foundID, Status: status}}, nil),
+					)
+				}
+			}
+			if tc.wantErr == "" {
+				calls = append(calls,
+					indexes.EXPECT().DeleteDocuments(gomock.Any(), resource.LocalIndexName, []string{missingID}).Return(nil),
+					bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, interfaces.BuildTaskProgress{SyncedCount: &total},
+						runningOrStoppingStatuses).Return(true, nil),
+					bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil),
+				)
+			}
+			if tc.wantErr == "" {
+				task.Status = interfaces.BuildTaskStatusPending
+				task.IndexName = "previous-attempt"
+				catalogs := vmock.NewMockCatalogService(ctrl)
+				worker.cs = catalogs
+				btsWorker := &BuildTaskWorker{bts: bts, bbw: worker}
+				claimCalls := []any{
+					bts.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil),
+					resources.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil),
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(catalog, nil),
+					bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, task.ID, &resource.LocalIndexName).Return(true, nil),
+				}
+				gomock.InOrder(append(claimCalls, calls...)...)
+				require.NoError(t, btsWorker.runBatchTask(t.Context(), task.ID))
+				assert.Equal(t, resource.LocalIndexName, task.IndexName)
+			} else {
+				gomock.InOrder(calls...)
+				err := worker.reconcileKeys(t.Context(), catalog, resource, task)
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+			assert.Equal(t, checkpoint, resource.SyncMark)
+			assert.Empty(t, task.SyncedMark)
+		})
+	}
+}
+
+func TestBatchBuildWorkerKeysFailsWithoutTableReadSession(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	tasks := vmock.NewMockBuildTaskService(ctrl)
+	indexes := vmock.NewMockLocalIndexManager(ctrl)
+	factory := vmock.NewMockConnectorFactory(ctrl)
+	connector := vmock.NewMockTableConnector(ctrl)
+	resource := workerTestResource()
+	task := workerTestFullTask(t, resource)
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeKeys
+	task.Keys = []map[string]any{{"id": int64(1)}}
+	catalog := &interfaces.Catalog{ConnectorType: "custom-table"}
+	worker := &batchBuildWorker{bts: tasks, cf: factory, lim: indexes}
+
+	total, zero := int64(1), int64(0)
+	gomock.InOrder(
+		indexes.EXPECT().CheckIndexExist(gomock.Any(), task.IndexName).Return(true, nil),
+		tasks.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID,
+			interfaces.BuildTaskProgress{TotalCount: &total, SyncedCount: &zero},
+			runningOrStoppingStatuses).Return(true, nil),
+		factory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).Return(connector, nil),
+		connector.EXPECT().Close(gomock.Any()).Return(nil),
+		tasks.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID, "source connector does not support table read sessions",
+			[]string{interfaces.BuildTaskStatusRunning}).Return(true, nil),
+	)
+
+	require.NoError(t, worker.Run(t.Context(), task, resource, catalog))
+}
+
 func TestBatchBuildWorkerCommitIncrementalProgress(t *testing.T) {
 	for _, tc := range []struct {
 		name, indexName, status, detail string

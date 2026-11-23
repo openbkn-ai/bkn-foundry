@@ -33,7 +33,9 @@ func isValidBuildTaskMode(m string) bool {
 
 func isValidBuildTaskExecuteType(executeType string) bool {
 	switch executeType {
-	case interfaces.BuildTaskExecuteTypeFull, interfaces.BuildTaskExecuteTypeIncremental:
+	case interfaces.BuildTaskExecuteTypeFull,
+		interfaces.BuildTaskExecuteTypeIncremental,
+		interfaces.BuildTaskExecuteTypeKeys:
 		return true
 	}
 	return false

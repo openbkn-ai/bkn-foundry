@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -22,10 +23,12 @@ import (
 )
 
 func TestBuildTaskAccessGetByID(t *testing.T) {
-	t.Run("returns build task", func(t *testing.T) {
+	t.Run("returns build task with exact persisted keys", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 		task := sampleBuildTask()
+		task.ExecuteType = interfaces.BuildTaskExecuteTypeKeys
+		task.Keys = []map[string]any{{"id": json.Number("18446744073709551615")}}
 
 		rows := sqlmock.NewRows(buildTaskColumns()).AddRow(buildTaskRowValues(task)...)
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinBuildTaskColumns() + " FROM t_build_task WHERE f_id = ?")).
@@ -44,6 +47,10 @@ func TestBuildTaskAccessGetByID(t *testing.T) {
 		assert.Equal(t, task.TriggerType, got.TriggerType)
 		assert.Equal(t, task.Creator, got.Creator)
 		assert.Equal(t, task.IndexConfig, got.IndexConfig)
+		assert.Equal(t, task.Keys, got.Keys)
+		encoded, err := json.Marshal(got)
+		require.NoError(t, err)
+		assert.Contains(t, string(encoded), `"keys":[{"id":18446744073709551615}]`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -324,22 +331,39 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", 123)
+		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", nil, 123)
 
 		require.NoError(t, err)
 		assert.True(t, claimed)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns false when status does not match", func(t *testing.T) {
+	t.Run("assigns the target in the same pending to running update", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
-			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
+		indexName := "current-published-index"
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_index_name = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs("", indexName, int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", &indexName, 123)
+
+		require.NoError(t, err)
+		assert.True(t, claimed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("does not assign an index when status does not match", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+
+		indexName := "current-published-index"
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_index_name = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WithArgs("", indexName, int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", 123)
+		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", &indexName, 123)
 
 		require.NoError(t, err)
 		assert.False(t, claimed)
@@ -356,7 +380,7 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.MarkRunning(context.Background(), tx, "task-1", 123)
+		claimed, err := access.MarkRunning(context.Background(), tx, "task-1", nil, 123)
 
 		require.NoError(t, err)
 		assert.True(t, claimed)
@@ -915,6 +939,10 @@ func withBuildTaskID(task *interfaces.BuildTask, id string) *interfaces.BuildTas
 }
 
 func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
+	var keys driver.Value
+	if len(task.Keys) > 0 {
+		keys = mustMarshalJSON(task.Keys)
+	}
 	return []driver.Value{
 		task.ID,
 		task.ResourceID,
@@ -925,6 +953,7 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.ExecuteType,
 		task.IndexName,
 		mustMarshalJSON(task.IndexConfig),
+		keys,
 		task.Status,
 		task.TotalCount,
 		task.SyncedCount,
@@ -975,6 +1004,6 @@ func joinBuildTaskSummaryColumns() string {
 func buildTaskSummaryRowValues(task *interfaces.BuildTask) []driver.Value {
 	values := buildTaskRowValues(task)
 	result := append([]driver.Value{}, values[:8]...)
-	result = append(result, values[9:14]...)
-	return append(result, values[15:]...)
+	result = append(result, values[10:15]...)
+	return append(result, values[16:]...)
 }

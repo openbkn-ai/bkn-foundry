@@ -278,6 +278,15 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 		require.Contains(t, httpErr.ErrorDetails, `primary_key_fields field "missing_id"`)
 	})
 
+	t.Run("rejects unsupported primary key types", func(t *testing.T) {
+		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields: []string{"body"},
+		})
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
+		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		require.Contains(t, httpErr.ErrorDetails, `unsupported type "text"`)
+	})
+
 	t.Run("rejects duplicate primary keys and unsupported incremental types", func(t *testing.T) {
 		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
 			PrimaryKeyFields: []string{"id", "id"},

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,7 @@ type BuildTaskWorker struct {
 	streamingQueue       chan string
 	mu                   sync.Mutex
 	inFlight             map[string]struct{}
+	batchResourceByTask  map[string]string
 
 	wg      sync.WaitGroup
 	stopCh  chan struct{}
@@ -183,8 +185,9 @@ func (btw *BuildTaskWorker) fillBatchQueue(ctx context.Context) {
 			Sort:      interfaces.BuildTaskSortCreateTime,
 			Direction: interfaces.ASC_DIRECTION,
 		},
-		Statuses: []string{interfaces.BuildTaskStatusPending},
-		Mode:     interfaces.BuildTaskModeBatch,
+		Statuses:           []string{interfaces.BuildTaskStatusPending},
+		Mode:               interfaces.BuildTaskModeBatch,
+		ExcludeResourceIDs: btw.reservedBatchResources(),
 	})
 	if err != nil {
 		logger.Errorf("List pending batch build tasks failed: %v", err)
@@ -194,7 +197,7 @@ func (btw *BuildTaskWorker) fillBatchQueue(ctx context.Context) {
 		if btw.stopped.Load() {
 			return
 		}
-		if task == nil || !btw.addInFlight(task.ID) {
+		if task == nil || !btw.reserveBatchTask(task) {
 			continue
 		}
 		select {
@@ -369,10 +372,20 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) (er
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
-	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+	var indexName *string
+	switch task.ExecuteType {
+	case interfaces.BuildTaskExecuteTypeIncremental:
 		claimed, resource, err = btw.claimIncrementalBatchTask(taskCtx, task, resource)
-	} else {
-		claimed, err = btw.bts.InternalMarkRunning(taskCtx, nil, taskID)
+	case interfaces.BuildTaskExecuteTypeKeys:
+		if !resourcelogic.HasWritableLocalIndex(resource) || !resource.Enabled {
+			err = errors.New("keys build requires an enabled resource with an available published index")
+			btw.failTask(taskCtx, taskID, err.Error())
+			return err
+		}
+		indexName = &resource.LocalIndexName
+		claimed, err = btw.bts.InternalMarkRunning(taskCtx, nil, taskID, indexName)
+	default:
+		claimed, err = btw.bts.InternalMarkRunning(taskCtx, nil, taskID, nil)
 	}
 	if err != nil {
 		if errors.Is(err, errIncrementalBatchResourceInvalid) {
@@ -384,12 +397,10 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) (er
 		logger.Infof("Batch build task was not claimed for running: id=%s", taskID)
 		return nil
 	}
-	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental && resource.SyncMark == "" {
-		prepared, err := btw.prepareIncrementalBaseline(taskCtx, task, resource, catalog)
-		if err != nil || !prepared {
-			return err
-		}
+	if indexName != nil {
+		task.IndexName = *indexName
 	}
+
 	if err := btw.bbw.Run(taskCtx, task, resource, catalog); err != nil {
 		if _, statusErr := markBatchBuildFailed(taskCtx, btw.bts, taskID, err.Error()); statusErr != nil {
 			logger.Errorf("Retry batch build task status update failed: id=%s, error=%v", taskID, statusErr)
@@ -428,7 +439,7 @@ func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task 
 		return false, resource, fmt.Errorf("%w: resource local index changed before incremental build", errIncrementalBatchResourceInvalid)
 	}
 
-	claimed, err := btw.bts.InternalMarkRunning(ctx, tx, task.ID)
+	claimed, err := btw.bts.InternalMarkRunning(ctx, tx, task.ID, nil)
 	if err != nil {
 		return false, resource, err
 	}
@@ -476,7 +487,7 @@ func validateIncrementalBatchResource(resource *interfaces.Resource, task *inter
 		return errors.New("incremental build requires an available local index")
 	}
 	if resource.SyncMark == "" {
-		return nil
+		return errors.New("incremental baseline is missing; run a full build with the current incremental_fields")
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
 	if err != nil {
@@ -504,7 +515,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	claimed, err := btw.bts.InternalMarkRunning(ctx, nil, taskID)
+	claimed, err := btw.bts.InternalMarkRunning(ctx, nil, taskID, nil)
 	if err != nil {
 		return fmt.Errorf("claim streaming build task execution: %w", err)
 	}
@@ -535,8 +546,41 @@ func (btw *BuildTaskWorker) addInFlight(id string) bool {
 	return true
 }
 
+// One worker manager owns the database queues. Reserve the resource before
+// dispatch so its batch workers cannot read and write competing snapshots.
+func (btw *BuildTaskWorker) reserveBatchTask(task *interfaces.BuildTaskSummary) bool {
+	btw.mu.Lock()
+	defer btw.mu.Unlock()
+	if _, exists := btw.inFlight[task.ID]; exists {
+		return false
+	}
+	for _, id := range btw.batchResourceByTask {
+		if id == task.ResourceID {
+			return false
+		}
+	}
+	if btw.batchResourceByTask == nil {
+		btw.batchResourceByTask = make(map[string]string)
+	}
+	btw.batchResourceByTask[task.ID] = task.ResourceID
+	btw.inFlight[task.ID] = struct{}{}
+	return true
+}
+
+func (btw *BuildTaskWorker) reservedBatchResources() []string {
+	btw.mu.Lock()
+	defer btw.mu.Unlock()
+	var ids []string
+	for _, id := range btw.batchResourceByTask {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
 func (btw *BuildTaskWorker) removeInFlight(id string) {
 	btw.mu.Lock()
 	defer btw.mu.Unlock()
 	delete(btw.inFlight, id)
+	delete(btw.batchResourceByTask, id)
 }

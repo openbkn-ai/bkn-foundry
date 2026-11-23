@@ -8,11 +8,9 @@ package worker
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -36,21 +34,46 @@ func TestBuildTaskWorkerFillBatchQueueRefillsEmptyQueue(t *testing.T) {
 		batchQueue: make(chan string, 4),
 		inFlight:   make(map[string]struct{}),
 	}
-	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+	first := bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 			assert.Equal(t, 4, params.Limit)
 			assert.Equal(t, []string{interfaces.BuildTaskStatusPending}, params.Statuses)
 			assert.Equal(t, interfaces.BuildTaskModeBatch, params.Mode)
 			assert.Equal(t, interfaces.BuildTaskSortCreateTime, params.Sort)
 			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-			return []*interfaces.BuildTaskSummary{{ID: "task-1"}}, nil
+			assert.Empty(t, params.ExcludeResourceIDs)
+			return []*interfaces.BuildTaskSummary{
+				{ID: "full-1", ResourceID: "resource-1", ExecuteType: interfaces.BuildTaskExecuteTypeFull},
+				{ID: "keys-1", ResourceID: "resource-1", ExecuteType: interfaces.BuildTaskExecuteTypeKeys},
+				{ID: "incremental-2", ResourceID: "resource-2", ExecuteType: interfaces.BuildTaskExecuteTypeIncremental},
+			}, nil
 		})
+	waiting := bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+			assert.Equal(t, []string{"resource-1", "resource-2"}, params.ExcludeResourceIDs)
+			return nil, nil
+		}).After(first)
+	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+			assert.Equal(t, []string{"resource-2"}, params.ExcludeResourceIDs)
+			return []*interfaces.BuildTaskSummary{{ID: "keys-1", ResourceID: "resource-1"}}, nil
+		}).After(waiting)
 
 	worker.stopCh = make(chan struct{})
 	worker.fillBatchQueue(context.Background())
 
-	assert.Len(t, worker.batchQueue, 1)
-	assert.False(t, worker.addInFlight("task-1"))
+	require.Len(t, worker.batchQueue, 2)
+	assert.False(t, worker.addInFlight("full-1"))
+	assert.Equal(t, "full-1", <-worker.batchQueue)
+	assert.Equal(t, "incremental-2", <-worker.batchQueue)
+
+	worker.fillBatchQueue(t.Context())
+	assert.Empty(t, worker.batchQueue)
+
+	worker.removeInFlight("full-1")
+	worker.fillBatchQueue(t.Context())
+	require.Len(t, worker.batchQueue, 1)
+	assert.Equal(t, "keys-1", <-worker.batchQueue)
 }
 
 func TestBuildTaskWorkerFillStreamingQueueRefillsEmptyQueue(t *testing.T) {
@@ -271,7 +294,7 @@ func TestBuildTaskWorkerClaim(t *testing.T) {
 					Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 			}
 			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
-			bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, "task-1").
+			bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, "task-1", nil).
 				Return(tt.claimed, tt.claimErr)
 
 			err := tt.runTask(worker)
@@ -283,6 +306,31 @@ func TestBuildTaskWorkerClaim(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildTaskWorkerDoesNotReplaceKeysTargetWhenClaimLoses(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs, cs: cs}}
+	resource := workerTestResource()
+	resource.Enabled = true
+	resource.CatalogID = "catalog-1"
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	resource.LocalIndexName = "latest-published"
+	task := workerTestFullTask(t, resource)
+	task.Status = interfaces.BuildTaskStatusPending
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeKeys
+	task.IndexName = "previous-attempt"
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+	cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true}, nil)
+	bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, task.ID, &resource.LocalIndexName).Return(false, nil)
+
+	require.NoError(t, worker.runBatchTask(t.Context(), task.ID))
+	assert.Equal(t, "previous-attempt", task.IndexName)
 }
 
 func TestBuildTaskWorkerRejectsChangedBatchTaskBeforeClaim(t *testing.T) {
@@ -384,7 +432,7 @@ func TestBuildTaskWorkerClaimsIncrementalWithResourceCheckpoint(t *testing.T) {
 	mockDB.ExpectBegin()
 	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 	rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
-	bts.EXPECT().InternalMarkRunning(gomock.Any(), txMatcher, task.ID).Return(true, nil)
+	bts.EXPECT().InternalMarkRunning(gomock.Any(), txMatcher, task.ID, nil).Return(true, nil)
 	bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any(), runningOrStoppingStatuses).DoAndReturn(
 		func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress, _ []string) (bool, error) {
 			require.NotNil(t, progress.SyncedMark)
@@ -440,7 +488,7 @@ func TestBuildTaskWorkerRunBatchTaskRecoversPanic(t *testing.T) {
 				loadResource.Return(resource, nil)
 				calls = append(calls,
 					cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(catalog, nil),
-					bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, task.ID).Return(true, nil),
+					bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, task.ID, nil).Return(true, nil),
 					lim.EXPECT().CheckIndexExist(gomock.Any(), task.IndexName).Return(true, nil),
 					cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil),
 					connector.MockTableConnector.EXPECT().Connect(gomock.Any()).Return(nil),
@@ -467,228 +515,59 @@ func TestBuildTaskWorkerRunBatchTaskRecoversPanic(t *testing.T) {
 	}
 }
 
-func TestBuildTaskWorkerRunBatchTaskRecoversIncrementalBaseline(t *testing.T) {
-	const recovered = `{"mode":"batch","cursor":[{"key":"id","value":42}]}`
-	const old = `{"mode":"batch","cursor":[{"key":"id","value":13}]}`
-	const scanFailed = "cannot recover incremental checkpoint: published index query failed"
-	const unsupportedField = "cannot recover incremental checkpoint: unsupported cursor field"
-	const invalidCursor = "cannot recover incremental checkpoint: invalid indexed cursor"
-	const saveFailed = "cannot save the recovered incremental checkpoint"
-	const conflict = "resource, catalog, or task changed during incremental baseline recovery"
-	runningOnly := []string{interfaces.BuildTaskStatusRunning}
-	stoppingOnly := []string{interfaces.BuildTaskStatusStopping}
-
-	tests := []struct {
-		name        string
-		wantFailure string
-		wantError   string
-	}{
-		{name: "commits both checkpoints before reading the source"},
-		{name: "restart with a committed checkpoint skips the index lookup"},
-		{name: "index unavailable", wantFailure: scanFailed, wantError: "index search failed"},
-		{name: "failure status write fails after index error", wantFailure: scanFailed, wantError: "failure status write failed"},
-		{name: "stop wins before recovery failure write", wantFailure: scanFailed},
-		{name: "unsupported cursor field", wantFailure: unsupportedField, wantError: "cannot be recovered losslessly"},
-		{name: "invalid indexed cursor", wantFailure: invalidCursor, wantError: "cursor value must not be null"},
-		{name: "catalog changed", wantFailure: conflict, wantError: conflict},
-		{name: "resource index changed", wantFailure: conflict, wantError: conflict},
-		{name: "resource checkpoint was already initialized", wantFailure: conflict, wantError: conflict},
-		{name: "metadata write failed", wantFailure: saveFailed, wantError: "write failed"},
-		{name: "metadata commit failed", wantFailure: saveFailed, wantError: "commit failed"},
-		{name: "stop wins during checkpoint write"},
-		{name: "requeued before checkpoint write"},
-		{name: "stop before the index lookup"},
-		{name: "shutdown lets the index lookup finish without saving a checkpoint"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+func TestBuildTaskWorkerRejectsIncrementalWithoutCheckpoint(t *testing.T) {
+	const oldMark = `{"mode":"batch","cursor":[{"key":"id","value":20}]}`
+	for _, clearedDuringClaim := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cleared during claim=%t", clearedDuringClaim), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			bts := vmock.NewMockBuildTaskService(ctrl)
 			rs := vmock.NewMockResourceService(ctrl)
-			cs := vmock.NewMockCatalogService(ctrl)
-			lim := vmock.NewMockLocalIndexManager(ctrl)
-			cf := vmock.NewMockConnectorFactory(ctrl)
-			ra := vmock.NewMockResourceAccess(ctrl)
-			worker := &BuildTaskWorker{
-				bts: bts,
-				bbw: &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim, cf: cf, stopped: new(atomic.Bool)},
-			}
-			db, dbMock, err := sqlmock.New()
-			require.NoError(t, err)
-			oldDB, oldRA := logics.DB, logics.RA
-			logics.DB, logics.RA = db, ra
-			t.Cleanup(func() {
-				logics.DB, logics.RA = oldDB, oldRA
-				_ = db.Close()
-			})
+			catalogs := vmock.NewMockCatalogService(ctrl)
+			factory := vmock.NewMockConnectorFactory(ctrl)
+			indexes := vmock.NewMockLocalIndexManager(ctrl)
 			resource := workerTestResource()
-			resource.CatalogID = "catalog"
-			resource.SchemaDefinition[0].OriginalName = "id"
-			resource.SchemaDefinition[0].OriginalType = "bigint"
-			if tc.name == "unsupported cursor field" {
-				resource.SchemaDefinition[0].Type = interfaces.DataType_String
-				resource.SchemaDefinition[0].OriginalType = "varchar"
-			}
+			resource.CatalogID = "catalog-1"
 			resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
-			resource.LocalIndexName = "published-index"
-			catalog := &interfaces.Catalog{ID: resource.CatalogID, Enabled: true, UpdateTime: 100, ConnectorType: "mysql"}
+			resource.LocalIndexName = "current-index"
 			task := workerTestFullTask(t, resource)
-			task.ID = "incremental"
-			task.CatalogID = catalog.ID
-			task.IndexName = resource.LocalIndexName
 			task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+			task.IndexName = resource.LocalIndexName
 			task.Status = interfaces.BuildTaskStatusPending
-			task.SyncedMark = old
-
-			isRestart := tc.name == "restart with a committed checkpoint skips the index lookup"
-			if isRestart {
-				resource.SyncMark = recovered
-			}
-			txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-			claim := []any{
-				bts.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil),
-				rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil),
-				cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(catalog, nil),
-				rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil),
-				bts.EXPECT().InternalMarkRunning(gomock.Any(), txMatcher, task.ID).Return(true, nil),
-			}
-			if isRestart {
-				claim = append(claim, bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID,
-					interfaces.BuildTaskProgress{SyncedMark: &resource.SyncMark}, runningOrStoppingStatuses).Return(true, nil))
-			}
-			gomock.InOrder(claim...)
-			dbMock.ExpectBegin()
-			dbMock.ExpectCommit()
-
-			if !isRestart {
-				var query *gomock.Call
-				if tc.name == "stop before the index lookup" {
-					bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusStopping, nil)
-					bts.EXPECT().InternalMarkStopped(gomock.Any(), nil, task.ID, stoppingOnly).Return(true, nil)
-				} else if tc.name != "unsupported cursor field" {
-					status := bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
-					query = lim.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, gomock.Any()).
-						After(status).DoAndReturn(func(ctx context.Context, _ string, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-						assert.Zero(t, db.Stats().InUse, "the claim transaction must finish before querying the index")
-						assert.Equal(t, interfaces.BuildTaskStatusRunning, task.Status)
-						assert.Equal(t, old, task.SyncedMark, "claim must preserve the previous task mark while recovery is pending")
-						assert.Equal(t, 1, params.Paging.Limit)
-						assert.True(t, params.NeedTotal)
-						assert.Equal(t, []*interfaces.SortField{{Field: "id", Direction: "desc"}}, params.Sort)
-						switch tc.name {
-						case "index unavailable", "failure status write fails after index error", "stop wins before recovery failure write":
-							return nil, errors.New("index search failed")
-						case "invalid indexed cursor":
-							return baselineResult(9, map[string]any{"id": nil}), nil
-						case "shutdown lets the index lookup finish without saving a checkpoint":
-							worker.bbw.stopped.Store(true)
-							require.NoError(t, ctx.Err())
-						}
-						return baselineResult(9, map[string]any{"id": json.Number("42")}), nil
-					})
-				}
-				switch tc.name {
-				case "index unavailable", "failure status write fails after index error", "stop wins before recovery failure write", "stop before the index lookup",
-					"shutdown lets the index lookup finish without saving a checkpoint", "unsupported cursor field", "invalid indexed cursor":
-					// None of these paths may start a metadata transaction.
-				case "catalog changed":
-					changed := *catalog
-					changed.UpdateTime++
-					cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, false).After(query).Return(&changed, nil)
-				default:
-					dbMock.ExpectBegin()
-					switch tc.name {
-					case "commits both checkpoints before reading the source":
-						dbMock.ExpectCommit()
-					case "metadata commit failed":
-						dbMock.ExpectCommit().WillReturnError(errors.New("commit failed"))
-					default:
-						dbMock.ExpectRollback()
-					}
-					current := *resource
-					current.SyncMark = recovered
-					if tc.name == "resource index changed" {
-						current.LocalIndexName = "replacement-index"
-					}
-					wonResourceCAS := tc.name != "resource checkpoint was already initialized"
-					recoveredTx := []any{
-						cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, false).After(query).Return(catalog, nil),
-						ra.EXPECT().CompareAndSetSyncMark(gomock.Any(), txMatcher, resource.ID, resource.LocalIndexName,
-							interfaces.ResourceLocalIndexStatusAvailable, "", recovered).Return(wonResourceCAS, nil),
-					}
-					if wonResourceCAS {
-						recoveredTx = append(recoveredTx, rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(&current, nil))
-						if tc.name != "resource index changed" {
-							var updateErr error
-							if tc.name == "metadata write failed" {
-								updateErr = errors.New("write failed")
-							}
-							wonTaskUpdate := tc.name == "commits both checkpoints before reading the source" || tc.name == "metadata commit failed"
-							recoveredTx = append(recoveredTx, bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID,
-								interfaces.BuildTaskProgress{SyncedMark: &current.SyncMark}, []string{interfaces.BuildTaskStatusRunning}).
-								Return(wonTaskUpdate, updateErr))
-						}
-					}
-					gomock.InOrder(recoveredTx...)
-				}
+			task.SyncedMark = oldMark
+			worker := &BuildTaskWorker{
+				bts: bts, bbw: &batchBuildWorker{rs: rs, cs: catalogs, cf: factory, lim: indexes},
 			}
 
-			wantSource := isRestart || tc.name == "commits both checkpoints before reading the source"
-			switch {
-			case wantSource:
-				connector := vmock.NewMockTableConnector(ctrl)
-				gomock.InOrder(
-					lim.EXPECT().CheckIndexExist(gomock.Any(), resource.LocalIndexName).DoAndReturn(func(_ context.Context, _ string) (bool, error) {
-						assert.Zero(t, db.Stats().InUse)
-						assert.Equal(t, recovered, task.SyncedMark)
-						return true, nil
-					}),
-					cf.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, gomock.Any()).Return(connector, nil),
-					connector.EXPECT().Connect(gomock.Any()).Return(nil),
-					bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil),
-					connector.EXPECT().ExecuteQuery(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-						func(_ context.Context, source *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-							assert.Equal(t, recovered, source.SyncMark)
-							require.NotNil(t, params.FilterCondCfg)
-							require.Len(t, params.FilterCondCfg.SubConds, 1)
-							require.Len(t, params.FilterCondCfg.SubConds[0].SubConds, 1)
-							assert.Equal(t, int64(42), params.FilterCondCfg.SubConds[0].SubConds[0].Value)
-							return &interfaces.ResourceDataQueryResult{}, nil
-						}),
-					bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil),
-					connector.EXPECT().Close(gomock.Any()).Return(nil),
-				)
-			case tc.name == "stop wins during checkpoint write", tc.name == "requeued before checkpoint write":
-				gomock.InOrder(
-					bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID, conflict, runningOnly).Return(false, nil),
-					bts.EXPECT().InternalMarkStopped(gomock.Any(), nil, task.ID, stoppingOnly).
-						Return(tc.name == "stop wins during checkpoint write", nil),
-				)
-			case tc.name == "stop wins before recovery failure write":
-				gomock.InOrder(
-					bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID, scanFailed, runningOnly).Return(false, nil),
-					bts.EXPECT().InternalMarkStopped(gomock.Any(), nil, task.ID, stoppingOnly).Return(true, nil),
-				)
-			case tc.wantFailure != "":
-				markFailed := bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID, tc.wantFailure, runningOnly)
-				if tc.name == "failure status write fails after index error" {
-					markFailed.Return(false, errors.New("failure status write failed"))
-				} else {
-					markFailed.Return(true, nil)
-				}
-			}
-
-			err = worker.runBatchTask(t.Context(), task.ID)
-			if tc.wantError == "" {
+			bts.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+			if clearedDuringClaim {
+				resource.SyncMark = oldMark
+				clearedResource := *resource
+				clearedResource.SyncMark = ""
+				db, mockDB, err := sqlmock.New()
 				require.NoError(t, err)
-			} else {
-				require.ErrorContains(t, err, tc.wantError)
+				originalDB := logics.DB
+				logics.DB = db
+				t.Cleanup(func() {
+					logics.DB = originalDB
+					_ = db.Close()
+				})
+				mockDB.ExpectBegin()
+				mockDB.ExpectRollback()
+				t.Cleanup(func() { assert.NoError(t, mockDB.ExpectationsWereMet()) })
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
+					Return(&interfaces.Catalog{ID: resource.CatalogID, Enabled: true}, nil)
+				rs.EXPECT().InternalGetByID(gomock.Any(), gomock.AssignableToTypeOf(&sql.Tx{}), resource.ID).
+					Return(&clearedResource, nil)
 			}
-			if !wantSource {
-				assert.Equal(t, old, task.SyncedMark)
-				assert.Empty(t, resource.SyncMark)
-			}
-			require.NoError(t, dbMock.ExpectationsWereMet())
+			bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID, gomock.Regex("incremental baseline is missing; run a full build"), nil).
+				Return(true, nil)
+
+			err := worker.runBatchTask(t.Context(), task.ID)
+
+			require.ErrorContains(t, err, "run a full build")
+			assert.Equal(t, interfaces.BuildTaskStatusPending, task.Status)
+			assert.Equal(t, oldMark, task.SyncedMark, "a task mark is not a substitute for a committed resource baseline")
 		})
 	}
 }

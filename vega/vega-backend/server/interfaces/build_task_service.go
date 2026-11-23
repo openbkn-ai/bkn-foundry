@@ -41,8 +41,9 @@ type BuildTaskService interface {
 
 	// InternalSetProgress persists execution progress if the task status is in allowedStatuses.
 	InternalSetProgress(ctx context.Context, tx *sql.Tx, id string, progress BuildTaskProgress, allowedStatuses []string) (bool, error)
-	// InternalMarkRunning transitions a pending build task to running.
-	InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error)
+	// InternalMarkRunning transitions a pending task and optionally binds its execution target.
+	// A nil indexName preserves the already assigned target.
+	InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string) (bool, error)
 	// InternalMarkFailed transitions a build task in an allowed status to failed. An empty slice uses all active statuses.
 	InternalMarkFailed(ctx context.Context, tx *sql.Tx, id string, detail string, allowedStatuses []string) (bool, error)
 	// InternalMarkCancelled cancels an active build task.

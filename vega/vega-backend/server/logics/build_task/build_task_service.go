@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -43,7 +44,10 @@ var (
 	btService     interfaces.BuildTaskService
 )
 
-const buildTaskDispatchBuffer = 1
+const (
+	buildTaskDispatchBuffer   = 1
+	maxBuildTaskKeyValueBytes = 4096
+)
 
 type buildTaskService struct {
 	appSetting *common.AppSetting
@@ -149,8 +153,8 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Invalid execute type")
 		return "", err
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource, executeType); err != nil {
-		span.SetStatus(codes.Error, "Invalid primary or incremental key fields")
+	if err := validateBuildTaskKeyRequirements(ctx, resource, executeType); err != nil {
+		span.SetStatus(codes.Error, "Build key requirements not met")
 		return "", err
 	}
 	if err := validateBuildTaskDefaultFeatures(ctx, resource); err != nil {
@@ -162,6 +166,20 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 			span.SetStatus(codes.Error, "Incremental baseline unavailable")
 			return "", err
 		}
+	}
+	if executeType == interfaces.BuildTaskExecuteTypeKeys {
+		keys, err := ValidateKeys(resource, req.Keys)
+		if err != nil {
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidKeys).
+				WithErrorDetails(err.Error())
+		}
+		if !resourcelogic.HasWritableLocalIndex(resource) {
+			return "", keysIndexUnavailable(ctx)
+		}
+		req.Keys = keys
+	} else if req.Keys != nil {
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidKeys).
+			WithErrorDetails("keys is only supported for execute_type=keys")
 	}
 	req.ExecuteType = executeType
 
@@ -190,9 +208,11 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", err
 	}
 
-	if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, ""); err != nil {
-		span.SetStatus(codes.Error, "Resource already has active build task")
-		return "", err
+	if executeType != interfaces.BuildTaskExecuteTypeKeys {
+		if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, ""); err != nil {
+			span.SetStatus(codes.Error, "Resource already has active build task")
+			return "", err
+		}
 	}
 
 	buildTask, err := bts.newBuildTaskFromCreateRequest(ctx, resource, req)
@@ -245,7 +265,7 @@ func validateBuildTaskAnalyzers(ctx context.Context, indexManager interfaces.Loc
 	return nil
 }
 
-func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resource, executeType string) error {
+func validateBuildTaskKeyRequirements(ctx context.Context, resource *interfaces.Resource, executeType string) error {
 	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).
 			WithErrorDetails("build task requires at least one primary_key_fields entry")
@@ -254,6 +274,9 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_IncrementalFields).
 			WithErrorDetails("incremental build requires at least one incremental_fields entry")
 	}
+	if len(resource.IndexConfig.IncrementalFields) == 0 {
+		return nil
+	}
 
 	schemaFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, prop := range resource.SchemaDefinition {
@@ -261,21 +284,6 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 			continue
 		}
 		schemaFields[prop.Name] = prop
-	}
-
-	primaryKeys := make(map[string]struct{}, len(resource.IndexConfig.PrimaryKeyFields))
-	for _, fieldName := range resource.IndexConfig.PrimaryKeyFields {
-		prop, exists := schemaFields[fieldName]
-		if !exists {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q is not in the resource schema", fieldName))
-		}
-		if _, duplicate := primaryKeys[fieldName]; duplicate {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields contains duplicate field %q", fieldName))
-		}
-		if !interfaces.IndexConfig_IsPrimaryKeyType(prop.Type) {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q has unsupported type %q", fieldName, prop.Type))
-		}
-		primaryKeys[fieldName] = struct{}{}
 	}
 
 	incrementalKeys := make(map[string]struct{}, len(resource.IndexConfig.IncrementalFields))
@@ -293,6 +301,67 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 		incrementalKeys[fieldName] = struct{}{}
 	}
 	return nil
+}
+
+// ValidateKeys validates complete primary keys and keeps the first occurrence of each tuple.
+func ValidateKeys(resource *interfaces.Resource, keys []map[string]any) ([]map[string]any, error) {
+	if len(keys) == 0 || len(keys) > interfaces.MaxBuildTaskKeys {
+		return nil, fmt.Errorf("keys must contain between 1 and %d entries", interfaces.MaxBuildTaskKeys)
+	}
+	if resource == nil || resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 {
+		return nil, fmt.Errorf("resource primary_key_fields are required")
+	}
+
+	fields := resource.IndexConfig.PrimaryKeyFields
+	schemaTypes := make(map[string]string, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		if property != nil {
+			schemaTypes[property.Name] = property.Type
+		}
+	}
+
+	validated := make([]map[string]any, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for i, key := range keys {
+		if len(key) != len(fields) {
+			return nil, fmt.Errorf("keys[%d] must contain the complete resource primary key", i)
+		}
+		tuple := make([]interfaces.KeyValue, len(fields))
+		for position, field := range fields {
+			value, found := key[field]
+			if !found || value == nil {
+				return nil, fmt.Errorf("keys[%d] has no value for primary key field %q", i, field)
+			}
+			if value, ok := value.(string); ok && (len(value) == 0 || len(value) > maxBuildTaskKeyValueBytes) {
+				return nil, fmt.Errorf("keys[%d] primary key field %q must contain 1 to %d bytes", i, field, maxBuildTaskKeyValueBytes)
+			}
+			normalized, err := interfaces.NormalizeIndexKeyValue(value, schemaTypes[field])
+			if err != nil {
+				// 转换错误可能包含原始主键值，对外只返回失败字段。
+				return nil, fmt.Errorf("keys[%d] primary key field %q does not match the resource schema", i, field)
+			}
+			tuple[position] = interfaces.KeyValue{Key: field, Value: normalized}
+		}
+		fingerprint, err := sonic.MarshalString(tuple)
+		if err != nil {
+			return nil, fmt.Errorf("could not encode keys[%d]", i)
+		}
+		if _, duplicate := seen[fingerprint]; duplicate {
+			continue
+		}
+		seen[fingerprint] = struct{}{}
+		canonicalKey := make(map[string]any, len(fields))
+		for _, pair := range tuple {
+			canonicalKey[pair.Key] = pair.Value
+		}
+		validated = append(validated, canonicalKey)
+	}
+	return validated, nil
+}
+
+func keysIndexUnavailable(ctx context.Context) error {
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_KeysIndexUnavailable).
+		WithErrorDetails("keys build requires an available published local index; run a full build")
 }
 
 // validateConnectorBuildSchema 仅委托源端构建限制，service 不解释数据库原始类型。
@@ -339,7 +408,9 @@ func normalizeCreateBuildTaskExecuteType(ctx context.Context, req *interfaces.Cr
 	if req.ExecuteType == "" {
 		return interfaces.BuildTaskExecuteTypeFull, nil
 	}
-	if req.ExecuteType != interfaces.BuildTaskExecuteTypeIncremental && req.ExecuteType != interfaces.BuildTaskExecuteTypeFull {
+	if req.ExecuteType != interfaces.BuildTaskExecuteTypeIncremental &&
+		req.ExecuteType != interfaces.BuildTaskExecuteTypeFull &&
+		req.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
 		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
 			WithErrorDetails("Invalid execute type")
 	}
@@ -387,6 +458,8 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 		Status:      interfaces.BuildTaskStatusPending,
 		Mode:        req.Mode,
 		ExecuteType: req.ExecuteType,
+		Keys:        req.Keys,
+		TotalCount:  int64(len(req.Keys)),
 		Creator:     accountInfo,
 		CreateTime:  now,
 	}
@@ -397,14 +470,14 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 	}
 	if req.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		buildTask.IndexName = resource.LocalIndexName
-	} else {
+	} else if req.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
 		indexID, err := uuid.NewV7()
 		if err != nil {
 			return nil, fmt.Errorf("generate build index UUIDv7: %w", err)
 		}
 		buildTask.IndexName = fmt.Sprintf("%s-%s", interfaces.BuildIndexPrefix, indexID)
 	}
-	if buildTask.IndexName == "" {
+	if buildTask.IndexName == "" && req.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
 			WithErrorDetails("build task target index is unavailable")
 	}
@@ -508,9 +581,9 @@ func validateIncrementalAdmission(ctx context.Context, resource *interfaces.Reso
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
 			WithErrorDetails("incremental build requires an available published local index")
 	}
-	// The worker recovers a missing checkpoint after claiming the task.
 	if resource.SyncMark == "" {
-		return nil
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails("incremental baseline is missing; run a full build with the current incremental_fields")
 	}
 	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
 	if err != nil {
@@ -609,11 +682,11 @@ func (bts *buildTaskService) InternalSetProgress(ctx context.Context,
 	return bts.bta.SetProgress(ctx, tx, id, progress, allowedStatuses, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string, indexName *string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkRunning")
 	defer span.End()
 
-	return bts.bta.MarkRunning(ctx, tx, id, time.Now().UnixMilli())
+	return bts.bta.MarkRunning(ctx, tx, id, indexName, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, allowedStatuses []string) (bool, error) {
@@ -860,7 +933,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
 	}
-	if strings.TrimSpace(buildTask.IndexName) == "" {
+	if buildTask.ExecuteType != interfaces.BuildTaskExecuteTypeKeys && strings.TrimSpace(buildTask.IndexName) == "" {
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
 			WithErrorDetails("build task has no target index after upgrade; create a new build task instead")
 	}
@@ -869,15 +942,21 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 			WithErrorDetails("incremental build tasks cannot be reset")
 	}
 
+	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeKeys {
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+			WithErrorDetails("keys tasks always retry the complete key set")
+	}
 	if !cat.Enabled {
 		span.SetStatus(codes.Error, "Catalog is disabled")
 		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
 			WithErrorDetails("catalog is disabled")
 	}
 
-	if err := bts.rejectIfResourceHasActiveTask(ctx, buildTask.ResourceID, buildTask.ID); err != nil {
-		span.SetStatus(codes.Error, "Resource already has active build task")
-		return err
+	if buildTask.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
+		if err := bts.rejectIfResourceHasActiveTask(ctx, buildTask.ResourceID, buildTask.ID); err != nil {
+			span.SetStatus(codes.Error, "Resource already has active build task")
+			return err
+		}
 	}
 	if err := bts.validateStartBuildTaskStillCurrent(ctx, buildTask); err != nil {
 		span.SetStatus(codes.Error, "Build task is no longer current")
@@ -927,10 +1006,13 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeKeys && !resourcelogic.HasWritableLocalIndex(resource) {
+		return keysIndexUnavailable(ctx)
+	}
 	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly {
 		return validateIncrementalAdmission(ctx, resource)
 	}
-	if err := validateBuildTaskKeyFields(ctx, resource, buildTask.ExecuteType); err != nil {
+	if err := validateBuildTaskKeyRequirements(ctx, resource, buildTask.ExecuteType); err != nil {
 		return err
 	}
 	if err := validateBuildTaskDefaultFeatures(ctx, resource); err != nil {
