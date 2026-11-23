@@ -152,6 +152,10 @@ class RDSDialect(ABC):
                         else:
                             self.logger.info(f"[SQL] {sql}")
                             cursor.execute(sql)
+                            if token in ("INSERT", "UPDATE", "DELETE", "REPLACE"):
+                                # A guarded statement that matches nothing raises no error, so the
+                                # script still counts as done; the row count makes that visible.
+                                self.logger.info(f"[SQL] {token} affected rows: {getattr(cursor, 'rowcount', None)}")
                 conn.commit()
 
         except Exception as e:
