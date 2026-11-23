@@ -29,11 +29,11 @@ info:
     | --- | --- |
     | `running` | The version in use. Only one. |
     | `history` | A published version that is not running; it can be activated, copied or deprecated. |
-    | `deprecated` | Hidden from normal use; it can be restored. Professional edition. |
+    | `deprecated` | Hidden from normal use; it can be restored. Enterprise edition. |
     | `purged` | Its content was deleted. The record stays, reads answer 410. |
 
-    The Community edition keeps only the running and the previous version: a publish purges the
-    version before the previous one (`purged_version` in the response), and deprecate, restore and
+    The Community and Professional editions keep only the running and the previous version: a
+    publish purges the version before the previous one (`purged_version` in the response), and deprecate, restore and
     purge are refused with 403 `BknBackend.KNVersion.EditionRestricted`. `full_history` in the
     versioning state tells which edition applies.
 
@@ -274,7 +274,7 @@ paths:
         `BknBackend.KNVersion.NothingToPublish` when the draft has no unpublished changes (the first
         version of a network without a running version publishes even without edits), and with 409
         `BknBackend.KNVersion.DraftBaseOutdated` when the running version was switched after the draft
-        took its base, unless `allow_outdated_base` is true. In the Community edition the publish
+        took its base, unless `allow_outdated_base` is true. Below the Enterprise edition the publish
         purges the version before the previous one.
 
         The concept index of the new version is written inside the publish; if that fails the
@@ -512,7 +512,7 @@ paths:
     post:
       tags: [KN Versions]
       summary: Deprecate a version
-      description: Marks a `history` version `deprecated`. Professional edition only (403 `BknBackend.KNVersion.EditionRestricted` otherwise).
+      description: Marks a `history` version `deprecated`. Enterprise edition only (403 `BknBackend.KNVersion.EditionRestricted` otherwise).
       operationId: deprecateKnVersion
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -553,7 +553,7 @@ paths:
     post:
       tags: [KN Versions]
       summary: Restore a deprecated version
-      description: Returns a `deprecated` version to `history`. Professional edition only.
+      description: Returns a `deprecated` version to `history`. Enterprise edition only.
       operationId: restoreKnVersion
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -596,7 +596,7 @@ paths:
       summary: Purge a version
       description: |
         Deletes the content and the concept index of a version permanently; the record stays with
-        status `purged`. Needs `delete` on the network. Professional edition only. The running version
+        status `purged`. Needs `delete` on the network. Enterprise edition only. The running version
         and the version the draft is based on cannot be purged (409 `BknBackend.KNVersion.VersionProtected`).
         Purging a version that is already purged answers 410.
       operationId: purgeKnVersion
@@ -779,8 +779,8 @@ components:
     Forbidden:
       description: |
         No permission on the knowledge network, or `BknBackend.KNVersion.EditionRestricted` (details
-        `edition`) when the Community edition is asked for a version other than the running and the
-        previous one, or for deprecate, restore or purge.
+        `edition`, the edition in force) when an edition below Enterprise is asked for a version other
+        than the running and the previous one, or for deprecate, restore or purge.
       content:
         application/json:
           schema:
@@ -930,7 +930,7 @@ components:
           format: int64
           description: When the status last changed, milliseconds since the epoch.
     PublishResult:
-      description: The new version. In the Community edition `purged_version` names the version the publish purged.
+      description: The new version. Below the Enterprise edition `purged_version` names the version the publish purged.
       allOf:
         - $ref: "#/components/schemas/KnVersion"
         - type: object
@@ -986,7 +986,7 @@ components:
           type: integer
         reason:
           type: string
-          description: "`retention` marks the purge a Community edition publish runs."
+          description: "`retention` marks the purge a publish runs below the Enterprise edition."
         notes:
           type: string
         operator:
