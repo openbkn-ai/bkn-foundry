@@ -93,9 +93,9 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_schema_definition       MEDIUMTEXT NOT NULL COMMENT 'Schema定义（JSON数组格式，包含所有字段信息）',
     f_index_config            MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
 
-    -- LogicalView 专属字段
-    f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '逻辑类型: derived(衍生), composite(复合), 仅LogicalView使用',
-    f_logic_definition        MEDIUMTEXT NOT NULL COMMENT '逻辑定义（JSON格式），仅LogicalView使用',
+    -- LogicalView 与 API 按资源类别复用的定义字段
+    f_logic_type              VARCHAR(20) NOT NULL DEFAULT '' COMMENT '按资源类别保存类型：LogicalView为derived/composite，API为read',
+    f_logic_definition        MEDIUMTEXT NOT NULL COMMENT '按资源类别保存LogicalView或API定义（JSON格式）',
 
     -- Local索引已提交状态
     f_local_status            VARCHAR(20) NOT NULL DEFAULT 'unavailable' COMMENT 'Local index status: unavailable, available, stale',
@@ -207,6 +207,12 @@ FROM DUAL WHERE NOT EXISTS (SELECT f_type FROM t_connector_type WHERE f_type = '
 INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
 SELECT 'anyshare', 'anyshare', 'AnyShare 连接器', 'local', 'fileset', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'anyshare' );
+
+-- Register HTTP only when the type is missing.
+-- Preserve existing registrations, including their metadata and enabled state.
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'http', 'HTTP API', 'HTTP JSON API 连接器', 'local', 'api', TRUE
+FROM DUAL WHERE NOT EXISTS (SELECT f_type FROM t_connector_type WHERE f_type = 'http');
 
 -- ==========================================
 -- 6. t_discover_task 发现任务表

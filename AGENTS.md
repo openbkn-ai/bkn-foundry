@@ -39,3 +39,9 @@ Read this first, then load the rules under [`rules/`](rules/). Before working in
 - Conventional Commits: `type(scope): subject` (`feat` / `fix` / `chore` / `refactor` / `docs` / `test`; scope = service name).
 - Branch from the Issue's "Create a branch"; one PR per Issue, kept small.
 - Branch names must use a valid type prefix and at most two path segments after it: `<type>/<description>`, `<type>/<issue-number>-<description>`, or `<type>/<module>/<description>`; segments start with lowercase letters or digits and may contain `-`, `.`, or `_`.
+
+## Database migration versions
+
+- Generate initialization and upgrade SQL under the version read from the repository-root `VERSION` file. Do not invent or increment a migration version to make a pending script run; a product version change requires explicit authorization.
+- Update that version's complete `init.sql` and append the next available numbered upgrade script. Check the migrator's existing checkpoint selection for installations already on that version, and report unsupported checkpoints rather than silently changing the version or migration executor.
+- Do not add or run tests for SQL migration files unless the user explicitly requests them; review the SQL directly and report any unverified execution behavior.
