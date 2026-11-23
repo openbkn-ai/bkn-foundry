@@ -221,6 +221,13 @@ ToolRef = Annotated[
 ]
 
 
+# Sanity bound for limits.max_output_tokens, in tokens. It only rejects absurd
+# values: the real ceiling is the chosen model's context size, which
+# mf-model-api enforces per call (400 "max_tokens_limit: <n>k"). Not a storage
+# limit; stored values and version snapshots are raw token counts.
+MAX_OUTPUT_TOKENS_UPPER_BOUND = 1_000_000
+
+
 class AgentLimits(BaseModel):
     max_turns: Optional[int] = Field(default=None, ge=1, le=200)
     max_tool_calls: Optional[int] = Field(default=None, ge=0, le=500)
@@ -228,10 +235,20 @@ class AgentLimits(BaseModel):
     # Output token cap for a single model call. Unset means the provider default,
     # commonly around 4096, which truncates long JSON — raise it for large-input
     # scenarios. It is passed through as the OpenAI-compatible max_tokens and is
-    # ultimately bounded by the model's own limit. The lower bound of 10 matches
-    # mf-model-api (logics.py max_tokens: conint(ge=10)): accepting 1..9 would
+    # ultimately bounded by the model's own limit, checked at run time. The
+    # lower bound of 10 matches mf-model-api (logics.py max_tokens:
+    # conint(ge=10)): accepting 1..9 would
     # let the agent be created while every execution failed downstream with 400.
-    max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
+    max_output_tokens: Optional[int] = Field(
+        default=None,
+        ge=10,
+        le=MAX_OUTPUT_TOKENS_UPPER_BOUND,
+        description=(
+            "Output cap of one model call, in tokens (10 to 1000000, a sanity "
+            "bound). The selected model's own limit applies when the Agent runs; "
+            "a value above it fails the run with an upstream max_tokens_limit error."
+        ),
+    )
     # A task with response_format and no tools normally makes a free-form model
     # call first and then a structured call over that turn. True skips the
     # free-form call: the structured call (native, then prompt fallback) reads

@@ -1793,10 +1793,13 @@ components:
         max_output_tokens:
           anyOf:
           - type: integer
-            maximum: 65536.0
+            maximum: 1000000.0
             minimum: 10.0
           - type: 'null'
           title: Max Output Tokens
+          description: Output cap of one model call, in tokens (10 to 1000000, a sanity
+            bound). The selected model's own limit applies when the Agent runs; a
+            value above it fails the run with an upstream max_tokens_limit error.
         single_structured_call:
           anyOf:
           - type: boolean

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `limits.max_output_tokens` is no longer capped at 65536: any value from 10 to 1,000,000 tokens is accepted (a sanity bound), and the chosen model's own limit applies when the Agent runs (mf-model-api answers `max_tokens_limit: <n>k`, passed to the caller as the upstream message of `BknAgent.Model.Rejected`). Stored values and version snapshots stay raw token counts; nothing is migrated (#3339).
 - The 0.2.2 snapshot no longer seeds the BKN project Agents (`bkn-project-requirements`, `bkn-project-answer-judge`, `bkn-project-ontology-ask`, `bkn-project-draft-naming`), and their 0.2.2 prompt deltas were removed. Their ids stay reserved like the knowledge-base Agents, so where present they stay built-in.
 
 ### Added
