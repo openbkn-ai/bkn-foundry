@@ -221,7 +221,7 @@ type ResourcesQueryParams struct {
 	IncludeBuiltin bool
 }
 
-// ResourceCreateRequest represents create resource request.
+// ResourceRequest 定义公开创建和更新的资源元数据，不包含服务端管理的生命周期状态。
 type ResourceRequest struct {
 	ID          string   `json:"id,omitempty"`
 	CatalogID   string   `json:"catalog_id"`
@@ -232,8 +232,7 @@ type ResourceRequest struct {
 	Category string `json:"category"`
 	Builtin  *bool  `json:"built_in,omitempty"`
 
-	Enabled bool   `json:"enabled"`
-	Status  string `json:"status"`
+	Enabled bool `json:"enabled"`
 
 	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
 	SourceIdentifier string         `json:"source_identifier"`           // Source identifier (original table name/path)

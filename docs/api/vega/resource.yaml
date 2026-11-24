@@ -21,6 +21,7 @@ info:
 
     `enabled` 和 `status` 相互独立：`enabled=false` 表示该资源不可用于查询或构建；
     `status` 反映资源的生命周期和最近发现结果，取值为 `active` / `deprecated` / `stale`。
+    `status` 由服务端管理；公开创建初始化为 `active`，普通更新不得改变生命周期状态。
 
     **子资源端点指引**：
 
@@ -156,12 +157,14 @@ paths:
         创建 Resource。`catalog_id` 必填且 catalog 必须存在；不存在返回 404
         `VegaBackend.Resource.CatalogNotFound`。
 
-        - 请求通过公共绑定函数直接绑定 ResourceRequest；未声明字段按默认解码行为忽略。
+        - 请求通过公共绑定函数绑定基础创建字段；未声明字段按默认解码行为忽略。
         - `id` 字段可选；后端在不指定时生成。
         - `category` 必须为支持的取值之一。**仅 `dataset`、`logical_view` 与 `api` 允许通过本 API 创建**；
           其他类别（`table` / `file` / `fileset` / `metric` / `topic` / `index`）由 discover 任务产出，
           直接调用本接口创建会返回 400 `VegaBackend.Resource.CategoryNotCreatable`。
         - `name` 在 catalog 内唯一；冲突返回 409 `VegaBackend.Resource.NameExists`。
+        - 创建请求不提供 `status` 参数，服务端统一初始化为 `active`。
+          请求携带该字段时，与其他未声明字段一样忽略，不参与状态初始化。
         - `category=api` 仅支持专业版及以上的启用物理 API Catalog，必须提交 api_effect_type=read、
           api_definition 和非空 schema_definition。先本地校验，再使用 validation 中本次提供的
           条件和可选分页执行单页只读验证。完整响应、成功条件与字段映射通过后才写入；失败不保存。
@@ -327,7 +330,7 @@ paths:
     put:
       summary: 更新资源
       description: |
-        更新 Resource。请求通过公共绑定函数直接绑定 ResourceRequest；未声明字段按默认解码行为忽略。
+        更新 Resource。请求通过公共绑定函数绑定 ResourceRequest；未声明字段按默认解码行为忽略。
 
         - API 的 api_definition、api_effect_type 和整个 schema_definition 省略或为 null 时保留已有值；
           api_effect_type 的空字符串同样表示保留。实际修改调用定义或字段映射时，使用 validation
@@ -346,7 +349,9 @@ paths:
           查询可用托管本地索引时，整份查询 Schema 由 LIM 按本地映射生成，filterable 委托其本地索引连接器按完整字段 mapping 判定，不继承源字段值。
           现有 OpenSearch 全文算子的通配字段不展开整个 Schema 校验该开关，沿用原字段解析与转换。
         - PUT 中的 `enabled` 不可修改；请使用 `POST /resources/{id}/enable` 或 `/disable`。
-        - PUT 中的 `status`、`schema`、`source_metadata` 由内部流程管理。
+        - PUT 请求不提供 `status` 参数，更新元数据时保留原生命周期状态。
+          请求携带该字段时，与其他未声明字段一样忽略；历史非法状态不可经普通 PUT 修正。
+        - PUT 中的 `schema`、`source_metadata` 由内部流程管理。
         - PUT 忽略 `source_identifier` 并保留已存标识。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
@@ -1255,7 +1260,8 @@ components:
         成功后才保存；失败不写入。普通名称、描述等元数据更新不调用上游且保留已有定义。
         已有 Resource 的定义/映射更新除 modify 外还需 query_data，乐观锁冲突不会部分写入。
         API 不支持 index_config、本地索引 Feature 或用户指定的源身份。
-        创建/更新沿用公共绑定行为，外层及 Property 的未声明字段忽略；旧 logic_type / logic_definition 不作为别名。
+        创建和更新请求均不声明 status；创建时由服务端统一初始化为 active，更新元数据时保留原状态。
+        未声明的外层及 Property 字段（包括 status）沿用公共绑定的忽略行为；旧 logic_type / logic_definition 不作为别名。
         API 更新时 api_definition、api_effect_type、schema_definition 的 null 与省略同义，不清空已有值。
       type: object
       required:
@@ -1315,12 +1321,6 @@ components:
             启停请使用 `/enable` 或 `/disable`。与 `status` 独立。
           type: boolean
           default: true
-        status:
-          type: string
-          enum:
-            - active
-            - deprecated
-            - stale
         schema:
           description: 所属 schema，由发现流程写入
           type: string

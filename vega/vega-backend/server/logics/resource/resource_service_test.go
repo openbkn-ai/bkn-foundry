@@ -1243,6 +1243,7 @@ func TestResourceServiceInternalCreate(t *testing.T) {
 		source := map[string]any{"columns": []interfaces.TableColumnMeta{{Name: "source", Type: "varchar"}}}
 		ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, r *interfaces.Resource) error {
 			assert.Equal(t, "physical-id", r.ID)
+			assert.Equal(t, interfaces.ResourceStatusActive, r.Status)
 			assert.True(t, r.Builtin)
 			assert.True(t, r.Enabled)
 			assert.Equal(t, source, r.SourceMetadata)
@@ -1479,6 +1480,23 @@ func TestResourceServiceCreateLogicalViewPreparation(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
+	t.Run("server managed status", func(t *testing.T) {
+		t.Run("omitted status starts active", func(t *testing.T) {
+			rs, ra, _, ds, _, _, _ := newTestService(t)
+			expectResourceServiceTransaction(t, rs, true)
+			req := &interfaces.ResourceRequest{CatalogID: "cat1", Category: interfaces.ResourceCategoryDataset}
+			ds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+			ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource) error {
+				assert.Equal(t, interfaces.ResourceStatusActive, resource.Status)
+				assert.True(t, resource.Enabled)
+				return nil
+			})
+			got, err := rs.Create(t.Context(), req)
+			require.NoError(t, err)
+			assert.Equal(t, interfaces.ResourceStatusActive, got.Status)
+		})
+
+	})
 	t.Run("API delegates preparation before the generic transaction", func(t *testing.T) {
 		for _, outcome := range []string{"success", "explicit source identifier", "explicit resource ID", "extension failure", "unavailable"} {
 			t.Run(outcome, func(t *testing.T) {
@@ -2613,6 +2631,30 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("metadata update preserves server managed lifecycle", func(t *testing.T) {
+		for _, current := range []string{"active", "deprecated", "stale", "__legacy__"} {
+			t.Run(current, func(t *testing.T) {
+				rs, ra, ps, _, _, cs, _ := newTestService(t)
+				req := &interfaces.ResourceRequest{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "renamed", Enabled: true, ExpectedUpdateTime: 42}
+				resource := &interfaces.Resource{ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable, Name: "original", Enabled: true, Status: current, StatusMessage: "lifecycle message", LastDiscoverStatus: interfaces.DiscoverStatusUnchanged, UpdateTime: 42}
+				before := *resource
+				ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				ra.EXPECT().GetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+				expectResourceServiceTransaction(t, rs, true)
+				cs.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+				ra.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42)).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) (int64, error) {
+					assert.Equal(t, current, saved.Status)
+					assert.Equal(t, before.StatusMessage, saved.StatusMessage)
+					assert.Equal(t, before.LastDiscoverStatus, saved.LastDiscoverStatus)
+					assert.True(t, saved.Enabled)
+					assert.Equal(t, "renamed", saved.Name)
+					assert.Greater(t, saved.UpdateTime, before.UpdateTime)
+					return 1, nil
+				})
+				require.NoError(t, rs.Update(t.Context(), req))
+			})
+		}
+	})
 	t.Run("API preparation preserves Core authorization versioning and exact storage", func(t *testing.T) {
 		for _, outcome := range []string{"metadata", "prepared definition", "extension failure", "unavailable", "modify denied", "stale version", "optimistic conflict", "same millisecond"} {
 			t.Run(outcome, func(t *testing.T) {
@@ -3792,7 +3834,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	t.Run("update ignores source managed field changes", func(t *testing.T) {
+	t.Run("update ignores source metadata changes and preserves lifecycle status", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -3820,7 +3862,6 @@ func TestResourceServiceUpdate(t *testing.T) {
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
-			Status:           interfaces.ResourceStatusStale,
 			Schema:           "archive",
 			SourceIdentifier: "public.customers",
 			SourceMetadata:   map[string]any{"owner": "request"},
