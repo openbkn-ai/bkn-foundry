@@ -87,7 +87,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     else:
                         return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
                 # Refresh the cache with valid JSON.
-                await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
+                await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=60 if is_default else 3600 * 24)
         else:
             # Query the database when the cache is missing or has an unexpected type.
             if not is_default:
@@ -101,7 +101,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
             # Cache the database result as JSON.
             import json
-            await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=3600 * 24)
+            await redis_util.set_str(key=cache_key, value=json.dumps(model_info), expire=60 if is_default else 3600 * 24)
     except Exception as e:
         StandLogger.error(e.args)
         error_dict = DataBaseError.copy()

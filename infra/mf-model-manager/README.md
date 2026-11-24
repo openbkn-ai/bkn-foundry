@@ -45,3 +45,22 @@ the updated manager and API. All API instances must be updated before relying on
 limit enforcement. Old cache rows are refreshed on first use, and edits invalidate
 name, ID and default lookups. A binary rollback can retain the nullable column;
 older API binaries do not enforce the limit.
+
+## Large-model deletion cache consistency
+
+Both deletion routes invalidate name, ID and system-default LLM cache keys after
+committing deletion. Redis invalidation uses the client's existing retries; exhausted
+failures are logged without turning a committed deletion into an HTTP failure.
+The API writes default LLM cache entries with a 60-second TTL to bound stale
+refills and failed invalidation. This is eventual consistency: in-flight calls may
+still use resolved configuration. Existing 24-hour entries retain their original
+TTL until invalidated or expired, so a failed invalidation during rollout can still
+leave a legacy entry. Named and ID lookups retain their existing 24-hour TTL.
+
+Focused regression tests:
+
+```bash
+python3 -m pytest app/test/test_llm_delete_cache.py app/test/test_operation_audit.py -q
+# In infra/mf-model-api:
+python3 -m pytest app/test/test_llm_default_cache.py -q
+```

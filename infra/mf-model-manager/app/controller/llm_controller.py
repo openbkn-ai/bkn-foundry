@@ -155,6 +155,19 @@ async def add_model(schema_para, userId, language, role="", audit_request=None):
             return JSONResponse(status_code=500, content=DataBaseError)
 
 
+async def invalidate_deleted_llm_cache(cache_keys):
+    """Best-effort invalidation after deletion commits; Redis retries internally."""
+    global redis_util
+    try:
+        if redis_util is None:
+            redis_util = await get_redis_util()
+        await redis_util.delete_str(list(dict.fromkeys([
+            *cache_keys, "dip:model-api:llm:default_model_3ed523:list",
+        ])))
+    except Exception as exc:
+        StandLogger.error(f"LLM deletion committed but cache invalidation failed: {exc}")
+
+
 async def remove_model(model_ids, userId, language, role="", audit_request=None):
     try:
         if "model_ids" not in model_ids.keys():
@@ -167,7 +180,8 @@ async def remove_model(model_ids, userId, language, role="", audit_request=None)
         for model_id in model_ids["model_ids"]:
             model_name = model_dict[model_id]
             model_names.append(model_name)
-            cache_key_list.append(f"dip:model-api:llm:{model_name}:list")
+            cache_key_list.extend([f"dip:model-api:llm:{model_name}:list",
+                                   f"dip:model-api:llm:{model_id}:list"])
             if model_id not in model_dict:
                 StandLogger.error(LLMRemoveError["detail"])
                 return JSONResponse(status_code=400, content=LLMRemoveError)
@@ -182,15 +196,11 @@ async def remove_model(model_ids, userId, language, role="", audit_request=None)
                 return JSONResponse(status_code=403, content=error_dict)
         llm_model_dao.delete_model_by_id(model_ids["model_ids"])
         set_operation_audit_target(audit_request, model_ids["model_ids"], model_names)
+        await invalidate_deleted_llm_cache(cache_key_list)
         model_quota_dao.delete_model_quota_by_model_id(model_ids["model_ids"])
         # Remove all bkn-safe authorization policies for the deleted model instances.
         await permission_manager.delete_permission(resource_type="large_model",
                                                    resource_ids=[str(mid) for mid in model_ids["model_ids"]])
-        # Lazily initialize the Redis client.
-        global redis_util
-        if redis_util is None:
-            redis_util = await get_redis_util()
-        await redis_util.delete_str(cache_key_list)
         quota_config_cache_tree.delete_batch(model_ids['model_ids'])
         content = {"status": "ok", "id": model_ids['model_ids']}
         return JSONResponse(status_code=200, content=content)
@@ -213,17 +223,14 @@ async def remove_model_by_name(model_names, userId, language):
         for model_name in model_names["model_names"]:
             model_id = model_dict[model_name]
             model_ids.append(model_id)
-            cache_key_list.append(f"dip:model-api:llm:{model_name}:list")
+            cache_key_list.extend([f"dip:model-api:llm:{model_name}:list",
+                                   f"dip:model-api:llm:{model_id}:list"])
             if model_name not in model_dict:
                 StandLogger.error(LLMRemoveError["detail"])
                 return JSONResponse(status_code=400, content=LLMRemoveError)
         llm_model_dao.delete_model_by_id(model_ids)
 
-        # Lazily initialize the Redis client.
-        global redis_util
-        if redis_util is None:
-            redis_util = await get_redis_util()
-        await redis_util.delete_str(cache_key_list)
+        await invalidate_deleted_llm_cache(cache_key_list)
         content = {"status": "ok", "id": model_ids}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
