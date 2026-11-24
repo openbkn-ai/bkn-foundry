@@ -226,7 +226,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal DataProperties, err", err)
 		return err
@@ -377,12 +377,34 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	return nil
 }
 
+// storedDataProperties is the data property list as a definition stores it: without
+// filterable, which a response projects from the bound resource's schema. A client that
+// saves back the detail it read would otherwise store a copy that goes stale when the
+// resource changes, and the views that read the stored definition would repeat it. The
+// caller's properties are not changed.
+func storedDataProperties(properties []*interfaces.DataProperty) []*interfaces.DataProperty {
+	if properties == nil {
+		return nil
+	}
+	stored := make([]*interfaces.DataProperty, len(properties))
+	for i, property := range properties {
+		if property == nil || property.Filterable == nil {
+			stored[i] = property
+			continue
+		}
+		copied := *property
+		copied.Filterable = nil
+		stored[i] = &copied
+	}
+	return stored
+}
+
 func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
 	if err != nil {
 		return nil, err
 	}
-	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		return nil, err
 	}
@@ -1255,7 +1277,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err
@@ -1446,7 +1468,7 @@ func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		return nil, err
 	}
@@ -1484,7 +1506,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 	)
 
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
+	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err

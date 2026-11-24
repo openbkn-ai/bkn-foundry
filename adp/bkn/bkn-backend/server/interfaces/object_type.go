@@ -198,6 +198,12 @@ type DataProperty struct {
 	// IndexFeatures is populated from the bound Vega resource schema while responding. It is not
 	// accepted from or written to the object type definition.
 	IndexFeatures []ObjectTypeIndexFeature `json:"index_features,omitempty" mapstructure:"-"`
+	// Filterable says whether the bound resource can filter on the mapped field itself, from
+	// the resource's own schema while responding. false means the property can be returned but
+	// a condition on it is refused; index operators such as match and knn read their own index
+	// fields and are listed in condition_operations. It is not accepted from or written to the
+	// object type definition, and is absent when the resource metadata was not read.
+	Filterable *bool `json:"filterable,omitempty" mapstructure:"-"`
 
 	// The BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). They describe what the data
 	// should be, for understanding and display; nothing checks the source data against them. A

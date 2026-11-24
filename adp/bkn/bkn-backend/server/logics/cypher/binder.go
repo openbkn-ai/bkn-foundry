@@ -42,6 +42,11 @@ type Schema struct {
 	// A property at none does not exist for the caller: naming it reads as an
 	// unknown property, and it is never offered as a suggestion.
 	propertyLevels map[string]map[string]string
+
+	// unfilterable lists, per resource, the columns the resource data API
+	// cannot filter on (unfilterable.go). It is set only on the copy of the
+	// schema a query read through that API runs with.
+	unfilterable map[string]map[string]bool
 }
 
 // Visibility answers which of a knowledge network's object types and relation

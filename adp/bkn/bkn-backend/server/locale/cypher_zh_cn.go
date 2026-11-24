@@ -30,5 +30,7 @@ var cypherZhCN = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec 必须在 1 到 {{.max}} 之间（秒），不传则使用服务配置的 {{.max}} 秒。",
 
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceOptionalLink": "查询读到的对象类存放在数据集或索引里，或者分布在多个数据源中。关系类 {{.relation}} 经关联表连接两端，这类数据上它只能写在 MATCH 里，不能写在 OPTIONAL MATCH 里：请改用 MATCH，或分两次查询后合并。",
+		"BknBackend.Cypher.InvalidParameter.Detail.UnfilterableProperty":     "对象类 {{.objectType}} 的属性 {{.property}} 可以返回，但它的数据源不支持按它过滤，不能写在 WHERE 条件里。请改用其他属性（如主键或业务标识）过滤；或者去掉这个条件，返回该属性后再比对取值。",
+		"BknBackend.Cypher.InvalidParameter.Detail.ConditionRejected":        "数据源拒绝了查询里的条件，常见原因是按数据源不支持过滤的属性过滤。请检查 WHERE 里的条件，改用其他属性过滤。",
 	},
 }
