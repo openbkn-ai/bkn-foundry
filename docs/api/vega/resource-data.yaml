@@ -406,14 +406,16 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Forbidden:
-      description: 当前 EE 授权版本不包含逻辑视图功能（`Public.Forbidden`）
+      description: |
+        现存 Resource 缺少当前数据操作所需权限（查询为 `query_data`，写入为 `data_write`）、
+        内置资源访问受限，或当前 EE 授权版本不包含逻辑视图功能（`Public.Forbidden`）。
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
       description: |
-        Resource 或文档不存在。errcode `VegaBackend.Resource.NotFound`；
+        Resource（含已删除资源）或文档不存在。errcode `VegaBackend.Resource.NotFound`；
         通过 `error_details` 字符串区分是 resource 还是 document 找不到。
       content:
         application/json:

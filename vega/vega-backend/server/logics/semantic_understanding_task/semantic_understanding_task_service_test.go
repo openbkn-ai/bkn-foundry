@@ -942,10 +942,15 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		emptyInput    bool
 		permissionErr error
 		wantInput     bool
+		wantErr       bool
 	}{
 		{name: "retains input with query_data", resourceID: "r-1", wantInput: true},
 		{name: "clears input without query_data", resourceID: "r-1", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)},
-		{name: "propagates authorization failure", resourceID: "r-1", permissionErr: errors.New("authorization unavailable")},
+		{name: "clears input for deleted resource", resourceID: "r-1", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)},
+		{name: "clears input for wrapped deleted resource error", resourceID: "r-1", permissionErr: fmt.Errorf("resource check: %w", httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound))},
+		{name: "propagates authorization failure", resourceID: "r-1", permissionErr: errors.New("authorization unavailable"), wantErr: true},
+		{name: "propagates resource read failure", resourceID: "r-1", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed), wantErr: true},
+		{name: "propagates unrelated not found", resourceID: "r-1", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound), wantErr: true},
 		{name: "clears input without a resource"},
 		{name: "skips query_data check for empty input", resourceID: "r-1", emptyInput: true},
 	} {
@@ -972,8 +977,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 				resourceService.EXPECT().CheckResourcePermission(gomock.Any(), tc.resourceID,
 					interfaces.OPERATION_TYPE_QUERY_DATA).Return(tc.permissionErr)
 			}
-			failed := tc.permissionErr != nil && !interfaces.IsPermissionRefusal(tc.permissionErr)
-			if !failed {
+			if !tc.wantErr {
 				catalogService.EXPECT().InternalGetByIDs(gomock.Any(), []string{task.CatalogID}).Return(nil, nil)
 				if tc.resourceID != "" {
 					resourceService.EXPECT().InternalGetByIDs(gomock.Any(), []string{tc.resourceID}).Return(nil, nil)
@@ -983,7 +987,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 
 			got, err := service.GetByID(context.Background(), task.ID)
 
-			if failed {
+			if tc.wantErr {
 				assert.Equal(t, originalInput, task.Input)
 				require.ErrorIs(t, err, tc.permissionErr)
 				assert.Nil(t, got)

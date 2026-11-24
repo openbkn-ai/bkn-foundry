@@ -283,7 +283,9 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
-      description: cursor 不存在、已过期或已完成。
+      description: |
+        查询引用的 Resource（含已删除资源）不存在，返回 `VegaBackend.Resource.NotFound`。
+        cursor 不存在、已过期或已完成时同样返回 404。
       content:
         application/json:
           schema:

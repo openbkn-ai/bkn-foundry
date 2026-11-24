@@ -509,27 +509,60 @@ func TestResourceDataOperationsDoNotRequireViewDetail(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("query uses query_data", func(t *testing.T) {
-		engine := gin.New()
-		ctrl := gomock.NewController(t)
-		rs := vmock.NewMockResourceService(ctrl)
-		rds := vmock.NewMockResourceDataService(ctrl)
-		resource := sampleDatasetResource()
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "res-1").Return(resource, nil)
-		rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
-			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
-		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, rds)
-		handler.RegisterPublic(engine)
+	for _, tc := range []struct {
+		name          string
+		permissionErr error
+		deleted       bool
+		wantStatus    int
+		wantCode      string
+	}{
+		{name: "query uses query_data", wantStatus: http.StatusOK},
+		{name: "deleted resource returns not found", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound), wantStatus: http.StatusNotFound, wantCode: verrors.VegaBackend_Resource_NotFound},
+		{name: "existing resource without query_data remains forbidden", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden), wantStatus: http.StatusForbidden, wantCode: httperrors.PublicError_Forbidden},
+		{name: "resource deleted after authorization returns not found", deleted: true, wantStatus: http.StatusNotFound, wantCode: verrors.VegaBackend_Resource_NotFound},
+		{name: "resource read failure remains internal error", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed), wantStatus: http.StatusInternalServerError, wantCode: verrors.VegaBackend_Resource_InternalError_GetFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := gin.New()
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			rds := vmock.NewMockResourceDataService(ctrl)
+			resource := sampleDatasetResource()
+			rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(tc.permissionErr)
+			if tc.permissionErr == nil {
+				if tc.deleted {
+					resource = nil
+				}
+				rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "res-1").Return(resource, nil)
+			} else {
+				rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			}
+			if tc.wantStatus == http.StatusOK {
+				rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
+					Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{}}, nil)
+			} else {
+				rds.EXPECT().QueryWithPaging(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			}
+			handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, rds)
+			handler.RegisterPublic(engine)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{}`))
-		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		engine.ServeHTTP(w, req)
+			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"mode":"single","offset":0,"limit":2},"need_total":true}`))
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusOK, w.Code)
-	})
+			require.Equal(t, tc.wantStatus, w.Code)
+			if tc.wantCode != "" {
+				var response struct {
+					ErrorCode string `json:"error_code"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+				assert.Equal(t, tc.wantCode, response.ErrorCode)
+				assert.NotContains(t, w.Body.String(), `"entries"`)
+			}
+		})
+	}
 
 	t.Run("document create uses data_write", func(t *testing.T) {
 		engine := gin.New()
