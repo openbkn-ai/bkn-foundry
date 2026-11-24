@@ -8,33 +8,28 @@ const (
 	BknBackend_KnEvent_InvalidParameter  = "BknBackend.KnEvent.InvalidParameter"
 	BknBackend_KnEvent_EventTypeNotFound = "BknBackend.KnEvent.EventTypeNotFound"
 	BknBackend_KnEvent_EventNotFound     = "BknBackend.KnEvent.EventNotFound"
-	BknBackend_KnEvent_EventTypeExisted  = "BknBackend.KnEvent.EventTypeExisted"
 	BknBackend_KnEvent_EventTypeInUse    = "BknBackend.KnEvent.EventTypeInUse"
-	BknBackend_KnEvent_EventClassInUse   = "BknBackend.KnEvent.EventClassInUse"
 	BknBackend_KnEvent_SourceMismatch    = "BknBackend.KnEvent.SourceMismatch"
-	BknBackend_KnEvent_ActionNotAllowed  = "BknBackend.KnEvent.ActionNotAllowed"
-	BknBackend_KnEvent_TooLarge          = "BknBackend.KnEvent.TooLarge"
-	BknBackend_KnEvent_InternalError     = "BknBackend.KnEvent.InternalError"
-
-	BknBackend_KnEvent_RuleToolUnavailable    = "BknBackend.KnEvent.RuleToolUnavailable"
-	BknBackend_KnEvent_RuleToolNotCypherTable = "BknBackend.KnEvent.RuleToolNotCypherTable"
-	BknBackend_KnEvent_RuleChecking           = "BknBackend.KnEvent.RuleChecking"
-	BknBackend_KnEvent_CheckedByPlatform      = "BknBackend.KnEvent.CheckedByPlatform"
+	// BknBackend_KnEvent_RecognitionMismatch refuses a rule check that is not from the class's
+	// record-event action type.
+	BknBackend_KnEvent_RecognitionMismatch = "BknBackend.KnEvent.RecognitionMismatch"
+	// BknBackend_KnEvent_RecognizedByAction refuses to delete a class, or change its subject,
+	// while a record-event action type records it.
+	BknBackend_KnEvent_RecognizedByAction = "BknBackend.KnEvent.RecognizedByAction"
+	BknBackend_KnEvent_ActionNotAllowed   = "BknBackend.KnEvent.ActionNotAllowed"
+	BknBackend_KnEvent_TooLarge           = "BknBackend.KnEvent.TooLarge"
+	BknBackend_KnEvent_InternalError      = "BknBackend.KnEvent.InternalError"
 )
 
 var KnEventErrCodeList = []string{
 	BknBackend_KnEvent_InvalidParameter,
 	BknBackend_KnEvent_EventTypeNotFound,
 	BknBackend_KnEvent_EventNotFound,
-	BknBackend_KnEvent_EventTypeExisted,
 	BknBackend_KnEvent_EventTypeInUse,
-	BknBackend_KnEvent_EventClassInUse,
 	BknBackend_KnEvent_SourceMismatch,
+	BknBackend_KnEvent_RecognitionMismatch,
+	BknBackend_KnEvent_RecognizedByAction,
 	BknBackend_KnEvent_ActionNotAllowed,
 	BknBackend_KnEvent_TooLarge,
 	BknBackend_KnEvent_InternalError,
-	BknBackend_KnEvent_RuleToolUnavailable,
-	BknBackend_KnEvent_RuleToolNotCypherTable,
-	BknBackend_KnEvent_RuleChecking,
-	BknBackend_KnEvent_CheckedByPlatform,
 }

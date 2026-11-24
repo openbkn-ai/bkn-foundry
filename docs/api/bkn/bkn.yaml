@@ -204,8 +204,11 @@ paths:
           in: query
           description: |
             Specification the archive is written in. Left out, a network with a declaration only
-            BKN spec 3.0 can hold is written as 3.0 and every other network as 2.x, byte for byte as
-            before. `2.0` writes 2.x and leaves 3.0 declarations out; `3.0` writes 3.0. A 3.0 export
+            BKN spec 3.0 can hold is written as 3.0, a network with event classes and no such
+            declaration as 2.1, and every other network as 2.x, byte for byte as before. `2.0` writes
+            2.x and leaves 3.0 declarations and event classes out (an event class is written as a
+            plain object type); `2.1` writes 2.x with event classes and leaves 3.0 declarations out;
+            `3.0` writes 3.0, event classes included. A 3.0 export
             first runs the network check and is refused with
             `BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck` while it finds misplaced or invalid
             parameters (the error details are the check result), then reads the written package
@@ -213,7 +216,7 @@ paths:
             `BknBackend.KnowledgeNetwork.ExportNotReadableAsV3` and the reason if it does not.
           schema:
             type: string
-            enum: ['2.0', '3.0']
+            enum: ['2.0', '2.1', '3.0']
         - $ref: "../_shared/kn-version.yaml#/components/parameters/KnVersion"
         - $ref: "../_shared/kn-version.yaml#/components/parameters/DraftRevision"
       responses:

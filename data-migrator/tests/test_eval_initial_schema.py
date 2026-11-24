@@ -17,6 +17,13 @@ from server.migrate.script_selector import ScriptSelector
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "migrations/bkn-backend/mariadb/0.2.2/init.sql"
 UPGRADE = SNAPSHOT.with_name("06-eval-tables.sql")
+# AFTER_EVAL are the upgrade scripts of the version after the eval tables; the
+# last of them ends an upgrade.
+AFTER_EVAL = [
+    SNAPSHOT.with_name("07-kn-event-classes.sql"),
+    SNAPSHOT.with_name("08-kn-event-recognition-actions.sql"),
+]
+LATEST = AFTER_EVAL[-1]
 EVAL_TABLES = {
     "t_bkn_eval_suite",
     "t_bkn_eval_suite_version",
@@ -65,9 +72,9 @@ def test_backend_upgrade_selects_eval_tables(installed_version, last_script):
     assert UPGRADE in selected
     assert SNAPSHOT not in selected
     if installed_version == "0.2.2":
-        assert selected == [UPGRADE]
+        assert selected == [UPGRADE, *AFTER_EVAL]
     completed, _, pending = ScriptSelector(config, logging.getLogger(__name__)).select_upgrade_scripts(
-        "bkn-backend", "0.2.2", "0.2.2/06-eval-tables.sql",
+        "bkn-backend", "0.2.2", "0.2.2/" + LATEST.name,
     )
     assert completed == []
     assert not pending

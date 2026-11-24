@@ -14,6 +14,7 @@ var actionScheduleZhCN = i18n.I18nMessages{
 		"BknBackend.ActionSchedule.InvalidStatus":                     "状态值无效。请检查状态值是否正确。",
 		"BknBackend.ActionSchedule.ActionTypeNotFound":                "行动类不存在。请检查行动类ID是否正确。",
 		"BknBackend.ActionSchedule.NotFound":                          "行动计划不存在。请检查行动计划ID是否正确。",
+		"BknBackend.ActionSchedule.PlatformKept":                      "该行动计划由平台按记录事件的行动类维护，不能修改、停用或删除。请在行动类上修改检查时间。",
 		"BknBackend.ActionSchedule.InternalError":                     "内部错误。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"BknBackend.ActionSchedule.CreateFailed":                      "创建行动计划失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
 		"BknBackend.ActionSchedule.UpdateFailed":                      "更新行动计划失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",

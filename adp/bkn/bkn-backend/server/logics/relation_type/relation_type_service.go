@@ -170,6 +170,11 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		relationType.BKNRawContent = bknsdk.SerializeRelationType(bknRel)
 	}
 
+	if len(relationTypes) > 0 {
+		if err = rts.refuseKindRelations(ctx, relationTypes[0].KNID, relationTypes[0].Branch, relationTypes, nil); err != nil {
+			return []string{}, err
+		}
+	}
 	createRelationTypes, updateRelationTypes, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
 		return []string{}, err
@@ -638,6 +643,10 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 // UpdateRelationType is an interactive update: it keeps the stored declarations its request leaves
 // out.
 func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.Tx, relationType *interfaces.RelationType, strictMode bool) error {
+	if err := rts.refuseKindRelations(ctx, relationType.KNID, relationType.Branch,
+		[]*interfaces.RelationType{relationType}, nil); err != nil {
+		return err
+	}
 	return rts.updateRelationType(ctx, tx, relationType, strictMode, true)
 }
 
@@ -785,6 +794,9 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 
 	rtIDs = common.DuplicateSlice(rtIDs)
 	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
+		return err
+	}
+	if err := rts.refuseKindRelations(ctx, knID, branch, nil, rtIDs); err != nil {
 		return err
 	}
 	if len(rtIDs) == 1 {

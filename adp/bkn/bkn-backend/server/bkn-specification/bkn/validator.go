@@ -253,6 +253,12 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 		if err := validateTags(ot.Tags); err != nil {
 			appendError(result, t, "tags", "invalid_tags", err.Error())
 		}
+		if ot.IsEventClass() {
+			// The platform makes what an event class is bound to and keeps; what it is about is
+			// one of the network's object types.
+			validateEventClassInNetwork(result, t, ot, objectIDs)
+			continue
+		}
 		if !ot.HasDataPropertiesSection {
 			appendError(result, t, "", "missing_section", "ObjectType must include a ### Data Properties section")
 		}
@@ -262,8 +268,18 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 		validateObjectTypeDeep(result, t, ot)
 	}
 
+	eventClasses := map[string]bool{}
+	for _, ot := range doc.ObjectTypes {
+		if ot.IsEventClass() {
+			eventClasses[EventSubjectRelationID(ot.ID)] = true
+		}
+	}
 	for _, rt := range doc.RelationTypes {
 		t := tableName("relation_type", rt.ID)
+		if eventClasses[rt.ID] {
+			appendError(result, t, "", "platform_relation",
+				fmt.Sprintf("relation type %s is kept by the platform for its event class; leave it out of the package", rt.ID))
+		}
 		validateDefFrontmatter(result, t, rt.Type, rt.ID, rt.Name)
 		if err := validateTags(rt.Tags); err != nil {
 			appendError(result, t, "tags", "invalid_tags", err.Error())
@@ -286,6 +302,11 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 		}
 	}
 
+	objectTypes := make(map[string]*BknObjectType, len(doc.ObjectTypes))
+	for _, ot := range doc.ObjectTypes {
+		objectTypes[ot.ID] = ot
+	}
+	recorded := map[string]string{}
 	for _, at := range doc.ActionTypes {
 		t := tableName("action_type", at.ID)
 		validateDefFrontmatter(result, t, at.Type, at.ID, at.Name)
@@ -293,6 +314,12 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 			appendError(result, t, "tags", "invalid_tags", err.Error())
 		}
 		validateActionTypeDeep(result, t, at)
+		if at.IsRecognitionAction() {
+			validateRecognitionAction(result, t, at, objectTypes, recorded)
+		} else if conditionTakesCheckTime(at.TriggerCondition) {
+			appendError(result, t, "trigger_condition", "invalid_action_condition",
+				"check_time and check_date are the time of a recognition action's check: only operation_config.type event takes them")
+		}
 		bo := strings.TrimSpace(at.BoundObject)
 		if bo != "" {
 			if _, ok := objectIDs[bo]; !ok {
@@ -416,6 +443,19 @@ func validateTags(tags []string) error {
 		}
 	}
 	return nil
+}
+
+// validateEventClassInNetwork checks an event class within its network: its configuration, and
+// that its subject is one of the network's object types.
+func validateEventClassInNetwork(result *ValidationResult, table string, ot *BknObjectType, objectIDs map[string]struct{}) {
+	if err := ValidateEventClass(ot); err != nil {
+		appendError(result, table, "event", "invalid_event_class", err.Error())
+		return
+	}
+	if _, ok := objectIDs[ot.Event.Subject]; !ok {
+		appendError(result, table, "event.subject", "invalid_event_subject_ref",
+			fmt.Sprintf("event subject %q is not a defined object type id", ot.Event.Subject))
+	}
 }
 
 func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjectType) {

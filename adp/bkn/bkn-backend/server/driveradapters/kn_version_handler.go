@@ -187,7 +187,7 @@ func (r *restHandler) listKNVersions(c *gin.Context, ctx context.Context) {
 	if !ok {
 		return
 	}
-	query := &interfaces.KNVersionsQuery{Statuses: splitKnEventList(c.Query("status")), Offset: offset, Limit: limit}
+	query := &interfaces.KNVersionsQuery{Statuses: splitKnEventList(c, "status"), Offset: offset, Limit: limit}
 	versions, total, err := r.kvs.ListVersions(ctx, c.Param("kn_id"), query)
 	if err != nil {
 		replyKNVersionError(c, err)

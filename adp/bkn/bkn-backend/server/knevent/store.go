@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -19,19 +20,24 @@ import (
 )
 
 const (
-	typeTable   = "t_kn_event_type"
 	eventTable  = "t_kn_event"
 	changeTable = "t_kn_event_change"
 	checkTable  = "t_kn_event_rule_check"
 	headTable   = "t_kn_event_head"
 
+	objectTypeTable   = "t_object_type"
+	versionStateTable = "t_kn_version_state"
+
+	// runningBranch is the branch a network runs on, read from its version state vs: the running
+	// version of a versioned network, and main for a network without versions or with none
+	// published yet. Events are written and read against the event classes of that branch.
+	runningBranch = "IF(COALESCE(vs.f_running_version, 0) > 0, CONCAT('" + interfaces.VERSION_BRANCH_PREFIX +
+		"', vs.f_running_version), '" + interfaces.MAIN_BRANCH + "')"
+
 	// Rows per multi-row statement, well under MariaDB's 65535 placeholders.
 	eventBatch  = 200
 	changeBatch = 500
 
-	// classLockWait is how many seconds a change of a network's event classes
-	// waits for one in progress elsewhere.
-	classLockWait = 30
 	// lockRelease bounds giving a named lock back once its work is done.
 	lockRelease = 2 * time.Second
 	// lockName is how a named lock is called in MariaDB. Its names are
@@ -39,18 +45,6 @@ const (
 	// server do not wait on each other, and a long name fits.
 	lockName = "SHA2(CONCAT(DATABASE(), ':', ?), 224)"
 )
-
-// errClassesBusy says a change of a network's event classes waited too long
-// for one in progress.
-var errClassesBusy = errors.New("another change of the network's event types is in progress")
-
-var typeColumns = []string{
-	"f_kn_id", "f_code", "f_name", "f_source", "f_subject", "f_severity", "f_merge_hours",
-	"f_rule", "f_rule_version", "f_creator", "f_creator_type", "f_create_time",
-	"f_updater", "f_updater_type", "f_update_time", "f_object_type_id", "f_dataset_id",
-	"f_rule_tool", "f_check_cron", "f_check_timezone", "f_check_subject_id", "f_check_subject_type",
-	"f_next_check_at", "f_check_failures",
-}
 
 var eventColumns = []string{
 	"f_id", "f_kn_id", "f_event_type", "f_title", "f_status", "f_severity", "f_source",
@@ -63,16 +57,21 @@ var eventColumns = []string{
 
 var changeColumns = []string{
 	"f_kn_id", "f_seq", "f_event_id", "f_action", "f_from_status", "f_to_status",
-	"f_actor", "f_actor_type", "f_actor_name", "f_note", "f_time",
+	"f_actor", "f_actor_type", "f_actor_name", "f_note", "f_time", "f_execution_id",
 }
 
 var checkColumns = []string{
-	"f_event_type", "f_status", "f_rule_version", "f_hits", "f_message", "f_last_ok", "f_checked_by", "f_time",
+	"f_event_type", "f_status", "f_rule_version", "f_hits", "f_message", "f_last_ok", "f_last_ok_rule_version",
+	"f_checked_by", "f_time",
 }
 
-// eventFrom joins each event to its type for the type's current name, which
-// is never stored on the event.
-const eventFrom = eventTable + " e LEFT JOIN " + typeTable + " t ON t.f_kn_id = e.f_kn_id AND t.f_code = e.f_event_type"
+// classJoin joins the event e to its class t on the branch the network runs on, for the class's
+// current name, which is never stored on the event.
+const classJoin = " LEFT JOIN " + versionStateTable + " vs ON vs.f_kn_id = e.f_kn_id" +
+	" LEFT JOIN " + objectTypeTable + " t ON t.f_kn_id = e.f_kn_id AND t.f_branch = " + runningBranch +
+	" AND t.f_id = e.f_event_type"
+
+const eventFrom = eventTable + " e" + classJoin
 
 func eventSelectColumns() []string {
 	columns := make([]string, 0, len(eventColumns)+1)
@@ -92,13 +91,10 @@ type scanner interface{ Scan(dest ...any) error }
 // store keeps a network's events, their change feed and its rule checks.
 type store struct {
 	db *sql.DB
-	// classWait is how many seconds a change of a network's event classes
-	// waits for one in progress.
-	classWait int
 }
 
 func newStore(db *sql.DB) *store {
-	return &store{db: db, classWait: classLockWait}
+	return &store{db: db}
 }
 
 func rawJSON(value string) json.RawMessage {
@@ -108,72 +104,49 @@ func rawJSON(value string) json.RawMessage {
 	return json.RawMessage(value)
 }
 
-func scanType(row scanner) (interfaces.KnEventType, error) {
-	var eventType interfaces.KnEventType
-	var rule string
-	var ruleTool sql.NullString
-	var check interfaces.KnEventCheckSchedule
-	var subject interfaces.KnEventCheckSubject
-	err := row.Scan(
-		&eventType.KNID, &eventType.Code, &eventType.Name, &eventType.Source, &eventType.Subject,
-		&eventType.Severity, &eventType.MergeHours, &rule, &eventType.RuleVersion,
-		&eventType.Creator, &eventType.CreatorType, &eventType.CreateTime,
-		&eventType.Updater, &eventType.UpdaterType, &eventType.UpdateTime,
-		&eventType.ObjectTypeID, &eventType.DatasetID,
-		&ruleTool, &check.Cron, &check.Timezone, &subject.ID, &subject.Type,
-		&eventType.NextCheckAt, &eventType.CheckFailures,
-	)
-	if err != nil {
-		return eventType, err
+// eventClass is what the events of a class take from it: the class as the network runs it.
+type eventClass struct {
+	id         string
+	name       string
+	source     string
+	subject    string
+	severity   string
+	mergeHours float64
+}
+
+// readClass reads the event class id of a network on the branch it runs on, reporting false
+// when the network runs no such class: no object type of the ID, or one that is not an event
+// class.
+func readClass(ctx context.Context, q queryer, knID, id string) (eventClass, bool, error) {
+	var name, kinds string
+	var config sql.NullString
+	err := q.QueryRowContext(ctx, "SELECT t.f_name, t.f_kinds, t.f_event FROM "+objectTypeTable+" t"+
+		" LEFT JOIN "+versionStateTable+" vs ON vs.f_kn_id = t.f_kn_id"+
+		" WHERE t.f_kn_id = ? AND t.f_id = ? AND t.f_branch = "+runningBranch, knID, id).
+		Scan(&name, &kinds, &config)
+	if errors.Is(err, sql.ErrNoRows) {
+		return eventClass{}, false, nil
 	}
-	eventType.Rule = rawJSON(rule)
-	if ruleTool.String != "" {
-		var tool interfaces.KnEventRuleTool
-		if err := json.Unmarshal([]byte(ruleTool.String), &tool); err != nil {
-			return eventType, fmt.Errorf("decode rule tool of event type %s: %w", eventType.Code, err)
+	if err != nil {
+		return eventClass{}, false, err
+	}
+	var listed []string
+	if kinds != "" {
+		if err := json.Unmarshal([]byte(kinds), &listed); err != nil {
+			return eventClass{}, false, fmt.Errorf("decode the kinds of object type %s: %w", id, err)
 		}
-		eventType.RuleTool = &tool
 	}
-	if check.Cron != "" {
-		eventType.CheckSchedule = &check
+	if !slices.Contains(listed, interfaces.ObjectTypeKindEvent) || !config.Valid || config.String == "" {
+		return eventClass{}, false, nil
 	}
-	if subject.ID != "" {
-		eventType.CheckSubject = &subject
+	var event interfaces.ObjectTypeEvent
+	if err := json.Unmarshal([]byte(config.String), &event); err != nil {
+		return eventClass{}, false, fmt.Errorf("decode the event configuration of object type %s: %w", id, err)
 	}
-	return eventType, nil
-}
-
-// ruleToolColumn is how a rule tool is stored: NULL for none.
-func ruleToolColumn(tool *interfaces.KnEventRuleTool) (any, error) {
-	if tool == nil {
-		return nil, nil
-	}
-	encoded, err := json.Marshal(tool)
-	if err != nil {
-		return nil, fmt.Errorf("encode rule tool: %w", err)
-	}
-	return string(encoded), nil
-}
-
-// checkColumnsOf are the stored values of a type's platform checks.
-func checkColumnsOf(eventType interfaces.KnEventType) (map[string]any, error) {
-	tool, err := ruleToolColumn(eventType.RuleTool)
-	if err != nil {
-		return nil, err
-	}
-	var check interfaces.KnEventCheckSchedule
-	if eventType.CheckSchedule != nil {
-		check = *eventType.CheckSchedule
-	}
-	var subject interfaces.KnEventCheckSubject
-	if eventType.CheckSubject != nil {
-		subject = *eventType.CheckSubject
-	}
-	return map[string]any{
-		"f_rule_tool": tool, "f_check_cron": check.Cron, "f_check_timezone": check.Timezone,
-		"f_check_subject_id": subject.ID, "f_check_subject_type": subject.Type,
-		"f_next_check_at": eventType.NextCheckAt, "f_check_failures": eventType.CheckFailures,
-	}, nil
+	return eventClass{
+		id: id, name: name, source: event.Source, subject: event.Subject,
+		severity: event.Severity, mergeHours: event.MergeHours,
+	}, true, nil
 }
 
 // scanEvent reads eventSelectColumns after any leading columns.
@@ -225,97 +198,16 @@ func queryEvents(ctx context.Context, q queryer, builder sq.SelectBuilder) ([]*i
 	return events, rows.Err()
 }
 
-func getType(ctx context.Context, q queryer, knID, code string) (interfaces.KnEventType, bool, error) {
-	query, args, err := sq.Select(typeColumns...).From(typeTable).
-		Where(sq.Eq{"f_kn_id": knID, "f_code": code}).ToSql()
-	if err != nil {
-		return interfaces.KnEventType{}, false, err
+// occurredWithin bounds the time events occurred, from inclusive to exclusive; 0 leaves that end
+// open.
+func occurredWithin(where sq.And, column string, from, to int64) sq.And {
+	if from > 0 {
+		where = append(where, sq.GtOrEq{column: from})
 	}
-	eventType, err := scanType(q.QueryRowContext(ctx, query, args...))
-	if errors.Is(err, sql.ErrNoRows) {
-		return interfaces.KnEventType{}, false, nil
+	if to > 0 {
+		where = append(where, sq.Lt{column: to})
 	}
-	return eventType, err == nil, err
-}
-
-func (s *store) listTypes(ctx context.Context, knID string) ([]interfaces.KnEventType, error) {
-	query, args, err := sq.Select(typeColumns...).From(typeTable).
-		Where(sq.Eq{"f_kn_id": knID}).OrderBy("f_code ASC").ToSql()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	types := []interfaces.KnEventType{}
-	for rows.Next() {
-		eventType, err := scanType(rows)
-		if err != nil {
-			return nil, err
-		}
-		types = append(types, eventType)
-	}
-	return types, rows.Err()
-}
-
-func (s *store) getType(ctx context.Context, knID, code string) (interfaces.KnEventType, bool, error) {
-	return getType(ctx, s.db, knID, code)
-}
-
-// createType inserts an event type, reporting false when the code is taken.
-func (w *writer) createType(eventType interfaces.KnEventType) (bool, error) {
-	checks, err := checkColumnsOf(eventType)
-	if err != nil {
-		return false, err
-	}
-	query, args, err := sq.Insert(typeTable).Columns(typeColumns...).Values(
-		eventType.KNID, eventType.Code, eventType.Name, eventType.Source, eventType.Subject,
-		eventType.Severity, eventType.MergeHours, string(eventType.Rule), eventType.RuleVersion,
-		eventType.Creator, eventType.CreatorType, eventType.CreateTime,
-		eventType.Updater, eventType.UpdaterType, eventType.UpdateTime,
-		eventType.ObjectTypeID, eventType.DatasetID,
-		checks["f_rule_tool"], checks["f_check_cron"], checks["f_check_timezone"],
-		checks["f_check_subject_id"], checks["f_check_subject_type"],
-		checks["f_next_check_at"], checks["f_check_failures"],
-	).Suffix("ON DUPLICATE KEY UPDATE f_code = f_code").ToSql()
-	if err != nil {
-		return false, err
-	}
-	result, err := w.tx.ExecContext(w.ctx, query, args...)
-	if err != nil {
-		return false, err
-	}
-	affected, err := result.RowsAffected()
-	return affected == 1, err
-}
-
-// updateType stores what an update may change. A type that moves to another
-// dataset has none of its events there yet; MariaDB assigns in order, so that
-// is decided before the dataset is.
-func (w *writer) updateType(eventType interfaces.KnEventType) error {
-	values, err := checkColumnsOf(eventType)
-	if err != nil {
-		return err
-	}
-	for column, value := range map[string]any{
-		"f_name": eventType.Name, "f_subject": eventType.Subject, "f_severity": eventType.Severity,
-		"f_merge_hours": eventType.MergeHours, "f_rule": string(eventType.Rule), "f_rule_version": eventType.RuleVersion,
-		"f_updater": eventType.Updater, "f_updater_type": eventType.UpdaterType, "f_update_time": eventType.UpdateTime,
-		"f_object_type_id": eventType.ObjectTypeID,
-	} {
-		values[column] = value
-	}
-	query, args, err := sq.Update(typeTable).SetMap(values).
-		Set("f_dataset_synced", sq.Expr("IF(f_dataset_id = ?, f_dataset_synced, 0)", eventType.DatasetID)).
-		Set("f_dataset_id", eventType.DatasetID).
-		Where(sq.Eq{"f_kn_id": eventType.KNID, "f_code": eventType.Code}).ToSql()
-	if err != nil {
-		return err
-	}
-	_, err = w.tx.ExecContext(w.ctx, query, args...)
-	return err
+	return where
 }
 
 func (s *store) listEvents(ctx context.Context, knID string, filter interfaces.KnEventFilter, after *eventCursor) ([]*interfaces.KnEvent, error) {
@@ -329,6 +221,7 @@ func (s *store) listEvents(ctx context.Context, knID string, filter interfaces.K
 	if filter.ObjectKey != "" {
 		where = append(where, sq.Eq{"e.f_object_key": filter.ObjectKey})
 	}
+	where = occurredWithin(where, "e.f_occurred_at", filter.From, filter.To)
 	if after != nil {
 		where = append(where, sq.Or{
 			sq.Lt{"e.f_recorded_at": after.recordedAt},
@@ -337,6 +230,44 @@ func (s *store) listEvents(ctx context.Context, knID string, filter interfaces.K
 	}
 	return queryEvents(ctx, s.db, sq.Select(eventSelectColumns()...).From(eventFrom).Where(where).
 		OrderBy("e.f_recorded_at DESC", "e.f_id DESC").Limit(uint64(filter.Limit)+1))
+}
+
+// countEvents counts the events of each class that occurred in [from, to). A rejected or
+// duplicate report is not an occurrence, nor is what a rule found already there when it first
+// decided: that happened before, at a time nobody knows.
+func (s *store) countEvents(ctx context.Context, knID string, filter interfaces.KnEventStatsFilter) ([]interfaces.KnEventStatEntry, error) {
+	where := sq.And{
+		sq.Eq{"f_kn_id": knID, "f_backlog": false},
+		sq.NotEq{"f_status": []string{interfaces.KnEventRejected, interfaces.KnEventDuplicate}},
+	}
+	if len(filter.EventTypes) > 0 {
+		where = append(where, sq.Eq{"f_event_type": filter.EventTypes})
+	}
+	if filter.ObjectKey != "" {
+		where = append(where, sq.Eq{"f_object_key": filter.ObjectKey})
+	}
+	where = occurredWithin(where, "f_occurred_at", filter.From, filter.To)
+	query, args, err := sq.Select("f_event_type", "COUNT(*)").
+		Column(sq.Expr("COALESCE(SUM(f_status IN (?, ?)), 0)", interfaces.KnEventUnverified, interfaces.KnEventVerified)).
+		Column("MAX(f_occurred_at)").
+		From(eventTable).Where(where).GroupBy("f_event_type").OrderBy("f_event_type ASC").ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	entries := []interfaces.KnEventStatEntry{}
+	for rows.Next() {
+		var entry interfaces.KnEventStatEntry
+		if err := rows.Scan(&entry.EventType, &entry.Count, &entry.OpenCount, &entry.LastOccurredAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
 }
 
 func (s *store) getEvent(ctx context.Context, knID, eventID string) (*interfaces.KnEvent, bool, error) {
@@ -352,6 +283,7 @@ func (s *store) getEvent(ctx context.Context, knID, eventID string) (*interfaces
 func (s *store) history(ctx context.Context, knID, eventID string) ([]interfaces.KnEventTransition, error) {
 	query, args, err := sq.Select(
 		"f_action", "f_from_status", "f_to_status", "f_actor", "f_actor_type", "f_actor_name", "f_note", "f_time",
+		"f_execution_id",
 	).From(changeTable).
 		Where(sq.Eq{"f_event_id": eventID, "f_kn_id": knID}).
 		Where(sq.NotEq{"f_action": interfaces.KnEventChecked}).
@@ -368,7 +300,7 @@ func (s *store) history(ctx context.Context, knID, eventID string) ([]interfaces
 	for rows.Next() {
 		var entry interfaces.KnEventTransition
 		if err := rows.Scan(&entry.Action, &entry.FromStatus, &entry.ToStatus, &entry.Actor,
-			&entry.ActorType, &entry.ActorName, &entry.Note, &entry.Time); err != nil {
+			&entry.ActorType, &entry.ActorName, &entry.Note, &entry.Time, &entry.ExecutionID); err != nil {
 			return nil, err
 		}
 		history = append(history, entry)
@@ -376,9 +308,18 @@ func (s *store) history(ctx context.Context, knID, eventID string) ([]interfaces
 	return history, rows.Err()
 }
 
+// listChecks lists the last checks of the network's rule classes, leaving out a class never
+// checked and one the network no longer runs.
 func (s *store) listChecks(ctx context.Context, knID string) ([]interfaces.KnEventRuleCheck, error) {
-	query, args, err := sq.Select(checkColumns...).From(checkTable).
-		Where(sq.Eq{"f_kn_id": knID}).OrderBy("f_event_type ASC").ToSql()
+	columns := make([]string, 0, len(checkColumns))
+	for _, column := range checkColumns {
+		columns = append(columns, "c."+column)
+	}
+	query, args, err := sq.Select(columns...).
+		From(checkTable + " c LEFT JOIN " + versionStateTable + " vs ON vs.f_kn_id = c.f_kn_id" +
+			" JOIN " + objectTypeTable + " t ON t.f_kn_id = c.f_kn_id AND t.f_branch = " + runningBranch +
+			" AND t.f_id = c.f_event_type").
+		Where(sq.Eq{"c.f_kn_id": knID}).Where(sq.Gt{"c.f_time": 0}).OrderBy("c.f_event_type ASC").ToSql()
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +342,7 @@ func (s *store) listChecks(ctx context.Context, knID string) ([]interfaces.KnEve
 func scanCheck(row scanner) (interfaces.KnEventRuleCheck, error) {
 	var check interfaces.KnEventRuleCheck
 	err := row.Scan(&check.EventType, &check.Status, &check.RuleVersion, &check.Hits,
-		&check.Message, &check.LastOK, &check.CheckedBy, &check.Time)
+		&check.Message, &check.LastOK, &check.LastOKRuleVersion, &check.CheckedBy, &check.Time)
 	return check, err
 }
 
@@ -410,8 +351,7 @@ func scanCheck(row scanner) (interfaces.KnEventRuleCheck, error) {
 func (s *store) listChanges(ctx context.Context, knID string, after int64, limit int) ([]interfaces.KnEventChange, error) {
 	columns := append([]string{"c.f_seq", "c.f_event_id", "c.f_action", "c.f_time"}, eventSelectColumns()...)
 	query, args, err := sq.Select(columns...).
-		From(changeTable + " c JOIN " + eventTable + " e ON e.f_id = c.f_event_id" +
-			" LEFT JOIN " + typeTable + " t ON t.f_kn_id = e.f_kn_id AND t.f_code = e.f_event_type").
+		From(changeTable + " c JOIN " + eventTable + " e ON e.f_id = c.f_event_id" + classJoin).
 		Where(sq.Eq{"c.f_kn_id": knID}).Where(sq.Gt{"c.f_seq": after}).
 		OrderBy("c.f_seq ASC").Limit(uint64(limit)).ToSql()
 	if err != nil {
@@ -436,16 +376,61 @@ func (s *store) listChanges(ctx context.Context, knID string, after int64, limit
 }
 
 // DeleteKnEvents removes a network's events in the transaction that deletes
-// the network. The head row goes first: it waits for a write in progress
-// (events and event types alike), and a write that waited for it finds the
-// network gone.
+// the network. The head row goes first: it waits for a write in progress, and
+// a write that waited for it finds the network gone.
 func (s *store) DeleteKnEvents(ctx context.Context, tx *sql.Tx, knID string) error {
-	for _, table := range []string{headTable, changeTable, eventTable, checkTable, typeTable} {
+	for _, table := range []string{headTable, changeTable, eventTable, checkTable} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE f_kn_id = ?", knID); err != nil {
 			return fmt.Errorf("delete %s of knowledge network %s: %w", table, knID, err)
 		}
 	}
 	return nil
+}
+
+// What an event class keeps beside its definition, written in the transaction that saves or
+// deletes the class.
+
+// classHasEvents reports whether the ledger has events of a class.
+func (s *store) classHasEvents(ctx context.Context, tx *sql.Tx, knID, classID string) (bool, error) {
+	var one int
+	err := tx.QueryRowContext(ctx, "SELECT 1 FROM "+eventTable+" WHERE f_kn_id = ? AND f_event_type = ? LIMIT 1",
+		knID, classID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// holdHead takes a network's head row in tx, as an event write does, so that no event is written
+// until tx ends.
+func (s *store) holdHead(ctx context.Context, tx *sql.Tx, knID string) error {
+	// Made outside the transaction, before anything in it reads the row: a locking read of a row
+	// that is not there would keep its place from the insert.
+	if _, err := s.db.ExecContext(ctx, "INSERT IGNORE INTO "+headTable+" (f_kn_id, f_last_seq) VALUES (?, 0)", knID); err != nil {
+		return err
+	}
+	var last int64
+	return tx.QueryRowContext(ctx, "SELECT f_last_seq FROM "+headTable+" WHERE f_kn_id = ? FOR UPDATE", knID).Scan(&last)
+}
+
+// keepCheckRow makes sure a class has its row of rule checks. reset starts the row over, for a
+// class only now made. synced is what a new row says of the dataset: whether it holds the
+// ledger's events of the class. unsync marks an existing row's dataset as lacking them, for a
+// dataset only now made again.
+func (s *store) keepCheckRow(ctx context.Context, tx *sql.Tx, knID, classID string, reset, synced, unsync bool) error {
+	if reset {
+		if err := s.deleteCheckRow(ctx, tx, knID, classID); err != nil {
+			return err
+		}
+	}
+	_, err := tx.ExecContext(ctx, "INSERT INTO "+checkTable+" (f_kn_id, f_event_type, f_dataset_synced) VALUES (?, ?, ?)"+
+		" ON DUPLICATE KEY UPDATE f_dataset_synced = IF(?, 0, f_dataset_synced)", knID, classID, synced, unsync)
+	return err
+}
+
+func (s *store) deleteCheckRow(ctx context.Context, tx *sql.Tx, knID, classID string) error {
+	_, err := tx.ExecContext(ctx, "DELETE FROM "+checkTable+" WHERE f_kn_id = ? AND f_event_type = ?", knID, classID)
+	return err
 }
 
 // writer is one write transaction of a network's events. It holds the
@@ -497,8 +482,10 @@ func (s *store) write(ctx context.Context, knID string, fn func(*writer) error) 
 	}
 }
 
-func (w *writer) eventType(code string) (interfaces.KnEventType, bool, error) {
-	return getType(w.ctx, w.tx, w.knID, code)
+// eventClass reads a class of the network as it runs it. Under the head row, a class with events
+// cannot be deleted meanwhile.
+func (w *writer) eventClass(id string) (eventClass, bool, error) {
+	return readClass(w.ctx, w.tx, w.knID, id)
 }
 
 // events reads the network's events matching where, oldest first.
@@ -528,13 +515,19 @@ func (w *writer) ruleCheck(eventType string) (*interfaces.KnEventRuleCheck, erro
 	if err != nil {
 		return nil, err
 	}
+	// A row the class was given before it was ever checked records no check.
+	if check.Time == 0 {
+		return nil, nil
+	}
 	return &check, nil
 }
 
+// saveCheck stores the last check of a class. Whether its dataset holds the ledger's events is
+// left as it is; a row made here says it does not, and the dataset is written again.
 func (w *writer) saveCheck(check interfaces.KnEventRuleCheck) error {
 	query, args, err := sq.Insert(checkTable).Columns(append([]string{"f_kn_id"}, checkColumns...)...).Values(
 		w.knID, check.EventType, check.Status, check.RuleVersion, check.Hits,
-		check.Message, check.LastOK, check.CheckedBy, check.Time,
+		check.Message, check.LastOK, check.LastOKRuleVersion, check.CheckedBy, check.Time,
 	).Suffix("ON DUPLICATE KEY UPDATE " + updateAll(checkColumns[1:])).ToSql()
 	if err != nil {
 		return err
@@ -588,7 +581,7 @@ func (w *writer) saveEvents(events []*interfaces.KnEvent) error {
 		)
 		event.Actions = actionsFor(event)
 	}
-	// Events are never moved between networks or types; the rest follows the write.
+	// Events are never moved between networks or classes; the rest follows the write.
 	query, args, err := insert.Suffix("ON DUPLICATE KEY UPDATE " + updateAll(eventColumns[3:])).ToSql()
 	if err != nil {
 		return err
@@ -604,7 +597,7 @@ func (w *writer) appendChanges(changes []change) error {
 		t := entry.transition
 		insert = insert.Values(
 			w.knID, w.seq, entry.event.ID, t.Action, t.FromStatus, t.ToStatus,
-			t.Actor, t.ActorType, t.ActorName, t.Note, t.Time,
+			t.Actor, t.ActorType, t.ActorName, t.Note, t.Time, t.ExecutionID,
 		)
 	}
 	query, args, err := insert.ToSql()
@@ -613,34 +606,6 @@ func (w *writer) appendChanges(changes []change) error {
 	}
 	_, err = w.tx.ExecContext(w.ctx, query, args...)
 	return err
-}
-
-// deleteType removes an event type that no event refers to.
-// hasEvents reports whether events of a type exist.
-func (w *writer) hasEvents(code string) (bool, error) {
-	var one int
-	err := w.tx.QueryRowContext(w.ctx, "SELECT 1 FROM "+eventTable+" WHERE f_kn_id = ? AND f_event_type = ? LIMIT 1",
-		w.knID, code).Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
-func (w *writer) deleteType(code string) (found, inUse bool, err error) {
-	if _, found, err = w.eventType(code); err != nil || !found {
-		return found, false, err
-	}
-	if inUse, err = w.hasEvents(code); err != nil || inUse {
-		return true, inUse, err
-	}
-	for _, table := range []struct{ name, column string }{{typeTable, "f_code"}, {checkTable, "f_event_type"}} {
-		if _, err := w.tx.ExecContext(w.ctx, "DELETE FROM "+table.name+" WHERE f_kn_id = ? AND "+table.column+" = ?",
-			w.knID, code); err != nil {
-			return true, false, err
-		}
-	}
-	return true, false, nil
 }
 
 func updateAll(columns []string) string {
@@ -658,144 +623,63 @@ func updateAll(columns []string) string {
 // replica at a time, which follows each network's feed from where the head
 // row says the datasets have got to.
 
-// setClass stores the class an event type was given outside an update of the
-// type itself. Its events are not in the dataset yet.
-func (w *writer) setClass(code string, class eventClass) error {
-	_, err := w.tx.ExecContext(w.ctx, "UPDATE "+typeTable+
-		" SET f_object_type_id = ?, f_dataset_synced = IF(f_dataset_id = ?, f_dataset_synced, 0), f_dataset_id = ?"+
-		" WHERE f_kn_id = ? AND f_code = ?",
-		class.objectTypeID, class.datasetID, class.datasetID, w.knID, code)
-	return err
+// classRef names an event class of a network.
+type classRef struct {
+	knID string
+	id   string
 }
 
-func (s *store) queryTypes(ctx context.Context, where sq.Sqlizer, limit uint64) ([]interfaces.KnEventType, error) {
-	query, args, err := sq.Select(typeColumns...).From(typeTable).Where(where).
-		OrderBy("f_kn_id ASC", "f_code ASC").Limit(limit).ToSql()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
+// unsyncedClasses lists the classes whose dataset does not hold the events the ledger already
+// had when the class was given it.
+func (s *store) unsyncedClasses(ctx context.Context, limit int) ([]classRef, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT f_kn_id, f_event_type FROM "+checkTable+
+		" WHERE f_dataset_synced = 0 ORDER BY f_kn_id, f_event_type LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	types := []interfaces.KnEventType{}
+	classes := []classRef{}
 	for rows.Next() {
-		eventType, err := scanType(rows)
-		if err != nil {
+		var class classRef
+		if err := rows.Scan(&class.knID, &class.id); err != nil {
 			return nil, err
 		}
-		types = append(types, eventType)
-	}
-	return types, rows.Err()
-}
-
-// dueTypes lists the event types whose platform check is due at now, the
-// longest due first.
-func (s *store) dueTypes(ctx context.Context, now int64, limit int) ([]interfaces.KnEventType, error) {
-	query, args, err := sq.Select("f_kn_id", "f_code").From(typeTable).
-		Where(sq.And{sq.Gt{"f_next_check_at": 0}, sq.LtOrEq{"f_next_check_at": now}}).
-		OrderBy("f_next_check_at ASC").Limit(uint64(limit)).ToSql()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	due := []interfaces.KnEventType{}
-	for rows.Next() {
-		var eventType interfaces.KnEventType
-		if err := rows.Scan(&eventType.KNID, &eventType.Code); err != nil {
-			return nil, err
-		}
-		due = append(due, eventType)
-	}
-	return due, rows.Err()
-}
-
-// setCheckState keeps what a platform check leaves on its type. The type's
-// definition is not changed, nor its update time.
-func (w *writer) setCheckState(code, ruleVersion string, failures int, next int64) error {
-	_, err := w.tx.ExecContext(w.ctx, "UPDATE "+typeTable+
-		" SET f_rule_version = ?, f_check_failures = ?, f_next_check_at = ? WHERE f_kn_id = ? AND f_code = ?",
-		ruleVersion, failures, next, w.knID, code)
-	return err
-}
-
-// classlessTypes lists event types that have no class yet: those created
-// before events were object types.
-func (s *store) classlessTypes(ctx context.Context, limit int) ([]interfaces.KnEventType, error) {
-	return s.queryTypes(ctx, sq.Eq{"f_object_type_id": ""}, uint64(limit))
-}
-
-// unsyncedTypes lists event types whose dataset does not hold the events the
-// ledger already had when the type was given it.
-func (s *store) unsyncedTypes(ctx context.Context, limit int) ([]interfaces.KnEventType, error) {
-	return s.queryTypes(ctx, sq.And{sq.NotEq{"f_dataset_id": ""}, sq.Eq{"f_dataset_synced": 0}}, uint64(limit))
-}
-
-// classesOf maps the event types of a network to their classes, "" for a type
-// that has none.
-func (s *store) classesOf(ctx context.Context, knID string) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT f_code, f_object_type_id FROM "+typeTable+" WHERE f_kn_id = ?", knID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	classes := map[string]string{}
-	for rows.Next() {
-		var code, class string
-		if err := rows.Scan(&code, &class); err != nil {
-			return nil, err
-		}
-		classes[code] = class
+		classes = append(classes, class)
 	}
 	return classes, rows.Err()
 }
 
-// forgetClass leaves an event type without the class it had, which may be
-// gone: the type is then given its class again, as one from before events were
-// object types is. Its events are not written to the dataset meanwhile, and
-// are all written once it has the dataset again.
-func (s *store) forgetClass(ctx context.Context, knID, code, objectTypeID string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE "+typeTable+" SET f_object_type_id = '', f_dataset_id = '', f_dataset_synced = 0"+
-		" WHERE f_kn_id = ? AND f_code = ? AND f_object_type_id = ?", knID, code, objectTypeID)
-	return err
-}
-
-// datasetsOf maps the event types of a network to their datasets.
-func (s *store) datasetsOf(ctx context.Context, knID string) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT f_code, f_dataset_id FROM "+typeTable+" WHERE f_kn_id = ? AND f_dataset_id <> ''", knID)
+// classesOf lists the classes of a network that have a dataset: every class ever saved, until it
+// is deleted.
+func (s *store) classesOf(ctx context.Context, knID string) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT f_event_type FROM "+checkTable+" WHERE f_kn_id = ?", knID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	datasets := map[string]string{}
+	classes := map[string]bool{}
 	for rows.Next() {
-		var code, dataset string
-		if err := rows.Scan(&code, &dataset); err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		datasets[code] = dataset
+		classes[id] = true
 	}
-	return datasets, rows.Err()
+	return classes, rows.Err()
 }
 
-// setSynced records whether a type's dataset holds the ledger's events of the
-// type. It leaves a type alone that has been moved to another dataset since.
-func (s *store) setSynced(ctx context.Context, knID, code, datasetID string, synced bool) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE "+typeTable+" SET f_dataset_synced = ? WHERE f_kn_id = ? AND f_code = ? AND f_dataset_id = ?",
-		synced, knID, code, datasetID)
+// setSynced records whether a class's dataset holds the ledger's events of the class.
+func (s *store) setSynced(ctx context.Context, knID, classID string, synced bool) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE "+checkTable+" SET f_dataset_synced = ? WHERE f_kn_id = ? AND f_event_type = ?",
+		synced, knID, classID)
 	return err
 }
 
-// eventsOfType reads a page of a type's events from the ledger, in the order
-// of their IDs, after one of them.
-func (s *store) eventsOfType(ctx context.Context, knID, code, afterID string, limit int) ([]*interfaces.KnEvent, error) {
+// eventsOfClass reads a page of a class's events from the ledger, in the order of their IDs,
+// after one of them.
+func (s *store) eventsOfClass(ctx context.Context, knID, classID, afterID string, limit int) ([]*interfaces.KnEvent, error) {
 	return queryEvents(ctx, s.db, sq.Select(eventSelectColumns()...).From(eventFrom).
-		Where(sq.Eq{"e.f_kn_id": knID, "e.f_event_type": code}).Where(sq.Gt{"e.f_id": afterID}).
+		Where(sq.Eq{"e.f_kn_id": knID, "e.f_event_type": classID}).Where(sq.Gt{"e.f_id": afterID}).
 		OrderBy("e.f_id ASC").Limit(uint64(limit)))
 }
 
@@ -839,21 +723,6 @@ func (s *store) alone(ctx context.Context, name string, fn func() error) (ran bo
 	return s.locked(ctx, name, 0, fn)
 }
 
-// classLock names the lock of a network's event classes. Whatever makes,
-// changes or removes a class holds it, from reading what the network has to
-// storing the type: a class is written outside the head lock, and two codes
-// can stand for one class.
-func classLock(knID string) string { return "bkn_kn_event_class:" + knID }
-
-// exclusive runs fn holding the named lock, waiting for whoever holds it.
-func (s *store) exclusive(ctx context.Context, name string, fn func() error) error {
-	ran, err := s.locked(ctx, name, s.classWait, fn)
-	if err == nil && !ran {
-		return errClassesBusy
-	}
-	return err
-}
-
 // locked runs fn holding a named lock, waiting up to wait seconds for it, and
 // reports whether it got the lock. The lock belongs to a connection of its
 // own; fn's own statements use others.
@@ -880,4 +749,29 @@ func (s *store) locked(ctx context.Context, name string, wait int, fn func() err
 		}
 	}()
 	return true, fn()
+}
+
+// recognitionActions lists the record-event action types of a class in a branch, in tx when it is
+// given, so a save sees what the transaction has deleted.
+func (s *store) recognitionActions(ctx context.Context, tx *sql.Tx, knID, branch, classID string) ([]string, error) {
+	var q queryer = s.db
+	if tx != nil {
+		q = tx
+	}
+	rows, err := q.QueryContext(ctx, "SELECT f_id FROM t_action_type WHERE f_kn_id = ? AND f_branch = ?"+
+		" AND JSON_VALUE(f_operation_config, '$.type') = ? AND JSON_VALUE(f_operation_config, '$.event_class') = ?"+
+		" ORDER BY f_id", knID, branch, interfaces.ActionOperationEvent, classID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }

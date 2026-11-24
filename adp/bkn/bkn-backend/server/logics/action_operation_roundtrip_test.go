@@ -5,6 +5,7 @@
 package logics
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -52,4 +53,46 @@ func TestActionTypedConstantsSurviveBKNRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 		require.JSONEq(t, string(expected), string(actual))
 	}
+}
+
+// A recognition action travels in a 2.1 package with its event class, targets and time zone; what
+// the platform keeps of it does not.
+func TestRecognitionActionBKNRoundTrip(t *testing.T) {
+	at := &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
+		ATID: "late_order_check", ATName: "识别订单超期", ActionType: "add", ActionIntent: "add", ObjectTypeID: "order",
+		OperationConfig: &interfaces.ActionOperationConfig{
+			Type: interfaces.ActionOperationEvent, EventClass: "late_order",
+			Targets: &interfaces.ActionEventTargets{Cypher: &interfaces.ActionCypherTargets{
+				Query: "MATCH (o:order) WHERE o.due < $since\nRETURN o",
+				Parameters: map[string]interfaces.ActionTargetParameter{
+					"since": {ValueFrom: "check_time", Value: "-PT48H"},
+					"state": {ValueFrom: "const", Value: "待发货"},
+				},
+			}},
+		},
+		Schedule: interfaces.Schedule{Type: interfaces.ActionScheduleCron, Expression: "0 8 * * *", Timezone: "Asia/Shanghai"},
+	},
+		ExecutionSubject: &interfaces.AccountInfo{ID: "u1", Type: "user"},
+		RuleVersion:      "a1b2c3d4e5f6",
+		Trial:            &interfaces.ActionEventTrial{Subject: "order"},
+	}
+	network := &bkn.BknNetwork{
+		BknNetworkFrontmatter: bkn.BknNetworkFrontmatter{Type: "knowledge_network", ID: "kn", Name: "kn"},
+		ActionTypes:           []*bkn.BknActionType{ToBKNActionType(at)},
+	}
+	network.BknSpec = bkn.BknSpecV21
+	var buf bytes.Buffer
+	require.NoError(t, bkn.WriteNetworkToTar(network, &buf))
+	require.NotContains(t, buf.String(), "a1b2c3d4e5f6", "the rule version is the platform's")
+	require.NotContains(t, buf.String(), "execution_subject")
+	loaded, err := bkn.LoadNetworkFromTar(bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	require.Len(t, loaded.ActionTypes, 1)
+	restored := ToADPActionType("kn", "main", loaded.ActionTypes[0])
+	require.Equal(t, at.OperationConfig, restored.OperationConfig)
+	require.Equal(t, at.Schedule, restored.Schedule)
+	require.Nil(t, restored.ExecutionSubject)
+	require.Empty(t, restored.RuleVersion)
+	require.Nil(t, restored.Trial)
+	require.NoError(t, interfaces.ValidateActionOperation(restored))
 }

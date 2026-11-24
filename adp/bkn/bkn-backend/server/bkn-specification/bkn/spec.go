@@ -14,12 +14,15 @@ import (
 
 // A package declares the specification it is written in with bkn_spec in network.bkn. The
 // declaration exists so the format can be fixed without changing how any existing package reads:
-// a package without it is read by the 2.x rules forever, and only a package that opts in gets the
-// corrected 3.0 rules. A version this parser does not know is refused rather than read by a guess.
+// a package without it is read by the 2.x rules forever, and only a package that opts in gets
+// what a later version adds: 2.1 the event classes, 3.0 the corrected rules and the declarations.
+// A version this parser does not know is refused rather than read by a guess.
 const (
 	// BknSpecLegacy is the version of a package that declares none.
 	BknSpecLegacy = ""
-	// BknSpecV3 is the 3.0 specification.
+	// BknSpecV21 is the 2.1 specification: the 2.x rules, and event classes (SPECIFICATION.md §6.9).
+	BknSpecV21 = "2.1"
+	// BknSpecV3 is the 3.0 specification, which has event classes too.
 	BknSpecV3 = "3.0"
 )
 
@@ -127,10 +130,12 @@ func normalizeBknSpec(raw any) (string, error) {
 	switch m[1] + "." + minor {
 	case "2.0":
 		return BknSpecLegacy, nil
+	case BknSpecV21:
+		return BknSpecV21, nil
 	case BknSpecV3:
 		return BknSpecV3, nil
 	}
-	return "", specErrorf("unsupported bkn_spec %q: this parser reads 2.0 and 3.0", text)
+	return "", specErrorf("unsupported bkn_spec %q: this parser reads 2.0, 2.1 and 3.0", text)
 }
 
 // parseOptions carries what a definition file is parsed under. The zero value is the 2.x rules,
@@ -140,6 +145,9 @@ type parseOptions struct {
 }
 
 func (o parseOptions) v3() bool { return o.spec == BknSpecV3 }
+
+// eventClasses reports whether the package may carry event classes: from 2.1 (§6.9).
+func (o parseOptions) eventClasses() bool { return o.spec == BknSpecV21 || o.spec == BknSpecV3 }
 
 // knownActionSections returns the action type sections that are parsed, and so kept out of the
 // description. Under 3.0 the older Tool Configuration title is one of them; under 2.x it is still
@@ -173,17 +181,21 @@ func (o parseOptions) knownRelationSections() map[string]bool {
 	return known
 }
 
-// knownObjectSections returns the object type sections that are parsed. 3.0 adds Property
-// Constraints; under 2.x it is an unknown section and goes into the description, as it always did.
+// knownObjectSections returns the object type sections that are parsed. 2.1 adds Event and 3.0
+// Property Constraints too; under 2.0 they are unknown sections and go into the description, as
+// they always did.
 func (o parseOptions) knownObjectSections() map[string]bool {
-	if !o.v3() {
+	if !o.eventClasses() {
 		return knownObjectTypeSections
 	}
-	known := make(map[string]bool, len(knownObjectTypeSections)+1)
+	known := make(map[string]bool, len(knownObjectTypeSections)+2)
 	for title := range knownObjectTypeSections {
 		known[title] = true
 	}
-	known["Property Constraints"] = true
+	known[eventSectionTitle] = true
+	if o.v3() {
+		known["Property Constraints"] = true
+	}
 	return known
 }
 

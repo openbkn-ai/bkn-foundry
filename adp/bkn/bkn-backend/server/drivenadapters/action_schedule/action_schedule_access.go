@@ -112,6 +112,10 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		columns = append(columns, "f_execution_subject", "f_execution_subject_type")
 		values = append(values, schedule.ExecutionSubject.ID, schedule.ExecutionSubject.Type)
 	}
+	if schedule.Source != "" {
+		columns = append(columns, "f_source")
+		values = append(values, schedule.Source)
+	}
 	sqlStr, vals, err := sq.Insert(SCHEDULE_TABLE_NAME).Columns(columns...).Values(values...).ToSql()
 	if err != nil {
 		logger.Errorf("Failed to build insert sql: %s", common.SafeErrorSummary(err))
@@ -385,6 +389,9 @@ func (a *actionScheduleAccess) ListSchedules(ctx context.Context, query interfac
 	if query.Status != "" {
 		builder = builder.Where(sq.Eq{"f_status": query.Status})
 	}
+	if query.Source != "" {
+		builder = builder.Where(sq.Eq{"f_source": query.Source})
+	}
 
 	if query.Sort != "" {
 		orderBy, err := common.SafeOrderBy(query.Sort, query.Direction)
@@ -451,6 +458,9 @@ func (a *actionScheduleAccess) GetSchedulesTotal(ctx context.Context, queryParam
 	}
 	if queryParams.Status != "" {
 		query = query.Where(sq.Eq{"f_status": queryParams.Status})
+	}
+	if queryParams.Source != "" {
+		query = query.Where(sq.Eq{"f_source": queryParams.Source})
 	}
 
 	sqlStr, vals, err := query.ToSql()
@@ -608,7 +618,7 @@ func (a *actionScheduleAccess) buildSelectQuery() sq.SelectBuilder {
 		"f_updater_type",
 		"f_update_time",
 	}
-	columns = append(columns, "f_execution_subject", "f_execution_subject_type")
+	columns = append(columns, "f_execution_subject", "f_execution_subject_type", "f_source")
 	return sq.Select(columns...).From(SCHEDULE_TABLE_NAME)
 }
 
@@ -646,7 +656,7 @@ func (a *actionScheduleAccess) scanScheduleValue(scanner scheduleScanner) (*inte
 		&schedule.Updater.Type,
 		&schedule.UpdateTime,
 	}
-	destinations = append(destinations, &schedule.ExecutionSubject.ID, &schedule.ExecutionSubject.Type)
+	destinations = append(destinations, &schedule.ExecutionSubject.ID, &schedule.ExecutionSubject.Type, &schedule.Source)
 	err := scanner.Scan(destinations...)
 	if err != nil {
 		return nil, err

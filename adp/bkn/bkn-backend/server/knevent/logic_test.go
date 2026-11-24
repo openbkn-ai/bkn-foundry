@@ -25,8 +25,8 @@ func testOp(now int64) op {
 	}
 }
 
-var ruleType = interfaces.KnEventType{Code: "low_stock", Name: "低库存", Source: interfaces.KnEventSourceRule, Subject: "sku", Severity: "high"}
-var reportType = interfaces.KnEventType{Code: "late_order", Name: "订单超期", Source: interfaces.KnEventSourceReport, Subject: "order", MergeHours: 2}
+var ruleType = eventClass{id: "low_stock", name: "低库存", source: interfaces.KnEventSourceRule, subject: "sku", severity: "high"}
+var reportType = eventClass{id: "late_order", name: "订单超期", source: interfaces.KnEventSourceReport, subject: "order", mergeHours: 2}
 
 func actions(changes []change) []string {
 	out := []string{}
@@ -123,7 +123,7 @@ func TestReportEvent(t *testing.T) {
 	}
 	for _, test := range []struct {
 		name        string
-		eventType   interfaces.KnEventType
+		eventType   eventClass
 		input       interfaces.KnEventReportInput
 		open        []*interfaces.KnEvent
 		wantStatus  string
@@ -159,7 +159,7 @@ func TestReportEvent(t *testing.T) {
 			wantStatus: "unverified", wantActions: []string{"PO-1:reported"},
 		},
 		{
-			name: "no merge window", eventType: interfaces.KnEventType{Code: "late_order", Name: "订单超期", Source: "report"},
+			name: "no merge window", eventType: eventClass{id: "late_order", name: "订单超期", source: "report"},
 			input:      interfaces.KnEventReportInput{Title: "t", ObjectKey: "PO-1", OccurredAt: 10 * hour},
 			open:       []*interfaces.KnEvent{open("old", "verified", 10*hour)},
 			wantStatus: "unverified", wantActions: []string{"PO-1:reported"},
@@ -186,14 +186,14 @@ func TestReportEvent(t *testing.T) {
 				t.Fatalf("reported transition %+v", changes[0].transition)
 			}
 			if event.ReportedBy != "u1" || event.ReportedByName != "Alice" || event.Source != "report" ||
-				event.EventTypeName != test.eventType.Name || event.Revision != 1 || event.RecordedAt != 20*hour {
+				event.EventTypeName != test.eventType.name || event.Revision != 1 || event.RecordedAt != 20*hour {
 				t.Fatalf("event %+v", event)
 			}
 			if test.input.OccurredAt == 0 && event.OccurredAt != 20*hour {
 				t.Fatalf("occurred_at %d, want the recording time", event.OccurredAt)
 			}
-			if test.input.ObjectKey != "" && (event.ObjectType != test.eventType.Subject || event.ObjectName != test.input.ObjectKey) {
-				t.Fatalf("object %s/%s, want %s/%s", event.ObjectType, event.ObjectName, test.eventType.Subject, test.input.ObjectKey)
+			if test.input.ObjectKey != "" && (event.ObjectType != test.eventType.subject || event.ObjectName != test.input.ObjectKey) {
+				t.Fatalf("object %s/%s, want %s/%s", event.ObjectType, event.ObjectName, test.eventType.subject, test.input.ObjectKey)
 			}
 			if test.wantStatus == "verified" && (event.VerifiedBy != "u1" || event.VerifiedByType != "user" || event.VerifiedAt != 20*hour) {
 				t.Fatalf("the reporter did not verify: %+v", event)
@@ -220,7 +220,7 @@ func TestApplyRuleCheck(t *testing.T) {
 		}
 		return input
 	}
-	okCheck := &interfaces.KnEventRuleCheck{Status: "ok", Time: 50}
+	okCheck := &interfaces.KnEventRuleCheck{Status: "ok", Time: 50, LastOKRuleVersion: "v1"}
 	for _, test := range []struct {
 		name        string
 		previous    *interfaces.KnEventRuleCheck
@@ -244,8 +244,13 @@ func TestApplyRuleCheck(t *testing.T) {
 			wantActions: []string{"A:detected"}, wantHits: 1,
 		},
 		{
-			name: "after an undecided check hits are still new", previous: &interfaces.KnEventRuleCheck{Status: "unknown", LastOK: 30, Time: 40},
-			input: ok("v1", "A"), wantActions: []string{"A:detected"}, wantHits: 1,
+			name:     "after an undecided check hits are still new",
+			previous: &interfaces.KnEventRuleCheck{Status: "unknown", LastOK: 30, LastOKRuleVersion: "v1", Time: 40},
+			input:    ok("v1", "A"), wantActions: []string{"A:detected"}, wantHits: 1,
+		},
+		{
+			name: "the first decision of a changed rule finds a backlog", previous: okCheck, input: ok("v2", "A"),
+			wantActions: []string{"A:detected"}, wantBacklog: true, wantHits: 1,
 		},
 		{
 			name: "a repeated hit refreshes, a miss recovers", previous: okCheck,
@@ -324,7 +329,7 @@ func TestApplyRuleCheck(t *testing.T) {
 				}
 			}
 			want := interfaces.KnEventRuleCheck{EventType: "low_stock", Status: "ok", RuleVersion: test.input.RuleVersion,
-				Hits: test.wantHits, LastOK: 100, CheckedBy: "u1", Time: 100}
+				Hits: test.wantHits, LastOK: 100, LastOKRuleVersion: test.input.RuleVersion, CheckedBy: "u1", Time: 100}
 			if check != want {
 				t.Fatalf("check %+v, want %+v", check, want)
 			}
@@ -349,7 +354,7 @@ func TestRuleHitMergesAttributes(t *testing.T) {
 
 func TestUndecidedRuleCheckIsNotARecovery(t *testing.T) {
 	mine := []*interfaces.KnEvent{ruleEvent("A", "verified", "v1", 0), ruleEvent("B", "closed", "v1", 0)}
-	previous := &interfaces.KnEventRuleCheck{Status: "ok", Time: 60}
+	previous := &interfaces.KnEventRuleCheck{Status: "ok", Time: 60, LastOKRuleVersion: "v1"}
 	input := interfaces.KnEventRuleCheckInput{EventType: "low_stock", RuleVersion: "v2", Status: "unknown", Message: "source offline",
 		Hits: []interfaces.KnEventRuleHit{{Key: "C"}}}
 	changes, check := applyRuleCheck(ruleType, previous, mine, input, testOp(100))
@@ -364,8 +369,9 @@ func TestUndecidedRuleCheckIsNotARecovery(t *testing.T) {
 	if mine[0].Status != "verified" || mine[1].Status != "closed" {
 		t.Fatalf("statuses changed: %s %s", mine[0].Status, mine[1].Status)
 	}
+	// It keeps the version the rule last decided with, too: v2 has not decided yet.
 	want := interfaces.KnEventRuleCheck{EventType: "low_stock", Status: "unknown", RuleVersion: "v2", Message: "source offline",
-		LastOK: 60, CheckedBy: "u1", Time: 100}
+		LastOK: 60, LastOKRuleVersion: "v1", CheckedBy: "u1", Time: 100}
 	if check != want {
 		t.Fatalf("check %+v, want %+v", check, want)
 	}

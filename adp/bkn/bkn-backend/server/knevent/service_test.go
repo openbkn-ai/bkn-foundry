@@ -89,29 +89,6 @@ var calls = []struct {
 	operation string
 	call      func(*service, context.Context, string) error
 }{
-	{"list types", "view_detail", func(s *service, ctx context.Context, kn string) error {
-		_, err := s.ListEventTypes(ctx, kn)
-		return err
-	}},
-	{"get type", "view_detail", func(s *service, ctx context.Context, kn string) error {
-		_, err := s.GetEventType(ctx, kn, "t")
-		return err
-	}},
-	{"create type", "modify", func(s *service, ctx context.Context, kn string) error {
-		_, err := s.CreateEventType(ctx, kn, interfaces.KnEventTypeInput{Code: "t", Name: "T", Source: "rule"})
-		return err
-	}},
-	{"update type", "modify", func(s *service, ctx context.Context, kn string) error {
-		_, err := s.UpdateEventType(ctx, kn, "t", interfaces.KnEventTypeInput{Name: "T"})
-		return err
-	}},
-	{"delete type", "modify", func(s *service, ctx context.Context, kn string) error {
-		return s.DeleteEventType(ctx, kn, "t")
-	}},
-	{"check type", "modify", func(s *service, ctx context.Context, kn string) error {
-		_, err := s.CheckEventType(ctx, kn, "t")
-		return err
-	}},
 	{"list events", "query_data", func(s *service, ctx context.Context, kn string) error {
 		_, err := s.ListEvents(ctx, kn, interfaces.KnEventFilter{})
 		return err
@@ -134,6 +111,10 @@ var calls = []struct {
 	}},
 	{"list checks", "query_data", func(s *service, ctx context.Context, kn string) error {
 		_, err := s.ListRuleChecks(ctx, kn)
+		return err
+	}},
+	{"count events", "query_data", func(s *service, ctx context.Context, kn string) error {
+		_, err := s.CountEvents(ctx, kn, interfaces.KnEventStatsFilter{})
 		return err
 	}},
 }
@@ -181,31 +162,6 @@ func TestInvalidInputIsRefusedBeforeTheStore(t *testing.T) {
 		want int
 		call func(*service) error
 	}{
-		{"code pattern", 400, func(s *service) error {
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "Late Order", Name: "n", Source: "rule"})
-			return err
-		}},
-		{"code length", 400, func(s *service) error {
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: strings.Repeat("a", 65), Name: "n", Source: "rule"})
-			return err
-		}},
-		{"name required", 400, func(s *service) error {
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "a", Name: "  ", Source: "rule"})
-			return err
-		}},
-		{"source", 400, func(s *service) error {
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "a", Name: "n", Source: "manual"})
-			return err
-		}},
-		{"merge hours", 400, func(s *service) error {
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "a", Name: "n", Source: "report", MergeHours: -1})
-			return err
-		}},
-		{"rule size", 413, func(s *service) error {
-			rule := []byte(`"` + strings.Repeat("x", interfaces.KnEventRuleMaxBytes) + `"`)
-			_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "a", Name: "n", Source: "rule", Rule: rule})
-			return err
-		}},
 		{"title required", 400, func(s *service) error {
 			_, err := s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "t", Title: " "})
 			return err
@@ -246,6 +202,23 @@ func TestInvalidInputIsRefusedBeforeTheStore(t *testing.T) {
 		}},
 		{"list cursor", 400, func(s *service) error {
 			_, err := s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{Cursor: "not a cursor"})
+			return err
+		}},
+		{"list span", 400, func(s *service) error {
+			_, err := s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{From: 200, To: 200})
+			return err
+		}},
+		{"list negative start", 400, func(s *service) error {
+			_, err := s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{From: -1})
+			return err
+		}},
+		{"stats span", 400, func(s *service) error {
+			_, err := s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{From: 300, To: 200})
+			return err
+		}},
+		{"stats start after now", 400, func(s *service) error {
+			// The service's clock is at 100: a start after it leaves nothing up to now.
+			_, err := s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{From: 500})
 			return err
 		}},
 	} {

@@ -92,6 +92,9 @@ func serializeBknNetwork(doc *BknNetwork, opts serializeOptions) string {
 		_, _ = fmt.Fprintf(&sb, "id: %s\n", doc.ID)
 		_, _ = fmt.Fprintf(&sb, "name: %s\n", doc.Name)
 		_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(doc.Tags, ", "))
+		if opts.eventClasses {
+			_, _ = fmt.Fprintf(&sb, "bkn_spec: \"%s\"\n", BknSpecV21)
+		}
 
 		if doc.Version != "" {
 			_, _ = fmt.Fprintf(&sb, "version: %s\n", doc.Version)
@@ -269,12 +272,23 @@ func SerializeObjectType(ot *BknObjectType) string {
 
 func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 	var sb strings.Builder
-	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags,
-		append(aliasesField(ot.Aliases), lifecycleField(ot.Lifecycle)...)...)
+	var extra []frontmatterField
+	if opts.eventClasses {
+		extra = kindsField(ot.Kinds)
+	}
+	extra = append(append(extra, aliasesField(ot.Aliases)...), lifecycleField(ot.Lifecycle)...)
+	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags, extra...)
 
 	_, _ = fmt.Fprintf(&sb, "## ObjectType: %s\n\n", ot.Name)
 	if ot.Description != "" {
 		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(ot.Description))
+	}
+	// The platform keeps an event class's data source, properties and keys (§6.9): a 2.1 or 3.0
+	// package carries only its configuration. 2.0 has no event classes and writes them as it finds
+	// them.
+	if opts.eventClasses && ot.IsEventClass() {
+		writeEvent(&sb, ot)
+		return sb.String()
 	}
 
 	// Data Source
@@ -601,12 +615,19 @@ func serializeActionType(at *BknActionType, opts serializeOptions) string {
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
-	// Schedule
+	// Schedule. The Timezone column is written only for a schedule that has one (2.1).
 	_, _ = fmt.Fprintf(&sb, "### Schedule\n\n")
-	_, _ = fmt.Fprintf(&sb, "| Type | Expression |\n")
-	_, _ = fmt.Fprintf(&sb, "|------|------------|\n")
-	if at.Schedule != nil && at.Schedule.Type != "" {
-		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.Schedule.Type), tableCell(at.Schedule.Expression))
+	if at.Schedule != nil && at.Schedule.Timezone != "" {
+		_, _ = fmt.Fprintf(&sb, "| Type | Expression | Timezone |\n")
+		_, _ = fmt.Fprintf(&sb, "|------|------------|----------|\n")
+		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n",
+			tableCell(at.Schedule.Type), tableCell(at.Schedule.Expression), tableCell(at.Schedule.Timezone))
+	} else {
+		_, _ = fmt.Fprintf(&sb, "| Type | Expression |\n")
+		_, _ = fmt.Fprintf(&sb, "|------|------------|\n")
+		if at.Schedule != nil && at.Schedule.Type != "" {
+			_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.Schedule.Type), tableCell(at.Schedule.Expression))
+		}
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 

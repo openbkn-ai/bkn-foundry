@@ -16,6 +16,9 @@ const (
 	// 404 Not Found
 	BknBackend_ActionSchedule_NotFound = "BknBackend.ActionSchedule.NotFound"
 
+	// 409 Conflict
+	BknBackend_ActionSchedule_PlatformKept = "BknBackend.ActionSchedule.PlatformKept"
+
 	// 500 Internal Server Error
 	BknBackend_ActionSchedule_InternalError       = "BknBackend.ActionSchedule.InternalError"
 	BknBackend_ActionSchedule_CreateFailed        = "BknBackend.ActionSchedule.CreateFailed"
@@ -32,6 +35,7 @@ var (
 		BknBackend_ActionSchedule_InvalidStatus,
 		BknBackend_ActionSchedule_ActionTypeNotFound,
 		BknBackend_ActionSchedule_NotFound,
+		BknBackend_ActionSchedule_PlatformKept,
 		BknBackend_ActionSchedule_InternalError,
 		BknBackend_ActionSchedule_CreateFailed,
 		BknBackend_ActionSchedule_UpdateFailed,

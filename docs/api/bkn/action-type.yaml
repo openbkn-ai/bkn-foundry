@@ -130,10 +130,17 @@ paths:
           required: false
         - name: operation_kind
           in: query
-          description: Operation type; applied before authorization-filtered pagination and total count.
+          description: |-
+            Operation type; applied before authorization-filtered pagination and total count. event lists the
+            record-event action types, the recognition actions of event classes.
           schema:
             type: string
-            enum: [object, relation, tool]
+            enum: [object, relation, tool, event]
+        - name: event_class
+          in: query
+          description: Record-event action types of this event class; applied before pagination and total count.
+          schema:
+            type: string
         - name: relation_operation
           in: query
           description: Relation operation; applied before pagination and total count.
@@ -456,8 +463,10 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/ID"
-          description: ok
+                  $ref: "#/components/schemas/CreatedActionType"
+          description: |-
+            ok. A record-event action type runs once before it is saved, as the caller, and its entry carries what
+            the run found as trial. A run that fails refuses the save with 400 and the reason.
       summary: Create or retrieve action types
     parameters:
       - name: kn_id
@@ -500,6 +509,21 @@ paths:
           in: query
         - $ref: "../_shared/kn-version.yaml#/components/parameters/IfMatch"
       responses:
+        "200":
+          headers:
+            X-Kn-Draft-Revision:
+              $ref: "../_shared/kn-version.yaml#/components/headers/XKnDraftRevision"
+          description: |-
+            ok, for a record-event action type: it runs once before it is saved, as the caller, and the reply
+            carries what the run found. A run that fails refuses the save with 400 and the reason.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [trial]
+                properties:
+                  trial:
+                    $ref: "#/components/schemas/ActionEventTrial"
         "204":
           headers:
             X-Kn-Draft-Revision:
@@ -820,6 +844,12 @@ components:
             Execution expression.
 
             1. Fixed frequency persists execution at a fixed interval. Set frequency=<time_durations> as a number followed by a unit: m for minutes, h for hours, or d for days.
+          type: string
+        timezone:
+          description: |-
+            IANA time zone of the schedule, such as Asia/Shanghai. Required for a record-event action type, which
+            runs on its schedule: a five-field cron expression in this zone, or a fixed rate such as 30m, 2h or 1d,
+            no more often than every five minutes. The zone also gives the day of check_date.
           type: string
     ID:
       description: id
@@ -1463,6 +1493,22 @@ components:
         schedule:
           $ref: "#/components/schemas/Schedule"
           description: Action listener parameter configuration
+        execution_subject:
+          allOf:
+            - $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+          readOnly: true
+          description: |-
+            Record-event action types only (operation_config.type=event). The account the scheduled checks run as:
+            the account that last changed what the action type finds (bound object type, condition or targets) or
+            when it runs (schedule). A save that changes neither keeps it. Kept by the platform; a value sent by the
+            caller is ignored.
+        rule_version:
+          type: string
+          readOnly: true
+          description: |-
+            Record-event action types only. Names what the action type finds: its bound object type, its condition
+            or targets, and for a function the function's version. The first check under a new rule version records
+            the objects it finds as a backlog. Kept by the platform; a value sent by the caller is ignored.
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -1579,6 +1625,22 @@ components:
         schedule:
           $ref: "#/components/schemas/Schedule"
           description: Action listener parameter configuration
+        execution_subject:
+          allOf:
+            - $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
+          readOnly: true
+          description: |-
+            Record-event action types only (operation_config.type=event). The account the scheduled checks run as:
+            the account that last changed what the action type finds (bound object type, condition or targets) or
+            when it runs (schedule). A save that changes neither keeps it. Kept by the platform; a value sent by the
+            caller is ignored.
+        rule_version:
+          type: string
+          readOnly: true
+          description: |-
+            Record-event action types only. Names what the action type finds: its bound object type, its condition
+            or targets, and for a function the function's version. The first check under a new rule version records
+            the objects it finds as a backlog. Kept by the platform; a value sent by the caller is ignored.
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -2296,14 +2358,20 @@ components:
             $ref: '#/components/schemas/ActionCondition'
         value_from:
           type: string
+          description: |-
+            check_time and check_date are for record-event action types only, whose condition takes const,
+            property, check_time and check_date.
           enum:
           - const
           - property
           - input
+          - check_time
+          - check_date
           default: const
         value:
           description: Literal value for const; same-endpoint property name for property; runtime parameter name for
-            input. For like, not_like, prefix, not_prefix, and regex, const (including omitted value_from) requires a
+            input; for check_time and check_date, an optional ISO 8601 duration added to the time or the day of the
+            check (such as -PT48H or -P3D; a day takes whole days, weeks, months or years). For like, not_like, prefix, not_prefix, and regex, const (including omitted value_from) requires a
             nonempty string; whitespace is preserved. Property and input values are reference names at save time;
             an empty string resolved from a reference is rejected at execution time. The error identifies the reference
             source and name without including the resolved value. Applicability does not supply target identities.
@@ -2323,13 +2391,29 @@ components:
           properties:
             type:
               enum: [relation]
+        - required: [event_class]
+          properties:
+            type:
+              enum: [event]
       properties:
         type:
           type: string
+          description: |-
+            event is a record-event action type, the recognition action of an event class whose source is rule
+            (professional edition and up). On its schedule it selects the objects of the bound object type that meet
+            its condition, or that its targets return, and records them as the class's check in the event ledger.
+            It writes nothing else: action_type is add, and it has no action_source and no parameters. A class has
+            at most one; its subject is the bound object type.
           enum:
           - object
           - relation
           - tool
+          - event
+        event_class:
+          type: string
+          description: Record-event action types only. The event class whose events the action type records.
+        targets:
+          $ref: '#/components/schemas/ActionEventTargets'
         relation_type_id:
           type: string
           description: Required for relation operations; must connect the selected object type.
@@ -2346,3 +2430,105 @@ components:
           description: Role of object_type_id in the relation. Self relations require an explicit role.
         other_object_condition:
           $ref: '#/components/schemas/ActionCondition'
+    ActionEventTargets:
+      type: object
+      additionalProperties: false
+      description: |-
+        Record-event action types only. Selects the objects by something other than the condition: exactly one of a
+        read-only Cypher query, a Cypher function of the network, or a metric anomaly. An action type with targets
+        has no condition.
+      properties:
+        cypher:
+          type: object
+          additionalProperties: false
+          required: [query]
+          properties:
+            query:
+              type: string
+              description: Read-only Cypher query that returns objects of the bound object type. It is given
+                $check_time and $check_date besides its parameters.
+            parameters:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ActionTargetParameter'
+              description: At most 32; names are letters, digits and _, and not check_time or check_date.
+        function:
+          type: object
+          additionalProperties: false
+          required: [box_id, tool_id]
+          properties:
+            box_id:
+              type: string
+            tool_id:
+              type: string
+            parameters:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ActionTargetParameter'
+          description: A Cypher function of the network that returns objects of the bound object type as a table.
+        metric:
+          type: object
+          additionalProperties: false
+          required: [metric_id, version, operator, value]
+          properties:
+            metric_id:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+              description: Published version of the metric.
+            operator:
+              type: string
+              enum: ['<', '<=', '>', '>=', '==', '!=']
+            value:
+              type: number
+              description: Threshold the metric value is compared with.
+            subject_key:
+              type: string
+              description: For a metric without groups, the object it is about.
+          description: The groups of the metric whose value meets the threshold.
+    ActionTargetParameter:
+      type: object
+      additionalProperties: false
+      properties:
+        value_from:
+          type: string
+          enum: [const, check_time, check_date]
+          default: const
+          description: |-
+            const passes value as given. check_time passes the check time plus the optional ISO 8601 duration in
+            value, as RFC 3339 in the schedule's zone. check_date passes the check day in the schedule's zone plus
+            the optional duration, as YYYY-MM-DD.
+        value:
+          description: The constant, or the ISO 8601 duration such as -PT48H or -P3D.
+    ActionEventTrial:
+      type: object
+      description: What a record-event action type found when it ran once, without recording anything.
+      required: [subject, hits, hit_count, limited]
+      properties:
+        subject:
+          type: string
+          description: The bound object type.
+        hits:
+          type: array
+          description: At most 200 of the objects found.
+          items:
+            type: object
+            additionalProperties: true
+        hit_count:
+          type: integer
+          description: How many objects were found, up to the selection limit.
+        limited:
+          type: boolean
+          description: Whether the selection stopped at its limit.
+        row_filter_applied:
+          type: boolean
+          description: Whether a row filter of the caller narrowed the objects, when known.
+    CreatedActionType:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        trial:
+          $ref: '#/components/schemas/ActionEventTrial'

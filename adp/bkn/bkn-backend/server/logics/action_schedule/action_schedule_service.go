@@ -169,6 +169,9 @@ func (s *actionScheduleService) UpdateSchedule(ctx context.Context, scheduleID s
 		otellog.LogError(ctx, "Schedule not found", httpErr)
 		return httpErr
 	}
+	if existing.PlatformKept() {
+		return platformKept(ctx, scheduleID)
+	}
 
 	// Validate cron expression if provided
 	cronExpr := existing.CronExpression
@@ -288,6 +291,9 @@ func (s *actionScheduleService) UpdateScheduleStatus(ctx context.Context, schedu
 		otellog.LogError(ctx, "Schedule not found", httpErr)
 		return httpErr
 	}
+	if existing.PlatformKept() {
+		return platformKept(ctx, scheduleID)
+	}
 
 	// Calculate next run time when activating
 	var nextRunTime int64
@@ -388,6 +394,9 @@ func (s *actionScheduleService) DeleteSchedules(ctx context.Context, knID, branc
 			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).WithErrorDetails(localizedText)
 			otellog.LogError(ctx, "Schedule does not belong to request scope", httpErr)
 			return httpErr
+		}
+		if schedule.PlatformKept() {
+			return platformKept(ctx, id)
 		}
 	}
 
@@ -517,4 +526,10 @@ func accountFromContext(ctx context.Context) interfaces.AccountInfo {
 		return account
 	}
 	return interfaces.AccountInfo{}
+}
+
+// platformKept refuses to change a schedule the platform keeps for a record-event action type.
+func platformKept(ctx context.Context, scheduleID string) error {
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ActionSchedule_PlatformKept).
+		WithErrorDetails(scheduleID)
 }

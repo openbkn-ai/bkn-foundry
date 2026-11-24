@@ -234,6 +234,9 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		}()
 	}
 
+	if err = checkOneRecognitionEach(ctx, actionTypes); err != nil {
+		return nil, err
+	}
 	currentTime := time.Now().UnixMilli()
 	for _, actionType := range actionTypes {
 		actionType.ATID, err = permission.PrepareKNChildResourceID(ctx, actionType.ATID)
@@ -477,6 +480,9 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 		return err
 	}
 
+	if err = checkOneRecognitionEach(ctx, actionTypes); err != nil {
+		return err
+	}
 	for _, actionType := range actionTypes {
 		actionType.KNID = knID
 		actionType.Branch = branch

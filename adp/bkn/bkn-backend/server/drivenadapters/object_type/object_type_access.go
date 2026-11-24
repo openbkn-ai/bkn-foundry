@@ -253,6 +253,11 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		common.LogSafeError(ctx, "Failed to marshal PrimaryKeys, err", err)
 		return err
 	}
+	kinds, event, err := encodeKinds(objectType)
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to marshal Kinds, err", err)
+		return err
+	}
 
 	sqlStr, vals, err := sq.Insert(OT_TABLE_NAME).
 		Columns(
@@ -281,6 +286,8 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			"f_updater_type",
 			"f_update_time",
 			"f_revision",
+			"f_kinds",
+			"f_event",
 		).
 		Values(
 			objectType.OTID,
@@ -307,7 +314,9 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			objectType.Updater.ID,
 			objectType.Updater.Type,
 			objectType.UpdateTime,
-			interfaces.NewDefinitionRevision()).
+			interfaces.NewDefinitionRevision(),
+			kinds,
+			event).
 		ToSql()
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to build the sql of insert object type, error", err)
@@ -347,7 +356,7 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_logic_properties",
 			"f_primary_keys", "f_display_key", "f_incremental_key", "f_creator", "f_creator_type",
-			"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_revision",
+			"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_revision", "f_kinds", "f_event",
 		)
 		for _, objectType := range objectTypes[start:end] {
 			values, err := objectTypeInsertValues(objectType)
@@ -402,12 +411,17 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	kinds, event, err := encodeKinds(objectType)
+	if err != nil {
+		return nil, err
+	}
 	return []any{
 		objectType.OTID, objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
 		objectType.Icon, objectType.Color, objectType.BKNRawContent, objectType.KNID, objectType.Branch,
 		dataSourceBytes, dataPropertiesBytes, aliases, lifecycleStatus, deprecation, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
 		objectType.IncrementalKey, objectType.Creator.ID, objectType.Creator.Type, objectType.CreateTime,
 		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime, interfaces.NewDefinitionRevision(),
+		kinds, event,
 	}, nil
 }
 
@@ -524,6 +538,8 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		"ot.f_aliases",
 		"ot.f_lifecycle_status",
 		"ot.f_deprecation",
+		"ot.f_kinds",
+		"ot.f_event",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -596,6 +612,8 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 			aliasesBytes         []byte
 			lifecycleStatusBytes []byte
 			deprecationBytes     []byte
+			kindsBytes           []byte
+			eventBytes           []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -614,6 +632,8 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 			&aliasesBytes,
 			&lifecycleStatusBytes,
 			&deprecationBytes,
+			&kindsBytes,
+			&eventBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -651,6 +671,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		// 2.1 Deserialize data properties.
 		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		objectType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
+		objectType.Kinds, objectType.Event = decodeKinds(kindsBytes, eventBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -698,6 +719,8 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		"ot.f_aliases",
 		"ot.f_lifecycle_status",
 		"ot.f_deprecation",
+		"ot.f_kinds",
+		"ot.f_event",
 		"ot.f_creator",
 		"ot.f_creator_type",
 		"ot.f_create_time",
@@ -751,7 +774,7 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			Status:     &interfaces.ObjectTypeStatus{},
 		}
 		var tags string
-		var dataSource, aliases, lifecycleStatus, deprecation []byte
+		var dataSource, aliases, lifecycleStatus, deprecation, kinds, event []byte
 		if err := rows.Scan(
 			&item.OTID,
 			&item.OTName,
@@ -765,6 +788,8 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 			&aliases,
 			&lifecycleStatus,
 			&deprecation,
+			&kinds,
+			&event,
 			&item.Creator.ID,
 			&item.Creator.Type,
 			&item.CreateTime,
@@ -789,6 +814,7 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 		// aliases and lifecycle too.
 		item.Aliases = common.DecodeStoredAliases(ctx, aliases)
 		item.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatus, deprecation))
+		item.Kinds, item.Event = decodeKinds(kinds, event)
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -912,6 +938,8 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		"ot.f_aliases",
 		"ot.f_lifecycle_status",
 		"ot.f_deprecation",
+		"ot.f_kinds",
+		"ot.f_event",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -955,6 +983,8 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		aliasesBytes         []byte
 		lifecycleStatusBytes []byte
 		deprecationBytes     []byte
+		kindsBytes           []byte
+		eventBytes           []byte
 		logicPropertiesBytes []byte
 		primaryKeysBytes     []byte
 	)
@@ -980,6 +1010,8 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		&aliasesBytes,
 		&lifecycleStatusBytes,
 		&deprecationBytes,
+		&kindsBytes,
+		&eventBytes,
 		&logicPropertiesBytes,
 		&primaryKeysBytes,
 		&objectType.DisplayKey,
@@ -1027,6 +1059,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	// 2.1 Deserialize data properties.
 	objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 	objectType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
+	objectType.Kinds, objectType.Event = decodeKinds(kindsBytes, eventBytes)
 	err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -1076,6 +1109,8 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		"ot.f_aliases",
 		"ot.f_lifecycle_status",
 		"ot.f_deprecation",
+		"ot.f_kinds",
+		"ot.f_event",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -1154,6 +1189,8 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 			aliasesBytes         []byte
 			lifecycleStatusBytes []byte
 			deprecationBytes     []byte
+			kindsBytes           []byte
+			eventBytes           []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -1173,6 +1210,8 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 			&aliasesBytes,
 			&lifecycleStatusBytes,
 			&deprecationBytes,
+			&kindsBytes,
+			&eventBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -1210,6 +1249,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		// 2.1 Deserialize data properties.
 		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		objectType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
+		objectType.Kinds, objectType.Event = decodeKinds(kindsBytes, eventBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -1282,6 +1322,11 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		logger.Errorf("Failed to marshal PrimaryKeys, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
+	kinds, event, err := encodeKinds(objectType)
+	if err != nil {
+		logger.Errorf("Failed to marshal Kinds, err: %v", common.SafeErrorSummary(err))
+		return err
+	}
 
 	data := map[string]any{
 		"f_name":             objectType.OTName,
@@ -1303,6 +1348,8 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		"f_updater_type":     objectType.Updater.Type,
 		"f_update_time":      objectType.UpdateTime,
 		"f_revision":         interfaces.NewDefinitionRevision(),
+		"f_kinds":            kinds,
+		"f_event":            event,
 	}
 	sqlStr, vals, err := sq.Update(OT_TABLE_NAME).
 		SetMap(data).
@@ -1369,7 +1416,7 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 	columns := []string{
 		"f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 		"f_data_source", "f_data_properties", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_logic_properties", "f_primary_keys",
-		"f_display_key", "f_incremental_key", "f_updater", "f_updater_type", "f_update_time",
+		"f_display_key", "f_incremental_key", "f_updater", "f_updater_type", "f_update_time", "f_kinds", "f_event",
 	}
 	for start := 0; start < len(objectTypes); {
 		end := start
@@ -1466,11 +1513,15 @@ func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	kinds, event, err := encodeKinds(objectType)
+	if err != nil {
+		return nil, err
+	}
 	return []any{
 		objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
 		objectType.Icon, objectType.Color, objectType.BKNRawContent, dataSourceBytes, dataPropertiesBytes, aliases, lifecycleStatus, deprecation,
 		logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey, objectType.IncrementalKey,
-		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
+		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime, kinds, event,
 	}, nil
 }
 
@@ -1871,6 +1922,8 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		"f_aliases",
 		"f_lifecycle_status",
 		"f_deprecation",
+		"f_kinds",
+		"f_event",
 		"f_logic_properties",
 		"f_primary_keys",
 		"f_display_key",
@@ -1912,6 +1965,8 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 			aliasesBytes         []byte
 			lifecycleStatusBytes []byte
 			deprecationBytes     []byte
+			kindsBytes           []byte
+			eventBytes           []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -1930,6 +1985,8 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 			&aliasesBytes,
 			&lifecycleStatusBytes,
 			&deprecationBytes,
+			&kindsBytes,
+			&eventBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -1959,6 +2016,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		// 2.1 Deserialize data properties.
 		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		objectType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
+		objectType.Kinds, objectType.Event = decodeKinds(kindsBytes, eventBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)

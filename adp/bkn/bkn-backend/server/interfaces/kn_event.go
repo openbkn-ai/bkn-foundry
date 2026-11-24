@@ -13,10 +13,11 @@ import (
 // Knowledge-network events record what happened in the business: a rule found
 // an object in an abnormal state, or a person reported something. They belong
 // to the network, not to an application; applications read the change feed
-// and handle the events in their own tasks. Each kind of event is also an
-// object type of the network, its event class, so events are queried, related
-// and authorized like the network's other objects. The implementation is the
-// knevent package, which every edition assembles.
+// and handle the events in their own tasks. Each kind of event is an object
+// type of the network whose kinds include event, its event class, so events
+// are queried, related and authorized like the network's other objects. The
+// implementation is the knevent package, which serves from the professional
+// edition up.
 
 // Event statuses describe the event itself. How an application handles it is
 // recorded by that application.
@@ -54,111 +55,32 @@ const KnEventChecked = "checked"
 
 // Limits of the event API.
 const (
-	KnEventTitleMax          = 256
-	KnEventReasonMax         = 512
-	KnEventNameMax           = 128
-	KnEventKeyMax            = 250
-	KnEventLabelMax          = 256
-	KnEventAttributesMax     = 64
-	KnEventRuleVersionMax    = 64
-	KnEventSeverityMax       = 16
-	KnEventRuleMaxBytes      = 1 << 20
-	KnEventDetailMaxBytes    = 1 << 20
+	KnEventTitleMax       = 256
+	KnEventReasonMax      = 512
+	KnEventKeyMax         = 250
+	KnEventLabelMax       = 256
+	KnEventAttributesMax  = 64
+	KnEventRuleVersionMax = 64
+	KnEventSeverityMax    = 16
+	KnEventDetailMaxBytes = 1 << 20
+	// KnEventHitDetailMaxBytes bounds the detail of one hit of a rule check.
+	KnEventHitDetailMaxBytes = 16 << 10
+	// KnEventExecutionIDMax bounds the ID of the action execution that recorded a change.
+	KnEventExecutionIDMax    = 40
 	KnEventRuleHitsMax       = 20000
 	KnEventListDefaultLimit  = 50
 	KnEventListMaxLimit      = 200
 	KnEventChangeDefaultSize = 500
 	KnEventChangeMaxSize     = 1000
+	// KnEventClassIDMax is the longest ID of an event class, the column the
+	// ledger keeps it in.
+	KnEventClassIDMax = 64
+	// KnEventHandlingNoteMax is the longest handling note of an event class.
+	KnEventHandlingNoteMax = 500
+	// KnEventStatsDefaultSpan is the span of the occurrence counts when no
+	// start and end are given: the last seven days.
+	KnEventStatsDefaultSpan = 7 * 24 * 60 * 60 * 1000
 )
-
-// KnEventType is how one kind of event is recognised in a network. Handling is
-// configured by each application that refers to the type by code.
-type KnEventType struct {
-	KNID        string          `json:"kn_id"`
-	Code        string          `json:"code"`
-	Name        string          `json:"name"`
-	Source      string          `json:"source"`
-	Subject     string          `json:"subject"`
-	Severity    string          `json:"severity"`
-	MergeHours  float64         `json:"merge_hours"`
-	Rule        json.RawMessage `json:"rule"`
-	RuleVersion string          `json:"rule_version"`
-	Creator     string          `json:"creator"`
-	CreatorType string          `json:"creator_type"`
-	CreateTime  int64           `json:"create_time"`
-	Updater     string          `json:"updater"`
-	UpdaterType string          `json:"updater_type"`
-	UpdateTime  int64           `json:"update_time"`
-
-	// ObjectTypeID is the type's event class: the object type of the network
-	// its events are read as. DatasetID is the dataset behind that object
-	// type, a copy of the ledger which the event module writes. Both are empty
-	// for a type whose class has not been created yet.
-	ObjectTypeID string `json:"object_type_id"`
-	DatasetID    string `json:"dataset_id"`
-
-	// A rule type with a rule tool is checked by the platform on its
-	// schedule, as its check subject: the person who last set the tool or the
-	// schedule. Its rule version is then computed by the platform. Without a
-	// rule tool, applications check the rule and post the result.
-	RuleTool      *KnEventRuleTool      `json:"rule_tool"`
-	CheckSchedule *KnEventCheckSchedule `json:"check_schedule"`
-	CheckSubject  *KnEventCheckSubject  `json:"check_subject"`
-	// NextCheckAt is when the platform checks the rule next, 0 without a rule tool.
-	NextCheckAt int64 `json:"next_check_at"`
-	// CheckFailures counts the platform's checks in a row that could not decide.
-	CheckFailures int `json:"check_failures"`
-	// Trial is the run of the rule tool when the tool or the schedule was
-	// saved; only the response of that save has it.
-	Trial *KnEventRuleTrial `json:"trial,omitempty"`
-}
-
-// KnEventRuleTool is the tool the platform calls to check a rule: a Cypher
-// function of the network with the table result shape. Each row it returns is
-// an object the rule finds: column key is the object's key, name its name, and
-// every other column an event attribute. A parameter is a fixed value or
-// {"check_time": "date"}, the check's date in the schedule's time zone.
-type KnEventRuleTool struct {
-	BoxID      string                     `json:"box_id"`
-	ToolID     string                     `json:"tool_id"`
-	Parameters map[string]json.RawMessage `json:"parameters"`
-}
-
-// KnEventCheckSchedule is when the platform checks a rule: a five-field cron
-// expression in an IANA time zone, Asia/Shanghai when none is given.
-type KnEventCheckSchedule struct {
-	Cron     string `json:"cron"`
-	Timezone string `json:"timezone"`
-}
-
-// KnEventCheckSubject is the account a platform check runs as.
-type KnEventCheckSubject struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	Name string `json:"name"`
-}
-
-// KnEventRuleTrial is what the rule tool found when it was tried on save.
-type KnEventRuleTrial struct {
-	Hits    int  `json:"hits"`
-	Limited bool `json:"limited"`
-}
-
-// KnEventTypeInput creates or replaces an event type. Code and source are
-// fixed once the type exists. Leaving out the rule tool of a type that has
-// one stops the platform's checks.
-type KnEventTypeInput struct {
-	Code          string                `json:"code"`
-	Name          string                `json:"name"`
-	Source        string                `json:"source"`
-	Subject       string                `json:"subject"`
-	Severity      string                `json:"severity"`
-	MergeHours    float64               `json:"merge_hours"`
-	Rule          json.RawMessage       `json:"rule"`
-	RuleVersion   string                `json:"rule_version"`
-	RuleTool      *KnEventRuleTool      `json:"rule_tool"`
-	CheckSchedule *KnEventCheckSchedule `json:"check_schedule"`
-}
 
 // KnEventAttribute is a value of the event object's property, supplied by the
 // writer. The platform stores it without interpreting it; applications group
@@ -178,6 +100,9 @@ type KnEventTransition struct {
 	ActorName  string `json:"actor_name"`
 	Note       string `json:"note"`
 	Time       int64  `json:"time"`
+	// ExecutionID is the action execution that made the change, when an action did: the check
+	// of a record-event action type.
+	ExecutionID string `json:"execution_id,omitempty"`
 }
 
 // KnEvent is one business event of a network.
@@ -217,13 +142,47 @@ type KnEvent struct {
 	History          []KnEventTransition         `json:"history,omitempty"`
 }
 
-// KnEventFilter narrows the event list.
+// KnEventFilter narrows the event list. From and To bound the time the
+// events occurred, from inclusive to exclusive; 0 leaves that end open.
 type KnEventFilter struct {
 	EventTypes []string
 	Statuses   []string
 	ObjectKey  string
+	From       int64
+	To         int64
 	Cursor     string
 	Limit      int
+}
+
+// KnEventStatsFilter chooses what the occurrence counts count: the events of
+// the classes given, all when none is, about one object when ObjectKey is
+// given, that occurred from From, inclusive, to To, exclusive. 0 for both is
+// the last seven days; From alone counts up to now, and To alone the seven
+// days before it.
+type KnEventStatsFilter struct {
+	EventTypes []string
+	ObjectKey  string
+	From       int64
+	To         int64
+}
+
+// KnEventStats counts the events of each class that occurred in a span. A
+// rejected or duplicate report does not count, nor does what a rule found
+// already there when it was first checked.
+type KnEventStats struct {
+	From    int64              `json:"from"`
+	To      int64              `json:"to"`
+	Entries []KnEventStatEntry `json:"entries"`
+}
+
+// KnEventStatEntry is the occurrences of one class. OpenCount is how many of
+// them are not over: unverified or verified. LastOccurredAt is when the latest
+// of them occurred.
+type KnEventStatEntry struct {
+	EventType      string `json:"event_type"`
+	Count          int    `json:"count"`
+	OpenCount      int    `json:"open_count"`
+	LastOccurredAt int64  `json:"last_occurred_at"`
 }
 
 // KnEventList is one page of events, newest first.
@@ -255,21 +214,27 @@ type KnEventRuleHit struct {
 	Key        string                      `json:"key"`
 	Name       string                      `json:"name"`
 	Attributes map[string]KnEventAttribute `json:"attributes"`
+	// Detail is what the rule found about the object, such as the value of a metric. It is
+	// written to the event the check opens; a later check does not change it.
+	Detail json.RawMessage `json:"detail,omitempty"`
 }
 
-// KnEventRuleCheckInput is one check of a rule event type.
+// KnEventRuleCheckInput is one check of a rule event class.
 type KnEventRuleCheckInput struct {
-	EventType   string           `json:"event_type"`
-	RuleVersion string           `json:"rule_version"`
-	Status      string           `json:"status"`
-	Message     string           `json:"message"`
-	Hits        []KnEventRuleHit `json:"hits"`
+	EventType string `json:"event_type"`
+	// ActionTypeID is the record-event action type whose check this is. A class that has one in
+	// the running version takes checks only from it; only the platform sends this field.
+	ActionTypeID string           `json:"action_type_id,omitempty"`
+	RuleVersion  string           `json:"rule_version"`
+	Status       string           `json:"status"`
+	Message      string           `json:"message"`
+	Hits         []KnEventRuleHit `json:"hits"`
 	// Covered names the objects the check read when it read only some; the
 	// others are left as they are. Nil when it read them all.
 	Covered []string `json:"covered"`
 }
 
-// KnEventRuleCheck is the last check of a rule event type in a network.
+// KnEventRuleCheck is the last check of a rule event class in a network.
 type KnEventRuleCheck struct {
 	EventType   string `json:"event_type"`
 	Status      string `json:"status"`
@@ -277,9 +242,12 @@ type KnEventRuleCheck struct {
 	Hits        int    `json:"hits"`
 	Message     string `json:"message"`
 	// LastOK is when the rule last decided, after checks that could not.
-	LastOK    int64  `json:"last_ok"`
-	CheckedBy string `json:"checked_by"`
-	Time      int64  `json:"time"`
+	LastOK int64 `json:"last_ok"`
+	// LastOKRuleVersion is the rule version of the check at LastOK: a rule
+	// that has not decided since it changed finds a backlog when it does.
+	LastOKRuleVersion string `json:"-"`
+	CheckedBy         string `json:"checked_by"`
+	Time              int64  `json:"time"`
 }
 
 // KnEventsResult is the events a write created or changed, as they are now.
@@ -313,20 +281,13 @@ type KnEventChangeList struct {
 // KnEventServiceV1 is the knowledge-network event surface. The caller's
 // account is read from ACCOUNT_INFO_KEY; ListChanges is internal and takes none.
 type KnEventServiceV1 interface {
-	ListEventTypes(ctx context.Context, knID string) ([]KnEventType, error)
-	CreateEventType(ctx context.Context, knID string, input KnEventTypeInput) (KnEventType, error)
-	GetEventType(ctx context.Context, knID, code string) (KnEventType, error)
-	UpdateEventType(ctx context.Context, knID, code string, input KnEventTypeInput) (KnEventType, error)
-	DeleteEventType(ctx context.Context, knID, code string) error
-
 	ListEvents(ctx context.Context, knID string, filter KnEventFilter) (KnEventList, error)
 	GetEvent(ctx context.Context, knID, eventID string) (KnEvent, error)
 	ReportEvent(ctx context.Context, knID string, input KnEventReportInput) (KnEventsResult, error)
 	ChangeEvent(ctx context.Context, knID, eventID, action string, input KnEventReasonInput) (KnEventsResult, error)
 	RecordRuleCheck(ctx context.Context, knID string, input KnEventRuleCheckInput) (KnEventRuleCheckResult, error)
 	ListRuleChecks(ctx context.Context, knID string) ([]KnEventRuleCheck, error)
-	// CheckEventType checks a rule type with a rule tool now, as its check subject.
-	CheckEventType(ctx context.Context, knID, code string) (KnEventRuleCheckResult, error)
+	CountEvents(ctx context.Context, knID string, filter KnEventStatsFilter) (KnEventStats, error)
 
 	ListChanges(ctx context.Context, knID string, after int64, limit int) (KnEventChangeList, error)
 }

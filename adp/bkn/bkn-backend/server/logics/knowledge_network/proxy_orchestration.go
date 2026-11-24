@@ -21,6 +21,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
@@ -320,6 +321,11 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 		}
 		for _, source := range optional {
 			selection.skip(source, proxySkipReasonUnsupported)
+		}
+	}
+	if kns.grantPlatformKept(ctx, proxyID, checked, result.DeniedSources) {
+		if result, err = kns.mpa.CheckGrants(ctx, proxyID, delegatorID, checked); err != nil {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission preflight failed")
 		}
 	}
 	missing := make([]missingProxyPermission, 0, len(result.DeniedSources))
@@ -777,6 +783,11 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 			return err
 		}
 		objectType.OTID = id
+		// Some of what the kinds keep follows from the ID, which a new object type has only now.
+		// The proxy's grants are built from what is kept.
+		if err := object_type.CompleteKinds(ctx, objectType); err != nil {
+			return err
+		}
 	}
 	for _, relationType := range changes.RelationTypes {
 		if relationType == nil {
@@ -933,6 +944,7 @@ func (kns *knowledgeNetworkService) finishProxyPublish(ctx context.Context, plan
 		}
 		plan.grants = grants
 	}
+	kns.grantUncheckedPlatformKept(ctx, plan.mapping.ProxyAccountID, plan.grants, sources)
 	sources = plan.grants.materialized(sources)
 	latestVersion, err := proxyGrantSnapshotVersion(sources)
 	if err != nil {

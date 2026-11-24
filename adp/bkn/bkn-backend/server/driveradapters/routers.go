@@ -217,6 +217,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByEx)
+	apiV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByEx)
 
 	// Cypher queries over instance data.
 	apiV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByEx)
@@ -323,6 +324,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByIn)
 	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByIn)
 	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByIn)
+	apiInV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByIn)
 
 	// Cypher queries over instance data.
 	apiInV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByIn)

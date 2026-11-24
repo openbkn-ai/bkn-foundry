@@ -7,12 +7,14 @@
 package knevent
 
 // These tests run the service against MariaDB with the platform's migration
-// scripts of the event tables, in the order they are applied:
+// scripts, in the order they are applied. A new install:
 //
-//	M=<bkn-foundry>/migrations/bkn-backend/mariadb/0.2.2
-//	KN_EVENT_TEST_MIGRATION=$M/01-kn-events.sql:$M/03-kn-event-class.sql:$M/05-kn-event-rule-checks.sql \
+//	M=<bkn-foundry>/migrations/bkn-backend/mariadb
+//	KN_EVENT_TEST_MIGRATION=$M/0.2.2/init.sql \
 //	KN_EVENT_TEST_DB=127.0.0.1:13306 I18N_MODE_UT=true \
 //	go test -tags integration ./knevent/
+//
+// An upgrade: KN_EVENT_TEST_MIGRATION=$M/0.2.1/init.sql:$M/0.2.2/01-kn-events.sql:...:$M/0.2.2/07-kn-event-classes.sql
 //
 // Each test creates its own database and drops it afterwards.
 
@@ -114,10 +116,8 @@ func integrationService(t *testing.T) (*service, *sql.DB, *clock) {
 	c := &clock{}
 	c.now.Store(1_000_000)
 	var next atomic.Int64
-	classes, _, _ := newTestClasses()
 	s := &service{
 		store:       newStore(db),
-		classes:     classes,
 		permissions: &permissionsStub{},
 		networks:    networksStub{"kn1": true, "kn2": true},
 		names:       namesStub{name: "Alice"},
@@ -144,53 +144,92 @@ func changeActions(list interfaces.KnEventChangeList) []string {
 	return out
 }
 
-func createTypes(t *testing.T, s *service, ctx context.Context, kn string) {
+// defineObjectType stores an object type in a branch of a network as the object type service
+// does, as far as events read it: an event class when event is given.
+func defineObjectType(t *testing.T, db *sql.DB, kn, branch, id, name string, event *interfaces.ObjectTypeEvent) {
 	t.Helper()
-	must(s.CreateEventType(ctx, kn, interfaces.KnEventTypeInput{Code: "late_order", Name: "订单超期", Source: "report", Subject: "order", MergeHours: 1}))
-	must(s.CreateEventType(ctx, kn, interfaces.KnEventTypeInput{Code: "low_stock", Name: "低库存", Source: "rule", Subject: "sku", Severity: "high",
-		Rule: json.RawMessage(`{"where":"qty < 10"}`), RuleVersion: "v1"}))
+	kinds, config := "", any(nil)
+	if event != nil {
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds, config = `["event"]`, string(encoded)
+	}
+	if _, err := db.Exec("INSERT INTO "+objectTypeTable+
+		" (f_id, f_name, f_comment, f_bkn_raw_content, f_kn_id, f_branch, f_data_source, f_kinds, f_event)"+
+		" VALUES (?, ?, '', '', ?, ?, '{}', ?, ?)"+
+		" ON DUPLICATE KEY UPDATE f_name = VALUES(f_name), f_kinds = VALUES(f_kinds), f_event = VALUES(f_event)",
+		id, name, kn, branch, kinds, config); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestIntegrationEventTypes(t *testing.T) {
-	s, _, _ := integrationService(t)
+// defineClasses gives a network the classes the tests write events of, on main.
+func defineClasses(t *testing.T, db *sql.DB, kn string) {
+	t.Helper()
+	defineObjectType(t, db, kn, interfaces.MAIN_BRANCH, "late_order", "订单超期",
+		&interfaces.ObjectTypeEvent{Source: "report", Subject: "order", MergeHours: 1})
+	defineObjectType(t, db, kn, interfaces.MAIN_BRANCH, "low_stock", "低库存",
+		&interfaces.ObjectTypeEvent{Source: "rule", Subject: "sku", Severity: "high"})
+	defineObjectType(t, db, kn, interfaces.MAIN_BRANCH, "order", "订单", nil)
+}
+
+// version makes a network versioned, running version running.
+func version(t *testing.T, db *sql.DB, kn string, running int) {
+	t.Helper()
+	if _, err := db.Exec("INSERT INTO "+versionStateTable+" (f_kn_id, f_running_version) VALUES (?, ?)"+
+		" ON DUPLICATE KEY UPDATE f_running_version = VALUES(f_running_version)", kn, running); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIntegrationEventClassesAreTheObjectTypesTheNetworkRuns(t *testing.T) {
+	s, db, _ := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
-	if _, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "late_order", Name: "again", Source: "report"}); statusOf(t, err) != 409 {
-		t.Fatalf("duplicate code: %v", err)
+	defineClasses(t, db, "kn1")
+	report := func(kn, class string) error {
+		_, err := s.ReportEvent(ctx, kn, interfaces.KnEventReportInput{EventType: class, Title: "x"})
+		return err
 	}
-	types := must(s.ListEventTypes(ctx, "kn1"))
-	if len(types) != 2 || types[0].Code != "late_order" || types[1].Code != "low_stock" ||
-		string(types[1].Rule) != `{"where": "qty < 10"}` && string(types[1].Rule) != `{"where":"qty < 10"}` || types[0].Creator != "u1" {
-		t.Fatalf("types %+v", types)
+	for _, class := range []string{"order", "missing"} {
+		if err := report("kn1", class); statusOf(t, err) != 404 {
+			t.Fatalf("reporting %s, which is no event class: %v", class, err)
+		}
 	}
-	if string(types[0].Rule) != "{}" {
-		t.Fatalf("an absent rule reads %s", types[0].Rule)
+	if err := report("kn1", "low_stock"); statusOf(t, err) != 409 {
+		t.Fatalf("reporting a rule class: %v", err)
 	}
-	if _, err := s.UpdateEventType(ctx, "kn1", "low_stock", interfaces.KnEventTypeInput{Name: "x", Source: "report"}); statusOf(t, err) != 400 {
-		t.Fatalf("changing the source: %v", err)
+	if _, err := s.RecordRuleCheck(ctx, "kn1", interfaces.KnEventRuleCheckInput{EventType: "late_order", Status: "ok"}); statusOf(t, err) != 409 {
+		t.Fatalf("checking a report class: %v", err)
 	}
-	updated := must(s.UpdateEventType(ctx, "kn1", "low_stock", interfaces.KnEventTypeInput{Name: "库存不足", RuleVersion: "v2"}))
-	if updated.Source != "rule" || updated.CreateTime != types[1].CreateTime || updated.RuleVersion != "v2" {
-		t.Fatalf("updated %+v", updated)
+
+	// A versioned network runs its running version: a class only in the draft is not there yet,
+	// and one network does not run another's classes.
+	defineObjectType(t, db, "kn2", interfaces.DRAFT_BRANCH, "late_order", "草稿里的",
+		&interfaces.ObjectTypeEvent{Source: "report", Subject: "order"})
+	version(t, db, "kn2", 0)
+	if err := report("kn2", "late_order"); statusOf(t, err) != 404 {
+		t.Fatalf("reporting a class of the draft only: %v", err)
 	}
-	if got := must(s.GetEventType(ctx, "kn1", "low_stock")); got.Name != "库存不足" || string(got.Rule) != "{}" {
-		t.Fatalf("stored %+v", got)
+	defineObjectType(t, db, "kn2", interfaces.VersionBranch(3), "late_order", "第三版的",
+		&interfaces.ObjectTypeEvent{Source: "report", Subject: "order"})
+	version(t, db, "kn2", 3)
+	reported := must(s.ReportEvent(ctx, "kn2", interfaces.KnEventReportInput{EventType: "late_order", Title: "x"}))
+	if reported.Events[0].EventTypeName != "第三版的" {
+		t.Fatalf("reported under %q, want the running version's name", reported.Events[0].EventTypeName)
 	}
-	if _, err := s.GetEventType(ctx, "kn2", "low_stock"); statusOf(t, err) != 404 {
-		t.Fatalf("type of another network: %v", err)
+	// A network whose running version is gone back to main runs main again.
+	version(t, db, "kn2", 0)
+	if err := report("kn2", "late_order"); statusOf(t, err) != 404 {
+		t.Fatalf("reporting after the running version went: %v", err)
 	}
 }
 
 func TestIntegrationReportedEvents(t *testing.T) {
-	s, _, c := integrationService(t)
+	s, db, c := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
-	if _, err := s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "low_stock", Title: "x"}); statusOf(t, err) != 409 {
-		t.Fatalf("reporting a rule type: %v", err)
-	}
-	if _, err := s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "nope", Title: "x"}); statusOf(t, err) != 404 {
-		t.Fatalf("unknown type: %v", err)
-	}
+	defineClasses(t, db, "kn1")
 	first := must(s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "late_order", Title: "PO-1 超期", ObjectKey: "PO-1",
 		ObjectAttributes: map[string]interfaces.KnEventAttribute{"customer": {Key: "C001", Label: "某客户"}}, Detail: json.RawMessage(`{"days":3}`), Verify: true}))
 	c.tick(10 * 60 * 1000)
@@ -249,11 +288,24 @@ func TestIntegrationReportedEvents(t *testing.T) {
 		t.Fatalf("filtered %+v", filtered)
 	}
 	if none := must(s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{EventTypes: []string{"low_stock"}})); len(none.Entries) != 0 || none.Entries == nil {
-		t.Fatalf("other type %+v", none)
+		t.Fatalf("other class %+v", none)
+	}
+	// The time an event occurred bounds the list, from inclusive to exclusive.
+	occurred := first.Events[0].OccurredAt
+	if got := must(s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{From: occurred, To: occurred + 1})); len(got.Entries) != 1 ||
+		got.Entries[0].ID != first.Events[0].ID {
+		t.Fatalf("events that occurred at %d: %+v", occurred, got.Entries)
+	}
+	if got := must(s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{From: occurred + 1})); len(got.Entries) != 2 {
+		t.Fatalf("events that occurred after %d: %d", occurred, len(got.Entries))
+	}
+	if got := must(s.ListEvents(ctx, "kn1", interfaces.KnEventFilter{To: occurred})); len(got.Entries) != 0 {
+		t.Fatalf("events that occurred before %d: %d", occurred, len(got.Entries))
 	}
 
-	// The type's current name reaches every event, history keeps its own names.
-	must(s.UpdateEventType(ctx, "kn1", "late_order", interfaces.KnEventTypeInput{Name: "交期延误", MergeHours: 1}))
+	// The class's current name reaches every event, history keeps its own names.
+	defineObjectType(t, db, "kn1", interfaces.MAIN_BRANCH, "late_order", "交期延误",
+		&interfaces.ObjectTypeEvent{Source: "report", Subject: "order", MergeHours: 1})
 	changes := must(s.ListChanges(context.Background(), "kn1", 0, 0))
 	want := []string{"PO-1:reported", "PO-1:verify", "PO-1:reported", "PO-2:reported", "PO-2:verify", "PO-2:close", "PO-2:reopen"}
 	if got := changeActions(changes); !reflect.DeepEqual(got, want) {
@@ -271,19 +323,19 @@ func TestIntegrationReportedEvents(t *testing.T) {
 	if changes.LastSeq != 7 {
 		t.Fatalf("last_seq %d", changes.LastSeq)
 	}
-
-	if err := s.DeleteEventType(ctx, "kn1", "late_order"); statusOf(t, err) != 409 {
-		t.Fatalf("deleting a type in use: %v", err)
-	}
-	if err := s.DeleteEventType(ctx, "kn1", "missing"); statusOf(t, err) != 404 {
-		t.Fatalf("deleting a missing type: %v", err)
-	}
 }
 
 func TestIntegrationRuleChecks(t *testing.T) {
-	s, _, c := integrationService(t)
+	s, db, c := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
+	defineClasses(t, db, "kn1")
+	// The row a class is given when it is saved records no check.
+	if _, err := db.Exec("INSERT INTO " + checkTable + " (f_kn_id, f_event_type, f_dataset_synced) VALUES ('kn1', 'low_stock', 1)"); err != nil {
+		t.Fatal(err)
+	}
+	if checks := must(s.ListRuleChecks(ctx, "kn1")); len(checks) != 0 {
+		t.Fatalf("checks before any %+v", checks)
+	}
 	hit := func(key, warehouse string) interfaces.KnEventRuleHit {
 		return interfaces.KnEventRuleHit{Key: key, Attributes: map[string]interfaces.KnEventAttribute{"warehouse": {Key: warehouse, Label: warehouse}}}
 	}
@@ -292,9 +344,6 @@ func TestIntegrationRuleChecks(t *testing.T) {
 		c.tick(60 * 1000)
 		input.EventType = "low_stock"
 		return must(s.RecordRuleCheck(ctx, "kn1", input))
-	}
-	if _, err := s.RecordRuleCheck(ctx, "kn1", interfaces.KnEventRuleCheckInput{EventType: "late_order", Status: "ok"}); statusOf(t, err) != 409 {
-		t.Fatalf("checking a report type: %v", err)
 	}
 
 	undecided := check(interfaces.KnEventRuleCheckInput{Status: "unknown", Message: "source offline"})
@@ -330,13 +379,93 @@ func TestIntegrationRuleChecks(t *testing.T) {
 	if len(checks) != 1 || checks[0].Status != "unknown" || checks[0].LastOK == 0 || checks[0].LastOK >= checks[0].Time || checks[0].CheckedBy != "u1" {
 		t.Fatalf("checks %+v", checks)
 	}
+
+	// The first decision of a changed rule finds what was already there, even after checks that
+	// could not decide; the version it decided with is kept through them.
+	changed := check(interfaces.KnEventRuleCheckInput{Status: "ok", RuleVersion: "v2", Hits: []interfaces.KnEventRuleHit{hit("A", "W1"), hit("D", "W1")}})
+	var found *interfaces.KnEvent
+	for index := range changed.Events {
+		if changed.Events[index].ObjectKey == "D" {
+			found = &changed.Events[index]
+		}
+	}
+	if found == nil || !found.Backlog {
+		t.Fatalf("the first decision of v2 found %+v", changed.Events)
+	}
+	again := check(interfaces.KnEventRuleCheckInput{Status: "ok", RuleVersion: "v2", Hits: []interfaces.KnEventRuleHit{hit("A", "W1"), hit("D", "W1"), hit("E", "W1")}})
+	for _, event := range again.Events {
+		if event.ObjectKey == "E" && event.Backlog {
+			t.Fatalf("a hit of the second decision of v2 is a backlog: %+v", event)
+		}
+	}
+
+	// A class the network no longer runs has no checks to list.
+	if _, err := db.Exec("DELETE FROM " + objectTypeTable + " WHERE f_kn_id = 'kn1' AND f_id = 'low_stock'"); err != nil {
+		t.Fatal(err)
+	}
+	if checks := must(s.ListRuleChecks(ctx, "kn1")); len(checks) != 0 {
+		t.Fatalf("checks of a class that is gone %+v", checks)
+	}
+}
+
+func TestIntegrationEventStats(t *testing.T) {
+	s, db, c := integrationService(t)
+	ctx := userContext()
+	defineClasses(t, db, "kn1")
+	defineClasses(t, db, "kn2")
+	report := func(kn, key string, occurred int64) interfaces.KnEventsResult {
+		t.Helper()
+		c.tick(1)
+		return must(s.ReportEvent(ctx, kn, interfaces.KnEventReportInput{EventType: "late_order", Title: key, ObjectKey: key, OccurredAt: occurred}))
+	}
+	// What people report occurred a while before.
+	start := c.now.Load() - 100
+	report("kn1", "PO-1", start)
+	report("kn1", "PO-1", start+10) // a duplicate of the first
+	rejected := report("kn1", "PO-3", start+20)
+	c.tick(1)
+	must(s.ChangeEvent(ctx, "kn1", rejected.Events[0].ID, "reject", interfaces.KnEventReasonInput{Reason: "误报"}))
+	closed := report("kn1", "PO-2", start+30)
+	c.tick(1)
+	must(s.ChangeEvent(ctx, "kn1", closed.Events[0].ID, "verify", interfaces.KnEventReasonInput{}))
+	c.tick(1)
+	must(s.ChangeEvent(ctx, "kn1", closed.Events[0].ID, "close", interfaces.KnEventReasonInput{Reason: "已到货"}))
+	report("kn2", "PO-9", start)
+	// The first decision's hits were already there: they are no occurrences in the span.
+	c.tick(1)
+	must(s.RecordRuleCheck(ctx, "kn1", interfaces.KnEventRuleCheckInput{EventType: "low_stock", Status: "ok", RuleVersion: "v1",
+		Hits: []interfaces.KnEventRuleHit{{Key: "A"}}}))
+	c.tick(1)
+	must(s.RecordRuleCheck(ctx, "kn1", interfaces.KnEventRuleCheckInput{EventType: "low_stock", Status: "ok", RuleVersion: "v1",
+		Hits: []interfaces.KnEventRuleHit{{Key: "A"}, {Key: "B"}}}))
+	now := c.now.Load()
+
+	stats := must(s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{}))
+	want := []interfaces.KnEventStatEntry{
+		{EventType: "late_order", Count: 2, OpenCount: 1, LastOccurredAt: start + 30},
+		{EventType: "low_stock", Count: 1, OpenCount: 1, LastOccurredAt: now},
+	}
+	if !reflect.DeepEqual(stats.Entries, want) || stats.To != now+1 || stats.From != max(stats.To-interfaces.KnEventStatsDefaultSpan, 1) {
+		t.Fatalf("stats %+v, want %+v over the last seven days", stats, want)
+	}
+	narrowed := must(s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{EventTypes: []string{"late_order"}, ObjectKey: "PO-1"}))
+	if !reflect.DeepEqual(narrowed.Entries, []interfaces.KnEventStatEntry{{EventType: "late_order", Count: 1, OpenCount: 1, LastOccurredAt: start}}) {
+		t.Fatalf("stats of PO-1 %+v", narrowed)
+	}
+	span := must(s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{From: start + 1, To: start + 31}))
+	if !reflect.DeepEqual(span.Entries, []interfaces.KnEventStatEntry{{EventType: "late_order", Count: 1, LastOccurredAt: start + 30}}) {
+		t.Fatalf("stats of the span %+v", span)
+	}
+	if empty := must(s.CountEvents(ctx, "kn1", interfaces.KnEventStatsFilter{To: start})); len(empty.Entries) != 0 || empty.Entries == nil {
+		t.Fatalf("stats before anything occurred %+v", empty)
+	}
 }
 
 func TestIntegrationChangeFeedPages(t *testing.T) {
-	s, _, _ := integrationService(t)
+	s, db, _ := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
-	createTypes(t, s, ctx, "kn2")
+	defineClasses(t, db, "kn1")
+	defineClasses(t, db, "kn2")
 	for index := 0; index < 5; index++ {
 		must(s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "late_order", Title: "t", ObjectKey: fmt.Sprint(index)}))
 	}
@@ -370,9 +499,9 @@ func TestIntegrationChangeFeedPages(t *testing.T) {
 // Concurrent writers get contiguous numbers in commit order: a reader
 // following the feed meanwhile never sees a gap.
 func TestIntegrationConcurrentWritesNumberInCommitOrder(t *testing.T) {
-	s, _, _ := integrationService(t)
+	s, db, _ := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
+	defineClasses(t, db, "kn1")
 	const writers, each = 8, 15
 	done := make(chan struct{})
 	readerErr := make(chan error, 1)
@@ -456,7 +585,7 @@ func TestIntegrationNetworkDeletionRemovesEverything(t *testing.T) {
 	s, db, _ := integrationService(t)
 	ctx := userContext()
 	for _, kn := range []string{"kn1", "kn2"} {
-		createTypes(t, s, ctx, kn)
+		defineClasses(t, db, kn)
 		must(s.ReportEvent(ctx, kn, interfaces.KnEventReportInput{EventType: "late_order", Title: "t", ObjectKey: "PO"}))
 		must(s.RecordRuleCheck(ctx, kn, interfaces.KnEventRuleCheckInput{EventType: "low_stock", Status: "ok", Hits: []interfaces.KnEventRuleHit{{Key: "A"}}}))
 	}
@@ -470,7 +599,7 @@ func TestIntegrationNetworkDeletionRemovesEverything(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{typeTable, eventTable, changeTable, checkTable, headTable} {
+	for _, table := range []string{eventTable, changeTable, checkTable, headTable} {
 		for kn, want := range map[string]bool{"kn1": false, "kn2": true} {
 			var count int
 			if err := db.QueryRow("SELECT COUNT(*) FROM "+table+" WHERE f_kn_id = ?", kn).Scan(&count); err != nil {
@@ -482,7 +611,6 @@ func TestIntegrationNetworkDeletionRemovesEverything(t *testing.T) {
 		}
 	}
 	// A network created again with the same ID starts a new feed.
-	createTypes(t, s, ctx, "kn1")
 	must(s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "late_order", Title: "t"}))
 	if feed := must(s.ListChanges(context.Background(), "kn1", 0, 0)); len(feed.Entries) != 1 || feed.Entries[0].Seq != 1 {
 		t.Fatalf("feed after re-creation %+v", feed)
@@ -496,10 +624,29 @@ func (n *deletableNetwork) CheckKNExistByID(_ context.Context, knID, _ string) (
 	return knID, knID == "kn1" && !n.gone.Load(), nil
 }
 
-func TestIntegrationTypeCreatedDuringNetworkDeletionIsNotLeftBehind(t *testing.T) {
+// waitForHead waits until a statement of the test's database waits for a network's head row.
+func waitForHead(t *testing.T, db *sql.DB) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		var waiting int
+		if err := db.QueryRow("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB = DATABASE() AND INFO LIKE ?",
+			"%"+headTable+"%FOR UPDATE%").Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("nothing waited for the head row")
+		}
+	}
+}
+
+func TestIntegrationAReportDuringNetworkDeletionIsNotLeftBehind(t *testing.T) {
 	s, db, _ := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
+	defineClasses(t, db, "kn1")
+	must(s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "late_order", Title: "t"}))
 	network := &deletableNetwork{}
 	s.networks = network
 	tx, err := db.Begin()
@@ -510,45 +657,33 @@ func TestIntegrationTypeCreatedDuringNetworkDeletionIsNotLeftBehind(t *testing.T
 	if err := s.store.DeleteKnEvents(context.Background(), tx, "kn1"); err != nil {
 		t.Fatal(err)
 	}
-	created := make(chan error, 1)
+	reported := make(chan error, 1)
 	go func() {
-		_, err := s.CreateEventType(ctx, "kn1", interfaces.KnEventTypeInput{Code: "late_ship", Name: "n", Source: "report"})
-		created <- err
+		_, err := s.ReportEvent(ctx, "kn1", interfaces.KnEventReportInput{EventType: "late_order", Title: "late"})
+		reported <- err
 	}()
-	// The create has passed its network check and waits for the deletion.
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		var waiting int
-		if err := db.QueryRow("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB = DATABASE() AND (INFO LIKE ? OR INFO LIKE ?)",
-			"%"+headTable+"%FOR UPDATE%", "INSERT INTO "+typeTable+"%").Scan(&waiting); err != nil {
-			t.Fatal(err)
-		}
-		if waiting > 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the type create did not wait for the deletion")
-		}
-	}
+	// The report has passed its network check and waits for the deletion.
+	waitForHead(t, db)
 	network.gone.Store(true)
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-created; statusOf(t, err) != 404 {
-		t.Fatalf("type create during deletion: %v", err)
+	if err := <-reported; statusOf(t, err) != 404 {
+		t.Fatalf("report during deletion: %v", err)
 	}
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM "+typeTable+" WHERE f_kn_id = ?", "kn1").Scan(&count); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM "+eventTable+" WHERE f_kn_id = ?", "kn1").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
-		t.Fatalf("%d event types of the deleted network are left", count)
+		t.Fatalf("%d events of the deleted network are left", count)
 	}
 }
 
 func TestIntegrationLargeRuleCheck(t *testing.T) {
-	s, _, c := integrationService(t)
+	s, db, c := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
+	defineClasses(t, db, "kn1")
 	hits := make([]interfaces.KnEventRuleHit, interfaces.KnEventRuleHitsMax)
 	for index := range hits {
 		hits[index] = interfaces.KnEventRuleHit{Key: fmt.Sprintf("SKU-%05d", index),
@@ -576,8 +711,8 @@ func TestIntegrationLargeRuleCheck(t *testing.T) {
 func TestIntegrationPurgeExpiredCheckRefreshes(t *testing.T) {
 	s, db, c := integrationService(t)
 	ctx := userContext()
-	createTypes(t, s, ctx, "kn1")
-	createTypes(t, s, ctx, "kn2")
+	defineClasses(t, db, "kn1")
+	defineClasses(t, db, "kn2")
 	hits := make([]interfaces.KnEventRuleHit, purgeBatch+200)
 	for index := range hits {
 		hits[index] = interfaces.KnEventRuleHit{Key: fmt.Sprintf("SKU-%05d", index)}

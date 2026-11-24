@@ -271,3 +271,34 @@ func TestSafeClientGetParsesGrantSyncGeneration(t *testing.T) {
 		t.Fatalf("Get() = (%#v, %v), want generation 9", account, err)
 	}
 }
+
+func TestSafeClientGrantPostsOneSourceWithoutItsLocalMark(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/safe/in/v1/proxy-grant-sources" {
+			t.Fatalf("request = %s %s, want POST /api/safe/in/v1/proxy-grant-sources", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"source-row-1"}`))
+	}))
+	defer server.Close()
+
+	err := NewManagedProxyAccess(server.URL).Grant(t.Context(), "proxy-1", interfaces.ADMIN_ACCOUNT_ID,
+		interfaces.ProxyGrantSourceSpec{ResourceType: "resource", ResourceID: "kept-1", Operation: "data_query",
+			SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1", KNID: "kn-1",
+			BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "late_order", PlatformKept: true})
+	if err != nil {
+		t.Fatalf("Grant() error = %v", err)
+	}
+	source, _ := body["source"].(map[string]any)
+	if body["proxy_account_id"] != "proxy-1" || body["grantor_id"] != interfaces.ADMIN_ACCOUNT_ID ||
+		source["resource_id"] != "kept-1" || source["binding_id"] != "late_order" {
+		t.Fatalf("grant body = %#v", body)
+	}
+	if _, sent := source["PlatformKept"]; sent || len(source) != 8 {
+		t.Fatalf("grant source = %#v, want the eight fields bkn-safe knows", source)
+	}
+}

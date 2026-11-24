@@ -8,17 +8,20 @@ info:
     `report`). Events belong to the network, not to an application. Applications follow a network's
     events through the change feed and handle them in their own tasks.
 
-    An event type, identified by `code`, says how one kind of event is recognised in the network:
-    its source, the object type it is about (`subject`), a severity, a merge window and, for a rule
-    type, the rule. Every event type has an event class: an object type of the same network named
-    after the event type, whose objects are the events of that type, so events can be queried,
-    related and authorized like the network's other objects. The platform writes a dataset behind
-    the class, a copy of the events. `object_type_id` and `dataset_id` on the event type are the IDs
-    of the class and its dataset; they are empty for a type whose class has not been created yet.
-    The class is created with the event type and is written again when the type's name or subject
-    changes. In a versioned network the class is written into the draft. The class is a
-    platform-managed object type with the ID `object_type_id`; do not change it through the object
-    type API.
+    Each kind of event is an event class: an object type of the network whose `kinds` include
+    `event`, maintained through the object type API (`object-type.yaml`) and carried in BKN packages
+    (BKN specification §6.9). Its `event` configuration holds the source, the object type the events
+    are about (`subject`), a default severity, a merge window and a handling note. The platform keeps
+    the class's data source (a dataset that copies the class's events), its properties, keys and its
+    relation `{id}_subject` to the subject. `event_type` in this API is the ID of the class.
+
+    Events are written and read against the event classes of the version the network runs: the
+    published version that is running in a versioned network, its main branch otherwise. A class
+    only in the draft has no events until the draft is published.
+
+    The module serves from the professional edition up. Without the license every route of this
+    API, internal ones included, answers 404 as a path the server does not have; the capability
+    snapshot tells what the edition lacks.
 
     ## Authorization
 
@@ -26,9 +29,7 @@ info:
 
     | Operations | Permission on the knowledge network |
     | --- | --- |
-    | List and get event types | `view_detail` |
-    | Create, update and delete event types, check a rule now | `modify` |
-    | List and get events, report an event, verify / reject / close / reopen an event, list and record rule checks | `query_data` |
+    | List and get events, count occurrences, report an event, verify / reject / close / reopen an event, list and record rule checks | `query_data` |
 
     A caller without the permission gets 403. The change feed carries no identity and checks no
     permission. See `../knowledge-network-authorization.md`.
@@ -51,310 +52,37 @@ info:
       Responses are not cached. All times are Unix timestamps in milliseconds.
     - Statuses of an event: `unverified`, `verified`, `rejected`, `duplicate`, `closed`. The status
       describes the event itself; how an application handles it is recorded by that application.
-    - A rule event type is fed by rule checks. The first check of an object that is not yet open
+    - A rule event class is fed by rule checks. The first check of an object that is not yet open
       creates a `verified` event (verified by `rule`). A check that finds an open event's object again
       only refreshes it. A check that covers an open event's object but does not hit it ends the
       abnormal period: the event becomes `closed` and gets `ended_at`. A rejected event is never
       reopened by a check, and a person's close does not end a rule event's period; a rule event
       ends only when its rule finds it over.
-    - A reported event type is fed by reports. A report is `unverified` unless `verify` is true, which
-      verifies it at once as the reporter. If the type has `merge_hours` above 0 and the report has an
-      `object_key`, and an `unverified` or `verified` event of the same type and object has an
+    - A reported event class is fed by reports. A report is `unverified` unless `verify` is true,
+      which verifies it at once as the reporter. If the class has `merge_hours` above 0 and the report
+      has an `object_key`, and an `unverified` or `verified` event of the same class and object has an
       `occurred_at` within the window, the new event is stored as `duplicate` with `merged_into` set
       to the first event.
-    - Event type deletion is refused with 409 while the type has any event, or while its event class is
-      used by other definitions of the network.
+    - An event class that has events cannot be deleted: the object type API answers 409
+      `BknBackend.KnEvent.EventTypeInUse`. Deleting a class leaves its dataset in place.
     - The change feed keeps every change to an event. The entries for a check that only refreshed an
       event (action `checked`) are removed after 7 days; the other entries are the events' history and
       are kept.
     - Names of the reporter, verifier and actors are resolved from the user directory when the change
       is written; if the directory is unavailable the name is left empty.
 
-    ## Rule checks by the platform
-
-    A rule type is checked either by applications, which evaluate the rule themselves and post the
-    result to `POST /rule-checks`, or by the platform, when the type has a `rule_tool` and a
-    `check_schedule`. Without a `rule_tool`, `rule` is kept as given and not interpreted.
-
-    - The rule tool is an execution-factory function of the same network: a Cypher function whose
-      result shape is `table`. Each row it returns is an object the rule finds now. Column `key` is
-      required: the object's key, a string or a number, written as a string; a row whose `key` is
-      null or empty is skipped, and a key found again keeps its first row. Column `name` is the
-      object's name, used in the event title (the key when absent). Every other column is written
-      to the event's `object_attributes` under the column name, its value as text in both `key` and
-      `label`.
-    - `rule_tool.parameters` are the arguments, by the tool's parameter names. Each value is a fixed
-      JSON value of the parameter's type, or `{"check_time": "date"}`, which each check replaces with
-      the day of the check in the schedule's time zone, such as `"2026-11-15"`: write a condition
-      relative to today as `date($today)`.
-    - `check_schedule` is a five-field cron expression and an IANA time zone (default
-      `Asia/Shanghai`). Two checks are at least 5 minutes apart. A check time that passed while no
-      check could run is not made up for: after each check the next time is taken from the schedule.
-    - Each check runs as `check_subject`, the person who last saved `rule_tool` or
-      `check_schedule`, with that person's permissions on the tool and on the data, not as a service
-      account or an administrator. A check of the rule that someone asks for runs as the subject too.
-    - On save, when `rule_tool` or `check_schedule` changed, the tool is read and tried once as the
-      caller, who becomes the subject: the tool must exist and be enabled, its tool box published, it
-      must be a Cypher function of this network returning a table, the parameters must match its
-      inputs, and the trial must return a `key` column. The response carries the trial's result in
-      `trial`; nothing is recorded. A save that changes only other fields does not try the tool and
-      keeps the subject.
-    - The platform computes `rule_version` from the tool, the time the tool was last changed and the
-      parameters; a `rule_version` in the request is ignored while the type has a `rule_tool`. When it
-      changes, open events the rule no longer finds recover with `recovered-after-update`.
-    - A result that was truncated (`limited`) covers only the keys it returned: the other open events
-      are left as they are, and the check's message says so.
-    - A check that cannot decide is recorded with `status: unknown` and a message, and changes no
-      event's state: the subject lost the permission, the tool is unavailable or no longer a Cypher
-      table function, the tool failed, or the result has no `key` column. It is tried again after 1,
-      2, 4, then 8 minutes, never later than the next check time; `check_failures` counts such checks
-      in a row and goes back to 0 with the first check that decides.
-    - Checks read the network without a branch: in a versioned network, the published version that
-      is running. A network that was never published has no object types to read, so its checks
-      cannot decide.
-    - Two checks of one type never overlap. Removing `rule_tool` stops the platform's checks; open
-      events stay as they are until the next check, from an application.
-
-    Event type codes match `^[a-z0-9][a-z0-9_.-]{0,63}$`. Resource IDs of knowledge networks use
-    lowercase letters, digits, underscores and hyphens, start with a letter or digit, and contain at
-    most 128 characters.
+    Resource IDs of knowledge networks use lowercase letters, digits, underscores and hyphens, start
+    with a letter or digit, and contain at most 128 characters.
 security:
   - OAuth2: []
 tags:
-  - name: KnEventType
-    description: Event types and their event classes
   - name: KnEvent
-    description: Events, reports and actions
+    description: Events, reports, actions and occurrence counts
   - name: KnEventRuleCheck
-    description: Rule checks of rule event types
+    description: Rule checks of rule event classes
   - name: KnEventChange
     description: Internal change feed
 paths:
-  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types:
-    get:
-      tags:
-        - KnEventType
-      summary: List event types
-      description: Lists all event types of the knowledge network, ordered by code. Requires `view_detail`. Not paginated.
-      operationId: listKnEventTypes
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-      responses:
-        "200":
-          description: The event types.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnEventTypeList"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-    post:
-      tags:
-        - KnEventType
-      summary: Create an event type
-      description: |-
-        Creates an event type and its event class (an object type, with a dataset behind it) in the
-        knowledge network. Requires `modify`. The class is created first; if it cannot be created the
-        event type is not created.
-
-        `code` is required and matches `^[a-z0-9][a-z0-9_.-]{0,63}$`. `source` is required and cannot
-        be changed later. If `subject` names an object type of the network that has a primary key, the
-        class gets a relation to it, so an event reaches the object it is about.
-
-        409 `BknBackend.KnEvent.EventTypeExisted` is returned when the code is taken, when the class
-        ID derived from the code is the class of another event type, or when the network already has
-        an object type with that ID or with the same name as the event type.
-
-        A rule type given a `rule_tool` and a `check_schedule` is checked by the platform (see "Rule
-        checks by the platform"). The tool is tried as the caller before anything is created: 400
-        `BknBackend.KnEvent.RuleToolUnavailable` for a tool that does not exist, is disabled or whose
-        box is not published; 400 `BknBackend.KnEvent.RuleToolNotCypherTable` for one that is not a
-        Cypher function of this network returning a table; 400
-        `BknBackend.KnEvent.InvalidParameter` for parameters that do not match its inputs, a schedule
-        that cannot be read or checks more often than every 5 minutes, a result without a `key`
-        column, or a statement that failed (error details `{"status", "error"}`, the tool's own);
-        403 `Public.Forbidden` when the caller may not use the tool or read its data.
-      operationId: createKnEventType
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/KnEventTypeInput"
-      responses:
-        "201":
-          description: Created. Returns the event type including its class IDs.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnEventType"
-        "400":
-          $ref: "#/components/responses/InvalidParameter"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/TooLarge"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types/{code}:
-    get:
-      tags:
-        - KnEventType
-      summary: Get an event type
-      description: Returns one event type. Requires `view_detail`. 404 `BknBackend.KnEvent.EventTypeNotFound` if the code is unknown.
-      operationId: getKnEventType
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-        - $ref: "#/components/parameters/EventTypeCode"
-      responses:
-        "200":
-          description: The event type.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnEventType"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-    put:
-      tags:
-        - KnEventType
-      summary: Replace an event type
-      description: |-
-        Replaces the changeable fields of an event type (`name`, `subject`, `severity`, `merge_hours`,
-        `rule`, `rule_version`, `rule_tool`, `check_schedule`); omitted fields take their zero values,
-        they are not kept: leaving out `rule_tool` stops the platform's checks. When `rule_tool` or
-        `check_schedule` changes, the tool is tried as the caller as on creation, and the caller
-        becomes the check subject; otherwise the subject is kept. If someone else saved another
-        `rule_tool` or `check_schedule` while the tool was tried, nothing is written and the response
-        is 409 `BknBackend.KnEvent.RuleChecking`: save again. Requires
-        `modify`. `code` and `source` cannot change: the body may omit them or repeat the current values,
-        anything else is 400. Existing events keep the severity, type name and other values they were
-        written with.
-
-        The event class is written again when `name` or `subject` changes, and created for a type that
-        has none yet. A name taken by another object type of the network is 409
-        `BknBackend.KnEvent.EventTypeExisted`.
-      operationId: updateKnEventType
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-        - $ref: "#/components/parameters/EventTypeCode"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/KnEventTypeUpdate"
-      responses:
-        "200":
-          description: The updated event type.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnEventType"
-        "400":
-          $ref: "#/components/responses/InvalidParameter"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/TooLarge"
-        "500":
-          $ref: "#/components/responses/InternalError"
-    delete:
-      tags:
-        - KnEventType
-      summary: Delete an event type
-      description: |-
-        Deletes an event type, its event class and the class's dataset. Requires `modify`.
-
-        409 `BknBackend.KnEvent.EventTypeInUse` is returned when the type has any event (of any status).
-        409 `BknBackend.KnEvent.EventClassInUse` is returned when its class, or the class's relation, is
-        used by other definitions of the network; the error details are
-        `{"event_class": "<object type ID>", "used_by": ["<name>", ...]}`. Nothing is deleted in either
-        case. The dataset is deleted after the
-        type is gone; a failure to delete it is logged and does not fail the request. In a versioned
-        network the class is removed in the draft and the dataset is kept, since the published version
-        still reads the class.
-      operationId: deleteKnEventType
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-        - $ref: "#/components/parameters/EventTypeCode"
-      responses:
-        "204":
-          description: Deleted.
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-types/{code}/check:
-    post:
-      tags:
-        - KnEventRuleCheck
-      summary: Check a rule now
-      description: |-
-        Checks a rule type that has a `rule_tool` at once, as the scheduled checks do: as the type's
-        `check_subject`, not as the caller, so that the result is the one a scheduled check would
-        record. Requires `modify`. Takes no body. The next scheduled check time does not change.
-
-        400 `BknBackend.KnEvent.InvalidParameter` for a type without a `rule_tool`; 409
-        `BknBackend.KnEvent.SourceMismatch` for a `report` type; 409 `BknBackend.KnEvent.RuleChecking`
-        while a check of the type is running, or when the rule tool or schedule was saved again during
-        the check, whose result is then not recorded. A check that cannot decide is not an error: it
-        is recorded with `status: unknown` and returned.
-      operationId: checkKnEventType
-      parameters:
-        - $ref: "#/components/parameters/KNID"
-        - $ref: "#/components/parameters/EventTypeCode"
-      responses:
-        "200":
-          description: The events the check created or changed (current state, without history) and the check recorded.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnEventRuleCheckResult"
-        "400":
-          $ref: "#/components/responses/InvalidParameter"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/events:
     get:
       tags:
@@ -364,13 +92,14 @@ paths:
         Lists events of the knowledge network, newest recorded first (ordered by `recorded_at`, then ID,
         descending). Requires `query_data`. Entries carry no `history`. Pages are cursor based: pass the
         `next_cursor` of a page as `cursor` to get the next one; `next_cursor` is empty on the last page.
-        An unknown status or a cursor that is not valid is 400.
+        `from` and `to` choose the events by when they occurred. An unknown status, a cursor that is not
+        valid, or a `from` that is not before `to` is 400.
       operationId: listKnEvents
       parameters:
         - $ref: "#/components/parameters/KNID"
         - name: event_type
           in: query
-          description: Event type codes, comma separated. Empty values are ignored. Defaults to all types.
+          description: Event class IDs, comma separated or repeated. Empty values are ignored. Defaults to all classes.
           schema:
             type: string
           example: overdue_order,quality_issue
@@ -385,6 +114,8 @@ paths:
           description: Only events about the object with this key.
           schema:
             type: string
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
         - name: cursor
           in: query
           description: The `next_cursor` of the previous page.
@@ -421,17 +152,17 @@ paths:
         - KnEvent
       summary: Report an event
       description: |-
-        Reports an event of a `report` event type. Requires `query_data`. The reporter is the caller.
+        Reports an event of a `report` event class. Requires `query_data`. The reporter is the caller.
 
-        The event starts `unverified`, or `verified` when `verify` is true. If the type's `merge_hours`
-        is above 0, `object_key` is given and an `unverified` or `verified` event of the same type and
+        The event starts `unverified`, or `verified` when `verify` is true. If the class's `merge_hours`
+        is above 0, `object_key` is given and an `unverified` or `verified` event of the same class and
         object has an `occurred_at` within `merge_hours` of this one's, the new event is stored as
         `duplicate` (`verify` is then ignored) with `merged_into` set to the first matching event, and
         that event is returned too. `occurred_at` defaults to the time of the report. `object_name`
         defaults to `object_key`. `detail` is free JSON of at most 1 MiB and defaults to `{}`.
 
-        404 `BknBackend.KnEvent.EventTypeNotFound` for an unknown type; 409
-        `BknBackend.KnEvent.SourceMismatch` if the type is a `rule` type.
+        404 `BknBackend.KnEvent.EventTypeNotFound` when the version the network runs has no such class;
+        409 `BknBackend.KnEvent.SourceMismatch` if the class's source is `rule`.
       operationId: reportKnEvent
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -552,14 +283,61 @@ paths:
           $ref: "#/components/responses/TooLarge"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/event-stats:
+    get:
+      tags:
+        - KnEvent
+      summary: Count event occurrences
+      description: |-
+        Counts, for each event class, the events that occurred in a span. Requires `query_data`.
+        Rejected and duplicate events do not count, nor does what a rule found already there on its
+        first decision, or its first after the rule changed (`backlog`). `open_count` is how many of
+        the counted events are `unverified` or `verified`; `last_occurred_at` is when the latest of
+        them occurred. Classes with no occurrences have no entry; entries are ordered by class ID.
+
+        The span runs from `from`, inclusive, to `to`, exclusive. With neither, it is the seven days
+        up to now; with `from` alone it runs up to now, with `to` alone it is the seven days before
+        `to`. The response gives the span it counted. A `from` that is not before `to` is 400.
+      operationId: countKnEvents
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - name: event_type
+          in: query
+          description: Event class IDs, comma separated or repeated. Defaults to all classes.
+          schema:
+            type: string
+        - name: object_key
+          in: query
+          description: Only events about the object with this key.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnEventStats"
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/rule-checks:
     get:
       tags:
         - KnEventRuleCheck
       summary: List the last rule checks
       description: |-
-        Lists the last recorded check of each rule event type, ordered by event type code. Requires
-        `query_data`. A rule type that has never been checked has no entry. Not paginated.
+        Lists the last recorded check of each rule event class the network runs, ordered by class ID.
+        Requires `query_data`. A class that has never been checked has no entry. Not paginated.
       operationId: listKnEventRuleChecks
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -583,33 +361,41 @@ paths:
         - KnEventRuleCheck
       summary: Record a rule check
       description: |-
-        Records one run of a rule event type and applies it to the type's events. Requires `query_data`.
-        404 `BknBackend.KnEvent.EventTypeNotFound` for an unknown type; 409
-        `BknBackend.KnEvent.SourceMismatch` if the type is a `report` type; 409
-        `BknBackend.KnEvent.CheckedByPlatform` if the type has a `rule_tool`, so that an application
-        and the platform do not both check one rule.
+        Records one run of the rule of a rule event class and applies it to the class's events.
+        Requires `query_data`. 404 `BknBackend.KnEvent.EventTypeNotFound` when the version the network
+        runs has no such class; 409 `BknBackend.KnEvent.SourceMismatch` if the class's source is
+        `report`.
+
+        A class that has a record-event action type in the version the network runs takes checks only
+        from it: the platform runs it on its schedule and records its checks through the internal API,
+        naming it in `action_type_id` (409 `BknBackend.KnEvent.RecognitionMismatch` for any other check,
+        and for a check that names an action type the class does not have). The public API does not
+        take `action_type_id` (400). The internal API takes the `x-bkn-execution-id` header, the action
+        execution the check belongs to (1 to 40 letters, digits and `-`), and records it in the history
+        of every event the check changes.
 
         - `status: unknown` means the rule could not decide. No event changes state; the open events of
-          the type only get `last_checked_at` and `check_status: unknown` refreshed. The stored check
+          the class only get `last_checked_at` and `check_status: unknown` refreshed. The stored check
           keeps `last_ok`, the time of the last check that decided.
         - `status: ok` means the rule decided and `hits` is the complete result for the objects it
-          read. A hit with no open event of the type for that key opens a new `verified` event; a hit
+          read. A hit with no open event of the class for that key opens a new `verified` event; a hit
           whose object has an open event refreshes it (`rule_version`, attributes merged by property
           name, `last_checked_at`, `check_status: ok`); an open event whose object is not hit is
           closed. Duplicate keys in `hits` count once, the first one winning.
         - `covered` limits `ok` to the objects the rule read when it read only some: open events whose
           `object_key` is not listed are left as they are. Absent or `null`, the check covered all
           objects. An empty list covers none.
-        - An event opened by the first `ok` check after a rule is set up, one with no earlier decided
-          check, is marked `backlog: true`: it records what had long been wrong.
+        - An event opened by the first `ok` check of a class, or by the first after its `rule_version`
+          changed, is marked `backlog: true`: it records what had long been wrong.
         - Only events whose period is open (`ended_at` is 0) and that are not `rejected` take part in a
           check. A closed event whose period has ended is never changed by a check, so an object that
           is hit again opens a new event.
         - A closed event whose rule has not ended it does take part: a hit refreshes it, and a miss ends
           its period.
 
-        The event's title for a hit is the type name and the object name. `hits` has at most 20000
-        entries (413 beyond), each with a `key` of 1 to 250 characters.
+        The event's title for a hit is the class name and the object name. `hits` has at most 20000
+        entries (413 beyond), each with a `key` of 1 to 250 characters. A hit's `detail` is written to
+        the event it opens; a later check does not change it.
       operationId: recordKnEventRuleCheck
       parameters:
         - $ref: "#/components/parameters/KNID"
@@ -707,14 +493,22 @@ components:
         type: string
         maxLength: 128
         pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
-    EventTypeCode:
-      name: code
-      in: path
-      required: true
-      description: Event type code
+    From:
+      name: from
+      in: query
+      description: Only events that occurred at or after this time. A non-negative integer; 0 or absent sets no start. A negative or non-numeric value is 400.
       schema:
-        type: string
-        pattern: "^[a-z0-9][a-z0-9_.-]{0,63}$"
+        type: integer
+        format: int64
+        minimum: 0
+    To:
+      name: to
+      in: query
+      description: Only events that occurred before this time. A non-negative integer; 0 or absent sets no end. A negative or non-numeric value is 400.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
     EventID:
       name: event_id
       in: path
@@ -726,8 +520,7 @@ components:
     InvalidParameter:
       description: |-
         BknBackend.KnEvent.InvalidParameter: a field or parameter is invalid, and error_details names
-        it. Saving a rule tool can also give BknBackend.KnEvent.RuleToolUnavailable or
-        BknBackend.KnEvent.RuleToolNotCypherTable.
+        it.
       content:
         application/json:
           schema:
@@ -739,32 +532,31 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Forbidden:
-      description: The caller lacks the knowledge-network permission the operation needs, or, when a rule tool is saved, may not use the tool or read the data it reads
+      description: The caller lacks the knowledge-network permission the operation needs
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     NotFound:
       description: |-
-        The knowledge network (BknBackend.KnowledgeNetwork.NotFound), event type (BknBackend.KnEvent.EventTypeNotFound),
-        event (BknBackend.KnEvent.EventNotFound) or action name (Public.NotFound) was not found.
+        The knowledge network (BknBackend.KnowledgeNetwork.NotFound), event class (BknBackend.KnEvent.EventTypeNotFound),
+        event (BknBackend.KnEvent.EventNotFound) or action name (Public.NotFound) was not found. Without
+        the license every route answers 404 as a path the server does not have.
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
       description: |-
-        One of BknBackend.KnEvent.EventTypeExisted, BknBackend.KnEvent.EventTypeInUse,
-        BknBackend.KnEvent.EventClassInUse (error_details: `{"event_class", "used_by"}`),
-        BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`),
-        BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`),
-        BknBackend.KnEvent.CheckedByPlatform or BknBackend.KnEvent.RuleChecking.
+        One of BknBackend.KnEvent.SourceMismatch (error_details: `{"event_type", "source"}`),
+        BknBackend.KnEvent.RecognitionMismatch (error_details: `{"event_type", "action_type_id"}`) or
+        BknBackend.KnEvent.ActionNotAllowed (error_details: `{"action", "status"}`).
       content:
         application/json:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     TooLarge:
-      description: BknBackend.KnEvent.TooLarge. The body is over 16 MiB, `rule` or `detail` is over 1 MiB, or `hits` has more than 20000 entries.
+      description: BknBackend.KnEvent.TooLarge. The body is over 16 MiB, `detail` is over 1 MiB, or `hits` has more than 20000 entries.
       content:
         application/json:
           schema:
@@ -776,226 +568,6 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
-    KnEventTypeInput:
-      type: object
-      required:
-        - code
-        - name
-        - source
-      properties:
-        code:
-          type: string
-          pattern: "^[a-z0-9][a-z0-9_.-]{0,63}$"
-          description: Event type code, unique in the network. Cannot change.
-        name:
-          type: string
-          maxLength: 128
-          description: Name, trimmed. Also the name of the event class, so it cannot repeat another object type's name.
-        source:
-          type: string
-          enum:
-            - rule
-            - report
-          description: Who writes the type's events. Cannot change.
-        subject:
-          type: string
-          maxLength: 128
-          description: ID of the object type the events are about. Optional; an event's `object_type` is set from it.
-        severity:
-          type: string
-          maxLength: 16
-          description: Severity copied to new events. Free text.
-        merge_hours:
-          type: number
-          format: double
-          minimum: 0
-          default: 0
-          description: Window in hours within which a repeated report about the same object is a duplicate. 0 turns merging off. Used by report types.
-        rule:
-          type: object
-          additionalProperties: true
-          description: The rule of a rule type, kept as given and not interpreted by the platform; at most 1 MiB. Defaults to `{}`.
-        rule_version:
-          type: string
-          maxLength: 64
-          description: Version label of the rule. Ignored for a type with a `rule_tool`, whose version the platform computes.
-        rule_tool:
-          $ref: "#/components/schemas/KnEventRuleTool"
-        check_schedule:
-          $ref: "#/components/schemas/KnEventCheckSchedule"
-    KnEventTypeUpdate:
-      type: object
-      required:
-        - name
-      description: The body of a replace. `code` and `source` may be omitted or must equal the current values.
-      properties:
-        code:
-          type: string
-        name:
-          type: string
-          maxLength: 128
-        source:
-          type: string
-          enum:
-            - rule
-            - report
-        subject:
-          type: string
-          maxLength: 128
-        severity:
-          type: string
-          maxLength: 16
-        merge_hours:
-          type: number
-          format: double
-          minimum: 0
-        rule:
-          type: object
-          additionalProperties: true
-        rule_version:
-          type: string
-          maxLength: 64
-        rule_tool:
-          $ref: "#/components/schemas/KnEventRuleTool"
-        check_schedule:
-          $ref: "#/components/schemas/KnEventCheckSchedule"
-    KnEventType:
-      type: object
-      properties:
-        kn_id:
-          type: string
-        code:
-          type: string
-        name:
-          type: string
-        source:
-          type: string
-          enum:
-            - rule
-            - report
-        subject:
-          type: string
-        severity:
-          type: string
-        merge_hours:
-          type: number
-          format: double
-        rule:
-          type: object
-          additionalProperties: true
-        rule_version:
-          type: string
-        rule_tool:
-          $ref: "#/components/schemas/KnEventRuleTool"
-        check_schedule:
-          $ref: "#/components/schemas/KnEventCheckSchedule"
-        check_subject:
-          $ref: "#/components/schemas/KnEventCheckSubject"
-        next_check_at:
-          type: integer
-          format: int64
-          description: When the platform checks the rule next. 0 for a type without a `rule_tool`. Read-only.
-        check_failures:
-          type: integer
-          description: The platform's checks in a row that could not decide. Read-only.
-        trial:
-          $ref: "#/components/schemas/KnEventRuleTrial"
-        object_type_id:
-          type: string
-          description: ID of the event class, the object type the type's events are read as. Empty for a type whose class has not been created yet.
-        dataset_id:
-          type: string
-          description: ID of the dataset behind the event class, written by the platform. Empty like `object_type_id`.
-        creator:
-          type: string
-        creator_type:
-          type: string
-        create_time:
-          type: integer
-          format: int64
-        updater:
-          type: string
-        updater_type:
-          type: string
-        update_time:
-          type: integer
-          format: int64
-    KnEventRuleTool:
-      type: object
-      nullable: true
-      required:
-        - box_id
-        - tool_id
-      description: The rule tool the platform checks a rule type with. Null for a type checked by applications. Needs `check_schedule`.
-      properties:
-        box_id:
-          type: string
-          description: Tool box of the tool.
-        tool_id:
-          type: string
-          description: A Cypher function of this network whose result shape is `table`.
-        parameters:
-          type: object
-          description: |-
-            Arguments by the tool's parameter names. A fixed value of the parameter's type, or
-            `{"check_time": "date"}` for the day of the check in the schedule's time zone (a string
-            parameter).
-          additionalProperties: true
-      example:
-        box_id: orders_rules
-        tool_id: overdue_orders
-        parameters:
-          today:
-            check_time: date
-          days: 3
-    KnEventCheckSchedule:
-      type: object
-      nullable: true
-      required:
-        - cron
-      description: When the platform checks the rule. Needs `rule_tool`.
-      properties:
-        cron:
-          type: string
-          maxLength: 128
-          description: Five-field cron expression (minute, hour, day of month, month, day of week). Two checks are at least 5 minutes apart.
-          example: "0 9 * * *"
-        timezone:
-          type: string
-          maxLength: 64
-          default: Asia/Shanghai
-          description: IANA time zone of the cron expression and of the check date.
-    KnEventCheckSubject:
-      type: object
-      nullable: true
-      description: Read-only. The account the platform's checks run as, the person who last saved `rule_tool` or `check_schedule`. Null without a `rule_tool`.
-      properties:
-        id:
-          type: string
-        type:
-          type: string
-        name:
-          type: string
-          description: Resolved from the user directory when read; empty if it is unavailable.
-    KnEventRuleTrial:
-      type: object
-      description: Only in the response of a save that tried the rule tool. Nothing was recorded.
-      properties:
-        hits:
-          type: integer
-          description: Objects the trial found.
-        limited:
-          type: boolean
-          description: Whether the result was truncated.
-    KnEventTypeList:
-      type: object
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/KnEventType"
-        total:
-          type: integer
     KnEventAttribute:
       type: object
       description: A value of the event object's property, stored as given.
@@ -1037,6 +609,9 @@ components:
         time:
           type: integer
           format: int64
+        execution_id:
+          type: string
+          description: The action execution that made the change, for a check of a record-event action type; absent otherwise.
     KnEvent:
       type: object
       properties:
@@ -1046,7 +621,7 @@ components:
           type: string
         event_type:
           type: string
-          description: Event type code.
+          description: ID of the event class.
         event_type_name:
           type: string
         title:
@@ -1070,7 +645,7 @@ components:
           type: string
         object_type:
           type: string
-          description: ID of the object type the event is about (the type's `subject`). Empty for a report without `object_key`.
+          description: ID of the object type the event is about (the class's `subject`). Empty for a report without `object_key`.
         object_key:
           type: string
         object_name:
@@ -1173,7 +748,7 @@ components:
       properties:
         event_type:
           type: string
-          description: Code of a `report` event type.
+          description: ID of an event class whose source is `report`.
         title:
           type: string
           maxLength: 256
@@ -1222,6 +797,10 @@ components:
           description: Defaults to `key`.
         attributes:
           $ref: "#/components/schemas/KnEventAttributes"
+        detail:
+          type: object
+          additionalProperties: true
+          description: What the rule found about the object, such as a metric's value; at most 16 KiB. Written to the event the check opens.
     KnEventRuleCheckInput:
       type: object
       required:
@@ -1230,7 +809,11 @@ components:
       properties:
         event_type:
           type: string
-          description: Code of a `rule` event type.
+          description: ID of an event class whose source is `rule`.
+        action_type_id:
+          type: string
+          maxLength: 128
+          description: Internal API only. The record-event action type whose check this is, sent by the platform.
         rule_version:
           type: string
           maxLength: 64
@@ -1254,6 +837,38 @@ components:
           description: Object keys the check read, when it read only some.
           items:
             type: string
+    KnEventStats:
+      type: object
+      properties:
+        from:
+          type: integer
+          format: int64
+          description: Start of the span counted, inclusive.
+        to:
+          type: integer
+          format: int64
+          description: End of the span counted, exclusive.
+        entries:
+          type: array
+          description: One entry per class with occurrences, ordered by class ID; never null.
+          items:
+            $ref: "#/components/schemas/KnEventStatEntry"
+    KnEventStatEntry:
+      type: object
+      properties:
+        event_type:
+          type: string
+          description: ID of the event class.
+        count:
+          type: integer
+          description: Events of the class that occurred in the span.
+        open_count:
+          type: integer
+          description: Of them, the `unverified` and `verified` ones.
+        last_occurred_at:
+          type: integer
+          format: int64
+          description: When the latest of them occurred.
     KnEventRuleCheck:
       type: object
       properties:

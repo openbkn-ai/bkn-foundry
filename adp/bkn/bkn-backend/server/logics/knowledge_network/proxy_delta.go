@@ -461,6 +461,11 @@ func (kns *knowledgeNetworkService) preflightProxyDelta(ctx context.Context, pro
 			selection.skip(source, proxySkipReasonUnsupported)
 		}
 	}
+	if kns.grantPlatformKept(ctx, proxyID, checked, result.DeniedSources) {
+		if result, err = kns.mpa.CheckGrantDelta(ctx, proxyID, delegatorID, checked, delta.removals); err != nil {
+			return nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "proxy permission delta preflight failed")
+		}
+	}
 	missing := make([]missingProxyPermission, 0, len(result.DeniedSources))
 	for _, source := range result.DeniedSources {
 		if interfaces.IsBestEffortProxyGrantSource(source) {

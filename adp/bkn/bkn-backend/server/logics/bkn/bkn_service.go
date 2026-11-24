@@ -58,11 +58,13 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 
 // ExportToTar exports a knowledge network as a tar archive.
 //
-// A network without a 3.0 declaration is written as 2.x, byte for byte as before, unless 3.0 is asked
-// for. A network with one is written as 3.0, because a 2.x package cannot hold it, unless 2.0 is
-// asked for, which leaves the declarations out. A 3.0 export first runs the network check: a
-// misplaced parameter would be refused when the package is imported again, so the export is refused
-// with the parameters to fix.
+// A network without a 3.0 declaration or an event class is written as 2.x, byte for byte as before,
+// unless another specification is asked for. A network with an event class and no 3.0 declaration is
+// written as 2.1, the first that holds event classes. A network with a 3.0 declaration is written as
+// 3.0, because an earlier package cannot hold it, unless 2.0 or 2.1 is asked for, which leaves the
+// declarations out (2.0 the event classes and their record-event action types too). A 3.0 export
+// first runs the network check: a misplaced parameter would be refused when the package is imported
+// again, so the export is refused with the parameters to fix.
 func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch string, spec string) ([]byte, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN导出为Tar")
 	defer span.End()
@@ -94,6 +96,8 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 				WithErrorDetails(found)
 		}
 		bknNetwork.BknSpec = bknsdk.BknSpecV3
+	} else if spec == interfaces.BKN_EXPORT_SPEC_21 || (spec == interfaces.BKN_EXPORT_SPEC_AUTO && bknsdk.HasEventClasses(bknNetwork)) {
+		bknNetwork.BknSpec = bknsdk.BknSpecV21
 	}
 
 	var buf bytes.Buffer
@@ -174,10 +178,19 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 	}
 
 	bknNetwork := logics.ToBKNNetWork(kn)
+	// The relation types the kinds keep are made by the platform with their object types, on
+	// import as on any save: a package does not carry them.
+	owned := map[string]bool{}
 	for _, ot := range kn.ObjectTypes {
 		bknNetwork.ObjectTypes = append(bknNetwork.ObjectTypes, logics.ToBKNObjectType(ot))
+		for _, id := range logics.OwnedRelationTypeIDs(ot) {
+			owned[id] = true
+		}
 	}
 	for _, rt := range kn.RelationTypes {
+		if owned[rt.RTID] {
+			continue
+		}
 		bknNetwork.RelationTypes = append(bknNetwork.RelationTypes, logics.ToBKNRelationType(rt))
 	}
 	for _, act := range kn.ActionTypes {
