@@ -3,12 +3,12 @@
 # Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 # Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
-FROM golang:1.26.9 AS builder
+FROM golang:1.27.4 AS builder
 
 WORKDIR /workspace
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go version && go mod download
 
 COPY . .
 

@@ -1,6 +1,6 @@
 module github.com/openbkn-ai/bkn-foundry/bkn-trace/tests/internal-control
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability v0.0.0

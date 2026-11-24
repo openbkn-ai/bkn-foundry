@@ -519,7 +519,7 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 
 - **Git**（必备）
 - **Java**（JDK 17+）+ Maven —— ADP 大多数后端模块
-- **Go**（1.23+）—— `infra/oss-gateway-backend`、若干 CLI 与小型服务
+- **Go**（1.27.4+）—— `infra/oss-gateway-backend`、若干 CLI 与小型服务
 - **Python**（3.11+）—— `infra/mf-model-manager` 等模型/数据组件
 - **Node.js** —— openbkn 相关 CLI 需 **22+**（以 [npm 上 `bkn-sdk`](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines` 为准）
 - **Docker** + 一套 Kubernetes（单机 K3s / kubeadm / Docker Desktop）—— 端到端验证

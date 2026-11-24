@@ -114,7 +114,7 @@ own backend. Existing business tools and their evidence handling are unchanged.
 
 ### Tech Stack
 
-- **Language**: Go 1.26.0
+- **Language**: Go 1.27.4
 - **Web framework**: Gin 1.11
 - **Observability**: OpenTelemetry
 - **Cache**: Redis (optional, sentinel mode supported)
@@ -157,7 +157,7 @@ server/
 
 ### Requirements
 
-- Go 1.26.0+
+- Go 1.27.4+
 - Access to ontology-query, ontology-manager, and other configured backends (or use ktctl to connect to a remote cluster)
 
 ### Local Development

@@ -1,6 +1,6 @@
 module github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/bytedance/sonic v1.15.4

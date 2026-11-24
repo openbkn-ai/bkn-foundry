@@ -6,7 +6,7 @@
 
 module bkn-backend-tests
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/smartystreets/goconvey v1.8.1
