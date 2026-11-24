@@ -424,6 +424,7 @@ Only the basic forms are available there:
 | `collect` | No |
 
 - A form that is not available returns 400, naming what cannot be used. explain only compiles and cannot see where an object type's data lives, so this refusal comes when the query runs.
+- A data source can keep a field readable but not filterable, such as a JSON field in a knowledge base, marked `filterable: false` in the object type detail and in search_schema. A WHERE or inline condition on it returns 400 `Unsupported` naming the property, before any data is read; returning it and filtering on other properties are unaffected, so to compare its values, return them and compare.
 - Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400 `ReadBudgetExceeded`, so narrow it with conditions.
 - Only relation types join by key here. Two nodes connected only by an equality such as `a.code = b.code` are read in full, combined pairwise and then filtered, which easily exceeds the limit; use a relation type where there is one. explain gives no warning for this.
 
@@ -462,10 +463,10 @@ Only the basic forms are available there:
 | HTTP | error_code | Meaning |
 | --- | --- | --- |
 | 400 | `BknBackend.Cypher.SyntaxError` | Could not be parsed |
-| 400 | `BknBackend.Cypher.Unsupported` | Valid openCypher outside the supported subset, or two parts of the pattern neither connected nor narrowed by any condition |
+| 400 | `BknBackend.Cypher.Unsupported` | Valid openCypher outside the supported subset, two parts of the pattern neither connected nor narrowed by any condition, or a condition on a property a dataset or index cannot filter on |
 | 400 | `BknBackend.Cypher.InvalidQuery` | Does not match the model: an unknown label or property, a type mismatch, ... |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` above 10000 |
-| 400 | `BknBackend.Cypher.InvalidParameter` | Empty or oversized query, or an invalid parameter |
+| 400 | `BknBackend.Cypher.InvalidParameter` | Empty or oversized query, an invalid parameter, or a condition the data source of a dataset or index rejected |
 | 400 | `BknBackend.Cypher.ReadBudgetExceeded` | The evidence a `collect` reads reaches 10000 rows, or a query on datasets or indexes reads more than the limit or runs out of time |
 | 403 | `BknBackend.Cypher.PropertyForbidden` | Names a masked or structure-only property |
 | 403 | `BknBackend.Cypher.Forbidden` | The data source refused a resource the query reads, and the network's proxy account could not be used |

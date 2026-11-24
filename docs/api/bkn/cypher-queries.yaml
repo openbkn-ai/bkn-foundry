@@ -105,10 +105,12 @@ paths:
           description: |-
             The query is the caller's to fix. error_code distinguishes the reason:
             BknBackend.Cypher.SyntaxError (could not be parsed),
-            BknBackend.Cypher.Unsupported (valid openCypher outside the supported subset),
+            BknBackend.Cypher.Unsupported (valid openCypher outside the supported subset, or a
+            condition on a property a dataset or index can return but not filter on),
             BknBackend.Cypher.InvalidQuery (does not match the knowledge network model),
             BknBackend.Cypher.LimitExceeded (LIMIT above the ceiling),
-            BknBackend.Cypher.InvalidParameter (missing or oversized query),
+            BknBackend.Cypher.InvalidParameter (missing or oversized query, or a condition the
+            data source of a dataset or index rejected; its message is not passed through),
             BknBackend.Cypher.ReadBudgetExceeded (the evidence a collect(...) query reads
             reaches 10000 rows; add conditions or lower LIMIT).
             error_details carries the compiler's message, with a line and column where the
@@ -335,7 +337,11 @@ components:
             relationships and derived relationships are returned as on a SQL data source,
             and UNION works, each part read on its own. A relation that links its ends
             through a link table, as networks built from a knowledge base have, works in
-            MATCH; in OPTIONAL MATCH it is refused with 400 naming the relation type.
+            MATCH; in OPTIONAL MATCH it is refused with 400 naming the relation type. A
+            property its resource can return but not filter on (filterable false on the
+            object type's data property, the default for a JSON field) may be returned, but a
+            WHERE or inline condition on it is refused with 400 naming the property, before
+            any data is read.
 
             In the semi-join form each row of the second stage is kept once if its value is
             among the first stage's, however often the first stage produced it; v may also be
