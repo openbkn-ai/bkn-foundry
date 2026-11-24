@@ -694,7 +694,8 @@ def test_view_tools_record_their_patches():
     _invoke(tools["configure_display"], labels=[{"object_type": "teams", "label": "{team_name}"}], node_size_by="")
     _invoke(tools["configure_analysis"], chart={"kind": "category", "propertyByOt": {"teams": "region"}})
     _invoke(tools["arrange_canvas"], layout="radial")
-    with pytest.raises(ToolException, match="Unknown object types"):
+    # view_state lists the object types this check reads, even when the network schema could not be read.
+    with pytest.raises(ToolException, match="Unknown object types: nope. Use object type ids view_state"):
         asyncio.run(tools["configure_display"].coroutine(labels=[{"object_type": "nope", "label": None}]))
     with pytest.raises(Exception):
         asyncio.run(tools["arrange_canvas"].ainvoke({"layout": "spiral"}))
@@ -1126,7 +1127,7 @@ def test_a_chain_chart_follows_a_relation_from_a_type_to_itself():
         )
     with pytest.raises(ToolException, match="needs chainRelByOt"):
         asyncio.run(tools["configure_analysis"].ainvoke({"chart": {"kind": "chain", "otIds": ["segment"]}}))
-    with pytest.raises(ToolException, match="Unknown object types"):
+    with pytest.raises(ToolException, match="Unknown object types: ghosts. Use object type ids view_state"):
         asyncio.run(
             tools["configure_analysis"].ainvoke({"chart": {"kind": "chain", "chainRelByOt": {"ghosts": "supplies"}}})
         )

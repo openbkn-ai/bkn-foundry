@@ -1410,7 +1410,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         if labels:
             unknown = [item["object_type"] for item in labels if known and item["object_type"] not in known]
             if unknown:
-                raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids the instructions list.")
+                raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids view_state or the instructions list.")
             patch["labels"] = [{"object_type": item["object_type"], "label": item.get("label")} for item in labels]
         if show_node_labels is not None:
             patch["show_node_labels"] = show_node_labels
@@ -1460,7 +1460,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         )
         unknown = sorted(named - known) if known else []
         if unknown:
-            raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids the instructions list.")
+            raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids view_state or the instructions list.")
         _check_chain(run, chart or {})
         _record(run, "set_analysis", patch=patch)
         return _dump({"planned": patch})
