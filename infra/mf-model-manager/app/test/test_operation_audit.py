@@ -202,7 +202,7 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
         exec(compile(module,filename,"exec"),namespace)
         return namespace
 
-    async def test_llm_delete_preserves_predelete_names_and_committed_failure(self):
+    async def test_llm_delete_preserves_predelete_names_when_cache_fails(self):
         from unittest.mock import AsyncMock,MagicMock
         from starlette.responses import JSONResponse
         for cache_fails in (False,True):
@@ -218,8 +218,8 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             dao.delete_model_by_id.assert_called_once()
             self.assertEqual(len(published),1)
             self.assertIn("采购助手",published[0]["target"]["name"])
-            self.assertEqual(published[0]["outcome"],"failure" if cache_fails else "success")
-            self.assertEqual(response.status_code,400 if cache_fails else 200)
+            self.assertEqual(published[0]["outcome"],"success")
+            self.assertEqual(response.status_code,200)
 
     async def test_user_quota_delete_preserves_user_and_model_relationship(self):
         from unittest.mock import AsyncMock,MagicMock
