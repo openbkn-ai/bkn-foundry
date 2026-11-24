@@ -3,8 +3,8 @@
 openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，module path 现为
 `github.com/openbkn-ai/bkn-foundry/comm-go`。
 
-开发、构建和测试需要 Go 1.26.0 或更新版本。CI 从本模块的 `go.mod` 读取 Go
-版本；消费者升级到本模块的新版本时，也需要使用 Go 1.26.0 或更新版本。
+开发、构建和测试需要 Go 1.27.4 或更新版本。CI 从本模块的 `go.mod` 读取 Go
+版本；消费者升级到本模块的新版本时，也需要使用 Go 1.27.4 或更新版本。
 
 ## Garble 兼容构建
 

@@ -4,7 +4,7 @@
 # See the LICENSE file in the project root for details.
 
 ########################### Stage 0 ########################
-ARG BUILD_IMAGE=golang:1.26.9
+ARG BUILD_IMAGE=golang:1.27.4
 ARG BASE_IMAGE=ubuntu:24.04
 
 FROM ${BUILD_IMAGE} AS builder
@@ -18,6 +18,7 @@ ENV GOPROXY=${GOPROXY_URL}
 
 RUN set -ex; \
     cd /workspace/adp/bkn/ontology-query/server; \
+    go version; \
     go mod download -x; \
     export flags="-X 'github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/ontology-query-server;

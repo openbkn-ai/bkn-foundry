@@ -4,7 +4,7 @@
 # See the LICENSE file in the project root for details.
 
 ########################### Stage 0 ########################
-ARG BUILD_IMAGE=golang:1.26.9
+ARG BUILD_IMAGE=golang:1.27.4
 ARG RUNTIME_IMAGE=ubuntu:24.04
 
 FROM ${BUILD_IMAGE} AS builder
@@ -19,6 +19,7 @@ ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
 RUN set -ex; \
+    go version; \
     go mod download -x; \
     export flags="-X 'github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/version.ServerVersion=${SERVER_VERSION}'"; \
     CGO_ENABLED=1 go build -ldflags "-s -w $flags" -o ./bin/vega-backend-server ./cmd/vega-backend;

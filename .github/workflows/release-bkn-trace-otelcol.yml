@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.9'
+          go-version-file: bkn-trace/otelcol-contribute-chart/processor/traceadmissionprocessor/go.mod
           cache: false
 
       - uses: azure/setup-helm@v4

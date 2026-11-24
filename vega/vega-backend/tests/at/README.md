@@ -446,7 +446,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.26'
+          go-version: '1.27.4'
 
       - name: Start VEGA Manager
         run: |

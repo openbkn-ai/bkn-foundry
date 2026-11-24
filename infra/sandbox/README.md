@@ -196,7 +196,7 @@ cd images
 This creates:
 
 - `sandbox-python-executor-base:python3.11-v1` - Stable Python runtime base without executor code
-- `sandbox-multi-executor-base:go1.26-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
+- `sandbox-multi-executor-base:go1.27.4-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
 
 To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker Buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
 

@@ -5,7 +5,7 @@
 # (dev/Dockerfile) wraps a host-cross-compiled binary; this one builds in-image.
 
 ########################### Stage 0 — build ########################
-ARG BUILD_IMAGE=golang:1.26.9
+ARG BUILD_IMAGE=golang:1.27.4
 ARG BASE_IMAGE=alpine:3.20
 
 FROM ${BUILD_IMAGE} AS builder
@@ -18,6 +18,7 @@ ENV GOPROXY=${GOPROXY_URL}
 # binary is static and runs on a minimal base.
 RUN set -ex; \
     cd /go/src; \
+    go version; \
     go mod download -x; \
     CGO_ENABLED=0 go build -ldflags "-s -w" -o ./bin/bkn-safe .
 

@@ -45,7 +45,7 @@ A unified object storage gateway service supporting multiple cloud providers (Al
 
 ### Prerequisites
 
-- Go 1.26.0+
+- Go 1.27.4+
 - MariaDB/MySQL database
 - Redis 6.0+ (for multi-instance deployment)
 - Object storage account (OSS/OBS/Ceph)

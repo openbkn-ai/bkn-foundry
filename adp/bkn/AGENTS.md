@@ -158,7 +158,7 @@ Key configuration items:
 
 ## Dependencies
 
-- **Go version**: 1.24.0+
+- **Go version**: 1.27.4+
 - **Database**: MariaDB 11.4+ or DM8
 - **Search engine**: OpenSearch 2.x
 - **Key libraries**: Gin (HTTP), Viper (config), Zap (logging), OpenTelemetry (tracing)

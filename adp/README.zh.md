@@ -68,7 +68,7 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ### 前置要求
 
-- **Go**: 1.26.0+ (用于 Ontology)
+- **Go**: 1.27.4+ (用于 Ontology)
 - **Java**: JDK 1.8+ (用于 VEGA)
 - **Node.js**: 18+ (用于 Web Console)
 - **数据库**: MariaDB 11.4+ 或 DM8

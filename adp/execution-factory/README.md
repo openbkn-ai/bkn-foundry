@@ -51,7 +51,7 @@ The core integration service platform responsible for the full lifecycle managem
 
 ### Prerequisites
 
-- Go 1.26.0+
+- Go 1.27.4+
 - MySQL / MariaDB / Dameng DB
 - Redis
 

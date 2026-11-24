@@ -40,7 +40,7 @@ finish 的准备工作保留现有 1 秒 Trace 观察预算；最终 POST／幂�
 
 ### 技术栈
 
-- **语言**：Go 1.26.0
+- **语言**：Go 1.27.4
 - **Web 框架**：Gin 1.11
 - **可观测**：OpenTelemetry
 - **缓存**：Redis（可选，支持哨兵模式）
@@ -83,7 +83,7 @@ server/
 
 ### 环境要求
 
-- Go 1.26.0+
+- Go 1.27.4+
 - 可访问的 ontology-query、ontology-manager 等后端（或通过 ktctl 连接远程集群）
 
 ### 本地开发
