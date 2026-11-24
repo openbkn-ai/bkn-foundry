@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -27,14 +28,23 @@ type tableSessionConnectorMock struct {
 }
 
 type earlyCloseRows struct {
-	ctx      context.Context
-	next     int
-	closeErr error
+	ctx        context.Context
+	next       int
+	closeErr   error
+	blockAfter int
 }
 
 func (*earlyCloseRows) Columns() []string { return []string{"id"} }
 
 func (r *earlyCloseRows) Next(values []driver.Value) error {
+	if r.blockAfter > 0 && r.next == r.blockAfter {
+		select {
+		case <-r.ctx.Done():
+			return r.ctx.Err()
+		case <-time.After(2 * time.Second):
+			return errors.New("source read was not canceled")
+		}
+	}
 	if r.next == 3 {
 		return io.EOF
 	}
@@ -80,6 +90,12 @@ func (*earlyCloseConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfac
 	return ScanSQLRow(rows, columns)
 }
 
+func (*earlyCloseConnector) ScanTableReadRow(rows *sql.Rows, columns []interfaces.ColumnInfo,
+	_ map[string]*interfaces.Property, _ *string, binaryContentColumns map[string]bool) (map[string]any, error) {
+
+	return ScanTableReadRow(rows, columns, binaryContentColumns)
+}
+
 func (*tableSessionConnectorMock) SupportsReadTransaction() bool { return true }
 
 func (*tableSessionConnectorMock) QueryContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
@@ -102,6 +118,53 @@ func TestOpenReadSession(t *testing.T) {
 	})
 	t.Run("structured query", func(t *testing.T) {
 		testOpenReadSessionRows(t, true, []byte("first"), []byte("second"))
+	})
+	t.Run("structured query timeout", func(t *testing.T) {
+		for _, operation := range []string{"count", "first page"} {
+			t.Run(operation, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					db, driver, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+					require.NoError(t, err)
+					defer func() { _ = db.Close() }()
+					driver.ExpectBegin()
+					ctrl := gomock.NewController(t)
+					readConnector := vmock.NewMockTableReadSessionConnector(ctrl)
+					connector := &tableSessionConnectorMock{vmock.NewMockTableConnector(ctrl), readConnector}
+					readConnector.EXPECT().BeginReadTx(gomock.Any()).
+						DoAndReturn(func(ctx context.Context) (*sql.Tx, error) { return db.BeginTx(ctx, nil) })
+					readConnector.EXPECT().ClassifyQueryError(sqlmock.ErrCancelled).Return(sqlmock.ErrCancelled)
+
+					ctx := context.WithoutCancel(t.Context())
+					query := SQLStatement{Text: "SELECT id"}
+					count := SQLStatement{Text: "SELECT COUNT(*)"}
+					params := &interfaces.ResourceDataQueryParams{Timeout: time.Second}
+					session, err := OpenReadSession(ctx, connector, query, &count, &interfaces.Resource{}, params, nil, nil, 0)
+					require.NoError(t, err)
+					defer func() { _ = session.Close() }()
+
+					started := time.Now()
+					if operation == "count" {
+						driver.ExpectQuery(count.Text).WillDelayFor(2 * time.Second).
+							WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+						driver.ExpectRollback()
+						total, err := session.ReadTotal(ctx)
+						assert.ErrorIs(t, err, sqlmock.ErrCancelled)
+						assert.Nil(t, total)
+					} else {
+						driver.ExpectQuery(query.Text).WillDelayFor(2 * time.Second).WillReturnError(sqlmock.ErrCancelled)
+						driver.ExpectRollback()
+						page, err := session.ReadPage(ctx, 1)
+						assert.ErrorIs(t, err, sqlmock.ErrCancelled)
+						assert.Nil(t, page)
+					}
+					assert.Equal(t, time.Second, time.Since(started))
+					driver.ExpectClose()
+					require.NoError(t, session.Close())
+					require.NoError(t, db.Close())
+					require.NoError(t, driver.ExpectationsWereMet())
+				})
+			})
+		}
 	})
 	t.Run("structured read errors use the connector classifier", func(t *testing.T) {
 		ctx := t.Context()
@@ -165,6 +228,36 @@ func TestTableReadSessionReadPage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, page.Entries)
 		assert.True(t, page.HasMore)
+	})
+	t.Run("structured continuation gets its own timeout", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			rows := &earlyCloseRows{blockAfter: 2}
+			db := sql.OpenDB(&earlyCloseDriver{rows: rows})
+			defer func() { _ = db.Close() }()
+			requestCtx, cancel := context.WithCancel(t.Context())
+			ctx := context.WithoutCancel(requestCtx)
+			defer cancel()
+			session, err := OpenReadSession(ctx, &earlyCloseConnector{db: db}, SQLStatement{Text: "SELECT id"},
+				nil, &interfaces.Resource{}, &interfaces.ResourceDataQueryParams{Timeout: time.Second}, nil, nil, 0)
+			require.NoError(t, err)
+			defer func() { _ = session.Close() }()
+
+			first, err := session.ReadPage(ctx, 1)
+			require.NoError(t, err)
+			require.True(t, first.HasMore)
+			assert.Equal(t, []map[string]any{{"id": int64(1)}}, first.Entries)
+			cancel()
+			time.Sleep(2 * time.Second)
+			assert.NoError(t, rows.ctx.Err())
+
+			started := time.Now()
+			page, err := session.ReadPage(context.WithoutCancel(t.Context()), 1)
+			assert.ErrorIs(t, err, context.Canceled)
+			assert.Nil(t, page)
+			assert.Equal(t, time.Second, time.Since(started))
+			require.NoError(t, session.Close())
+			assert.ErrorIs(t, rows.closeErr, context.Canceled)
+		})
 	})
 }
 

@@ -28,10 +28,12 @@ func TestOpenResourceTableCursor(t *testing.T) {
 		session := &interfaces.CursorSession{PageLimit: 1}
 		resource := &interfaces.Resource{ID: "table-1"}
 		params := &interfaces.ResourceDataQueryParams{NeedTotal: true}
+		readParams := *params
+		readParams.Timeout = time.Minute
 		total := int64(2)
 		stream := vmock.NewMockQueryPageSession(ctrl)
 		gomock.InOrder(
-			reader.EXPECT().OpenTableRead(gomock.Any(), resource, params).Return(stream, nil),
+			reader.EXPECT().OpenTableRead(gomock.Any(), resource, &readParams).Return(stream, nil),
 			stream.EXPECT().ReadTotal(gomock.Any()).Return(&total, nil),
 			stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{TotalCount: &total,
 				Entries: []map[string]any{{"id": int64(1)}}, HasMore: true}, nil),
@@ -40,6 +42,7 @@ func TestOpenResourceTableCursor(t *testing.T) {
 		)
 		require.NoError(t, OpenResourceTableCursor(t.Context(), session, connector, reader, resource, params))
 		defer closeSQLCursorResources(session)
+		assert.Zero(t, params.Timeout)
 		page, err := ReadResourceCursorPage(t.Context(), session)
 		require.NoError(t, err)
 		assert.Equal(t, total, page.TotalCount)
@@ -53,7 +56,7 @@ func TestOpenResourceTableCursor(t *testing.T) {
 		reader := vmock.NewMockTableReadSessionConnector(ctrl)
 		session := &interfaces.CursorSession{}
 		resource := &interfaces.Resource{ID: "table-1"}
-		params := &interfaces.ResourceDataQueryParams{NeedTotal: true}
+		params := &interfaces.ResourceDataQueryParams{NeedTotal: true, Timeout: 5 * time.Second}
 		ctx := t.Context()
 		cause := errors.New("source count failed")
 		stream := vmock.NewMockQueryPageSession(ctrl)

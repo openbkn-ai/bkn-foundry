@@ -57,6 +57,9 @@ func OpenReadSession(ctx context.Context, connector tableSessionConnector, query
 	count *SQLStatement, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
 	resultFields map[string]*interfaces.Property, localTimeColumns map[string]bool, timeout time.Duration) (interfaces.QueryPageSession, error) {
 
+	if timeout <= 0 && params != nil {
+		timeout = params.Timeout
+	}
 	session := &tableReadSession{
 		connector: connector,
 		query:     query,
