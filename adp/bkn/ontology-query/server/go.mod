@@ -14,6 +14,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
+	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/sjson v1.2.5
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0

@@ -7,6 +7,8 @@
 package agent_operator
 
 import (
+	"encoding/json"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -74,5 +76,18 @@ func Test_mcpCallToolResult_normalize(t *testing.T) {
 
 			So(r.normalize()["content"], ShouldResemble, r.Content)
 		})
+	})
+}
+
+func TestMCPCallToolResultPreservesStructuredChanges(t *testing.T) {
+	Convey("structured committed changes retain their exact primary keys and content", t, func() {
+		var result mcpCallToolResult
+		err := common.UnmarshalJSON([]byte(`{"content":[{"type":"text","text":"updated"}],"structuredContent":{"data_changes":{"committed":true,"affected_resources":[{"resource_id":"brands","keys":[{"id":9007199254740993}]}]}},"is_error":false}`), &result)
+		So(err, ShouldBeNil)
+		normalized := result.normalize()
+		So(normalized["content"], ShouldResemble, result.Content)
+		changes := normalized["structuredContent"].(map[string]any)["data_changes"].(map[string]any)
+		key := changes["affected_resources"].([]any)[0].(map[string]any)["keys"].([]any)[0].(map[string]any)
+		So(key["id"], ShouldEqual, json.Number("9007199254740993"))
 	})
 }

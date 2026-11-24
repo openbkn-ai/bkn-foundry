@@ -28,6 +28,7 @@ import (
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_index_sync"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
@@ -43,6 +44,7 @@ type actionSchedulerService struct {
 	omAccess              interfaces.OntologyManagerAccess
 	aoAccess              interfaces.AgentOperatorAccess
 	logsService           interfaces.ActionLogsService
+	indexSyncStore        interfaces.ActionIndexSyncStore
 	ots                   interfaces.ObjectTypeService
 	permissions           interfaces.ActionExecutionPermissionService
 	proxy                 interfaces.ProxyContextResolver
@@ -78,6 +80,7 @@ func newActionSchedulerService(appSetting *common.AppSetting, gate interfaces.Ac
 		omAccess:              logics.OMA,
 		aoAccess:              logics.AOA,
 		logsService:           action_logs.NewActionLogsService(appSetting),
+		indexSyncStore:        action_logs.NewIndexSyncStore(appSetting),
 		ots:                   object_type.NewObjectTypeService(appSetting),
 		proxy:                 logics.PCR,
 		managedActions:        scopes,
@@ -834,6 +837,12 @@ func (b *resultBuffer) add(result interfaces.ObjectExecutionResult) {
 func (s *actionSchedulerService) flushResults(ctx context.Context, execution *interfaces.ActionExecution, results *resultBuffer) {
 	if len(results.pending) == 0 {
 		return
+	}
+	for i := range results.pending {
+		action_index_sync.Prepare(&results.pending[i], execution.Executor)
+		if runsFunction(ctx) && results.pending[i].IndexSync == nil {
+			action_index_sync.PrepareFunction(&results.pending[i], execution.Executor)
+		}
 	}
 	if err := s.logsService.AppendResults(ctx, execution.KNID, execution.ID, results.stored, results.pending); err != nil {
 		logger.Warnf("Failed to store %d results of execution %s: %v", len(results.pending), execution.ID, err)

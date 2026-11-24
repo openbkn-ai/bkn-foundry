@@ -353,8 +353,9 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 // {"content":[{"type":"text","text":"..."}],"is_error":false}
 // It differs from the tool-box proxy executionResult{status_code, body} and must not be mixed with it.
 type mcpCallToolResult struct {
-	Content []map[string]any `json:"content"`
-	IsError bool             `json:"is_error"`
+	StructuredContent map[string]any   `json:"structuredContent,omitempty"`
+	Content           []map[string]any `json:"content"`
+	IsError           bool             `json:"is_error"`
 }
 
 // normalize compacts MCP content blocks into a result that is easier for downstream consumers to handle.
@@ -367,6 +368,9 @@ type mcpCallToolResult struct {
 // - Other all-text blocks, including plain text or JSON scalars: {"text": "..."}
 // - Blocks containing non-text content, such as images or resources: {"content": [...]}
 func (r mcpCallToolResult) normalize() map[string]any {
+	if r.StructuredContent != nil {
+		return map[string]any{"structuredContent": r.StructuredContent, "content": r.Content}
+	}
 	texts := make([]string, 0, len(r.Content))
 	for _, item := range r.Content {
 		text, ok := item["text"].(string)

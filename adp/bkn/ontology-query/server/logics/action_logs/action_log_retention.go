@@ -158,6 +158,16 @@ func (s *actionLogsService) cleanupExpired(ctx context.Context, cfg RetentionCon
 		searchAfter = hits[len(hits)-1].Sort
 		result.Batches++
 
+		ids, err = s.withoutPendingIndexSync(ctx, ids)
+		if err != nil {
+			return result, err
+		}
+		if len(ids) == 0 {
+			if len(hits) < cfg.BatchSize {
+				break
+			}
+			continue
+		}
 		resultsQuery := map[string]any{"query": map[string]any{"terms": map[string]any{"execution_id": ids}}}
 		if cfg.DryRun {
 			n, err := s.countResults(ctx, resultsQuery)

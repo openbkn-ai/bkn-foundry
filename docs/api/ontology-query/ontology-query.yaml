@@ -2507,6 +2507,44 @@ paths:
           description: 执行记录不存在
       summary: 获取行动执行状态
 
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}/index-sync/retry:
+    post:
+      operationId: retryActionIndexSync
+      summary: 重试行动结果的数据索引同步
+      description: |
+        仅原发起人可以重试。要求当前知识网络 view_detail 权限；后台使用原发起人当前的
+        Vega Resource 查看权限及所属 Catalog 的 task_manage 权限，不使用工具或知识网络代理身份提权。
+        仅重新激活状态为 failed 的同步结果，不调用业务工具、不重复业务变更。
+        返回 202 仅表示失败意图已重新入队；请通过行动结果中的 index_sync.status 跟踪可搜索状态。
+        内部对应路径为 /api/ontology-query/in/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}/index-sync/retry。
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: execution_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: 同步意图已重新入队；可能没有需要重试的结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retried_results]
+                properties:
+                  retried_results:
+                    type: integer
+                    minimum: 0
+        "403":
+          description: 当前用户不是原发起人或没有知识网络查看权限
+        "500":
+          description: 无法读取行动记录或保存重试意图
+
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs:
     summary: 查询行动执行日志
     get:
@@ -2542,6 +2580,12 @@ paths:
               - agent
             type: string
           in: query
+        - name: governance_request_id
+          in: query
+          description: 按治理请求编号精确关联行动执行记录；不会进行全文或前缀匹配
+          schema:
+            type: string
+            maxLength: 128
         - name: conversation_id
           description: 按所属 Conversation 精确匹配（可选），可与其他过滤条件组合；此前的执行记录没有该字段，不会命中
           schema:
@@ -5060,6 +5104,61 @@ components:
           type: integer
           format: int64
 
+    ActionIndexSync:
+      type: object
+      description: |
+        与业务执行结果独立的数据同步状态。后台每 5 秒扫描已持久化意图，以租约和修订号协调多副本，
+        进程重启后继续处理；同步提交前不会重放业务工具。成功结果与初始意图原子保存在同一文档中。
+        失败至多自动尝试 5 次，再由原发起人调用 index-sync/retry。人工停止或取消的 Vega 任务仅在显式重试后恢复。
+        未完成或失败的同步会阻止行动记录被保留策略清理。
+        远端已经提交、但本地尚未记录结果时进程崩溃的窗口仍需工具的幂等键、结果查询或人工补偿。
+        Vega 接收任务但响应丢失时，恢复可能重复提交相同主键任务；按当前源状态对账可安全重复执行。
+      required: [status, executor, attempts]
+      properties:
+        status:
+          type: string
+          enum: [pending, submitted, retrying, completed, failed, invalid]
+          description: completed 表示所有 Vega keys 任务均已完成且结果可搜索；submitted 不表示可搜索。invalid 表示工具未提供合法已提交影响范围，后台不会自动处理。
+        executor:
+          type: object
+          additionalProperties: true
+          description: 行动原发起人的身份，不接受工具返回的身份覆盖
+        attempts:
+          type: integer
+          minimum: 0
+        error:
+          type: string
+          description: 最近一次同步失败的稳定阶段说明，不改变业务执行状态
+        tasks:
+          type: array
+          items:
+            type: object
+            required: [resource_id, keys]
+            properties:
+              resource_id:
+                type: string
+              keys:
+                type: array
+                maxItems: 100
+                items:
+                  type: object
+                  additionalProperties: true
+              task_id:
+                type: string
+              status:
+                type: string
+        next_attempt_at:
+          type: integer
+          format: int64
+        lease_until:
+          type: integer
+          format: int64
+        lease_token:
+          type: string
+        revision:
+          type: integer
+          format: int64
+
     ObjectExecutionResult:
       description: 单次工具调用的执行结果。per_instance 模式下对应一个实例，once 模式下对应整次执行。
       type: object
@@ -5086,8 +5185,19 @@ components:
           description: 解析后的执行参数
           type: object
           additionalProperties: true
+        index_sync:
+          $ref: "#/components/schemas/ActionIndexSync"
         result:
-          description: 执行结果。函数类行动执行失败时仍保留沙箱返回（含 exit_code、stderr），便于排查。
+          description: |
+            执行结果。函数类行动执行失败时仍保留沙箱返回（含 exit_code、stderr）。
+            已提交数据变更的工具可返回 data_changes: {committed: true, affected_resources: [{resource_id, keys: [{主键字段: 值}]}]}。
+            HTTP 工具在响应体顶层返回；MCP 在 structuredContent 中返回；Function 在 stdout 中输出完整 JSON 对象。
+            未声明 data_changes 的工具行为保持不变；HTTP 200/202、调用成功或对象身份本身均不能证明源数据已提交。
+            每次调用最多 16 项资源声明、10000 个主键和 4 MiB 声明；按 Vega 限制自动拆为每批最多 100 个主键的任务。
+            每个 key 必须提供源资源完整主键，复合主键各字段均须包含，不能使用 BKN 实例 ID 代替。
+            新增返回源端实际生成的主键；改主键同时提供旧、新主键；多表或级联影响显式列举所有资源。
+            主键值保持 JSON 整数精度，字段及类型的最终校验由 Vega 负责；重复键由 Vega 去重。
+            Catalog 必须能读取已提交源数据；本接口不会根据索引状态或 query_source 二次判定 Vega 查询结果。
           type: object
           additionalProperties: true
         error_message:
