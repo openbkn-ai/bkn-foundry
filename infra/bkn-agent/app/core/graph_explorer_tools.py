@@ -2038,8 +2038,8 @@ async def _metric_instructions(run: builtin_tools.Run, network: dict) -> list[st
         " description fit the question. When one fits, read the figure with query_metric, split and drill"
         " with it too, and list the instances behind a figure with show_metric_participants; do not work"
         " the same figure out again with run_cypher. Use run_cypher only when no metric fits or the metric"
-        " does not open the dimension needed, and say why in the answer (e.g. the metric 胜率 does not open"
-        " the dimension 对手). When unsure a metric means what the user asked, say which metric you used."
+        " does not open the dimension needed, and say why in the answer (e.g. the metric Win rate does not"
+        " open the dimension Opponent). When unsure a metric means what the user asked, say which metric you used."
         " This comes before the advice above on statistics with run_cypher and on charting figures.",
         (
             "In an analysis each query_metric becomes a metric card; drilling the same metric further in the"
