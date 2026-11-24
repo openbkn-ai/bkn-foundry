@@ -114,6 +114,94 @@ func (ps *parentAwarePermissionService) DeleteResources(ctx context.Context,
 	return ps.MockPermissionService.DeleteResources(ctx, resourceType, resourceIDs)
 }
 
+func TestResourceServiceCheckResourcePermission(t *testing.T) {
+	for _, accountID := range []string{interfaces.BuiltinAdminID, "test-user"} {
+		t.Run(accountID, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: accountID})
+			for _, operation := range []string{interfaces.OPERATION_TYPE_QUERY_DATA, interfaces.OPERATION_TYPE_DATA_WRITE} {
+				t.Run(operation, func(t *testing.T) {
+					t.Run("missing resource returns not found without authorization", func(t *testing.T) {
+						service, access, permissions, _, _, _, _ := newTestService(t)
+						access.EXPECT().GetByID(gomock.Any(), nil, "deleted-resource").Return(nil, nil)
+						permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+						err := service.CheckResourcePermission(ctx, "deleted-resource", operation)
+
+						var httpErr *httperrors.HTTPError
+						require.ErrorAs(t, err, &httpErr)
+						assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+						assert.Equal(t, verrors.VegaBackend_Resource_NotFound, httpErr.ErrorCode)
+					})
+
+					for _, denied := range []bool{false, true} {
+						t.Run(fmt.Sprintf("existing resource denied=%t", denied), func(t *testing.T) {
+							service, access, permissions, _, _, _, _ := newTestService(t)
+							resource := &interfaces.Resource{ID: "resource-1", Category: interfaces.ResourceCategoryAPI}
+							access.EXPECT().GetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+							var permissionErr error
+							if denied {
+								permissionErr = httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+							}
+							permissions.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+								Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: resource.ID,
+							}, []string{operation}).DoAndReturn(func(gotCtx context.Context, _ interfaces.PermissionResource, _ []string) error {
+								assert.Equal(t, ctx.Value(interfaces.ACCOUNT_INFO_KEY), gotCtx.Value(interfaces.ACCOUNT_INFO_KEY))
+								return permissionErr
+							})
+
+							err := service.CheckResourcePermission(ctx, resource.ID, operation)
+
+							if denied {
+								assert.Same(t, permissionErr, err)
+								assert.True(t, interfaces.IsPermissionRefusal(err))
+							} else {
+								require.NoError(t, err)
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+
+	t.Run("empty id does not read or authorize", func(t *testing.T) {
+		service, access, permissions, _, _, _, _ := newTestService(t)
+		access.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		err := service.CheckResourcePermission(context.Background(), "", interfaces.OPERATION_TYPE_QUERY_DATA)
+
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_ID, httpErr.ErrorCode)
+	})
+
+	t.Run("read failure does not authorize or become not found", func(t *testing.T) {
+		service, access, permissions, _, _, _, _ := newTestService(t)
+		access.EXPECT().GetByID(gomock.Any(), nil, "resource-1").Return(nil, errors.New("read failed"))
+		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		err := service.CheckResourcePermission(context.Background(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA)
+
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_GetFailed, httpErr.ErrorCode)
+	})
+
+	t.Run("built-in resource remains restricted", func(t *testing.T) {
+		service, access, permissions, _, _, _, _ := newTestService(t)
+		access.EXPECT().GetByID(gomock.Any(), nil, "resource-1").Return(&interfaces.Resource{ID: "resource-1", Builtin: true}, nil)
+		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "test-user"})
+
+		err := service.CheckResourcePermission(ctx, "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA)
+
+		assert.True(t, interfaces.IsPermissionRefusal(err))
+	})
+}
+
 func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRA := vmock.NewMockResourceAccess(ctrl)

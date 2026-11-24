@@ -261,10 +261,13 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		} else {
 			err := suts.rs.CheckResourcePermission(ctx, task.ResourceID, interfaces.OPERATION_TYPE_QUERY_DATA)
 			if err != nil {
-				if !interfaces.IsPermissionRefusal(err) {
+				var httpErr *httperrors.HTTPError
+				resourceMissing := errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Resource_NotFound
+				if !interfaces.IsPermissionRefusal(err) && !resourceMissing {
 					span.SetStatus(codes.Error, "Check resource permission failed")
 					return nil, err
 				}
+				// Deleted resources cannot authorize stored samples, but their task history remains readable.
 				task.Input = ""
 			}
 		}

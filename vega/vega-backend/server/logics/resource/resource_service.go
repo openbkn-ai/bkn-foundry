@@ -358,8 +358,9 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if resource == nil {
-		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
-			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
+		span.SetStatus(codes.Error, "Resource not found")
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 	}
 
 	return rs.checkResourcePermission(ctx, resource.ID, resource.Builtin, op)

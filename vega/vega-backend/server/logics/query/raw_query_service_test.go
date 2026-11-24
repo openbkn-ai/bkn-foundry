@@ -113,6 +113,40 @@ func expectRawQueryResources(mockRS *vmock.MockResourceService,
 }
 
 func TestRawQueryServiceExecute(t *testing.T) {
+	t.Run("missing resource returns not found before connector creation", func(t *testing.T) {
+		for _, format := range []interfaces.QueryFormat{interfaces.QueryFormatSQL, interfaces.QueryFormatDSL} {
+			for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+				t.Run(fmt.Sprintf("%s/%s", format, mode), func(t *testing.T) {
+					service, resources, catalogs, connectors := mysqlRawServices(t)
+					ctx := compileTestContext()
+					notFound := httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+						WithErrorDetails("resource missing not found")
+					resources.EXPECT().CheckResourcePermission(gomock.Any(), "missing", interfaces.OPERATION_TYPE_QUERY_DATA).Return(notFound)
+					resources.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					resources.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Times(0)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					connectors.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					var query any = "SELECT id FROM {{missing}}"
+					if format == interfaces.QueryFormatDSL {
+						query = map[string]any{"resource_id": "missing", "sort": []any{"id"}}
+					}
+
+					result, err := service.Execute(ctx, &interfaces.RawQueryRequest{
+						QueryFormat: format, Query: query, Paging: interfaces.PagingRequest{Mode: mode, Limit: 2},
+					})
+
+					assert.Nil(t, result)
+					require.ErrorIs(t, err, notFound)
+					var failure *httperrors.HTTPError
+					require.ErrorAs(t, err, &failure)
+					assert.Equal(t, http.StatusNotFound, failure.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_Resource_NotFound, failure.ErrorCode)
+					assert.Empty(t, rawQueryCursorSessions.sessions)
+				})
+			}
+		}
+	})
+
 	t.Run("public fields execute native columns while returning public names", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
