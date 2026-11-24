@@ -215,7 +215,9 @@ class CanvasContext(BaseModel):
         left_out = {item.get("id") for item in bad_nodes if isinstance(item, dict)}
         edges, _ = _valid(CanvasEdge, value.get("edges"), MAX_EDGES)
         value["edges"] = [e for e in edges if e.source not in left_out and e.target not in left_out]
-        value["aggregates"], _ = _valid(CanvasAggregate, value.get("aggregates"), MAX_NODES)
+        aggregates, _ = _valid(CanvasAggregate, value.get("aggregates"), MAX_NODES)
+        # An aggregate stands for a seed's neighbours; without its seed it would count for nothing drawn.
+        value["aggregates"] = [a for a in aggregates if a.seed_id not in left_out]
         selected = value.get("selected_ids")
         value["selected_ids"] = (
             [i for i in selected if isinstance(i, str) and i and i not in left_out][:MAX_NODES]
@@ -1357,8 +1359,11 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             ],
         }
         # A large canvas's view (selection, groups, every type's properties) would crowd the
-        # conversation; the view tools still take any id, listed here or not.
-        return _dump(_condensed(answer) if len(_dump(answer)) > VIEW_CHARS else answer)
+        # conversation; the view tools still take any id, listed here or not, and the
+        # instructions list every object type.
+        if len(_dump(answer)) <= VIEW_CHARS:
+            return _dump(answer)
+        return _dump({**_condensed(answer), "condensed": "Lists here keep their first entries; the instructions list every object type."})
 
 
     async def remove_instances(
@@ -1405,7 +1410,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         if labels:
             unknown = [item["object_type"] for item in labels if known and item["object_type"] not in known]
             if unknown:
-                raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
+                raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids the instructions list.")
             patch["labels"] = [{"object_type": item["object_type"], "label": item.get("label")} for item in labels]
         if show_node_labels is not None:
             patch["show_node_labels"] = show_node_labels
@@ -1455,7 +1460,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         )
         unknown = sorted(named - known) if known else []
         if unknown:
-            raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
+            raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use object type ids the instructions list.")
         _check_chain(run, chart or {})
         _record(run, "set_analysis", patch=patch)
         return _dump({"planned": patch})
