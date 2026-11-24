@@ -393,7 +393,7 @@ async def get_info_list(order, rule, page, size, model_name, model_type, model_s
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def get_info(model_id, user_id, role, trusted_app=False):
+async def get_info(model_id, user_id, role, trusted_app=False, private_route=False):
     try:
         try:
             if not trusted_app:
@@ -409,7 +409,7 @@ async def get_info(model_id, user_id, role, trusted_app=False):
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
         if len(original_res) == 0:
             StandLogger.error(ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error["description"])
-            return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
+            return JSONResponse(status_code=404 if private_route else 400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
         item = original_res[0]
         res = {
             "model_id": item["f_model_id"],

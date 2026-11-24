@@ -459,6 +459,17 @@ class TestGetInfo(TestCase):
         self.assertEqual(json.loads(res.body)["model_id"], "1")
         small_model_controller.permission_manager.check_single_permission.assert_not_awaited()
 
+    def test_missing_model_status_depends_on_route(self):
+        small_model_dao.get_model_info_by_id = mock.Mock(return_value=[])
+        small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=True)
+
+        for private_route, expected_status in ((True, 404), (False, 400)):
+            with self.subTest(private_route=private_route):
+                res = asyncio.run(small_model_controller.get_info(
+                    "missing", "user-1", "user", private_route=private_route))
+                self.assertEqual(res.status_code, expected_status)
+                self.assertEqual(json.loads(res.body), small_model_controller.ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
+
     def test_get_info_private_user_still_requires_display_permission(self):
         small_model_dao.get_model_info_by_id = mock.Mock(return_value=[self._model_row()])
         small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=False)
