@@ -1009,10 +1009,14 @@ def test_a_large_view_is_read_condensed():
     assert read["canvas"]["layout"] == "force"
     assert read["canvas"]["manual_groups"][0]["ids"][-1] == "(350 more)"
     assert read["selected_ids"][-1] == "(2950 more)"
+    # The model is told the lists are cut, and where every object type is listed.
+    assert "instructions list every object type" in _invoke(tools["view_state"])["condensed"]
     # A view that fits is read as it is; the run keeps the whole one.
     assert run.context.view == view
     _, small = _canvas_run(view={"canvas": {"layout": "force"}})
-    assert _invoke(small["view_state"])["view"] == {"canvas": {"layout": "force"}}
+    small_read = _invoke(small["view_state"])
+    assert small_read["view"] == {"canvas": {"layout": "force"}}
+    assert "condensed" not in small_read
 
 
 def test_card_edits_name_listed_cards_only():

@@ -320,7 +320,7 @@ def test_headers_and_invalid_token_cannot_start_run(monkeypatch, headers):
 )
 def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extra):
     # A lifecycle sent in context (bkn_context) is ignored instead; see
-    # test_context_fields_this_version_does_not_know_are_ignored.
+    # test_context_this_version_cannot_read_is_ignored.
     async def run():
         async with environment(monkeypatch) as (client, _, calls):
             assert (
@@ -2728,9 +2728,12 @@ def test_execution_scope_rejects_malformed_network_versions(monkeypatch, context
         {"sent_by_a_newer_page": {"x": 1}},
         # A lifecycle the caller sends never replaces the one Context Loader opens for the run.
         {"bkn_context": {"conversation_id": "someone-else", "interaction_id": "theirs"}},
+        # A canvas that is not an object is read as no canvas.
+        {"canvas": "c1"},
+        {"canvas": []},
     ],
 )
-def test_context_fields_this_version_does_not_know_are_ignored(monkeypatch, field):
+def test_context_this_version_cannot_read_is_ignored(monkeypatch, field):
     # These used to answer 400 BknAgent.ParamError.FormatError.
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):

@@ -2,7 +2,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
-from pydantic import AfterValidator, BaseModel, Field, field_serializer, model_validator
+from pydantic import AfterValidator, BaseModel, Field, field_serializer, field_validator, model_validator
 from sqlalchemy import BigInteger, Boolean, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -424,6 +424,13 @@ class ExecutionScope(BaseModel):
     # Read by an Agent that mounts the graph_explorer builtin provider, as an empty
     # canvas when absent or not valid; other Agents ignore it.
     canvas: Optional[dict[str, Any]] = None
+
+    @field_validator("canvas", mode="before")
+    @classmethod
+    def _canvas_or_none(cls, value: Any) -> Any:
+        """A canvas that is not an object is read as absent rather than refused."""
+        return value if isinstance(value, dict) else None
+
     # Which definitions of the network the run reads. Both are sent to Context
     # Loader as headers and pinned into every scoped tool call like kn_id.
     kn_version: Optional[str] = Field(

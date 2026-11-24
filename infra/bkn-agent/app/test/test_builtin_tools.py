@@ -367,6 +367,10 @@ def test_graph_explorer_canvas_takes_what_the_web_sends():
                 {"id": "e1", "relation_type_id": "r", "source": "n1", "target": long_id},
                 {"id": "e2", "relation_type_id": "r", "source": "n1", "target": "n3"},
             ],
+            "aggregates": [
+                {"id": "a1", "seed_id": "n1", "relation_type_id": "r", "total": 9},
+                {"id": "a2", "seed_id": "n3", "relation_type_id": "r", "total": 9},
+            ],
             "selected_ids": ["n1", 7, "", "n3"],
             "view": None,
             "object_types": [{"id": "ot", "name": "名" * 300}, {"name": "no id"}],
@@ -379,6 +383,8 @@ def test_graph_explorer_canvas_takes_what_the_web_sends():
     assert [n.id for n in canvas.nodes] == ["n1", long_id]
     assert canvas.nodes[0].label == label
     assert [e.id for e in canvas.edges] == ["e1"]
+    # An aggregate's seed left out takes the aggregate with it.
+    assert [a.id for a in canvas.aggregates] == ["a1"]
     assert canvas.selected_ids == ["n1"]
     assert canvas.view == {}
     assert [(t.id, t.name) for t in canvas.object_types] == [("ot", "名" * 300)]
