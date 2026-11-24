@@ -65,3 +65,30 @@ func TestBothSurfacesTrimTheSameWay(t *testing.T) {
 		t.Fatalf("a second pass changed a restricted map: %v", viaREST[1].EffectivePermissions)
 	}
 }
+
+// get_object_types spells the operators out per property but drops the comparison
+// ones, which the type implies. A property whose data source refuses every
+// condition breaks that rule, so its switch is the one kept, on both surfaces
+// alike (#3365).
+func TestTrimKeepsOnlyAnUnfilterableSwitch(t *testing.T) {
+	on, off := true, false
+	objectTypes := []*interfaces.ObjectType{{ID: "claims", DataProperties: []*interfaces.DataProperty{
+		{Name: "claim_code", Filterable: &on, ConditionOperations: []interfaces.KnOperationType{
+			interfaces.KnOperationTypeEqual, interfaces.KnOperationTypeMatch}},
+		{Name: "claim_value", Filterable: &off},
+		{Name: "legacy"},
+	}}}
+	TrimObjectTypesToIndexBackedOps(objectTypes)
+	TrimObjectTypesToIndexBackedOps(objectTypes)
+
+	props := objectTypes[0].DataProperties
+	if props[0].Filterable != nil || props[2].Filterable != nil {
+		t.Errorf("a filterable property kept the switch: %v, %v", props[0].Filterable, props[2].Filterable)
+	}
+	if props[1].Filterable == nil || *props[1].Filterable {
+		t.Errorf("claim_value filterable = %v, want false", props[1].Filterable)
+	}
+	if !reflect.DeepEqual(props[0].ConditionOperations, []interfaces.KnOperationType{interfaces.KnOperationTypeMatch}) {
+		t.Errorf("claim_code operators = %v", props[0].ConditionOperations)
+	}
+}

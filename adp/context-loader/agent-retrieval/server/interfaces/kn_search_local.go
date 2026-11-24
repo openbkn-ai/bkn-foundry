@@ -217,6 +217,10 @@ type KnSearchDataProperty struct {
 	// Indexed says this property supports the operators its object type publishes as
 	// index_operations. It stands in for repeating that list on every indexed property.
 	Indexed bool `json:"indexed,omitempty"`
+	// Filterable is only ever false: the property can be returned but its data source
+	// refuses a condition on it, so no comparison operator applies. Absent means the
+	// property filters as its type suggests. See OnlyUnfilterable.
+	Filterable *bool `json:"filterable,omitempty"`
 	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). Each is omitted when the
 	// property does not declare it; brief mode keeps only semantic. unit, crs and timezone come
 	// from the property's constraints.
@@ -234,6 +238,17 @@ type KnSearchDataProperty struct {
 	Enum           []*KnSearchEnumItem `json:"enum,omitempty"`
 	EnumCount      int                 `json:"enum_count,omitempty"`
 	EnumMatchCount int                 `json:"enum_match_count,omitempty"`
+}
+
+// OnlyUnfilterable keeps a filterable switch only when it is off. A property that can be
+// filtered is the default an agent assumes from its type, so saying so on every property
+// would only add bytes; the switch that is off is the one an agent cannot infer.
+func OnlyUnfilterable(filterable *bool) *bool {
+	if filterable == nil || *filterable {
+		return nil
+	}
+	off := false
+	return &off
 }
 
 // KnSearchEnumItem is one enum item of a property's value type. A deprecated item stays listed:
