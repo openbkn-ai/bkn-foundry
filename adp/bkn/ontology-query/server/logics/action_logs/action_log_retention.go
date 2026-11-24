@@ -157,6 +157,10 @@ func (s *actionLogsService) cleanupExpired(ctx context.Context, cfg RetentionCon
 		}
 		searchAfter = hits[len(hits)-1].Sort
 		result.Batches++
+		// A full final page may leave more records even if synchronization protects every id.
+		if len(hits) == cfg.BatchSize && result.Batches == cfg.MaxBatches {
+			result.Truncated = true
+		}
 
 		ids, err = s.withoutPendingIndexSync(ctx, ids)
 		if err != nil {
@@ -197,9 +201,6 @@ func (s *actionLogsService) cleanupExpired(ctx context.Context, cfg RetentionCon
 
 		if len(hits) < cfg.BatchSize {
 			break
-		}
-		if result.Batches == cfg.MaxBatches {
-			result.Truncated = true
 		}
 	}
 

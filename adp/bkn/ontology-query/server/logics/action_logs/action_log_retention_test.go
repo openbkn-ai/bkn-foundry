@@ -184,3 +184,17 @@ func Test_cleanupExpired_SearchAfterKeepsDecodedSortValues(t *testing.T) {
 		So(string(wire), ShouldEqual, `[1789000000000,"e2"]`)
 	})
 }
+
+func Test_cleanupExpired_ProtectedFullBatchStillReportsTruncation(t *testing.T) {
+	Convey("a full final batch protected by synchronization may leave more records", t, func() {
+		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionIndexPrefix+"*", gomock.Any()).Return([]interfaces.Hit{expiredHit("protected", 1)}, nil)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return([]interfaces.Hit{{Source: map[string]any{"execution_id": "protected"}}}, nil)
+		res, err := svc.cleanupExpired(context.Background(), RetentionConfig{RetentionDays: 7, BatchSize: 1, MaxBatches: 1}, retentionNow)
+		So(err, ShouldBeNil)
+		So(res.Batches, ShouldEqual, 1)
+		So(res.Executions, ShouldEqual, 0)
+		So(res.Truncated, ShouldBeTrue)
+	})
+}

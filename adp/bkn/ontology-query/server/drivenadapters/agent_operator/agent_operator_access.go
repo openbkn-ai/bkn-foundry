@@ -363,13 +363,14 @@ type mcpCallToolResult struct {
 // The result is always a JSON object: execution records are stored in the OpenSearch results.result field, which is mapped as object.
 // Tool executions return an HTTP body object; returning a bare scalar triggers mapper_parsing_exception and causes
 // the whole execution record to fail to write. Likewise, the same field name must keep the same type across executions, so keys are split by content shape:
+// - Structured content: return its canonical object directly, matching a JSON text mirror.
 // - All text blocks whose concatenated content is a JSON object: return that object directly.
 // - All text blocks whose concatenated content is a JSON array: {"items": [...]}
 // - Other all-text blocks, including plain text or JSON scalars: {"text": "..."}
 // - Blocks containing non-text content, such as images or resources: {"content": [...]}
 func (r mcpCallToolResult) normalize() map[string]any {
 	if r.StructuredContent != nil {
-		return map[string]any{"structuredContent": r.StructuredContent, "content": r.Content}
+		return r.StructuredContent
 	}
 	texts := make([]string, 0, len(r.Content))
 	for _, item := range r.Content {
