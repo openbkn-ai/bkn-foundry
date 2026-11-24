@@ -26,6 +26,9 @@ type ActionSchedulerService interface {
 
 	// GetExecution retrieves execution status and results
 	GetExecution(ctx context.Context, knID, executionID string) (*ActionExecution, error)
+
+	// RetryActionIndexSync retries only synchronization failures owned by the current initiator.
+	RetryActionIndexSync(ctx context.Context, knID, executionID string) (int, error)
 }
 
 // DuplicateCheckHook is a reserved extension point for duplicate execution strategy

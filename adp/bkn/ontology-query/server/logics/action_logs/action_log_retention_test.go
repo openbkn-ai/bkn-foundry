@@ -36,6 +36,8 @@ func Test_cleanupExpired_Disabled(t *testing.T) {
 func Test_cleanupExpired_DeletesResultsThenExecutions(t *testing.T) {
 	Convey("expired finished executions are deleted page by page, results first", t, func() {
 		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil).Times(2)
 		cutoff := retentionNow.Add(-30 * 24 * time.Hour).UnixMilli()
 		expired := expiredExecutionsQuery(cutoff)
 
@@ -86,6 +88,8 @@ func Test_cleanupExpired_DeletesResultsThenExecutions(t *testing.T) {
 func Test_cleanupExpired_StopsAtMaxBatches(t *testing.T) {
 	Convey("a run stops after MaxBatches full pages and reports that more may remain", t, func() {
 		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil).Times(2)
 		osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).Return([]interfaces.Hit{expiredHit("e", 1)}, nil).Times(2)
 		osa.EXPECT().DeleteByQuery(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).Times(4)
 
@@ -99,6 +103,8 @@ func Test_cleanupExpired_StopsAtMaxBatches(t *testing.T) {
 func Test_cleanupExpired_DryRunDeletesNothing(t *testing.T) {
 	Convey("a dry run pages exactly like a real run but only counts", t, func() {
 		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil).Times(1)
 		svc.resultsIndexReady.Store(true)
 		gomock.InOrder(
 			osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -154,6 +160,8 @@ func Test_LoadRetentionConfig(t *testing.T) {
 func Test_cleanupExpired_SearchAfterKeepsDecodedSortValues(t *testing.T) {
 	Convey("sort values decoded as json.Number are sent back as JSON numbers in search_after", t, func() {
 		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil).Times(1)
 		// SearchData decodes with UseNumber, so real sort values arrive as json.Number.
 		first := interfaces.Hit{Source: map[string]any{"id": "e2"}, Sort: []any{json.Number("1789000000000"), "e2"}}
 
@@ -174,5 +182,19 @@ func Test_cleanupExpired_SearchAfterKeepsDecodedSortValues(t *testing.T) {
 		wire, err := sonic.Marshal(second["search_after"])
 		So(err, ShouldBeNil)
 		So(string(wire), ShouldEqual, `[1789000000000,"e2"]`)
+	})
+}
+
+func Test_cleanupExpired_ProtectedFullBatchStillReportsTruncation(t *testing.T) {
+	Convey("a full final batch protected by synchronization may leave more records", t, func() {
+		svc, osa := newWriteTestService(t)
+		svc.resultsIndexReady.Store(true)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionIndexPrefix+"*", gomock.Any()).Return([]interfaces.Hit{expiredHit("protected", 1)}, nil)
+		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return([]interfaces.Hit{{Source: map[string]any{"execution_id": "protected"}}}, nil)
+		res, err := svc.cleanupExpired(context.Background(), RetentionConfig{RetentionDays: 7, BatchSize: 1, MaxBatches: 1}, retentionNow)
+		So(err, ShouldBeNil)
+		So(res.Batches, ShouldEqual, 1)
+		So(res.Executions, ShouldEqual, 0)
+		So(res.Truncated, ShouldBeTrue)
 	})
 }

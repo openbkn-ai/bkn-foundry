@@ -157,7 +157,21 @@ func (s *actionLogsService) cleanupExpired(ctx context.Context, cfg RetentionCon
 		}
 		searchAfter = hits[len(hits)-1].Sort
 		result.Batches++
+		// A full final page may leave more records even if synchronization protects every id.
+		if len(hits) == cfg.BatchSize && result.Batches == cfg.MaxBatches {
+			result.Truncated = true
+		}
 
+		ids, err = s.withoutPendingIndexSync(ctx, ids)
+		if err != nil {
+			return result, err
+		}
+		if len(ids) == 0 {
+			if len(hits) < cfg.BatchSize {
+				break
+			}
+			continue
+		}
 		resultsQuery := map[string]any{"query": map[string]any{"terms": map[string]any{"execution_id": ids}}}
 		if cfg.DryRun {
 			n, err := s.countResults(ctx, resultsQuery)
@@ -187,9 +201,6 @@ func (s *actionLogsService) cleanupExpired(ctx context.Context, cfg RetentionCon
 
 		if len(hits) < cfg.BatchSize {
 			break
-		}
-		if result.Batches == cfg.MaxBatches {
-			result.Truncated = true
 		}
 	}
 
