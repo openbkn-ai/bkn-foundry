@@ -588,6 +588,9 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		accountInfos := make([]*interfaces.AccountInfo, 0, len(actionTypes)*2)
 		for _, at := range actionTypes {
 			accountInfos = append(accountInfos, &at.Creator, &at.Updater)
+			if at.ExecutionSubject != nil {
+				accountInfos = append(accountInfos, at.ExecutionSubject)
+			}
 		}
 
 		err = ats.ums.GetAccountNames(ctx, accountInfos)
