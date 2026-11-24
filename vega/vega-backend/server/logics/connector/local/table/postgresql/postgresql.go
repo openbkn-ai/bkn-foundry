@@ -121,6 +121,10 @@ func (c *PostgresqlConnector) SupportDiscover() bool {
 	return true
 }
 
+func (*PostgresqlConnector) SupportsReadTransaction() bool {
+	return true
+}
+
 // GetEnabled reports whether the connector is enabled.
 func (c *PostgresqlConnector) GetEnabled() bool {
 	return c.enabled
@@ -318,6 +322,26 @@ func (c *PostgresqlConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) 
 		return nil, err
 	}
 	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+}
+
+func (c *PostgresqlConnector) QueryContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
+	if tx != nil {
+		return tx.QueryContext(ctx, query, args...)
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.QueryContext(ctx, query, args...)
+}
+
+func (c *PostgresqlConnector) QueryRowContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error) {
+	if tx != nil {
+		return tx.QueryRowContext(ctx, query, args...), nil
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.QueryRowContext(ctx, query, args...), nil
 }
 
 func (c *PostgresqlConnector) connect(ctx context.Context, pingTimeout time.Duration) error {

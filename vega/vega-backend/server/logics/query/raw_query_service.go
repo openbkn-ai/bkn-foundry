@@ -27,6 +27,7 @@ import (
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/sql/binding"
@@ -118,7 +119,7 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	}
 	req.NormalizePaging()
 	if req.IsContinuation() {
-		return rqs.executeSQLCursorContinuation(ctx, req)
+		return rqs.executeCursorContinuation(ctx, req)
 	}
 	if req.Paging.Mode == interfaces.PagingModeCursor {
 		switch req.QueryFormat {
@@ -158,7 +159,8 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	var totalCount int64
 	if req.NeedTotal {
 		var counted *interfaces.RawQueryResponse
-		counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
+		counted, err = rqs.executeSQLBuilder(ctx, prepared.catalog,
+			prepared.builder, &rawSQLBuildOptions{count: true}, req.QueryTimeoutSec)
 		if err == nil {
 			totalCount, err = rawQueryTotalCount(counted)
 		}
@@ -167,7 +169,7 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 		}
 	}
 	options := &rawSQLBuildOptions{offset: req.Paging.Offset, limit: req.Paging.Limit}
-	result, err := rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, options)
+	result, err := rqs.executeSQLBuilder(ctx, prepared.catalog, prepared.builder, options, req.QueryTimeoutSec)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +182,8 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 	return withExecutedResourceIDs(result, prepared.resourceIDs), nil
 }
 
-func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context,
+	req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	queryCtx, cancel := queryExecutionContext(ctx, req.QueryTimeoutSec)
 	defer cancel()
 	prepared, err := rqs.prepareSQLQuery(queryCtx, req)
@@ -208,11 +211,12 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	session.PageOffset = req.Paging.Offset
 	session.NeedTotal = req.NeedTotal
 	bindCursorResource(session, req)
-	if err := rqs.openSQLBuilderCursor(queryCtx, session, prepared.catalog); err != nil {
+
+	if err := rqs.openSQLBuilderCursor(ctx, session, prepared.catalog); err != nil {
 		rawQueryCursorSessions.remove(session.ID)
 		return nil, err
 	}
-	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.warnings)
+	result, err := rqs.executeSQLCursorPage(ctx, session, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
 		// session. Do not retain it until idle expiry.
@@ -221,7 +225,8 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	return result, err
 }
 
-func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeCursorContinuation(ctx context.Context,
+	req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	session, ok := rawQueryCursorSessions.acquire(req.Paging.Cursor)
 	if !ok || session.ResourceDataParams != nil {
 		if ok {
@@ -361,23 +366,28 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	return rqs.prepareSQLBuilder(ctx, parsed, catalog, resourceIDs, warnings)
 }
 
-func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession, warnings []string) (*interfaces.RawQueryResponse, error) {
-	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
-	defer cancel()
-
+func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *interfaces.CursorSession,
+	warnings []string) (*interfaces.RawQueryResponse, error) {
 	if session.PageOffset > math.MaxInt-session.PageLimit {
 		rawQueryCursorSessions.remove(session.ID)
 		return nil, sqlBuilderQueryInvalid(ctx, "cursor paging offset exceeds the supported range")
 	}
-	result, err := readSQLCursorPage(pageCtx, session)
+
+	page, err := readSourceCursorPage(context.WithoutCancel(ctx), session)
 	if err != nil {
-		return nil, err
+		return nil, sqlBuilderExecutionError(ctx, err)
 	}
-	hasNext := session.SQLPendingRow != nil
-	if session.ReadSession != nil {
-		hasNext = session.ReadHasMore
+
+	result := &interfaces.RawQueryResponse{
+		Columns:  page.Columns,
+		Entries:  page.Entries,
+		Warnings: warnings,
 	}
-	if hasNext {
+	if page.TotalCount != nil {
+		session.TotalCount = *page.TotalCount
+		session.HasTotalCount = true
+	}
+	if page.HasMore {
 		session.PageOffset += session.PageLimit
 		rawQueryCursorSessions.markPageSuccess(session)
 		result.Paging = cursorPagingResponse(session)
@@ -388,10 +398,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 	if session.HasTotalCount {
 		totalCount := session.TotalCount
 		result.TotalCount = &totalCount
-	} else {
-		result.TotalCount = nil
 	}
-	result.Warnings = append(result.Warnings, warnings...)
 	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }
 
@@ -1082,7 +1089,8 @@ func bindSQLTableMetadata(table *sb.Table, resource *interfaces.Resource) {
 }
 
 // executeSQLBuilder 将读取窗口合并到临时查询根节点，保留基础 Builder 的逻辑 LIMIT 和排序。
-func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *interfaces.Catalog, query *sb.SelectBuilder, options *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
+func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *interfaces.Catalog, query *sb.SelectBuilder,
+	options *rawSQLBuildOptions, timeoutSec int) (*interfaces.RawQueryResponse, error) {
 	read := query
 	if options != nil {
 		if options.count {
@@ -1118,15 +1126,16 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 	if !ok {
 		return nil, sqlBuilderQueryInvalid(ctx, "connector is not a table connector")
 	}
-	result, err := executor.ExecuteSQLBuilder(ctx, read)
+	result, err := table.ExecuteSQLBuilder(context.WithoutCancel(ctx), executor, read, time.Duration(timeoutSec)*time.Second)
 	if err != nil {
 		return nil, sqlBuilderExecutionError(ctx, err)
 	}
 	return result, nil
 }
 
-// openSQLBuilderCursor 合并首次 API 偏移后只执行一次查询，不将页大小变成 SQL LIMIT。
-func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
+// openSQLBuilderCursor 准备合并首屏偏移的查询，并打开表读会话。
+func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context,
+	session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
 	query := session.SQLQuery
 	if session.PageOffset < 0 {
 		return sqlBuilderQueryInvalid(ctx, "paging offset must not be negative")
@@ -1151,125 +1160,43 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 		_ = connector.Close(ctx)
 		return sqlBuilderQueryInvalid(ctx, "connector is not a table connector")
 	}
-	if reader, ok := executor.(interfaces.TableReadSessionConnector); ok {
-		session.ReadConnector = connector
-		var count *sb.SelectBuilder
-		if session.NeedTotal {
-			count = rawSQLCountQuery(query)
-		}
-		cursorCtx, stop := startSQLCursorRead(ctx, session)
-		stream, err := reader.OpenSQLRead(cursorCtx, &read, count)
-		stop()
 
-		if err != nil {
-			return sqlBuilderExecutionError(ctx, err)
-		}
-		session.ReadSession = stream
-		return nil
+	reader, ok := executor.(interfaces.TableReadSessionConnector)
+	if !ok {
+		_ = connector.Close(ctx)
+		return sqlBuilderQueryInvalid(ctx, "connector does not support SQL cursor reads")
 	}
-	session.SQLConnector = executor
 
+	session.ReadConnector = connector
+	var count *sb.SelectBuilder
 	if session.NeedTotal {
-		counted, err := rqs.executeSQLBuilder(ctx, catalog, query, &rawSQLBuildOptions{count: true})
-		if err != nil {
-			return err
-		}
-		session.TotalCount, err = rawQueryTotalCount(counted)
-		if err != nil {
-			return err
-		}
-		session.HasTotalCount = true
+		count = rawSQLCountQuery(query)
 	}
-	cursorCtx, stop := startSQLCursorRead(ctx, session)
-	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，ScanSQLBuilderRow 在读取结束时检查 Err。
-	stop()
-
+	readCtx := context.WithoutCancel(ctx)
+	timeout := time.Duration(session.QueryTimeoutSec) * time.Second
+	stream, err := reader.OpenSQLRead(readCtx, &read, count, timeout)
 	if err != nil {
 		return sqlBuilderExecutionError(ctx, err)
 	}
-
-	session.SQLRows = rows
-	session.SQLColumns = columns
-
+	session.ReadSession = stream
+	if session.NeedTotal {
+		if _, err := stream.ReadTotal(readCtx); err != nil {
+			return sqlBuilderExecutionError(ctx, err)
+		}
+	}
 	return nil
 }
 
 func rawSQLCountQuery(query *sb.SelectBuilder) *sb.SelectBuilder {
-	return sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}},
-		Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
-}
-
-func startSQLCursorRead(ctx context.Context, session *interfaces.CursorSession) (context.Context, func()) {
-	// 保留请求身份与观测信息，读取会话的生命周期独立于首屏 HTTP 请求。
-	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	session.SQLCancel = cancel
-	return cursorCtx, watchSQLCursorRequest(ctx, cancel)
-}
-
-// watchSQLCursorRequest 仅在当前请求打开或读取 Rows 时传播取消，并等待已启动的回调结束。
-func watchSQLCursorRequest(ctx context.Context, cancel context.CancelFunc) func() {
-	done := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() { cancel(); close(done) })
-	return func() {
-		if !stop() {
-			<-done
-		}
-	}
-}
-
-// readSQLCursorPage 使用同一 Rows，最多缓存一行预读结果。读取失败后无法回退，必须终止会话。
-func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.RawQueryResponse, error) {
-	if session.ReadSession != nil {
-		page, err := readSourceCursorPage(ctx, session)
-		if err != nil {
-			return nil, sqlBuilderExecutionError(ctx, err)
-		}
-		if page.TotalCount != nil {
-			session.TotalCount = *page.TotalCount
-			session.HasTotalCount = true
-		}
-		return &interfaces.RawQueryResponse{Columns: page.Columns, Entries: page.Entries}, nil
-	}
-	rows, err := readCursorRows(ctx, session)
-	if err != nil {
-		return nil, sqlBuilderExecutionError(ctx, err)
-	}
-	return &interfaces.RawQueryResponse{
-		Columns: session.SQLColumns,
-		Entries: rows,
-	}, nil
-}
-
-func readCursorRows(ctx context.Context, session *interfaces.CursorSession) ([]map[string]any, error) {
-	stop := watchSQLCursorRequest(ctx, session.SQLCancel)
-	rows := make([]map[string]any, 0, session.PageLimit)
-	var err error
-	if session.SQLPendingRow != nil {
-		rows = append(rows, session.SQLPendingRow)
-		session.SQLPendingRow = nil
-	}
-	for len(rows) <= session.PageLimit {
-		var row map[string]any
-		row, err = session.SQLConnector.ScanSQLBuilderRow(session.SQLRows, session.SQLColumns)
-		if err != nil || row == nil {
-			break
-		}
-		if len(rows) == session.PageLimit {
-			session.SQLPendingRow = row
-			break
-		}
-		rows = append(rows, row)
-	}
-	stop()
-
-	if err == nil {
-		err = ctx.Err()
-	}
-	if err != nil {
-		rawQueryCursorSessions.remove(session.ID)
-		return nil, err
-	}
-	return rows, nil
+	return sb.Select(
+		&sb.Alias{
+			Expr: &sb.Function{
+				Name: "COUNT",
+				Args: []sb.SqlNode{&sb.Star{}},
+			},
+			Name: rawQueryTotalCountColumn,
+		},
+	).FromSelect(query, "_raw_query_total")
 }
 
 func sqlBuilderExecutionError(ctx context.Context, err error) error {

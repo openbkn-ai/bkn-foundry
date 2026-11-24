@@ -494,6 +494,7 @@ func TestBuildTaskWorkerRunBatchTaskRecoversPanic(t *testing.T) {
 					connector.MockTableConnector.EXPECT().Connect(gomock.Any()).Return(nil),
 					bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil),
 					connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).Return(stream, nil),
+					stream.EXPECT().ReadTotal(gomock.Any()).Return(nil, nil),
 					stream.EXPECT().ReadPage(gomock.Any(), 1000).Do(func(context.Context, int) { panic("source read panicked") }),
 					stream.EXPECT().Close().Return(nil),
 					connector.MockTableConnector.EXPECT().Close(gomock.Any()).Return(nil),

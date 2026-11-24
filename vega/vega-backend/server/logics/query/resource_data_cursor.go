@@ -197,15 +197,26 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 func OpenResourceTableCursor(ctx context.Context, session *interfaces.CursorSession,
 	connector interfaces.TableConnector, reader interfaces.TableReadSessionConnector,
 	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
-	cursorCtx, stop := startSQLCursorRead(ctx, session)
-	stream, err := reader.OpenTableRead(cursorCtx, resource, params)
-	stop()
-
+	stream, err := reader.OpenTableRead(ctx, resource, params)
 	if err != nil {
+		return err
+	}
+	if err := readTableCursorTotal(ctx, stream, params.NeedTotal); err != nil {
 		return err
 	}
 	session.ReadSession = stream
 	session.ReadConnector = connector
+	return nil
+}
+
+func readTableCursorTotal(ctx context.Context, stream interfaces.QueryPageSession, needTotal bool) error {
+	if needTotal {
+		// 后续页从会话取得已缓存的总数。
+		if _, err := stream.ReadTotal(ctx); err != nil {
+			_ = stream.Close()
+			return err
+		}
+	}
 	return nil
 }
 

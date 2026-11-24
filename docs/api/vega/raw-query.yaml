@@ -83,15 +83,16 @@ info:
     例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
 
     MariaDB/MySQL、PG、HANA、Doris、Oracle 和 SQL Server 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
-    total_count 统计原始逻辑查询的结果行数。Builder cursor 只执行一次数据查询，在服务端保留
+    total_count 统计原始逻辑查询的结果行数。Builder cursor 要求目标表连接器支持读会话，只执行一次数据查询，在服务端保留
     同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
     每次续页重新校验资源权限和源端元数据版本；View 查询同时复核所有分支的 View 定义及物理来源依赖。
     权限撤销或版本改变会关闭 cursor，版本改变返回
-    HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
+    HTTP 409。源端读取超时或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
     临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
     到期会释放结果集、事务与连接。PostgreSQL、MySQL/MariaDB 的 InnoDB 数据和 HANA 使用显式只读
-    REPEATABLE READ，Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SERIALIZABLE。开启 need_total 时，
-    先在同一事务内执行 COUNT，再打开数据结果集。单页查询及 Doris 等未接入事务读会话的连接器独立执行 COUNT。
+    REPEATABLE READ，Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SNAPSHOT（源数据库须启用 `ALLOW_SNAPSHOT_ISOLATION`）。开启 need_total 时，
+    支持显式读事务的连接器先在同一事务内执行 COUNT，再打开数据结果集。Doris 的 COUNT 和数据查询分别执行，
+    数据分页仍复用同一条 SELECT 的结果集。单页查询独立执行 COUNT。
 
     每个未读完的 Builder cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
     仅控制会话回收，不保证源库连接在租约内持续可用。大结果集在客户端暂停读取时可能使源端写入
@@ -364,7 +365,9 @@ components:
             - not:
                 required: [cursor]
         query_timeout_sec:
-          description: 单页查询超时（秒），仅首次请求可设置；cursor 续页沿用首次请求的值。[1, 3600]，默认 60。
+          description: >-
+            查询超时（秒），仅首次请求可设置，取值 [1, 3600]，默认 60。
+            游标续页沿用首次请求的值。SQL 的 COUNT 和数据查询分别计时，SQL 游标续页复用已有结果集并按次限制读取时间。
           type: integer
           format: int64
           minimum: 1

@@ -6,6 +6,7 @@ package query
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -13,9 +14,61 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
+
+func TestOpenResourceTableCursor(t *testing.T) {
+	t.Run("reads the count before returning the stream for the first page", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockTableConnector(ctrl)
+		reader := vmock.NewMockTableReadSessionConnector(ctrl)
+		session := &interfaces.CursorSession{PageLimit: 1}
+		resource := &interfaces.Resource{ID: "table-1"}
+		params := &interfaces.ResourceDataQueryParams{NeedTotal: true}
+		total := int64(2)
+		stream := vmock.NewMockQueryPageSession(ctrl)
+		gomock.InOrder(
+			reader.EXPECT().OpenTableRead(gomock.Any(), resource, params).Return(stream, nil),
+			stream.EXPECT().ReadTotal(gomock.Any()).Return(&total, nil),
+			stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{TotalCount: &total,
+				Entries: []map[string]any{{"id": int64(1)}}, HasMore: true}, nil),
+			stream.EXPECT().Close().Return(nil),
+			connector.EXPECT().Close(gomock.Any()).Return(nil),
+		)
+		require.NoError(t, OpenResourceTableCursor(t.Context(), session, connector, reader, resource, params))
+		defer closeSQLCursorResources(session)
+		page, err := ReadResourceCursorPage(t.Context(), session)
+		require.NoError(t, err)
+		assert.Equal(t, total, page.TotalCount)
+		assert.Equal(t, []map[string]any{{"id": int64(1)}}, page.Entries)
+		assert.True(t, session.ReadHasMore)
+	})
+
+	t.Run("a count failure closes the stream before ownership transfers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockTableConnector(ctrl)
+		reader := vmock.NewMockTableReadSessionConnector(ctrl)
+		session := &interfaces.CursorSession{}
+		resource := &interfaces.Resource{ID: "table-1"}
+		params := &interfaces.ResourceDataQueryParams{NeedTotal: true}
+		ctx := t.Context()
+		cause := errors.New("source count failed")
+		stream := vmock.NewMockQueryPageSession(ctrl)
+		gomock.InOrder(
+			reader.EXPECT().OpenTableRead(ctx, resource, params).Return(stream, nil),
+			stream.EXPECT().ReadTotal(ctx).Return(nil, cause),
+			stream.EXPECT().Close().Return(nil),
+		)
+		err := OpenResourceTableCursor(ctx, session, connector, reader, resource, params)
+		defer closeSQLCursorResources(session)
+		require.ErrorIs(t, err, cause)
+		assert.Nil(t, session.ReadSession)
+		assert.Nil(t, session.ReadConnector)
+	})
+}
 
 func TestExecuteResourceDataCursorContinuation(t *testing.T) {
 	t.Run("pages and closes", func(t *testing.T) {

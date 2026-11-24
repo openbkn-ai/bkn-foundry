@@ -117,16 +117,23 @@ type TableConnector interface {
 	ScanSQLBuilderRow(*sql.Rows, []ColumnInfo) (map[string]any, error)
 }
 
-// TableReadSessionConnector opens a result set in a source transaction for reading.
+// TableReadSessionConnector opens a source read session, using a read transaction when supported.
 // Query options (including filtering and offset) are fixed when the session
 // opens. Callers must close the session and its connector.
 type TableReadSessionConnector interface {
-	// BeginReadTx 为计数和数据查询开启同一个读事务，由调用方回滚。
+	// SupportsReadTransaction reports whether the connector can open an explicit read transaction.
+	SupportsReadTransaction() bool
+	// BeginReadTx 为支持显式读事务的来源开启事务，由调用方回滚。
 	BeginReadTx(ctx context.Context) (*sql.Tx, error)
 
 	OpenTableRead(context.Context, *Resource, *ResourceDataQueryParams) (QueryPageSession, error)
-	// countQuery is optional and, when present, returns a single count value.
-	OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder) (QueryPageSession, error)
+	// OpenSQLRead applies timeout independently to the optional count and each page read.
+	// A zero timeout leaves the read duration to the caller's context and connector settings.
+	OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder, timeout time.Duration) (QueryPageSession, error)
+	// QueryContext uses tx when provided, or connects if necessary and uses the connector's pool.
+	QueryContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error)
+	// QueryRowContext follows the same routing and returns connection failures before scanning.
+	QueryRowContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error)
 	// ScanTableReadRow 按会话投影推进并解码一行，结束时返回 (nil, nil)。
 	// 扫描错误由会话统一归类。
 	ScanTableReadRow(rows *sql.Rows, columns []ColumnInfo, fields map[string]*Property,

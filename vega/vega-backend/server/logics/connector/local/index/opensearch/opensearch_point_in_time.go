@@ -133,8 +133,10 @@ func (s *openSearchPointInTime) SearchPage(ctx context.Context, limit int, after
 	query["pit"] = map[string]string{"id": s.pitID, "keep_alive": s.keepAlive}
 	query["size"] = limit
 	query["track_total_hits"] = trackTotal
-	if len(after) > 0 {
+	if limit == 0 || len(after) > 0 {
 		delete(query, "from")
+	}
+	if len(after) > 0 {
 		query["search_after"] = after
 	}
 	if s.rawFieldTypes != nil {

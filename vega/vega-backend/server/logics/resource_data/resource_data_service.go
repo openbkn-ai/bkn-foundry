@@ -695,6 +695,9 @@ func (rds *resourceDataService) executeSourceQueryWithCursor(ctx context.Context
 		return resourcelogic.QueryAPIResource(ctx, resource, params)
 	}
 	if cursor != nil && cursor.ReadSession != nil {
+		if resource.Category == interfaces.ResourceCategoryTable {
+			ctx = context.WithoutCancel(ctx)
+		}
 		return querylogic.ReadResourceCursorPage(ctx, cursor)
 	}
 	logger.Debugf("executeSourceQuery, resourceID: %s, catalogID: %s, params: %v", resource.ID, resource.CatalogID, params)
@@ -729,13 +732,14 @@ func (rds *resourceDataService) executeSourceQueryWithCursor(ctx context.Context
 
 		if cursor != nil {
 			if reader, ok := tableConnector.(interfaces.TableReadSessionConnector); ok {
-				if err := querylogic.OpenResourceTableCursor(ctx, cursor, tableConnector, reader, resource, params); err != nil {
+				readCtx := context.WithoutCancel(ctx)
+				if err := querylogic.OpenResourceTableCursor(readCtx, cursor, tableConnector, reader, resource, params); err != nil {
 					return nil, err
 				}
 				retained = true
 				cursor.CatalogUpdateTime = catalog.UpdateTime
 				cursor.ConnectorType = catalog.ConnectorType
-				return querylogic.ReadResourceCursorPage(ctx, cursor)
+				return querylogic.ReadResourceCursorPage(readCtx, cursor)
 			}
 		}
 		result, err := tableConnector.ExecuteQuery(ctx, resource, params)

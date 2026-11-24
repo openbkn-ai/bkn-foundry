@@ -7,8 +7,6 @@
 package interfaces
 
 import (
-	"context"
-	"database/sql"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
@@ -33,18 +31,13 @@ type CursorSession struct {
 	SQLSourceValidator  SQLQueryCursorValidator
 	CatalogUpdateTime   int64
 	ConnectorType       string
+
 	// 阅读会话保存源快照，游标只保存对会话的引用。
 	ReadSession            QueryPageSession
 	ReadConnector          Connector
 	ReadHasMore            bool
 	ReadIndexName          string
 	ReadResourceUpdateTime int64
-	// 扩展连接器可继续使用 SQLRows。
-	SQLRows       *sql.Rows
-	SQLColumns    []ColumnInfo
-	SQLPendingRow map[string]any
-	SQLConnector  TableConnector
-	SQLCancel     context.CancelFunc
 
 	QueryFormat     QueryFormat
 	OpenSearchQuery map[string]any
