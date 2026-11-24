@@ -13,6 +13,7 @@ import (
 
 // IndexSessionSnapshot 读取同一索引快照中的命中结果，并返回下一页需要的排序值。
 type IndexSessionSnapshot interface {
+	// limit 为 0 时只返回总数，忽略分页偏移。
 	SearchPage(ctx context.Context, limit int, after []any, trackTotal bool) (*interfaces.QueryPage, []any, error)
 	Close() error
 }
@@ -30,7 +31,31 @@ type indexReadSession struct {
 // NewIndexReadSession 接管已打开的索引快照，并维护连续分页的状态。
 // 当命中总数等于可分页的文档总数时，checkPageSize 可启用页长校验。
 func NewIndexReadSession(snapshot IndexSessionSnapshot, offset int64, trackTotal, checkPageSize bool) interfaces.QueryPageSession {
-	return &indexReadSession{snapshot: snapshot, offset: offset, trackTotal: trackTotal, checkPageSize: checkPageSize}
+	return &indexReadSession{
+		snapshot:      snapshot,
+		offset:        offset,
+		trackTotal:    trackTotal,
+		checkPageSize: checkPageSize,
+	}
+}
+
+// ReadTotal 在需要时单独查询同一快照的总数，并缓存结果。
+func (s *indexReadSession) ReadTotal(ctx context.Context) (*int64, error) {
+	if s.snapshot == nil {
+		return nil, interfaces.ErrQueryPageSessionExpired
+	}
+	if !s.trackTotal || s.total != nil {
+		return s.total, nil
+	}
+	page, _, err := s.snapshot.SearchPage(ctx, 0, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	if page == nil || page.TotalCount == nil {
+		return nil, errors.New("index search has no exact total")
+	}
+	s.total = page.TotalCount
+	return s.total, nil
 }
 
 func (s *indexReadSession) ReadPage(ctx context.Context, limit int) (*interfaces.QueryPage, error) {

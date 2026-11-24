@@ -415,16 +415,16 @@ func (c *PostgresqlConnector) OpenTableRead(ctx context.Context, resource *inter
 	if params.NeedTotal {
 		count = table.StructuredCountQuery(query)
 	}
-	return c.openReadSession(ctx, query, count, resource, params)
+	return c.openReadSession(ctx, query, count, resource, params, 0)
 }
 
 // OpenSQLRead 为已通过只读策略校验的 Builder 查询打开流式读取会话。
-func (c *PostgresqlConnector) OpenSQLRead(ctx context.Context, query, count *sb.SelectBuilder) (interfaces.QueryPageSession, error) {
-	return c.openReadSession(ctx, query, count, nil, nil)
+func (c *PostgresqlConnector) OpenSQLRead(ctx context.Context, query, count *sb.SelectBuilder, timeout time.Duration) (interfaces.QueryPageSession, error) {
+	return c.openReadSession(ctx, query, count, nil, nil, timeout)
 }
 
 func (c *PostgresqlConnector) openReadSession(ctx context.Context, query, count *sb.SelectBuilder,
-	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, timeout time.Duration) (interfaces.QueryPageSession, error) {
 	statement, err := readStatement(query)
 	if err != nil {
 		return nil, err
@@ -446,7 +446,8 @@ func (c *PostgresqlConnector) openReadSession(ctx context.Context, query, count 
 			}
 		}
 	}
-	session, err := table.OpenReadSession(ctx, c, statement, countStatement, resource, params, localTimeColumns)
+
+	session, err := table.OpenReadSession(ctx, c, statement, countStatement, resource, params, nil, localTimeColumns, timeout)
 	return session, c.ClassifyQueryError(err)
 }
 

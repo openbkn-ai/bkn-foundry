@@ -763,18 +763,18 @@ func (mr *MockTableReadSessionConnectorMockRecorder) ClassifyQueryError(err any)
 }
 
 // OpenSQLRead mocks base method.
-func (m *MockTableReadSessionConnector) OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder) (interfaces.QueryPageSession, error) {
+func (m *MockTableReadSessionConnector) OpenSQLRead(ctx context.Context, query, countQuery *sqlbuilder.SelectBuilder, timeout time.Duration) (interfaces.QueryPageSession, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OpenSQLRead", ctx, query, countQuery)
+	ret := m.ctrl.Call(m, "OpenSQLRead", ctx, query, countQuery, timeout)
 	ret0, _ := ret[0].(interfaces.QueryPageSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // OpenSQLRead indicates an expected call of OpenSQLRead.
-func (mr *MockTableReadSessionConnectorMockRecorder) OpenSQLRead(ctx, query, countQuery any) *gomock.Call {
+func (mr *MockTableReadSessionConnectorMockRecorder) OpenSQLRead(ctx, query, countQuery, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenSQLRead", reflect.TypeOf((*MockTableReadSessionConnector)(nil).OpenSQLRead), ctx, query, countQuery)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenSQLRead", reflect.TypeOf((*MockTableReadSessionConnector)(nil).OpenSQLRead), ctx, query, countQuery, timeout)
 }
 
 // OpenTableRead mocks base method.
@@ -792,6 +792,46 @@ func (mr *MockTableReadSessionConnectorMockRecorder) OpenTableRead(arg0, arg1, a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenTableRead", reflect.TypeOf((*MockTableReadSessionConnector)(nil).OpenTableRead), arg0, arg1, arg2)
 }
 
+// QueryContext mocks base method.
+func (m *MockTableReadSessionConnector) QueryContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, query}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryContext", varargs...)
+	ret0, _ := ret[0].(*sql.Rows)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryContext indicates an expected call of QueryContext.
+func (mr *MockTableReadSessionConnectorMockRecorder) QueryContext(ctx, tx, query any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, query}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryContext", reflect.TypeOf((*MockTableReadSessionConnector)(nil).QueryContext), varargs...)
+}
+
+// QueryRowContext mocks base method.
+func (m *MockTableReadSessionConnector) QueryRowContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, query}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryRowContext", varargs...)
+	ret0, _ := ret[0].(*sql.Row)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryRowContext indicates an expected call of QueryRowContext.
+func (mr *MockTableReadSessionConnectorMockRecorder) QueryRowContext(ctx, tx, query any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, query}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryRowContext", reflect.TypeOf((*MockTableReadSessionConnector)(nil).QueryRowContext), varargs...)
+}
+
 // ScanTableReadRow mocks base method.
 func (m *MockTableReadSessionConnector) ScanTableReadRow(rows *sql.Rows, columns []interfaces.ColumnInfo, fields map[string]*interfaces.Property, binaryMode *string, binaryContentColumns map[string]bool) (map[string]any, error) {
 	m.ctrl.T.Helper()
@@ -805,6 +845,20 @@ func (m *MockTableReadSessionConnector) ScanTableReadRow(rows *sql.Rows, columns
 func (mr *MockTableReadSessionConnectorMockRecorder) ScanTableReadRow(rows, columns, fields, binaryMode, binaryContentColumns any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanTableReadRow", reflect.TypeOf((*MockTableReadSessionConnector)(nil).ScanTableReadRow), rows, columns, fields, binaryMode, binaryContentColumns)
+}
+
+// SupportsReadTransaction mocks base method.
+func (m *MockTableReadSessionConnector) SupportsReadTransaction() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportsReadTransaction")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportsReadTransaction indicates an expected call of SupportsReadTransaction.
+func (mr *MockTableReadSessionConnectorMockRecorder) SupportsReadTransaction() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportsReadTransaction", reflect.TypeOf((*MockTableReadSessionConnector)(nil).SupportsReadTransaction))
 }
 
 // MockIndexReadSessionConnector is a mock of IndexReadSessionConnector interface.

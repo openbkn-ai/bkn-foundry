@@ -15,6 +15,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-sql-driver/mysql"
@@ -395,16 +396,16 @@ func (c *MariaDBConnector) OpenTableRead(ctx context.Context, resource *interfac
 	if params.NeedTotal {
 		count = table.StructuredCountQuery(query)
 	}
-	return c.openReadSession(ctx, query, count, resource, params)
+	return c.openReadSession(ctx, query, count, resource, params, 0)
 }
 
 // OpenSQLRead 为已通过只读策略校验的 Builder 查询打开流式读取会话。
-func (c *MariaDBConnector) OpenSQLRead(ctx context.Context, query, count *sb.SelectBuilder) (interfaces.QueryPageSession, error) {
-	return c.openReadSession(ctx, query, count, nil, nil)
+func (c *MariaDBConnector) OpenSQLRead(ctx context.Context, query, count *sb.SelectBuilder, timeout time.Duration) (interfaces.QueryPageSession, error) {
+	return c.openReadSession(ctx, query, count, nil, nil, timeout)
 }
 
 func (c *MariaDBConnector) openReadSession(ctx context.Context, query, count *sb.SelectBuilder,
-	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
+	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, timeout time.Duration) (interfaces.QueryPageSession, error) {
 
 	statement, err := readStatement(query)
 	if err != nil {
@@ -418,7 +419,8 @@ func (c *MariaDBConnector) openReadSession(ctx context.Context, query, count *sb
 		}
 		countStatement = &rendered
 	}
-	session, err := table.OpenReadSession(ctx, c, statement, countStatement, resource, params, nil)
+
+	session, err := table.OpenReadSession(ctx, c, statement, countStatement, resource, params, nil, nil, timeout)
 	return session, c.ClassifyQueryError(err)
 }
 

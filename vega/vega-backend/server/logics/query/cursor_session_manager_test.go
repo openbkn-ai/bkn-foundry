@@ -7,6 +7,7 @@ package query
 
 import (
 	"context"
+	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"go.uber.org/mock/gomock"
@@ -23,6 +24,7 @@ import (
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
 func TestCursorSessionManagerAcquire(t *testing.T) {
@@ -459,22 +461,21 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 	for _, reason := range []string{"remove", "final page", "explicit close", "expired acquire", "expired close", "periodic expiry"} {
 		t.Run(reason, func(t *testing.T) {
 			manager := newCursorSessionManager(10, 9)
-			session, err := manager.create("owner", "catalog", nil, 2, 60, 30)
+			session, err := manager.create("owner", "catalog", nil, 1, 60, 30)
 			require.NoError(t, err)
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2)).RowsWillBeClosed()
-			ctx, cancel := context.WithCancel(context.Background())
-			session.SQLCancel = cancel
-			rows, err := db.QueryContext(ctx, "SELECT id")
+			rows, err := db.QueryContext(t.Context(), "SELECT id")
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, rows.Close()) }()
 			require.NoError(t, rows.Err())
-			session.SQLRows = rows
 			mock.ExpectClose()
 			base := vmock.NewMockTableConnector(gomock.NewController(t))
+			query := sb.Select(&sb.Column{Name: "id"})
+			connectorClosed := false
 			base.EXPECT().Close(gomock.Any()).DoAndReturn(func(context.Context) error {
-				assert.ErrorIs(t, ctx.Err(), context.Canceled)
+				connectorClosed = true
 				// 关闭连接不能持有全局锁，否则一个慢连接将阻塞所有 cursor。
 				unlocked := manager.mu.TryLock()
 				assert.True(t, unlocked)
@@ -483,14 +484,24 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 				}
 				return db.Close()
 			})
-			session.SQLConnector = base
+			connector := &sqlCursorConnector{
+				TableConnector: base,
+				open:           func(context.Context, *sb.SelectBuilder) (*sql.Rows, error) { return rows, nil },
+			}
+			stream, err := connector.OpenSQLRead(t.Context(), query, nil, 0)
+			require.NoError(t, err)
+			session.ReadConnector = connector
+			session.ReadSession = stream
+			page, err := session.ReadSession.ReadPage(t.Context(), session.PageLimit)
+			require.NoError(t, err)
+			require.True(t, page.HasMore)
 			assert.ErrorIs(t, manager.closeForAccount("foreign", session.ID), errCursorSessionForbidden)
-			assert.NoError(t, ctx.Err())
+			assert.False(t, connectorClosed)
 			session.Lock()
 			atomic.StoreInt64(&session.ExpiresAtSec, 0)
 			manager.closeExpiredSessions(time.Now().Unix())
 			assert.Contains(t, manager.sessions, session.ID)
-			assert.NoError(t, ctx.Err())
+			assert.False(t, connectorClosed)
 			session.Unlock()
 			switch reason {
 			case "remove":
@@ -509,13 +520,13 @@ func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
 				manager.closeExpiredSessions(time.Now().Unix())
 			}
 			if reason == "expired acquire" || reason == "expired close" {
-				assert.NoError(t, ctx.Err(), "rejecting an expired cursor must not close the connection")
+				assert.False(t, connectorClosed, "rejecting an expired cursor must not close the connection")
 				assert.Contains(t, manager.sessions, session.ID)
 				assert.Len(t, manager.reclaimRequested, 1)
 				manager.closeExpiredSessions(time.Now().Unix())
 			}
-			assert.ErrorIs(t, ctx.Err(), context.Canceled)
-			assert.Error(t, session.SQLRows.Scan(new(any)))
+			assert.True(t, connectorClosed)
+			assert.Error(t, rows.Scan(new(any)))
 			assert.NotContains(t, manager.sessions, session.ID)
 			manager.remove(session.ID) // 重复释放不能再次关闭连接。
 			require.NoError(t, mock.ExpectationsWereMet())

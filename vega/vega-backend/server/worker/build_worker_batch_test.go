@@ -249,6 +249,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			connector.MockTableConnector.EXPECT().Connect(gomock.Any()).Return(nil),
 			bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil),
 			connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).Return(stream, nil),
+			stream.EXPECT().ReadTotal(gomock.Any()).Return(nil, nil),
 			stream.EXPECT().ReadPage(gomock.Any(), 1000).Return(nil, errors.New("source read failed")),
 			stream.EXPECT().Close().Return(nil),
 			connector.MockTableConnector.EXPECT().Close(gomock.Any()).Return(nil),
@@ -276,6 +277,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := &streamTableConnector{vmock.NewMockTableConnector(ctrl), vmock.NewMockTableReadSessionConnector(ctrl)}
+		reportedTotal := int64(0)
 		snapshot := vmock.NewMockQueryPageSession(ctrl)
 		resource := workerTestResource()
 		resource.IndexConfig.IncrementalFields = nil
@@ -301,33 +303,37 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil).Times(2)
 		var taskCheckpoint string
+		var totalProgress, syncedProgress []int64
 		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any(), runningOrStoppingStatuses).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress, _ []string) (bool, error) {
+				if progress.TotalCount != nil {
+					totalProgress = append(totalProgress, *progress.TotalCount)
+				}
+				if progress.SyncedCount != nil {
+					syncedProgress = append(syncedProgress, *progress.SyncedCount)
+				}
 				if progress.SyncedMark != nil {
 					taskCheckpoint = *progress.SyncedMark
 				}
 				return true, nil
 			},
-		).Times(2)
-		lim.EXPECT().IndexDocuments(gomock.Any(), task.IndexName, gomock.Len(1000)).DoAndReturn(successfulIndexDocuments)
+		).Times(3)
+		lim.EXPECT().IndexDocuments(gomock.Any(), task.IndexName, gomock.Len(1)).DoAndReturn(successfulIndexDocuments).Times(2)
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		mark := `{"mode":"batch","cursor":[{"key":"id","value":1020}]}`
-		rows := make([]map[string]any, 1000)
-		for i := range rows {
-			rows[i] = map[string]any{"id": int64(21 + i)}
-		}
-		total := int64(1000)
+		mark := `{"mode":"batch","cursor":[{"key":"id","value":22}]}`
+		readCtx := gomock.Cond(func(ctx context.Context) bool { return ctx.Done() == nil })
 		gomock.InOrder(
 			connector.MockTableConnector.EXPECT().Connect(gomock.Any()).Return(nil),
-			connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+			connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(readCtx, resource, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
 					assert.True(t, params.NeedTotal)
 					assert.Zero(t, params.Paging.Limit)
 					assert.Equal(t, int64(20), params.FilterCondCfg.SubConds[0].SubConds[0].Value)
 					return snapshot, nil
 				}),
-			snapshot.EXPECT().ReadPage(gomock.Any(), 1000).Return(&interfaces.QueryPage{Entries: rows, TotalCount: &total, HasMore: true}, nil),
-			snapshot.EXPECT().ReadPage(gomock.Any(), 1000).Return(&interfaces.QueryPage{}, nil),
+			snapshot.EXPECT().ReadTotal(readCtx).Return(&reportedTotal, nil),
+			snapshot.EXPECT().ReadPage(readCtx, 1000).Return(&interfaces.QueryPage{Entries: []map[string]any{{"id": int64(21)}}, TotalCount: &reportedTotal, HasMore: true}, nil),
+			snapshot.EXPECT().ReadPage(readCtx, 1000).Return(&interfaces.QueryPage{Entries: []map[string]any{{"id": int64(22)}}}, nil),
 			snapshot.EXPECT().Close().Return(nil),
 			rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil),
 			rs.EXPECT().InternalPublishLocalIndex(gomock.Any(), txMatcher, resource.ID, task.IndexName, "", resource.UpdateTime).Return(true, nil),
@@ -335,7 +341,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			connector.MockTableConnector.EXPECT().Close(gomock.Any()).Return(nil),
 		)
 
-		require.NoError(t, worker.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task))
+		require.NoError(t, worker.executeBuild(t.Context(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task))
+		assert.Equal(t, []int64{20}, totalProgress)
+		assert.Equal(t, []int64{21, 22}, syncedProgress)
 		assert.Equal(t, mark, taskCheckpoint)
 		assert.Empty(t, resource.SyncMark)
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resource.LocalIndexStatus)
@@ -344,7 +352,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 
 	t.Run("full snapshot errors and interruptions release the source without publishing", func(t *testing.T) {
 		fail := errors.New("snapshot failed")
-		for _, step := range []string{"begin", "read", "close", "stop", "cancel"} {
+		for _, step := range []string{"begin", "count", "read", "close", "stop", "cancel"} {
 			t.Run(step, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				lim := vmock.NewMockLocalIndexManager(ctrl)
@@ -364,10 +372,16 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				connector.MockTableConnector.EXPECT().Close(gomock.Any()).Return(nil)
 				bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 				begin := connector.MockTableReadSessionConnector.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any())
-				if step == "begin" {
+				switch step {
+				case "begin":
 					begin.Return(nil, fail)
-				} else {
+				case "count":
 					begin.Return(snapshot, nil)
+					snapshot.EXPECT().ReadTotal(gomock.Any()).Return(nil, fail)
+					snapshot.EXPECT().Close().Return(nil)
+				default:
+					begin.Return(snapshot, nil)
+					snapshot.EXPECT().ReadTotal(gomock.Any()).Return(nil, nil)
 					switch step {
 					case "read":
 						snapshot.EXPECT().ReadPage(gomock.Any(), 1000).Return(nil, fail)

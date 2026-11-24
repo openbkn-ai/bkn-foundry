@@ -8,12 +8,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
+
+const defaultResourceTableCursorTimeout = time.Second * 60
 
 // ResourceDataPageExecutor executes one normalized structured resource query.
 // It is supplied by resource_data to keep connector semantics out of this
@@ -197,15 +200,30 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 func OpenResourceTableCursor(ctx context.Context, session *interfaces.CursorSession,
 	connector interfaces.TableConnector, reader interfaces.TableReadSessionConnector,
 	resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
-	cursorCtx, stop := startSQLCursorRead(ctx, session)
-	stream, err := reader.OpenTableRead(cursorCtx, resource, params)
-	stop()
-
+	readParams := *params
+	if readParams.Timeout <= 0 {
+		readParams.Timeout = defaultResourceTableCursorTimeout
+	}
+	stream, err := reader.OpenTableRead(ctx, resource, &readParams)
 	if err != nil {
+		return err
+	}
+	if err := readTableCursorTotal(ctx, stream, params.NeedTotal); err != nil {
 		return err
 	}
 	session.ReadSession = stream
 	session.ReadConnector = connector
+	return nil
+}
+
+func readTableCursorTotal(ctx context.Context, stream interfaces.QueryPageSession, needTotal bool) error {
+	if needTotal {
+		// 后续页从会话取得已缓存的总数。
+		if _, err := stream.ReadTotal(ctx); err != nil {
+			_ = stream.Close()
+			return err
+		}
+	}
 	return nil
 }
 

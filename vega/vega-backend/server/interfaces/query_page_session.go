@@ -17,6 +17,8 @@ var ErrQueryPageSessionExpired = errors.New("query page session expired")
 // QueryPageSession keeps one source snapshot for successive pages. The caller
 // serializes reads and closes the session when the pages are no longer needed.
 type QueryPageSession interface {
+	// ReadTotal returns the available total without advancing the session, or nil if unavailable.
+	ReadTotal(context.Context) (*int64, error)
 	ReadPage(context.Context, int) (*QueryPage, error)
 	Close() error
 }

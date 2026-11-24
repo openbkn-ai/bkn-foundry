@@ -2202,18 +2202,22 @@ func TestTableSourceCursorRetainsReadSession(t *testing.T) {
 			opener := mock_interfaces.NewMockTableReadSessionConnector(ctrl)
 			connector := &streamTableConnector{base, opener}
 			stream := mock_interfaces.NewMockQueryPageSession(ctrl)
+			readCtx := gomock.Cond(func(ctx context.Context) bool {
+				return ctx.Done() == nil && interfaces.IsTrustedProxyRead(ctx)
+			})
 			total := int64(9)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 			gomock.InOrder(
 				cs.EXPECT().InternalGetByID(gomock.Any(), catalog.ID, true).Return(catalog, nil),
 				base.EXPECT().Connect(gomock.Any()).Return(nil),
-				opener.EXPECT().OpenTableRead(gomock.Any(), resource, gomock.Any()).DoAndReturn(
+				opener.EXPECT().OpenTableRead(readCtx, resource, gomock.Any()).DoAndReturn(
 					func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (interfaces.QueryPageSession, error) {
 						assert.Equal(t, 7, params.Paging.Offset)
 						assert.True(t, params.NeedTotal)
 						return stream, nil
 					}),
-				stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+				stream.EXPECT().ReadTotal(readCtx).Return(&total, nil),
+				stream.EXPECT().ReadPage(readCtx, 1).Return(&interfaces.QueryPage{
 					Entries: []map[string]any{{"id": int64(8)}}, Columns: []interfaces.ColumnInfo{{Name: "id"}}, TotalCount: &total, HasMore: true,
 				}, nil),
 			)
@@ -2230,7 +2234,7 @@ func TestTableSourceCursorRetainsReadSession(t *testing.T) {
 					lastRow["payload"] = "not a byte length"
 				}
 				gomock.InOrder(
-					stream.EXPECT().ReadPage(gomock.Any(), 1).Return(&interfaces.QueryPage{
+					stream.EXPECT().ReadPage(readCtx, 1).Return(&interfaces.QueryPage{
 						Entries: []map[string]any{lastRow}, Columns: []interfaces.ColumnInfo{{Name: "id"}}, TotalCount: &total,
 					}, nil),
 					stream.EXPECT().Close().Return(nil),

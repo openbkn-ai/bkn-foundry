@@ -431,6 +431,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 	var stream interfaces.QueryPageSession
+	readCtx := context.WithoutCancel(ctx)
 	defer func() {
 		if stream != nil {
 			_ = stream.Close()
@@ -485,6 +486,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 
 		var result *interfaces.ResourceDataQueryResult
+		var sourceTotal *int64
 		hasMore := true
 		if stream == nil {
 			limit := batchSize
@@ -497,22 +499,33 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				return paramsErr
 			}
 			if streamConnector != nil {
-				stream, err = streamConnector.OpenTableRead(ctx, resource, params)
+				stream, err = streamConnector.OpenTableRead(readCtx, resource, params)
 				if err != nil {
 					return fmt.Errorf("open full build source stream: %w", err)
+				}
+				if params.NeedTotal {
+					sourceTotal, err = stream.ReadTotal(readCtx)
+					if err != nil {
+						return fmt.Errorf("count full build source rows: %w", err)
+					}
 				}
 			} else {
 				result, err = tableConnector.ExecuteQuery(ctx, resource, params)
 			}
 		}
 		if stream != nil {
-			page, readErr := stream.ReadPage(ctx, batchSize)
+			page, readErr := stream.ReadPage(readCtx, batchSize)
 			if readErr != nil {
 				return fmt.Errorf("read full build source page: %w", readErr)
 			}
 			result = &interfaces.ResourceDataQueryResult{Entries: page.Entries}
-			if firstQuery && page.TotalCount != nil {
-				result.TotalCount = *page.TotalCount
+			if firstQuery {
+				if sourceTotal == nil {
+					sourceTotal = page.TotalCount
+				}
+				if sourceTotal != nil {
+					result.TotalCount = *sourceTotal
+				}
 			}
 			hasMore = page.HasMore
 		}
@@ -598,7 +611,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			lastSyncedMark = syncedMarkStr
 		}
 
-		if !hasMore || readRows < batchSize {
+		if !hasMore || (stream == nil && readRows < batchSize) {
 			break
 		}
 	}
@@ -736,11 +749,12 @@ func (bbw *batchBuildWorker) readKeyRows(ctx context.Context, catalog *interface
 	if err := connector.Connect(ctx); err != nil {
 		return nil, errors.New("could not connect to the source")
 	}
-	session, err := source.OpenTableRead(ctx, resource, params)
+	readCtx := context.WithoutCancel(ctx)
+	session, err := source.OpenTableRead(readCtx, resource, params)
 	if err != nil {
 		return nil, errors.New("could not open a source key read session")
 	}
-	page, readErr := session.ReadPage(ctx, limit)
+	page, readErr := session.ReadPage(readCtx, limit)
 	closeErr := session.Close()
 	if readErr != nil || closeErr != nil || page == nil || page.HasMore || len(page.Entries) > limit {
 		return nil, errors.New("could not complete the source key read")

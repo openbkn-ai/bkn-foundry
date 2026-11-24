@@ -31,6 +31,37 @@ func (s *indexSessionSnapshotStub) Close() error {
 	return s.closeErr
 }
 
+func TestIndexReadSessionReadTotal(t *testing.T) {
+	ctx := t.Context()
+	searchErr := errors.New("snapshot count failed")
+	var total int64
+	var searches int
+	snapshot := &indexSessionSnapshotStub{searchPage: func(_ context.Context, limit int, after []any, trackTotal bool) (*interfaces.QueryPage, []any, error) {
+		searches++
+		assert.Zero(t, limit)
+		assert.Empty(t, after)
+		assert.True(t, trackTotal)
+		if searches == 1 {
+			return nil, nil, searchErr
+		}
+		return &interfaces.QueryPage{TotalCount: &total}, nil, nil
+	}}
+	session := NewIndexReadSession(snapshot, 0, true, true)
+	t.Cleanup(func() { assert.NoError(t, session.Close()) })
+
+	count, err := session.ReadTotal(ctx)
+	require.ErrorIs(t, err, searchErr)
+	assert.Nil(t, count)
+	count, err = session.ReadTotal(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, count)
+	assert.Zero(t, *count)
+	cached, err := session.ReadTotal(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, count, cached)
+	assert.Equal(t, 2, searches)
+}
+
 func TestIndexReadSessionReadPage(t *testing.T) {
 	t.Run("preserves paging state when a page is missing its continuation", func(t *testing.T) {
 		ctx := t.Context()
@@ -68,6 +99,11 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 		assert.True(t, first.HasMore)
 		require.NotNil(t, first.TotalCount)
 		assert.Equal(t, total, *first.TotalCount)
+		count, err := session.ReadTotal(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, count)
+		assert.Equal(t, total, *count)
+		assert.Equal(t, 2, calls)
 		last, err := session.ReadPage(ctx, 1)
 		require.NoError(t, err)
 		assert.False(t, last.HasMore)
@@ -78,6 +114,8 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 		assert.Empty(t, empty.Entries)
 		assert.Equal(t, 3, calls)
 		require.NoError(t, session.Close())
+		_, err = session.ReadTotal(ctx)
+		require.ErrorIs(t, err, interfaces.ErrQueryPageSessionExpired)
 	})
 	t.Run("omits total count when it was not requested", func(t *testing.T) {
 		total := int64(6)
@@ -86,6 +124,9 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 			return &interfaces.QueryPage{Entries: []map[string]any{{"id": 1}}, TotalCount: &total}, nil, nil
 		}}
 		session := NewIndexReadSession(snapshot, 0, false, true)
+		count, err := session.ReadTotal(t.Context())
+		require.NoError(t, err)
+		assert.Nil(t, count)
 		page, err := session.ReadPage(t.Context(), 2)
 		require.NoError(t, err)
 		assert.Nil(t, page.TotalCount)

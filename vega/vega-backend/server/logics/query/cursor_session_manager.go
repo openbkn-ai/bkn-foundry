@@ -283,15 +283,6 @@ func closeSQLCursorResources(session *interfaces.CursorSession) {
 	if session.ReadConnector != nil {
 		_ = session.ReadConnector.Close(context.Background())
 	}
-	if session.SQLCancel != nil {
-		session.SQLCancel()
-	}
-	if session.SQLRows != nil {
-		_ = session.SQLRows.Close()
-	}
-	if session.SQLConnector != nil {
-		_ = session.SQLConnector.Close(context.Background())
-	}
 }
 
 // CloseCursorSession releases a cursor owned by the calling account.

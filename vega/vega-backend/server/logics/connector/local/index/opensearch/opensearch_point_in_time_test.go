@@ -23,11 +23,13 @@ import (
 
 func TestOpenSearchIndexReadSession(t *testing.T) {
 	for _, phase := range []string{
-		"pages", "raw pages", "raw source disabled", "expired", "partial search", "partial snapshot",
+		"pages", "raw pages", "raw count before first page", "raw source disabled", "expired", "partial search", "partial snapshot",
 		"missing total", "inexact raw total", "missing source", "invalid source", "missing final sort",
 		"raw missing hits", "raw null hits", "raw empty hits", "short before exact total",
 	} {
 		t.Run(phase, func(t *testing.T) {
+			countFirst := phase == "raw count before first page"
+			filter := map[string]any{"term": map[string]any{"status": "active"}}
 			pageSize := 1
 			switch phase {
 			case "missing source", "invalid source", "missing final sort", "short before exact total":
@@ -57,6 +59,18 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 					}
 					assert.Equal(t, map[string]any{"id": "snapshot", "keep_alive": "60000ms"}, body["pit"])
 					assert.Equal(t, []any{map[string]any{"id": map[string]any{"order": "asc"}}}, body["sort"])
+					if countFirst {
+						assert.Equal(t, filter, body["query"])
+						if searchNumber == 1 {
+							assert.Equal(t, json.Number("0"), body["size"])
+							assert.Equal(t, true, body["track_total_hits"])
+							assert.NotContains(t, body, "from")
+							assert.NotContains(t, body, "search_after")
+							_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"total":{"value":6,"relation":"eq"},"hits":[]}}`)
+							return
+						}
+						searchNumber--
+					}
 					assert.Equal(t, json.Number(strconv.Itoa(pageSize)), body["size"])
 					switch {
 					case phase == "expired":
@@ -86,9 +100,13 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 						assert.Equal(t, false, body["_source"])
 						_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"total":{"value":5,"relation":"eq"},"hits":[{"_id":"5","sort":[5]}]}}`)
 					case searchNumber == 1:
-						assert.Equal(t, true, body["track_total_hits"])
+						assert.Equal(t, !countFirst, body["track_total_hits"])
 						assert.Equal(t, json.Number("4"), body["from"])
 						assert.NotContains(t, body, "search_after")
+						if countFirst {
+							_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"hits":[{"_index":"events","_id":"5","_source":{},"sort":[9007199254740993]}]}}`)
+							return
+						}
 						_, _ = io.WriteString(w, `{`+completeSearchMetadata+`,"hits":{"total":{"value":6,"relation":"eq"},"hits":[{"_index":"events","_id":"5","_source":{},"sort":[9007199254740993]}]}}`)
 					default:
 						assert.Equal(t, false, body["track_total_hits"])
@@ -116,13 +134,16 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 			resource := &interfaces.Resource{SourceIdentifier: "events", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
 			var session interfaces.QueryPageSession
 			switch phase {
-			case "raw pages", "raw source disabled", "inexact raw total", "raw missing hits", "raw null hits", "raw empty hits":
+			case "raw pages", "raw count before first page", "raw source disabled", "inexact raw total", "raw missing hits", "raw null hits", "raw empty hits":
 				dsl := map[string]any{
 					"sort": []any{map[string]any{"id": map[string]any{"order": "asc"}}},
 					"from": 4, "track_total_hits": true,
 				}
 				if phase == "raw source disabled" {
 					dsl["_source"] = false
+				}
+				if countFirst {
+					dsl["query"] = filter
 				}
 				session, err = connector.OpenRawIndexRead(t.Context(), resource, dsl, time.Minute)
 			default:
@@ -139,6 +160,14 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 			}
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, session.Close()) })
+			if countFirst {
+				assert.Zero(t, searches.Load())
+				total, err := session.ReadTotal(t.Context())
+				require.NoError(t, err)
+				require.NotNil(t, total)
+				assert.EqualValues(t, 6, *total)
+				assert.EqualValues(t, 1, searches.Load())
+			}
 			first, err := session.ReadPage(t.Context(), pageSize)
 			switch phase {
 			case "expired":
@@ -180,13 +209,16 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 				second, err := session.ReadPage(t.Context(), 1)
 				require.NoError(t, err)
 				assert.False(t, second.HasMore)
-				if phase == "raw pages" {
+				if phase == "raw pages" || countFirst {
 					assert.Equal(t, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, second.Columns)
 					assert.Equal(t, json.Number("6"), second.Entries[0]["id"])
 				} else {
 					assert.Equal(t, "6", second.Entries[0]["_id"])
 				}
 				assert.Equal(t, first.TotalCount, second.TotalCount)
+				if countFirst {
+					assert.EqualValues(t, 3, searches.Load())
+				}
 			}
 			require.NoError(t, session.Close())
 			require.NoError(t, session.Close())

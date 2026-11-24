@@ -29,36 +29,58 @@ type tableSessionConnector interface {
 type tableReadSession struct {
 	connector            tableSessionConnector
 	tx                   *sql.Tx
+	cancelTx             context.CancelFunc
+	query                SQLStatement
+	count                *SQLStatement
+	timeout              time.Duration
+	cancelRows           context.CancelFunc
 	rows                 *sql.Rows
-	cancel               context.CancelFunc
 	columns              []interfaces.ColumnInfo
 	scanColumns          []interfaces.ColumnInfo
 	total                *int64
 	pending              map[string]any
 	eof                  bool
+	closed               bool
 	structured           bool
-	fieldTypes           map[string]string
+	detailQuery          bool
+	declaredProjection   bool
 	binaryContentColumns map[string]bool
 	localTimeColumns     map[string]bool
 	fields               map[string]*interfaces.Property
 	binaryMode           *string
 }
 
-// OpenReadSession 在连接器提供的同一个读事务中执行可选的计数并打开数据结果集。
-// 结构化查询提供资源和查询参数，转换规则在会话打开时确定。
+// OpenReadSession 保存查询并开启可选读事务。结构化查询可以提供方言确定的完整投影。
+// 未提供显式投影时使用资源字段生成已知列，表达式列使用驱动报告的类型。
+// 调用方提供事务和查询的执行上下文，并负责让其在需要跨页时保持有效。
 func OpenReadSession(ctx context.Context, connector tableSessionConnector, query SQLStatement,
 	count *SQLStatement, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams,
-	localTimeColumns map[string]bool) (interfaces.QueryPageSession, error) {
+	resultFields map[string]*interfaces.Property, localTimeColumns map[string]bool, timeout time.Duration) (interfaces.QueryPageSession, error) {
 
-	tx, err := connector.BeginReadTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("open read transaction: %w", err)
+	if timeout <= 0 && params != nil {
+		timeout = params.Timeout
 	}
-	session := &tableReadSession{connector: connector, tx: tx}
+	session := &tableReadSession{
+		connector: connector,
+		query:     query,
+		count:     count,
+		timeout:   timeout,
+	}
+
+	if connector.SupportsReadTransaction() {
+		if err := session.beginReadTx(ctx); err != nil {
+			return nil, fmt.Errorf("open read transaction: %w", err)
+		}
+	}
+
 	if params != nil {
 		session.structured = true
-		session.fieldTypes = queryResultFieldTypes(resource, params)
-		session.fields = queryReadFields(resource, params.AggregateOutputAlias())
+		session.detailQuery = isDetailQuery(params)
+		session.declaredProjection = resultFields != nil
+		session.fields = resultFields
+		if resultFields == nil {
+			session.fields = StructuredResultFields(resource, params)
+		}
 		session.binaryContentColumns = QueryBinaryContentColumns(resource, params)
 		session.localTimeColumns = localTimeColumns
 		if params.BinaryMode != nil {
@@ -66,49 +88,113 @@ func OpenReadSession(ctx context.Context, connector tableSessionConnector, query
 			session.binaryMode = &mode
 		}
 	}
-	opened := false
-	defer func() {
-		if !opened {
-			_ = session.Close()
-		}
-	}()
-
-	if count != nil {
-		var total int64
-		if err := tx.QueryRowContext(ctx, count.Text, count.Args...).Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", err)
-		}
-		session.total = &total
-	}
-
-	readCtx, cancel := context.WithCancel(ctx)
-	session.cancel = cancel
-	session.rows, err = tx.QueryContext(readCtx, query.Text, query.Args...) //nolint:rowserrcheck // Next 检查迭代错误，Close 负责释放结果集。
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute SQL builder query: %w", err)
-	}
-	session.scanColumns, err = describeSQLRows(session.rows, connector, true)
-	if err != nil {
-		return nil, err
-	}
-	session.columns = make([]interfaces.ColumnInfo, len(session.scanColumns))
-	for i, column := range session.scanColumns {
-		session.columns[i] = interfaces.ColumnInfo{Name: column.Name, Type: column.Type}
-	}
-	opened = true
 	return session, nil
 }
 
+func (s *tableReadSession) beginReadTx(ctx context.Context) error {
+	var timer *time.Timer
+	if s.timeout > 0 {
+		// 计时仅覆盖连接和事务开启，事务本身可跨页使用。
+		ctx, s.cancelTx = context.WithCancel(ctx)
+		timer = time.AfterFunc(s.timeout, s.cancelTx)
+	}
+	tx, err := s.connector.BeginReadTx(ctx)
+	timedOut := timer != nil && !timer.Stop()
+	s.tx = tx
+	if err != nil {
+		return errors.Join(err, s.Close())
+	}
+	if timedOut {
+		s.cancelTx()
+		return errors.Join(context.DeadlineExceeded, s.Close())
+	}
+	return nil
+}
+
+// ExecuteSQLBuilder 对一次立即完成的 Builder 查询应用独立超时，覆盖查询和结果读取。
+func ExecuteSQLBuilder(ctx context.Context, connector interfaces.TableConnector,
+	query *sb.SelectBuilder, timeout time.Duration) (*interfaces.RawQueryResponse, error) {
+
+	if timeout <= 0 {
+		return connector.ExecuteSQLBuilder(ctx, query)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	result, err := connector.ExecuteSQLBuilder(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *tableReadSession) ReadTotal(ctx context.Context) (*int64, error) {
+	if s.closed {
+		return nil, sql.ErrTxDone
+	}
+	if s.count == nil || s.total != nil {
+		return s.total, nil
+	}
+	if s.rows != nil {
+		return nil, errors.New("read total before reading table rows")
+	}
+	if s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
+	row, err := s.connector.QueryRowContext(ctx, s.tx, s.count.Text, s.count.Args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute count query: %w", s.connector.ClassifyQueryError(err))
+	}
+	var total int64
+	if err := row.Scan(&total); err != nil {
+		return nil, fmt.Errorf("failed to scan total: %w", s.connector.ClassifyQueryError(err))
+	}
+	if err := ctx.Err(); s.timeout > 0 && err != nil {
+		return nil, err
+	}
+	s.total = &total
+	return s.total, nil
+}
+
 func (s *tableReadSession) ReadPage(ctx context.Context, limit int) (*interfaces.QueryPage, error) {
-	if s.rows == nil {
+	if s.closed {
 		return nil, sql.ErrTxDone
 	}
 	if limit <= 0 {
 		return nil, errors.New("page limit must be positive")
 	}
+	readCtx := ctx
+	if s.rows == nil {
+		// 提前关闭和读页超时都可取消源端结果集。
+		readCtx, s.cancelRows = context.WithCancel(ctx)
+	}
+	if s.timeout <= 0 {
+		return s.readPage(readCtx, limit)
+	}
+	pageCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	stopTimeout := context.AfterFunc(pageCtx, s.cancelRows)
+	page, err := s.readPage(readCtx, limit)
+	stopTimeout()
+	if err != nil {
+		return nil, err
+	}
+	if err := pageCtx.Err(); err != nil {
+		return nil, errors.Join(err, s.Close())
+	}
+	return page, nil
+}
 
-	stop := context.AfterFunc(ctx, s.cancel)
-	defer stop()
+func (s *tableReadSession) readPage(ctx context.Context, limit int) (*interfaces.QueryPage, error) {
+	if s.rows == nil {
+		if err := s.openRows(ctx); err != nil {
+			return nil, errors.Join(err, s.Close())
+		}
+	}
 
 	page := &interfaces.QueryPage{
 		Columns:    s.columns,
@@ -138,13 +224,31 @@ func (s *tableReadSession) ReadPage(ctx context.Context, limit int) (*interfaces
 		}
 		page.Entries = append(page.Entries, row)
 	}
-	// Detach the request before accepting the page. Cancellation during a
-	// buffered read can close Rows even when the scan itself returned a row.
-	stop()
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
 	return page, nil
+}
+
+func (s *tableReadSession) openRows(ctx context.Context) error {
+	rows, err := s.connector.QueryContext(ctx, s.tx, s.query.Text, s.query.Args...) //nolint:rowserrcheck // ReadPage 检查迭代错误，Close 释放 Rows。
+	if err != nil {
+		return fmt.Errorf("failed to execute SQL builder query: %w", s.connector.ClassifyQueryError(err))
+	}
+	s.rows = rows
+	s.scanColumns, err = describeSQLRows(s.rows, s.connector, true)
+	if err != nil {
+		return err
+	}
+	s.columns = make([]interfaces.ColumnInfo, len(s.scanColumns))
+	for i, column := range s.scanColumns {
+		field := s.fields[column.Name]
+		if field == nil && s.declaredProjection {
+			return errors.New("unexpected structured projection column")
+		}
+		if field != nil && field.Type != "" {
+			column.Type = field.Type
+		}
+		s.columns[i] = interfaces.ColumnInfo{Name: column.Name, Type: column.Type}
+	}
+	return nil
 }
 
 func (s *tableReadSession) scanRow() (map[string]any, error) {
@@ -159,26 +263,37 @@ func (s *tableReadSession) scanRow() (map[string]any, error) {
 		if timestamp, ok := value.(time.Time); ok && s.localTimeColumns[name] {
 			value = timestamp.Local()
 		}
-		row[name] = normalizeTableValue(value, s.fieldTypes[name], s.binaryMode != nil)
+		if field := s.fields[name]; s.detailQuery && field != nil {
+			value = normalizeTableValue(value, field.Type, s.binaryMode != nil)
+		}
+		row[name] = value
 	}
 	return row, nil
 }
 
 func (s *tableReadSession) Close() error {
-	if s.tx == nil {
+	if s.closed {
 		return nil
 	}
-	if !s.eof && s.cancel != nil {
-		// 中途关闭时取消语句，避免驱动为了释放连接而继续读取剩余结果。
-		s.cancel()
+	s.closed = true
+	if s.cancelTx != nil {
+		defer s.cancelTx()
+	}
+	if s.cancelRows != nil {
+		if s.eof {
+			defer s.cancelRows()
+		} else {
+			// 先取消未读完的查询，避免驱动为了关闭结果集而继续读剩余行。
+			s.cancelRows()
+		}
 	}
 	var rowsErr error
 	if s.rows != nil {
 		rowsErr = s.rows.Close()
 		s.rows = nil
 	}
-	if s.cancel != nil {
-		s.cancel()
+	if s.tx == nil {
+		return rowsErr
 	}
 	txErr := s.tx.Rollback()
 	s.tx = nil
@@ -216,15 +331,35 @@ func describeSQLRows(rows *sql.Rows, connector interfaces.TableConnector, includ
 	return columns, nil
 }
 
-func queryReadFields(resource *interfaces.Resource, aggregateAlias string) map[string]*interfaces.Property {
+// StructuredResultFields 返回实际投影中可直接沿用资源定义的字段。
+// 聚合和日历表达式的类型由驱动报告，或由构建表达式的连接器补充。
+func StructuredResultFields(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) map[string]*interfaces.Property {
 	fields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+	var selected map[string]bool
+	if !isDetailQuery(params) {
+		selected = make(map[string]bool, len(params.GroupBy))
+		for _, group := range params.GroupBy {
+			if group != nil && group.CalendarInterval == "" {
+				selected[group.Property] = true
+			}
+		}
+	} else if len(params.OutputFields) > 0 {
+		selected = make(map[string]bool, len(params.OutputFields))
+		for _, name := range params.OutputFields {
+			selected[name] = true
+		}
+	}
 	for _, field := range resource.SchemaDefinition {
-		if field != nil && field.Name != aggregateAlias {
+		if field != nil && (selected == nil || selected[field.Name]) {
 			cloned := *field
 			fields[field.Name] = &cloned
 		}
 	}
 	return fields
+}
+
+func isDetailQuery(params *interfaces.ResourceDataQueryParams) bool {
+	return params.Aggregation == nil && len(params.GroupBy) == 0 && params.Having == nil
 }
 
 // StructuredCountQuery 计算结构化查询分页前的总行数。
@@ -237,20 +372,6 @@ func StructuredCountQuery(query *sb.SelectBuilder) *sb.SelectBuilder {
 		Name: "COUNT",
 		Args: []sb.SqlNode{&sb.Star{}},
 	}).FromSelect(&unpaged, "_resource_total")
-}
-
-// queryResultFieldTypes 返回可按资源逻辑类型转换的明细查询字段。
-func queryResultFieldTypes(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) map[string]string {
-	if params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
-		return nil
-	}
-	fieldTypes := make(map[string]string, len(resource.SchemaDefinition))
-	for _, field := range resource.SchemaDefinition {
-		if field != nil {
-			fieldTypes[field.Name] = field.Type
-		}
-	}
-	return fieldTypes
 }
 
 // normalizeTableValue 应用结构化读会话的 JSON 和 Binary 输出规则。

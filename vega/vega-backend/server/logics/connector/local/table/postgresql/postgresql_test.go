@@ -402,6 +402,36 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 	})
 }
 
+func TestPostgresqlConnectorQueryWithoutTransaction(t *testing.T) {
+	db, driver, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		driver.ExpectClose()
+		assert.NoError(t, db.Close())
+	})
+	connector := &PostgresqlConnector{db: db, connected: true}
+	const query = "SELECT id FROM example WHERE id = $1"
+	driver.ExpectQuery(query).WithArgs(7).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7)).RowsWillBeClosed()
+
+	rows, err := connector.QueryContext(t.Context(), nil, query, 7)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, rows.Close()) })
+	require.True(t, rows.Next())
+	var id int64
+	require.NoError(t, rows.Scan(&id))
+	assert.EqualValues(t, 7, id)
+	require.False(t, rows.Next())
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	driver.ExpectQuery(query).WithArgs(8).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(8)).RowsWillBeClosed()
+	row, err := connector.QueryRowContext(t.Context(), nil, query, 8)
+	require.NoError(t, err)
+	require.NoError(t, row.Scan(&id))
+	assert.EqualValues(t, 8, id)
+	require.NoError(t, driver.ExpectationsWereMet())
+}
+
 func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

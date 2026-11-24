@@ -122,6 +122,10 @@ func (c *MariaDBConnector) SupportDiscover() bool {
 	return true
 }
 
+func (*MariaDBConnector) SupportsReadTransaction() bool {
+	return true
+}
+
 // GetEnabled reports whether the connector builder is enabled.
 func (c *MariaDBConnector) GetEnabled() bool {
 	return c.enabled
@@ -288,6 +292,26 @@ func (c *MariaDBConnector) BeginReadTx(ctx context.Context) (*sql.Tx, error) {
 		return nil, err
 	}
 	return c.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+}
+
+func (c *MariaDBConnector) QueryContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
+	if tx != nil {
+		return tx.QueryContext(ctx, query, args...)
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.QueryContext(ctx, query, args...)
+}
+
+func (c *MariaDBConnector) QueryRowContext(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error) {
+	if tx != nil {
+		return tx.QueryRowContext(ctx, query, args...), nil
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	return c.db.QueryRowContext(ctx, query, args...), nil
 }
 
 func (c *MariaDBConnector) connect(ctx context.Context, pingTimeout time.Duration) error {

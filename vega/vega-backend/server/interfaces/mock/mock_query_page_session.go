@@ -69,3 +69,18 @@ func (mr *MockQueryPageSessionMockRecorder) ReadPage(arg0, arg1 any) *gomock.Cal
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockQueryPageSession)(nil).ReadPage), arg0, arg1)
 }
+
+// ReadTotal mocks base method.
+func (m *MockQueryPageSession) ReadTotal(arg0 context.Context) (*int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadTotal", arg0)
+	ret0, _ := ret[0].(*int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadTotal indicates an expected call of ReadTotal.
+func (mr *MockQueryPageSessionMockRecorder) ReadTotal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTotal", reflect.TypeOf((*MockQueryPageSession)(nil).ReadTotal), arg0)
+}
