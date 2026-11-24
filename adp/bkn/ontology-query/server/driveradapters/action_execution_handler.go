@@ -148,7 +148,7 @@ func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {
 func (r *restHandler) ExecuteActionByIn(c *gin.Context) {
 	logger.Debug("Handler ExecuteActionByIn Start")
 	visitor := visitor.GenerateVisitor(c)
-	r.ExecuteAction(c, visitor)
+	r.executeAction(c, visitor, true)
 }
 
 // ExecuteActionByEx handles action execution request (external)
@@ -164,8 +164,14 @@ func (r *restHandler) ExecuteActionByEx(c *gin.Context) {
 	r.ExecuteAction(c, visitor)
 }
 
-// ExecuteAction handles the action execution request
+// ExecuteAction handles the action execution request of the public route.
 func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
+	r.executeAction(c, visitor, false)
+}
+
+// executeAction handles the action execution request. internal marks the internal route, the
+// only one a record-event action's schedule runs it on.
+func (r *restHandler) executeAction(c *gin.Context, visitor hydra.Visitor, internal bool) {
 	logger.Debug("Handler ExecuteAction Start")
 	startTime := time.Now()
 
@@ -208,6 +214,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	req.KNID = knID
 	req.Branch = branch
 	req.ActionTypeID = atID
+	req.Internal = internal
 	if err := resolveActionBKNContext(ctx, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(err.Error())
@@ -391,6 +398,22 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	}
 
 	query.KNID = knID
+	query.ObjectTypeID = strings.TrimSpace(query.ObjectTypeID)
+	query.TargetKey = strings.TrimSpace(query.TargetKey)
+	if query.TargetKey != "" && query.ObjectTypeID == "" {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails("target_key needs object_type_id: a key names an object only within its object type")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if utf8.RuneCountInString(query.TargetKey) > maxActionLogTargetKeyLength {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("target_key exceeds %d characters", maxActionLogTargetKeyLength))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	keyword, err := normalizeActionLogKeyword(query.Keyword)
 	if err != nil {
@@ -568,6 +591,10 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 
 // maxActionLogKeywordLength bounds the execution-id search term; ids are at most 36 characters.
 const maxActionLogKeywordLength = 128
+
+// maxActionLogTargetKeyLength bounds the target_key filter: a key value, or the JSON of an
+// identity of several keys.
+const maxActionLogTargetKeyLength = 1024
 
 // normalizeActionLogKeyword trims the execution-id search term and rejects oversized input.
 func normalizeActionLogKeyword(keyword string) (string, error) {

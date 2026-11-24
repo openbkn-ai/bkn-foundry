@@ -78,6 +78,9 @@ type ActionExecutionRequest struct {
 	// InstanceIdentityHash is a stable fingerprint of resolved Instances + dynamic_params
 	// (set by scheduler before duplicate check).
 	InstanceIdentityHash string `json:"-"`
+	// Internal is set by the handler of the internal execute route. A record-event action is
+	// accepted only there, from its schedule.
+	Internal bool `json:"-"`
 }
 
 // ActionBKNContext is the same {conversation_id, interaction_id} shape the Context Loader
@@ -164,6 +167,9 @@ type ExecutionOutcome struct {
 	FailedCount  int
 	EndTime      int64
 	DurationMs   int64
+	// TargetCount, when set, replaces the target count recorded at submission: a record-event
+	// action learns its targets only when it selects them.
+	TargetCount *int
 }
 
 // ActionLogQuery represents query parameters for execution logs (supports both GET query params and JSON body)
@@ -185,6 +191,12 @@ type ActionLogQuery struct {
 	NeedTotal            bool     `json:"need_total,omitempty" form:"need_total"`
 	SearchAfter          []any    `json:"search_after,omitempty"`
 	SearchAfterStr       string   `json:"-" form:"search_after"` // comma-separated string for GET query params
+
+	// ObjectTypeID keeps the executions of actions bound to this object type.
+	ObjectTypeID string `json:"object_type_id,omitempty" form:"object_type_id"`
+	// TargetKey keeps the executions one of whose targets has this identity key (see
+	// TargetIdentityKey). It needs ObjectTypeID.
+	TargetKey string `json:"target_key,omitempty" form:"target_key"`
 }
 
 // ActionLogDetailQuery represents query parameters for single execution log detail

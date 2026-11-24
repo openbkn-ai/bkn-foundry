@@ -57,6 +57,9 @@ func (s *actionSchedulerService) CheckActionFacts(ctx context.Context, check *in
 	if err := validateActionOperation(&actionType); err != nil {
 		return actionTargetError(ctx, err.Error())
 	}
+	if actionType.OperationConfig.Type == interfaces.ActionOperationEvent {
+		return actionTargetError(ctx, "a record-event action has no governed target: it runs only on its schedule")
+	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, request.DynamicParams); len(missing) > 0 {
 		return actionTargetError(ctx, "required dynamic action parameters are missing")
 	}

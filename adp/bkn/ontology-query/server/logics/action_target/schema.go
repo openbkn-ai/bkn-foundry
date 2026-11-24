@@ -44,6 +44,9 @@ func (s *Resolver) ExecutionSchema(ctx context.Context, action *interfaces.Actio
 		return object, nil
 	}
 	switch action.OperationConfig.Type {
+	case interfaces.ActionOperationEvent:
+		// Only its schedule runs a record-event action, with no targets and no input.
+		properties["_instance_identities"] = map[string]any{"type": "array", "maxItems": 0}
 	case "tool":
 		if action.Condition == nil {
 			break

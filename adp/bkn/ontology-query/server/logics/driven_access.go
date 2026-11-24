@@ -20,6 +20,8 @@ var (
 	OSA interfaces.OpenSearchAccess
 	VBA interfaces.VegaBackendAccess
 	PCR interfaces.ProxyContextResolver
+	// ERA is the bkn-backend access of record-event actions: Cypher queries and rule checks.
+	ERA interfaces.EventRuleAccess
 
 	objectMetricQueryMu      sync.RWMutex
 	objectMetricQueryService interfaces.ObjectMetricQueryServiceV1
@@ -51,6 +53,10 @@ func SetVegaBackendAccess(v interfaces.VegaBackendAccess) {
 
 func SetProxyContextResolver(resolver interfaces.ProxyContextResolver) {
 	PCR = resolver
+}
+
+func SetEventRuleAccess(access interfaces.EventRuleAccess) {
+	ERA = access
 }
 
 // SetObjectMetricQueryService installs the paid object-metric runtime during

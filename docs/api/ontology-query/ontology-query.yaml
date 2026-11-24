@@ -2332,6 +2332,115 @@ paths:
           $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 对象属性值查询
 
+  /api/ontology-query/v1/knowledge-networks/{kn_id}/action-trial:
+    summary: 试运行行动类定义
+    post:
+      summary: 试运行行动类定义
+      description: |
+        用一份行动类定义（已保存或尚未保存）按当前时刻选一次目标，返回会命中的对象，
+        不创建执行记录、不调用工具、不写事件。本版本只支持记录事件行动（`operation_config.type: event`）；
+        其他操作类型返回 400。
+
+        需要知识网络的 `modify` 权限（与保存行动类相同），规则读取的对象、Cypher、函数和指标
+        再由各自的服务以调用者身份鉴权。内部路由 `POST /api/ontology-query/in/v1/knowledge-networks/{kn_id}/action-trial`
+        行为相同，调用者由 `x-account-id`、`x-account-type` 请求头给出；bkn-backend 保存记录事件行动类时
+        经它试运行，并把 400 的原因（`error_details`）转给用户。
+
+        定义里平台保存的字段（`rule_version`、`execution_subject`）不参与试运行。检查时刻为请求时刻，
+        `check_time`、`check_date` 按 `schedule.timezone` 计算。最多返回前 200 个命中（不含 `detail`），
+        `hit_count` 为选中的总数。仅专业版及以上支持，其他版本中 `event` 按未知操作类型返回 400。
+      parameters:
+        - $ref: "#/components/parameters/KnVersion"
+        - $ref: "#/components/parameters/DraftRevision"
+        - name: kn_id
+          description: 业务知识网络ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: |
+            读取绑定对象类、对象数据及规则引用的分支，默认 `main`。与其他端点不同，这里可取
+            `main`、`draft`（版本化知识网络的草稿，以调用者身份读取数据）或 `v<N>`（第 N 个版本），
+            分别等同于 `kn_version` 为 running、draft 或 N；其他取值返回 400。`branch` 不是 `main` 时
+            不能再传 `kn_version`。
+          schema:
+            type: string
+            default: main
+          in: query
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionTrialRequest"
+            examples:
+              超期订单:
+                value:
+                  id: po_overdue_recognize
+                  name: 识别超期订单
+                  action_type: add
+                  object_type_id: purchase_order
+                  operation_config:
+                    type: event
+                    event_class: po_overdue
+                  condition:
+                    operation: and
+                    sub_conditions:
+                      - field: due_time
+                        operation: "<"
+                        value_from: check_time
+                        value: "-PT48H"
+                      - field: status
+                        operation: "=="
+                        value_from: const
+                        value: 待发货
+                  schedule:
+                    type: CRON
+                    expression: "0 8 * * *"
+                    timezone: Asia/Shanghai
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionTrialResponse"
+              examples:
+                超期订单:
+                  value:
+                    event:
+                      subject: purchase_order
+                      hits:
+                        - key: "1024"
+                          name: PO-1024
+                          attributes:
+                            due_time:
+                              key: "2026-11-20T00:00:00+08:00"
+                              label: "2026-11-20T00:00:00+08:00"
+                            status:
+                              key: 待发货
+                              label: 待发货
+                      hit_count: 1
+                      limited: false
+                      row_filter_applied: false
+        "400":
+          description: |
+            定义无效或不能运行，原因在 `error_details`（`OntologyQuery.ActionExecution.InvalidParameter`）：
+            例如不是记录事件行动、缺少 `schedule.timezone`、条件与 `targets` 同时给出、Cypher 语法错误、
+            结果中没有 `key` 列、指标的维度到不了绑定对象类，或 `branch` 无法试运行。
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/AuthorizationUnavailable'
+
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-types/{at_id}/execute:
     summary: 执行指定行动类的行动
     post:
@@ -2435,6 +2544,18 @@ paths:
         试点行动由 `GOVERNANCE_MANAGED_ACTIONS` 指定。受管控行动在上述权限校验之后、
         创建执行记录之前核验一次性许可；治理服务不可用时返回 503，不会执行。
 
+        记录事件行动（`operation_config.type: event`）只按其计划运行：只接受 bkn-backend 计划调度经内部路由
+        `POST /api/ontology-query/in/v1/knowledge-networks/{kn_id}/action-types/{at_id}/execute`、
+        以计划的执行主体身份提交的 `trigger_type: scheduled`。本路由上提交、或 `trigger_type` 不是 `scheduled`
+        时返回 403（要立即检查，请运行其计划）；带 `_instance_identities`、`relation_target`、`object_input`
+        或 `dynamic_params` 时返回 400，目标在每次检查时由规则选出。提交只要求执行主体对绑定对象类的
+        `query_data`，不经代理和治理；Cypher、函数和指标在执行时由各自的服务再次鉴权。
+        执行为 `once`：先写执行记录，再以执行主体身份选出目标（至多 20000 个，另受 `ACTION_EXECUTION_MAX_OBJECTS` 限制），
+        把一次规则检查交给事件台账；唯一一条结果的 `targets` 列出选中的对象，`target_count` 为选中数量。
+        选择失败时执行失败，台账不被调用，事件保持不变；台账拒绝（如 409 `BknBackend.KnEvent.RecognitionMismatch`：
+        运行版本中该事件类已不由此行动类识别）同样记为执行失败，原因写入结果的 `error_message`。
+        仅专业版及以上支持，其他版本中 `event` 按未知操作类型返回 400。
+
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}:
     summary: 获取行动执行状态
@@ -2521,6 +2642,24 @@ paths:
           description: 行动类ID（可选）
           schema:
             type: string
+          in: query
+        - name: object_type_id
+          description: 按绑定对象类精确匹配（可选），首尾空白会被去掉
+          schema:
+            type: string
+          in: query
+        - name: target_key
+          description: |
+            按目标对象过滤（可选），须同时给出 `object_type_id`，否则返回 400。取值为对象的身份键：
+            单主键为主键值的文本（如 `1024`、`PO-1`），多主键为按键名排序的身份 JSON
+            （如 `{"line":2,"order":"PO-1"}`），与记录事件行动交给事件台账的命中 `key` 相同。
+            执行通过其结果中记录的实例与目标查找：只找该键值最近的 1000 次执行（按执行 ID 倒序），
+            再与其他条件组合，因此至多返回 1000 次执行；这一上限在按 `object_type_id` 过滤之前计算，
+            同一知识网络中其他对象类键值相同的对象的执行也计入。本功能上线前写入的结果没有记录目标，不会命中。
+            首尾空白会被去掉；最长 1024 个字符，超长返回 400。
+          schema:
+            type: string
+            maxLength: 1024
           in: query
         - name: status
           description: 执行状态（可选）
@@ -2625,7 +2764,7 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
-          description: 参数非法（如 keyword 超长、search_after 游标无法解析）
+          description: 参数非法（如 keyword 或 target_key 超长、只传 target_key 不传 object_type_id、search_after 游标无法解析）
       summary: 查询行动执行日志
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-logs/{log_id}:
@@ -3497,6 +3636,11 @@ components:
 
             1.固定频率指以固定周期执行持久化, frequency=< time_durations >, 用一个数字, 后面跟时间单位来定义。时间单位可以是如下之一: m - 分钟; h - 小时; d - 天
           type: string
+        timezone:
+          description: |
+            IANA 时区（如 `Asia/Shanghai`）。记录事件行动必填：CRON 按它解释，`check_time`、`check_date`
+            按它计算检查时刻与检查日。
+          type: string
     ActionTypeParams:
       description: 行动类绑定的行动资源参数
       required:
@@ -3881,7 +4025,20 @@ components:
             $ref: '#/components/schemas/ActionTypeParams'
         schedule:
           $ref: '#/components/schemas/Schedule'
-          description: 行动监听参数配置
+          description: 行动监听参数配置；记录事件行动的检查计划，须为 CRON 或 FIX_RATE 并带 timezone
+        rule_version:
+          description: 只读。记录事件行动的规则版本，由 bkn-backend 保存时计算，随每次规则检查交给事件台账。
+          type: string
+          readOnly: true
+        execution_subject:
+          description: 只读。记录事件行动的计划以其身份检查的账户，由 bkn-backend 保存时确定。
+          type: object
+          readOnly: true
+          properties:
+            id:
+              type: string
+            type:
+              type: string
     MCPSource:
       description: MCP资源
       required:
@@ -4433,10 +4590,17 @@ components:
           - const
           - property
           - input
+          - check_time
+          - check_date
           default: const
+          description: |
+            `check_time` and `check_date` are accepted only by record-event actions, which refuse `input`:
+            the check time (RFC 3339) or the check day (`YYYY-MM-DD`) in `schedule.timezone`, shifted by
+            the ISO 8601 duration in `value` when given (for example `-PT48H`, `-P1D`).
         value:
           description: Literal value for const; same-endpoint property name for property; runtime parameter name for
-            input. Applicability does not supply target identities.
+            input; an optional ISO 8601 duration for check_time and check_date. Applicability does not supply
+            target identities.
     action_condition_and:
       description: and的过滤条件
       required:
@@ -4885,13 +5049,13 @@ components:
         execution_mode:
           description: |
             执行粒度由 operation_config 决定：object 和 relation 为 per_instance，
-            每个明确目标各调用一次工具；独立工具调用为 once。条件不用于扫描目标。
+            每个明确目标各调用一次工具；独立工具调用和记录事件行动的一次规则检查为 once。条件不用于扫描目标。
           enum:
             - once
             - per_instance
           type: string
         target_count:
-          description: 明确提交的目标数量；新建对象、单关系对和独立工具调用为 1。
+          description: 明确提交的目标数量；新建对象、单关系对和独立工具调用为 1；记录事件行动为本次检查选中的对象数，检查结束时写入。
           type: integer
         total_count:
           description: 本次执行的工具调用次数。每个明确对象目标一次；单关系对和独立工具调用一次。
@@ -5248,13 +5412,32 @@ components:
           properties:
             type:
               enum: [relation]
+        - required: [event_class]
+          properties:
+            type:
+              enum: [event]
+            event_class:
+              type: string
+            targets:
+              $ref: '#/components/schemas/ActionEventTargets'
       properties:
         type:
           type: string
+          description: |
+            `event` is a record-event action (Professional edition and above): at each check of its
+            schedule it selects the objects of `object_type_id` that its rule hits and records them as
+            events of `event_class`. The rule is either `condition` or one source in `targets`. It takes
+            no `action_source` and no `parameters`, and runs only on its schedule.
           enum:
           - object
           - relation
           - tool
+          - event
+        event_class:
+          type: string
+          description: Record-event actions only. The event class whose events the checks record.
+        targets:
+          $ref: '#/components/schemas/ActionEventTargets'
         relation_type_id:
           type: string
           description: Required for relation operations; must connect the selected object type.
@@ -5271,6 +5454,156 @@ components:
           description: Role of object_type_id in the relation. Self relations require an explicit role.
         other_object_condition:
           $ref: '#/components/schemas/ActionCondition'
+    ActionEventTargets:
+      type: object
+      description: |
+        Where a record-event action finds its targets, instead of `condition`: exactly one of `cypher`,
+        `function` or `metric`. A check selects at most 20000 targets; a truncated selection covers only
+        the targets it kept, so events of the other objects stay as they are.
+      properties:
+        cypher:
+          type: object
+          required: [query]
+          description: |
+            A read-only Cypher query of the branch. It returns either one column of nodes of
+            `object_type_id`, or a `key` column with the primary key (single key) or the identity JSON
+            (several keys) of the object, an optional `name` column, and other columns kept as attributes.
+            `$check_time` and `$check_date` are always bound; `parameters` cannot use those names.
+          properties:
+            query:
+              type: string
+            parameters:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ActionTargetParameter'
+        function:
+          type: object
+          required: [box_id, tool_id]
+          description: |
+            A function tool called with `parameters`. It returns `{columns, entries, limited}` with the same
+            columns as a Cypher table.
+          properties:
+            box_id:
+              type: string
+            tool_id:
+              type: string
+            parameters:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ActionTargetParameter'
+        metric:
+          type: object
+          required: [metric_id, version, operator, value]
+          description: |
+            A published metric version compared with `value`. A metric grouped by one dimension is judged per
+            group; the dimension must be the primary key of `object_type_id` or a property mapped to it by one
+            direct relation. An ungrouped metric is one target, named by `subject_key`. A time series is read for
+            its last complete period before the check. Groups without a value are not judged.
+          properties:
+            metric_id:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+            operator:
+              type: string
+              enum: ['<', '<=', '>', '>=', '==', '!=']
+            value:
+              type: number
+            subject_key:
+              type: string
+    ActionTargetParameter:
+      type: object
+      required: [value_from]
+      properties:
+        value_from:
+          type: string
+          enum: [const, check_time, check_date]
+        value:
+          description: The constant for const; an optional ISO 8601 duration for check_time and check_date.
+    ActionTrialRequest:
+      type: object
+      description: |
+        The action type definition to try, as it would be saved. Only record-event actions can be tried: they
+        have no `action_source`, `parameters` or `affect`, and their rule is `condition` or
+        `operation_config.targets`. `rule_version` and `execution_subject` are ignored.
+      required: [object_type_id, operation_config, schedule]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        action_type:
+          type: string
+          enum: [add, modify, delete]
+        object_type_id:
+          type: string
+          description: The object type whose objects are the targets.
+        operation_config:
+          $ref: '#/components/schemas/ActionOperationConfig'
+        condition:
+          $ref: '#/components/schemas/ActionCondition'
+        schedule:
+          type: object
+          required: [type, expression, timezone]
+          properties:
+            type:
+              type: string
+              enum: [CRON, FIX_RATE]
+            expression:
+              type: string
+            timezone:
+              type: string
+              description: IANA time zone of the schedule and of check_time and check_date.
+    ActionTrialResponse:
+      type: object
+      properties:
+        event:
+          $ref: '#/components/schemas/EventTrialResult'
+    EventTrialResult:
+      type: object
+      description: What a record-event action would record if it checked now.
+      properties:
+        subject:
+          type: string
+          description: The bound object type.
+        hits:
+          type: array
+          description: The first 200 hits.
+          items:
+            $ref: '#/components/schemas/EventHit'
+        hit_count:
+          type: integer
+          description: All selected targets, also those not listed in hits.
+        limited:
+          type: boolean
+          description: The selection was truncated; a check would cover only the targets it kept.
+        row_filter_applied:
+          type: boolean
+          description: A row filter hid objects from the caller. Absent when the source cannot tell (function, metric).
+    EventHit:
+      type: object
+      required: [key, name]
+      properties:
+        key:
+          type: string
+          maxLength: 250
+          description: The identity key of the object (see the target_key filter of the action logs).
+        name:
+          type: string
+          maxLength: 256
+          description: The display name of the object, or its key.
+        attributes:
+          type: object
+          maxProperties: 64
+          description: What the rule saw, per column or condition property.
+          additionalProperties:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
     ActionRelationTarget:
       type: object
       required:

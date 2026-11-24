@@ -7,8 +7,10 @@ package action_logs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
 
@@ -37,16 +39,51 @@ var resultsIndexBody = map[string]any{
 			"execution_id": map[string]any{"type": "keyword"},
 			"seq":          map[string]any{"type": "integer"},
 			"status":       map[string]any{"type": "keyword"},
+			"target_keys":  map[string]any{"type": "keyword"},
 		},
 	},
 }
+
+// resultsMappingAdditions lists the fields added to resultsIndexBody after the index already
+// existed. The index is not dynamic, so without this a field added later is kept in _source but
+// cannot be searched. Results stored before it carry no such field and match no filter on it.
+var resultsMappingAdditions = map[string]any{
+	"properties": map[string]any{
+		"target_keys": map[string]any{"type": "keyword"},
+	},
+}
+
+// MaxTargetKeyExecutions bounds how many executions the target_key filter of the action logs
+// finds: the most recent ones of the target.
+const MaxTargetKeyExecutions = 1000
 
 // storedExecutionResult is one result document in the results index.
 type storedExecutionResult struct {
 	KNID        string `json:"kn_id"`
 	ExecutionID string `json:"execution_id"`
 	Seq         int    `json:"seq"` // position of the result within its execution
+	// TargetKeys are the identity keys of the result's instance and of the targets it covers
+	// (interfaces.TargetIdentityKey), for the target_key filter of the action logs.
+	TargetKeys []string `json:"target_keys,omitempty"`
 	interfaces.ObjectExecutionResult
+}
+
+// resultTargetKeys are the identity keys of a result's instance and targets, each once.
+func resultTargetKeys(result interfaces.ObjectExecutionResult) []string {
+	var keys []string
+	seen := map[string]bool{}
+	add := func(identity map[string]any) {
+		key := interfaces.TargetIdentityKey(identity)
+		if key != "" && !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	add(result.InstanceIdentity)
+	for _, target := range result.Targets {
+		add(target.InstanceIdentity)
+	}
+	return keys
 }
 
 func resultDocumentID(execID string, seq int) string {
@@ -84,6 +121,7 @@ func (s *actionLogsService) AppendResults(ctx context.Context, knID, execID stri
 					KNID:                  knID,
 					ExecutionID:           execID,
 					Seq:                   seq,
+					TargetKeys:            resultTargetKeys(results[i]),
 					ObjectExecutionResult: results[i],
 				},
 			})
@@ -219,16 +257,81 @@ func decodeStoredResult(source map[string]any) (interfaces.ObjectExecutionResult
 	return stored.ObjectExecutionResult, nil
 }
 
-// ensureResultsIndex creates the results index on first use; later calls cost nothing.
+// ensureResultsIndex creates the results index on first use, and makes sure an index created by
+// an earlier version maps the fields added since; later calls cost nothing.
 func (s *actionLogsService) ensureResultsIndex(ctx context.Context) error {
 	if s.resultsIndexReady.Load() {
+		s.ensureResultsMapping(ctx)
 		return nil
 	}
-	if err := s.createIndexIfMissing(ctx, interfaces.ActionExecutionResultsIndex, resultsIndexBody); err != nil {
+	created, err := s.createIndex(ctx, interfaces.ActionExecutionResultsIndex, resultsIndexBody)
+	if err != nil {
 		return err
 	}
+	if created {
+		// Created with the whole mapping: nothing to add.
+		s.mappingsCurrent.Store(interfaces.ActionExecutionResultsIndex, struct{}{})
+	}
 	s.resultsIndexReady.Store(true)
+	s.ensureResultsMapping(ctx)
 	return nil
+}
+
+// ensureResultsMapping puts resultsMappingAdditions on the results index once per process. A
+// failure does not fail the write: those results just cannot be found by target_key. It is
+// retried after mappingRetryBackoff.
+func (s *actionLogsService) ensureResultsMapping(ctx context.Context) {
+	index := interfaces.ActionExecutionResultsIndex
+	if _, done := s.mappingsCurrent.Load(index); done {
+		return
+	}
+	now := s.clock()
+	if until, ok := s.mappingBackoff.Load(index); ok && now.Before(until.(time.Time)) {
+		return
+	}
+	if err := s.osAccess.PutMapping(ctx, index, resultsMappingAdditions); err != nil {
+		s.mappingBackoff.Store(index, now.Add(mappingRetryBackoff))
+		logger.Warnf("Failed to add the target key mapping to index %s, not retrying for %s: %v",
+			index, mappingRetryBackoff, err)
+		return
+	}
+	s.mappingBackoff.Delete(index)
+	s.mappingsCurrent.Store(index, struct{}{})
+}
+
+// executionsWithTarget lists the IDs of the network's executions with a result covering the
+// target key, the most recent first (execution IDs are UUIDv7), at most MaxTargetKeyExecutions.
+func (s *actionLogsService) executionsWithTarget(ctx context.Context, knID, targetKey string) ([]string, error) {
+	exists, err := s.resultsIndexExists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("check results index: %w", err)
+	}
+	if !exists {
+		return nil, nil
+	}
+	hits, err := s.osAccess.SearchData(ctx, interfaces.ActionExecutionResultsIndex, map[string]any{
+		"query": map[string]any{"bool": map[string]any{"filter": []map[string]any{
+			{"term": map[string]any{"kn_id": knID}},
+			{"term": map[string]any{"target_keys": targetKey}},
+		}}},
+		"collapse": map[string]any{"field": "execution_id"},
+		"sort":     []map[string]any{{"execution_id": map[string]any{"order": "desc"}}},
+		"_source":  map[string]any{"includes": []string{"execution_id"}},
+		"size":     MaxTargetKeyExecutions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search the results of target %q: %w", targetKey, err)
+	}
+	ids := make([]string, 0, len(hits))
+	seen := make(map[string]bool, len(hits))
+	for _, hit := range hits {
+		id, _ := hit.Source["execution_id"].(string)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func (s *actionLogsService) resultsIndexExists(ctx context.Context) (bool, error) {
