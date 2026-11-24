@@ -93,17 +93,37 @@ func TestQueryOutsideSQLStillReturnsAnUnfilterableProperty(t *testing.T) {
 }
 
 // A text field whose own switch is off is still compared through its keyword
-// subfield, which vega-backend checks instead, so it is not refused.
+// subfield in the local index, which vega-backend checks instead, so it is not
+// refused. Without a queryable index the field itself is checked, and refused.
 func TestQueryOutsideSQLLeavesATextFieldWithAKeywordSubfield(t *testing.T) {
-	service, vega := unfilterableService(unfilterableAmount("text",
-		interfaces.PropertyFeature{FeatureName: "keyword", FeatureType: interfaces.FieldFeatureType_Keyword}))
-	if _, err := service.Query(callerContext(), interfaces.CypherQuery{
-		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) WHERE o.amount = 5 RETURN o.id AS id",
-	}); err != nil {
-		t.Fatalf("Query: %v", err)
-	}
-	if len(vega.readers) == 0 {
-		t.Error("the condition never reached the data API")
+	for status, refused := range map[string]bool{
+		interfaces.ResourceLocalIndexStatusAvailable: false,
+		interfaces.ResourceLocalIndexStatusReadOnly:  false,
+		"": true,
+	} {
+		t.Run("index "+status, func(t *testing.T) {
+			resources := unfilterableAmount("text",
+				interfaces.PropertyFeature{FeatureName: "keyword", FeatureType: interfaces.FieldFeatureType_Keyword})
+			resources["res_order"].LocalIndexStatus = status
+			service, vega := unfilterableService(resources)
+			_, err := service.Query(callerContext(), interfaces.CypherQuery{
+				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) WHERE o.amount = 5 RETURN o.id AS id",
+			})
+			if refused {
+				var httpErr *httperrors.HTTPError
+				if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest ||
+					httpErr.ErrorCode != "BknBackend.Cypher.Unsupported" || len(vega.readers) != 0 {
+					t.Fatalf("err = %v after %d reads, want a 400 refusal before any read", err, len(vega.readers))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Query: %v", err)
+			}
+			if len(vega.readers) == 0 {
+				t.Error("the condition never reached the data API")
+			}
+		})
 	}
 }
 

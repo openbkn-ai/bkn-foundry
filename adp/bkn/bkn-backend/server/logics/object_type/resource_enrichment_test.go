@@ -546,6 +546,7 @@ func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
 				{Name: "status", Type: "string", MappedField: &interfaces.Field{Name: "status"}},
 				{Name: "summary", Type: "string", MappedField: &interfaces.Field{Name: "summary"}},
 				{Name: "legacy", Type: "string", MappedField: &interfaces.Field{Name: "legacy"}},
+				{Name: "body", Type: "text", MappedField: &interfaces.Field{Name: "body"}},
 			},
 		},
 	}
@@ -561,6 +562,9 @@ func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
 				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext}}},
 			// An older vega-backend sends no switch at all.
 			{Name: "legacy", Type: "string"},
+			// Compared through its keyword subfield in the index, as Cypher and vega-backend do.
+			{Name: "body", Type: "text", Filterable: &unfilterable,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
 		},
 	}
 
@@ -585,6 +589,11 @@ func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
 	}
 	if props[4].Filterable != nil || len(props[4].ConditionOperations) == 0 {
 		t.Errorf("legacy: filterable = %v, ops = %v, want it absent and the type's comparisons kept", props[4].Filterable, props[4].ConditionOperations)
+	}
+	if props[5].Filterable == nil || !*props[5].Filterable ||
+		fmt.Sprint(props[5].ConditionOperations) != fmt.Sprint(interfaces.DSL_KEYWORD_OPS) {
+		t.Errorf("body: filterable = %v, ops = %v, want filterable through its keyword subfield with only %v",
+			props[5].Filterable, props[5].ConditionOperations, interfaces.DSL_KEYWORD_OPS)
 	}
 	encoded, err := json.Marshal(props[1])
 	if err != nil {

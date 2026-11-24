@@ -59,8 +59,7 @@ type PropertyIndexCaps struct {
 //
 // The local index must support queries before its configured features can be used.
 func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyIndexCaps {
-	if res == nil || (res.LocalIndexStatus != interfaces.ResourceLocalIndexStatusAvailable &&
-		res.LocalIndexStatus != interfaces.ResourceLocalIndexStatusReadOnly) {
+	if !vegaLocalIndexQueryable(res) {
 		return nil
 	}
 
@@ -92,6 +91,33 @@ func VegaResourceIndexCaps(res *interfaces.VegaResource) map[string]PropertyInde
 		}
 	}
 	return caps
+}
+
+// vegaLocalIndexQueryable reports a resource whose local index serves queries.
+func vegaLocalIndexQueryable(res *interfaces.VegaResource) bool {
+	return res != nil && (res.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable ||
+		res.LocalIndexStatus == interfaces.ResourceLocalIndexStatusReadOnly)
+}
+
+// VegaPropertyRefusesConditions reports a resource field the resource data API refuses a
+// comparison on: its filterable switch is off (#3365). A field with no switch is filterable.
+//
+// A text field read through the resource's local index is the exception when it has a keyword
+// subfield: vega-backend compares it there and checks the subfield instead
+// (filter_condition.FilterFieldForOperation). Without a queryable index the field itself is
+// checked, and refused.
+func VegaPropertyRefusesConditions(res *interfaces.VegaResource, p *interfaces.Property) bool {
+	if p == nil || p.Filterable == nil || *p.Filterable {
+		return false
+	}
+	if p.Type == "text" && vegaLocalIndexQueryable(res) {
+		for _, feature := range p.Features {
+			if feature.FeatureType == interfaces.FieldFeatureType_Keyword {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // VegaResourceSchemaToPropertiesMap maps a Vega Resource schema by property name.

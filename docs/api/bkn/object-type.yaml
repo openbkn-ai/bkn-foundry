@@ -1802,7 +1802,9 @@ components:
             resource schema while responding (false by default for a JSON field). false means the property can
             be returned but a condition on it is refused: condition_operations then lists only the operators an
             index on the field provides, such as match or knn, and Cypher refuses a WHERE or inline condition on it
-            with 400 BknBackend.Cypher.Unsupported. Read-only: it is not accepted in requests or stored with the
+            with 400 BknBackend.Cypher.Unsupported. A text field with a keyword subfield in an available local index
+            is true even when its own switch is off: comparisons go through the subfield, and condition_operations
+            lists them without match. Read-only: it is not accepted in requests or stored with the
             definition. Returned by the detail and search endpoints; omitted when the property has no mapped
             field or the resource schema was not read.
           type: boolean

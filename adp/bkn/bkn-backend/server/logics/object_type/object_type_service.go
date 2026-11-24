@@ -2537,21 +2537,25 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				if prop == nil {
 					continue
 				}
+				fieldRefused := false
 				if prop.MappedField != nil {
 					if property, exists := propertiesMap[prop.MappedField.Name]; exists {
 						objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
 						objectType.DataProperties[j].MappedField.Type = property.Type
 						if property.Filterable != nil {
-							filterable := *property.Filterable
+							// The same judgement Cypher refuses a condition by, so the two agree.
+							filterable := !logics.VegaPropertyRefusesConditions(resource, property)
 							objectType.DataProperties[j].Filterable = &filterable
+							fieldRefused = !*property.Filterable
 						}
 					}
 					objectType.DataProperties[j].IndexFeatures = featuresByField[prop.MappedField.Name]
 				}
 				ops := ots.processConditionOperations(objectType, prop, dslView)
-				if prop.Filterable != nil && !*prop.Filterable {
+				if fieldRefused {
 					// The type baseline is what the field itself is compared by, which the resource
-					// refuses. Index operators read the index's own fields and stay.
+					// refuses. Index operators read the index's own fields and stay, a text field's
+					// keyword comparisons among them.
 					ops = nil
 				}
 				if prop.MappedField != nil {

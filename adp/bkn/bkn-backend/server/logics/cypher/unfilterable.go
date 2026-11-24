@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 // A resource can keep a field readable while refusing a condition on it: vega-backend's
@@ -22,9 +22,9 @@ import (
 //
 // Only a condition on the field itself is checked. The executor pushes comparisons
 // (==, !=, in, like, prefix, null), and vega-backend checks those against the field,
-// except on a text field with a keyword subfield, which serves them instead
-// (filter_condition.FilterFieldForOperation). A condition kept as a residual is
-// evaluated here and never reaches the data source.
+// except on a text field with a keyword subfield in a queryable local index, which
+// serves them instead (logics.VegaPropertyRefusesConditions). A condition kept as a
+// residual is evaluated here and never reaches the data source.
 
 // UnfilterableConditionError is a statement whose condition names a property the
 // resource that stores it cannot filter on.
@@ -57,7 +57,7 @@ func (s *cypherQueryService) unfilterableColumns(ctx context.Context, plan *Plan
 			continue
 		}
 		for _, property := range resource.SchemaDefinition {
-			if property == nil || !refusesConditions(property) {
+			if !logics.VegaPropertyRefusesConditions(resource, property) {
 				continue
 			}
 			if unfilterable[resource.ID] == nil {
@@ -67,21 +67,6 @@ func (s *cypherQueryService) unfilterableColumns(ctx context.Context, plan *Plan
 		}
 	}
 	return unfilterable
-}
-
-// refusesConditions reports a field the resource data API refuses a comparison on.
-func refusesConditions(property *interfaces.Property) bool {
-	if property.Filterable == nil || *property.Filterable {
-		return false
-	}
-	if property.Type == "text" {
-		for _, feature := range property.Features {
-			if feature.FeatureType == interfaces.FieldFeatureType_Keyword {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // withUnfilterable is the schema a query read through the resource data API runs
