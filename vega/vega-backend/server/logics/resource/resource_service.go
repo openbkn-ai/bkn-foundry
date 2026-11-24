@@ -182,7 +182,7 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 		Category:         req.Category,
 		Builtin:          req.Builtin != nil && *req.Builtin,
 		Enabled:          true,
-		Status:           req.Status,
+		Status:           interfaces.ResourceStatusActive,
 		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
 		SourceMetadata:   req.SourceMetadata,

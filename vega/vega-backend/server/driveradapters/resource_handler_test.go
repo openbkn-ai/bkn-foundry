@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
 func TestRestHandlerAPIResourceSaveErrorDetails(t *testing.T) {
@@ -57,6 +59,54 @@ func TestRestHandlerAPIResourceSaveErrorDetails(t *testing.T) {
 			assert.Equal(t, "response", (*traced)[0].Metadata["stage"])
 			assert.NotContains(t, (*traced)[0].ErrorDetails, "upstream fixture details")
 		})
+	}
+}
+
+func TestRestHandlerResourceStatus(t *testing.T) {
+	previous := resourcelogic.GetLogicalViewService()
+	resourcelogic.SetLogicalViewService(&validatingViewService{})
+	t.Cleanup(func() { resourcelogic.SetLogicalViewService(previous) })
+	for _, category := range []string{"dataset", "api", "logical_view"} {
+		for _, method := range []string{http.MethodPost, http.MethodPut} {
+			for _, status := range []string{"", `,"status":"__unsupported__"`, `,"status":"active"`, `,"status":"stale"`, `,"status":null`, `,"status":42`, `,"status":true`, `,"status":{}`} {
+				t.Run(category+"/"+method+"/"+status, func(t *testing.T) {
+					engine, _, rs := setupResourceHandlerTest(t)
+					check := func(req *interfaces.ResourceRequest) {
+						assert.Equal(t, "resource", req.Name)
+						assert.Equal(t, category, req.Category)
+						encoded, err := json.Marshal(req)
+						require.NoError(t, err)
+						var fields map[string]any
+						require.NoError(t, json.Unmarshal(encoded, &fields))
+						assert.NotContains(t, fields, "status")
+						assert.NotContains(t, fields, "unknown_field")
+					}
+					url, want := "/api/vega-backend/in/v1/resources", http.StatusCreated
+					if method == http.MethodPost {
+						rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+							check(req)
+							return &interfaces.Resource{ID: "res-1"}, nil
+						})
+					} else {
+						url, want = url+"/res-1", http.StatusNoContent
+						rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+							check(req)
+							return nil
+						})
+					}
+					api := ""
+					if category == "api" {
+						api = `,"api_effect_type":"read","api_definition":{}`
+					}
+					body := fmt.Sprintf(`{"catalog_id":"catalog-1","name":"resource","category":%q,"expected_update_time":1,"unknown_field":{"ignored":true},"schema_definition":[{"name":"id","type":"integer","filterable":false}]%s%s}`, category, api, status)
+					request := httptest.NewRequest(method, url, strings.NewReader(body))
+					request.Header.Set("Content-Type", "application/json")
+					recorder := httptest.NewRecorder()
+					engine.ServeHTTP(recorder, request)
+					assert.Equal(t, want, recorder.Code, recorder.Body.String())
+				})
+			}
+		}
 	}
 }
 

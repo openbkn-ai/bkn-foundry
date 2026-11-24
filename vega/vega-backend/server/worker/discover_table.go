@@ -193,7 +193,6 @@ func (dtw *DiscoverTaskWorker) createTableResource(ctx context.Context, catalog 
 		Description:      table.Description,
 		Category:         interfaces.ResourceCategoryTable,
 		Enabled:          true,
-		Status:           interfaces.ResourceStatusActive,
 		Schema:           table.Schema,
 		SourceIdentifier: sourceIdentifier,
 	}

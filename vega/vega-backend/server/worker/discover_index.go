@@ -181,7 +181,6 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
 		Description:      index.Description,
 		Category:         interfaces.ResourceCategoryIndex,
 		Enabled:          true,
-		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
 	}
 	resource, err := dtw.rs.InternalCreate(ctx, req)
