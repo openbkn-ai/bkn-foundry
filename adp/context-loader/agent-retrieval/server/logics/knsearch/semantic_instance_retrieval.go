@@ -436,7 +436,7 @@ func (s *localSearchImpl) applyRelevanceGate(
 
 	kept := make([]*interfaces.KnSearchNode, 0, len(nodes))
 	for _, node := range nodes {
-		if node.RerankerScore >= threshold {
+		if node.RerankerScore != nil && *node.RerankerScore >= threshold {
 			kept = append(kept, node)
 		}
 	}
@@ -605,18 +605,18 @@ func (s *localSearchImpl) fetchChannel(
 		if !ok {
 			continue
 		}
-		if _, has := dataMap["_score"]; has {
-			out.scored = true
-		}
-		node := s.convertToKnSearchNode(objType, dataMap)
+		node, scored := s.convertToKnSearchNode(objType, dataMap)
 		node.RecallScore = node.Score
 		// Record which channel produced this number while that is still known: after fusion the row
 		// carries scores from both channels and one raw float can no longer say where it came from.
-		switch ch.name {
-		case channelMatch:
-			node.BM25Score = node.Score
-		case channelKnn:
-			node.KnnScore = node.Score
+		if scored {
+			out.scored = true
+			switch ch.name {
+			case channelMatch:
+				node.BM25Score = float64Ptr(node.Score)
+			case channelKnn:
+				node.KnnScore = float64Ptr(node.Score)
+			}
 		}
 		out.nodes = append(out.nodes, node)
 	}
@@ -693,22 +693,25 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 
 	// Convert to KnSearchNode format.
 	nodes := make([]*interfaces.KnSearchNode, 0, len(resp.Data))
+	var unscoredNodes []*interfaces.KnSearchNode
 	for _, data := range resp.Data {
 		if dataMap, ok := data.(map[string]any); ok {
-			node := s.convertToKnSearchNode(objType, dataMap)
+			node, scored := s.convertToKnSearchNode(objType, dataMap)
 			node.RecallScore = node.Score
 			// This path issues one OR query carrying both operators, so a scored row's number is a
 			// BM25 score and a similarity added together by OpenSearch — attributable to neither
 			// channel. Only when no vector condition went out can the score be named.
-			if !allowKnn {
-				node.BM25Score = node.Score
+			if !scored {
+				unscoredNodes = append(unscoredNodes, node)
+			} else if !allowKnn {
+				node.BM25Score = float64Ptr(node.Score)
 			}
 			nodes = append(nodes, node)
 		}
 	}
 
 	// Calculate relevance score.
-	s.scoreNodes(req.Query, nodes, searchable, config)
+	s.scoreNodes(req.Query, unscoredNodes, searchable, config)
 
 	// Sort by score descending.
 	sort.Slice(nodes, func(i, j int) bool {
@@ -995,12 +998,8 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 			// Both channels' raw scores survive the merge, each under its own name. They live on
 			// different scales, so keeping the larger one (what RecallScore does) drops the vector
 			// evidence every time BM25 also hit.
-			if node.BM25Score > e.node.BM25Score {
-				e.node.BM25Score = node.BM25Score
-			}
-			if node.KnnScore > e.node.KnnScore {
-				e.node.KnnScore = node.KnnScore
-			}
+			e.node.BM25Score = higherChannelScore(e.node.BM25Score, node.BM25Score)
+			e.node.KnnScore = higherChannelScore(e.node.KnnScore, node.KnnScore)
 			e.score += weightOf(weights, o.name) / float64(k+rank+1)
 		}
 	}
@@ -1014,6 +1013,13 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 		fused = append(fused, e.node)
 	}
 	return fused
+}
+
+func higherChannelScore(current, candidate *float64) *float64 {
+	if candidate != nil && (current == nil || *candidate > *current) {
+		return candidate
+	}
+	return current
 }
 
 // mergeChannelNodes only merges overlaps and does not score. Source-store direct query paths have no _score:
@@ -1121,8 +1127,8 @@ func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
 	})
 }
 
-// convertToKnSearchNode converts raw data to KnSearchNode format.
-func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObjectType, data map[string]any) *interfaces.KnSearchNode {
+// convertToKnSearchNode also reports whether the index supplied a numeric score.
+func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObjectType, data map[string]any) (*interfaces.KnSearchNode, bool) {
 	node := &interfaces.KnSearchNode{
 		ObjectTypeID:   objType.ConceptID,
 		ObjectTypeName: objType.ConceptName,
@@ -1150,23 +1156,22 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 		}
 	}
 
-	// Extract the score (if any)
-	if score, ok := data["_score"]; ok {
-		switch v := score.(type) {
-		case float64:
-			node.Score = v
-		case int:
-			node.Score = float64(v)
-		case json.Number:
-			// Instance bodies are decoded with UseNumber so wide integers survive;
-			// see comm-go/jsoncodec.
-			if parsed, err := v.Float64(); err == nil {
-				node.Score = parsed
-			}
+	switch score := data["_score"].(type) {
+	case float64:
+		node.Score = score
+		return node, true
+	case int:
+		node.Score = float64(score)
+		return node, true
+	case json.Number:
+		// The shared JSON codec decodes dynamic numbers without loss of precision.
+		if parsed, err := score.Float64(); err == nil {
+			node.Score = parsed
+			return node, true
 		}
 	}
 
-	return node
+	return node, false
 }
 
 // scoreNodes calculates the relevance scores of nodes.
@@ -1187,14 +1192,14 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 
 		if strings.TrimSpace(query) == "" {
 			node.Score = 0
-			node.HeuristicScore = 0
+			node.HeuristicScore = float64Ptr(0)
 			continue
 		}
 
 		node.Score = fallbackNodeScore(query, node, searchable, config)
 		// Also stamped on its own field: Score carries the fusion scale on the index-backed path and the
 		// tier scale here, and without this marker a caller could not tell which of the two it is reading.
-		node.HeuristicScore = node.Score
+		node.HeuristicScore = float64Ptr(node.Score)
 	}
 }
 

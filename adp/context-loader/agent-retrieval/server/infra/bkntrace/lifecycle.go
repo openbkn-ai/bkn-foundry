@@ -555,22 +555,67 @@ func boundedJSONPayloadWithWriter(ctx context.Context, writer PayloadArtifactWri
 			OmittedReason: "serialization_failed",
 		}, "", nil
 	}
-	if len(canonical) > maxInlinePayloadBytes {
+	byteLength := len(canonical)
+	if byteLength <= maxInlinePayloadBytes {
+		coreLength, err := coreInlinePayloadLength(canonical)
+		if err != nil {
+			return PayloadEnvelope{
+				Mode:          "omitted",
+				MediaType:     "application/json",
+				ByteLength:    byteLength,
+				OmittedReason: "serialization_failed",
+			}, "", nil
+		}
+		// Core escapes strings and normalizes number spellings before applying its inline limit.
+		byteLength = max(byteLength, coreLength)
+	}
+	if byteLength > maxInlinePayloadBytes {
 		if writer != nil {
 			ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
 			if writeErr == nil && strings.TrimSpace(ref) != "" {
-				return PayloadEnvelope{Mode: "referenced", MediaType: "application/json", ByteLength: len(canonical), Ref: strings.TrimSpace(ref)}, strings.TrimSpace(ref), nil
+				return PayloadEnvelope{
+						Mode:       "referenced",
+						MediaType:  "application/json",
+						ByteLength: byteLength,
+						Ref:        strings.TrimSpace(ref),
+					},
+					strings.TrimSpace(ref), nil
 			}
-			return PayloadEnvelope{Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical), OmittedReason: "artifact_write_failed"}, "", writeErr
+			return PayloadEnvelope{
+				Mode:          "omitted",
+				MediaType:     "application/json",
+				ByteLength:    byteLength,
+				OmittedReason: "artifact_write_failed",
+			}, "", writeErr
 		}
 		return PayloadEnvelope{
-			Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical),
+			Mode:          "omitted",
+			MediaType:     "application/json",
+			ByteLength:    byteLength,
 			OmittedReason: "payload_too_large",
 		}, "", nil
 	}
 	return PayloadEnvelope{
 		Mode: "inline", MediaType: "application/json", ByteLength: len(canonical), Inline: canonical,
 	}, "", nil
+}
+
+var coreInlineNumbers = jsonv2.WithUnmarshalers(jsonv2.UnmarshalFromFunc(func(decoder *jsontext.Decoder, dst *any) error {
+	if *dst == nil && decoder.PeekKind() == '0' {
+		*dst = float64(0)
+	}
+	return errors.ErrUnsupported
+}))
+
+// Match sessionvo.InlineJSONPayload in Trace Core. Only the length is used;
+// the float64 values decoded here never reach the wire or the artifact store.
+func coreInlinePayloadLength(raw []byte) (int, error) {
+	var value any
+	if err := jsoncodec.Unmarshal(raw, &value, coreInlineNumbers); err != nil {
+		return 0, err
+	}
+	canonical, err := jsoncodec.Marshal(value, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+	return len(canonical), err
 }
 
 func appendUniqueLifecycleRef(values []string, value string) []string {

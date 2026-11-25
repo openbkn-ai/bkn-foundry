@@ -167,13 +167,14 @@ func TestQueryMetricData_ForwardsFinalResultOperationsAndPage(t *testing.T) {
 	}
 }
 
-func TestQueryMetricData_PreservesEmptyStringFilterLiteral(t *testing.T) {
+func TestQueryMetricData_PreservesExplicitEmptyStrings(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Filter struct {
 				Left  map[string]json.RawMessage   `json:"left"`
 				Right []map[string]json.RawMessage `json:"right"`
 			} `json:"filter"`
+			Having map[string]json.RawMessage `json:"having"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Errorf("decode forwarded metric request: %v", err)
@@ -184,9 +185,12 @@ func TestQueryMetricData_PreservesEmptyStringFilterLiteral(t *testing.T) {
 			if _, present := request.Filter.Left["value"]; present {
 				t.Errorf("property operand unexpectedly carries a literal: %s", request.Filter.Left["value"])
 			}
+			if string(request.Having["value"]) != `""` {
+				t.Errorf("forwarded having = %s, want an explicit empty string", request.Having)
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"entries":[],"status":"no_data"}`))
+		_, _ = w.Write([]byte(`{"entries":[{"value":"","status":"ok"}],"status":"ok"}`))
 	}))
 	defer server.Close()
 
@@ -204,8 +208,14 @@ func TestQueryMetricData_PreservesEmptyStringFilterLiteral(t *testing.T) {
 			},
 			Right: []interfaces.ObjectMetricOperand{{Source: "literal", ValueType: "string", Value: ""}},
 		},
+		Having: &interfaces.ObjectMetricHaving{Operator: "eq", Value: ""},
 	}
-	if _, err := client.QueryMetricData(t.Context(), "kn-1", "main", "metric-1", 1, query); err != nil {
+	response, err := client.QueryMetricData(t.Context(), "kn-1", "main", "metric-1", 1, query)
+	if err != nil {
 		t.Fatal(err)
+	}
+	_, body, err := rest.MarshalResponse(rest.FormatJSON, response)
+	if err != nil || !strings.Contains(string(body), `"value":""`) {
+		t.Fatalf("metric result = %s, %v, want an explicit empty string value", body, err)
 	}
 }

@@ -62,8 +62,8 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	if got[0].InstanceName != "欠款单" {
 		t.Fatalf("expected the model to promote 欠款单, got %s", got[0].InstanceName)
 	}
-	if math.Abs(got[0].RerankerScore-0.94) > 1e-9 {
-		t.Errorf("rerank_score must be carried out, got %.4f", got[0].RerankerScore)
+	if got[0].RerankerScore == nil || math.Abs(*got[0].RerankerScore-0.94) > 1e-9 {
+		t.Errorf("rerank_score must be carried out, got %.4f", rerankerSortScore(got[0]))
 	}
 	// Fine sorting only changes the order and does not cover score: there can only be one ruler in one response. Fusion points are comparable across object types,
 	// After covering, the unscored candidates and the tails outside top_n will be mixed into the same list with another dimension.
@@ -100,6 +100,20 @@ func TestRerankInstances_OnKeepsFusionScoreForUnscoredAndTail(t *testing.T) {
 	if got[0].InstanceName != "scored" {
 		t.Errorf("the scored candidate must lead, got %s", got[0].InstanceName)
 	}
+	if byName["unscored"].RerankerScore != nil || byName["tail"].RerankerScore != nil {
+		t.Error("rerank score must be absent on rows the model did not score")
+	}
+}
+
+func TestRerankInstances_PreservesZeroModelScore(t *testing.T) {
+	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
+		{Index: 1, RelevanceScore: 0},
+	}}}
+	nodes := []*interfaces.KnSearchNode{rerankNode("unscored", 1), rerankNode("scored", 0.9)}
+	got, _ := rerankService(client).rerankInstances(t.Context(), "q", nodes, rerankConfig(InstanceRerankModeShadow), nil)
+	if got[0].RerankerScore != nil || got[1].RerankerScore == nil || *got[1].RerankerScore != 0 {
+		t.Fatalf("scored and unscored rows are indistinguishable: %+v", got)
+	}
 }
 
 // Shadow: The order remains unchanged, but is brought out separately - this is exactly the form required for A/B evidence collection.
@@ -120,8 +134,8 @@ func TestRerankInstances_ShadowKeepsOrderButRecordsScores(t *testing.T) {
 	if math.Abs(got[0].Score-1.0) > 1e-9 {
 		t.Errorf("shadow must not overwrite the fusion score, got %.4f", got[0].Score)
 	}
-	if math.Abs(got[1].RerankerScore-0.94) > 1e-9 {
-		t.Errorf("expected the model score to be recorded, got %.4f", got[1].RerankerScore)
+	if got[1].RerankerScore == nil || math.Abs(*got[1].RerankerScore-0.94) > 1e-9 {
+		t.Errorf("expected the model score to be recorded, got %.4f", rerankerSortScore(got[1]))
 	}
 
 	var line string

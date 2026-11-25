@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
@@ -358,8 +359,12 @@ func lifecycleHTTPToolName(c *gin.Context) string {
 }
 
 func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.BusinessContext) string {
-	causationIDs := append([]string(nil), businessContext.CausationEventIDs...)
-	sort.Strings(causationIDs)
+	var causationIDs any
+	if len(businessContext.CausationEventIDs) > 0 {
+		ids := append([]string(nil), businessContext.CausationEventIDs...)
+		sort.Strings(ids)
+		causationIDs = ids
+	}
 	value := map[string]any{
 		"input": input,
 		"bkn_causality": map[string]any{
@@ -367,8 +372,8 @@ func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.Busi
 			"causation_event_ids": causationIDs,
 		},
 	}
-	// Use a stable encoding when deriving the operation key from a map.
-	raw, _ := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
+	// Persisted fallback keys include null for absent causation IDs and escaped HTML and JS characters.
+	raw, _ := jsoncodec.Marshal(value, jsonv2.Deterministic(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
 	return hashLifecyclePayload(raw)
 }
 

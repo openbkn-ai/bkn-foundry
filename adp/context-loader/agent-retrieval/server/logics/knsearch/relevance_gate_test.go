@@ -36,7 +36,7 @@ func gatedNodes(scores ...float64) []*interfaces.KnSearchNode {
 		out = append(out, &interfaces.KnSearchNode{
 			InstanceName:  string(rune('a' + i)),
 			Score:         1,
-			RerankerScore: score,
+			RerankerScore: float64Ptr(score),
 		})
 	}
 	return out

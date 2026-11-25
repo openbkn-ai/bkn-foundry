@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"maps"
 	"net/http"
@@ -528,11 +529,12 @@ func ensureLifecycleIdempotency(
 			stableArgs[key] = value
 		}
 	}
+	// Core uses this key to match requests already committed by older replicas.
 	raw, _ := jsoncodec.Marshal(struct {
 		Name      string
 		RequestID string
 		Args      map[string]any
-	}{name, requestID, stableArgs}, jsonv2.Deterministic(true))
+	}{name, requestID, stableArgs}, jsonv2.Deterministic(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
 	args["idempotency_key"] = "mcp:" + strings.TrimPrefix(hashBytes(raw), "sha256:")[:32]
 }
 

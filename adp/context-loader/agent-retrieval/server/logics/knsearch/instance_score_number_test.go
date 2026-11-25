@@ -18,11 +18,11 @@ func TestConvertToKnSearchNodeReadsJSONNumberScore(t *testing.T) {
 	s := &localSearchImpl{}
 	objType := &interfaces.KnSearchObjectType{ConceptID: "ot-1", ConceptName: "Shipment"}
 
-	node := s.convertToKnSearchNode(objType, map[string]any{
+	node, scored := s.convertToKnSearchNode(objType, map[string]any{
 		"_score": json.Number("0.87"),
 		"id":     json.Number("9223372036854775808"),
 	})
-	if node.Score != 0.87 {
+	if !scored || node.Score != 0.87 {
 		t.Errorf("Score = %v, want 0.87", node.Score)
 	}
 
@@ -35,7 +35,7 @@ func TestConvertToKnSearchNodeReadsJSONNumberScore(t *testing.T) {
 		t.Errorf("id = %s, want 9223372036854775808", id.String())
 	}
 
-	if got := s.convertToKnSearchNode(objType, map[string]any{"_score": 0.5}); got.Score != 0.5 {
+	if got, scored := s.convertToKnSearchNode(objType, map[string]any{"_score": 0.5}); !scored || got.Score != 0.5 {
 		t.Errorf("float64 Score = %v, want 0.5", got.Score)
 	}
 }

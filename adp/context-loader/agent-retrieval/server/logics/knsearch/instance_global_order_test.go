@@ -71,7 +71,7 @@ func TestSemanticInstanceRetrieval_OrdersAcrossObjectTypes(t *testing.T) {
 			result.Nodes[1].InstanceName, result.Nodes[1].Score)
 	}
 	// The BM25 number is the largest in the response and must not be what decides the order.
-	if result.Nodes[1].BM25Score <= result.Nodes[0].BM25Score {
+	if result.Nodes[1].BM25Score == nil || result.Nodes[0].BM25Score == nil || *result.Nodes[1].BM25Score <= *result.Nodes[0].BM25Score {
 		t.Fatalf("test setup lost its point: the demoted row should carry the larger bm25_score (%v vs %v)",
 			result.Nodes[1].BM25Score, result.Nodes[0].BM25Score)
 	}

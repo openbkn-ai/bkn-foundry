@@ -48,7 +48,7 @@ type ObjectMetricCondition struct {
 
 type ObjectMetricHaving struct {
 	Operator string `json:"operator"`
-	Value    any    `json:"value,omitempty"`
+	Value    any    `json:"value,omitzero"`
 	UnitCode string `json:"unit_code,omitempty"`
 }
 
@@ -94,7 +94,7 @@ type QueryMetricResp struct {
 
 type ObjectMetricDataEntry struct {
 	Time             *int64                      `json:"time,omitempty"`
-	Value            any                         `json:"value,omitempty"`
+	Value            any                         `json:"value,omitzero"`
 	Status           string                      `json:"status"`
 	DimensionCells   []ObjectMetricDimensionCell `json:"dimension_cells,omitempty"`
 	TimeBucket       *ObjectMetricTimeRange      `json:"time_bucket,omitempty"`
@@ -144,7 +144,7 @@ type MetricDrillThroughResp struct {
 	Version      int                       `json:"version"`
 	Participants []ObjectMetricParticipant `json:"participants"`
 	NextCursor   string                    `json:"next_cursor,omitempty"`
-	BucketValue  any                       `json:"bucket_value,omitempty"`
+	BucketValue  any                       `json:"bucket_value,omitzero"`
 	EvaluatedAt  int64                     `json:"evaluated_at"`
 	Status       string                    `json:"status"`
 	Warnings     []string                  `json:"warnings,omitempty"`

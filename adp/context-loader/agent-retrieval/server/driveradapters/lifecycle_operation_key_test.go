@@ -44,6 +44,15 @@ func TestNormalizedHTTPInputHashIsStable(t *testing.T) {
 	}
 }
 
+func TestNormalizedHTTPInputHashReplaysHistoricalKey(t *testing.T) {
+	// Captured from the previous release for a request without causation IDs.
+	const want = "sha256:ad5a544d32957a4407d664938dbb43f65639fca6c9a420c52d4b311a82c3d472"
+	got := normalizedHTTPInputHash(map[string]any{"sample": "abc"}, bkntrace.BusinessContext{})
+	if got != want {
+		t.Fatalf("normalized input hash = %s, want %s", got, want)
+	}
+}
+
 // The hash is not an end in itself: it is the identity half of the HTTP operation key, so an
 // unstable hash makes the same request look like a different operation on every retry.
 func TestHTTPOperationKeyIsStable(t *testing.T) {
