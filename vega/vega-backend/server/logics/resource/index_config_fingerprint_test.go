@@ -17,6 +17,22 @@ import (
 )
 
 func TestIndexConfigFingerprint(t *testing.T) {
+	t.Run("preserves existing fingerprint bytes", func(t *testing.T) {
+		contract := interfaces.IndexConfigContract{
+			PrimaryKeyFields: []string{"id"},
+			Fields: []interfaces.IndexConfigFieldContract{{
+				Name: "text",
+				Type: "string",
+				Features: []interfaces.IndexConfigFeatureContract{{
+					Type:   "fulltext",
+					Config: json.RawMessage(`{ "z": "<>&", "n": 12.5000 }`),
+				}},
+			}},
+		}
+		fingerprint, err := IndexConfigFingerprint(contract)
+		require.NoError(t, err)
+		assert.Equal(t, "00e134627a275483f3ae89c106c611c6bc7fbf4b615108da89b82e3d73b6b2f3", fingerprint)
+	})
 	t.Run("corrupt source columns cannot produce a fingerprint from fallback declarations", func(t *testing.T) {
 		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
 		contract, err := BuildIndexConfigContract(resource)

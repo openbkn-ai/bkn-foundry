@@ -11,10 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
 )
@@ -303,12 +302,12 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		resource.Description = resolveSourceDescription(resource.Description, semantic_understanding_task.SourceOriginalDescription(resource.SourceMetadata), idx.Description)
 
 		// SourceMetadata stores the complete source IndexMeta without additional fields.
-		data, err := sonic.Marshal(idx)
+		data, err := jsoncodec.Marshal(idx)
 		if err != nil {
 			return fmt.Errorf("serialize index metadata: %w", err)
 		}
 		sourceMetadata := make(map[string]any)
-		if err := common.UnmarshalJSON(data, &sourceMetadata); err != nil {
+		if err := jsoncodec.Unmarshal(data, &sourceMetadata); err != nil {
 			return fmt.Errorf("decode index metadata: %w", err)
 		}
 		resource.SourceMetadata = sourceMetadata

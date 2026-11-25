@@ -15,10 +15,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -145,7 +144,7 @@ func (c *AnyShareConnector) SearchFiles(ctx context.Context, docID, keyword stri
 
 	logger.Debugf("AnyShare file search params: %v", payload)
 
-	body, err := sonic.Marshal(payload)
+	body, err := jsoncodec.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +171,7 @@ func (c *AnyShareConnector) SearchFiles(ctx context.Context, docID, keyword stri
 	var result struct {
 		Files []map[string]any `json:"files"`
 	}
-	if err := common.UnmarshalJSON(raw, &result); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("file-search decode: %w", err)
 	}
 

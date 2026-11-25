@@ -1009,10 +1009,10 @@ components:
         查询调用方不能覆盖已保存的目标或认证配置。
         本阶段拒绝调用方过滤条件及依赖过滤值/SQL 转换的执行；不提供 input_schema、
         input 或独立业务载荷。所有 Schema 内联，Draft 2020-12；禁止 Schema 引用。
+        定义中未声明的字段会被忽略。
       type: object
       allOf:
         - $ref: "#/components/schemas/HTTPOperationDefinition"
-      unevaluatedProperties: false
       properties:
         variables:
           description: |
@@ -1222,8 +1222,8 @@ components:
         这两处合计须引用 __paging.limit 和当前 mode 对应的 __paging.offset 或 __paging.page。
         保存前仍须通过一次默认单页只读调用验证。查询按实际输入计算并填充分页值，后续页由调用方请求。
         总数提取定义位于各状态的 result_total。
+        未声明的分页字段会被忽略。
       type: object
-      additionalProperties: false
       required: [mode, default_limit, max_limit]
       properties:
         mode:
@@ -1394,9 +1394,8 @@ components:
             旧 logic_definition 按未知字段忽略，不作为别名或回退值；仅提交旧字段仍缺少必填定义。
           $ref: "#/components/schemas/DerivedLogicalViewDefinition"
     DerivedLogicalViewDefinition:
-      description: derived 逻辑视图的单一源和固定过滤配置；不接受旧节点数组、distinct 或未知字段
+      description: derived 逻辑视图的单一源和固定过滤配置。定义须为对象，未声明的字段（包括 distinct）会被忽略。
       type: object
-      additionalProperties: false
       required:
         - source_resource_id
       properties:

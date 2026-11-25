@@ -9,10 +9,13 @@ package sync_checkpoint
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -125,14 +128,12 @@ func ValidateCursor(checkpoint *SyncCheckpoint, incrementalFields []string, sche
 }
 
 func decodeStrictJSON(reader io.Reader, target any) error {
-	decoder := json.NewDecoder(reader)
-	decoder.UseNumber()
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
+	decoder := jsontext.NewDecoder(reader)
+	if err := jsoncodec.UnmarshalDecode(decoder, target); err != nil {
 		return err
 	}
 	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
+	if err := jsoncodec.UnmarshalDecode(decoder, &extra); !errors.Is(err, io.EOF) {
 		if err == nil {
 			return fmt.Errorf("multiple JSON values are not allowed")
 		}

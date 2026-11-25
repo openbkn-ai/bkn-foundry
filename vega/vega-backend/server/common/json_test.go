@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +31,9 @@ func TestJSONNumbersEqual(t *testing.T) {
 		{"zero with a large exponent", json.Number("-0.0e9223372036854775808"), 0, true},
 		{"text is not numeric", "1", json.Number("1"), false},
 		{"null remains null", map[string]any{"value": nil}, map[string]any{"value": nil}, true},
+		{"nil map matches empty object", map[string]any(nil), map[string]any{}, true},
+		{"nil slice matches empty array", []any(nil), []any{}, true},
+		{"explicit null differs from an empty object", map[string]any{"value": nil}, map[string]any{"value": map[string]any{}}, false},
 		{"array order remains significant", []int{1, 2}, []int{2, 1}, false},
 		{"unencodable value", make(chan int), nil, false},
 	} {
@@ -40,33 +44,25 @@ func TestJSONNumbersEqual(t *testing.T) {
 	assert.Equal(t, json.Number("1.0"), input["value"], "comparison must preserve caller-owned JSON")
 }
 
-func TestDecodeJSONPreservesLargeInteger(t *testing.T) {
-	var target map[string]any
-	if err := DecodeJSON(strings.NewReader(`{"value":110101199001152345}`), &target); err != nil {
-		t.Fatalf("DecodeJSON() error = %v", err)
+func TestBindJSON(t *testing.T) {
+	type request struct {
+		Name  string `json:"name" binding:"required"`
+		Value any    `json:"value"`
 	}
-	if got, ok := target["value"].(json.Number); !ok || got.String() != "110101199001152345" {
-		t.Fatalf("value = %#v, want json.Number preserving literal", target["value"])
-	}
-}
-
-func TestJSONValidatesStringSyntax(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		decode func(string, any) error
-	}{
-		{"reader", func(input string, target any) error { return DecodeJSON(strings.NewReader(input), target) }},
-		{"bytes", func(input string, target any) error { return UnmarshalJSON([]byte(input), target) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var invalid map[string]any
-			require.Error(t, tc.decode("{\"name\":\"night\tly\"}", &invalid))
-			var valid map[string]any
-			require.NoError(t, tc.decode(`{"name":"night\tly","value":9007199254740993}`, &valid))
-			assert.Equal(t, "night\tly", valid["name"])
-			assert.Equal(t, json.Number("9007199254740993"), valid["value"])
-		})
-	}
+	t.Run("preserves escaped strings and exact numbers", func(t *testing.T) {
+		var target request
+		require.NoError(t, BindJSON(strings.NewReader(`{"name":"night\tly","value":9007199254740993}`), &target))
+		assert.Equal(t, "night\tly", target.Name)
+		assert.Equal(t, json.Number("9007199254740993"), target.Value)
+	})
+	t.Run("rejects unescaped control characters", func(t *testing.T) {
+		var target request
+		require.Error(t, BindJSON(strings.NewReader("{\"name\":\"night\tly\"}"), &target))
+	})
+	t.Run("validates required fields", func(t *testing.T) {
+		var target request
+		require.Error(t, BindJSON(strings.NewReader(`{"value":1}`), &target))
+	})
 }
 
 func TestJSONNumberConversions(t *testing.T) {
@@ -139,8 +135,8 @@ func TestJSONQueryValueText(t *testing.T) {
 			case map[string]any, []any:
 				require.IsType(t, "", got)
 				var actual, expected any
-				require.NoError(t, UnmarshalJSON([]byte(got.(string)), &actual))
-				require.NoError(t, UnmarshalJSON([]byte(tc.want.(string)), &expected))
+				require.NoError(t, jsoncodec.Unmarshal([]byte(got.(string)), &actual))
+				require.NoError(t, jsoncodec.Unmarshal([]byte(tc.want.(string)), &expected))
 				assert.Equal(t, expected, actual)
 				assert.Contains(t, got, "<>&")
 			default:

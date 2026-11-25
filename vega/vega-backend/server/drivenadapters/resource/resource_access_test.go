@@ -61,7 +61,7 @@ func TestResourceAccessCreate(t *testing.T) {
 				"db1",
 				"public.orders",
 				`{"properties":{"row_count":42}}`,
-				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":[],"attributes":{}}]`,
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
 				"[]",
@@ -552,7 +552,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 		definition := `{"source_resource_id":"source-1"}`
 		mock.ExpectExec(`UPDATE t_resource SET .*f_source_metadata = \? WHERE f_id = \? AND f_update_time = \?`).
 			WithArgs(res.Name, `"pii","core"`, res.Description,
-				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":[],"attributes":{}}]`,
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				interfaces.LogicalType_Derived, definition,
 				res.Updater.ID, res.Updater.Type, res.UpdateTime, metadata, res.ID, res.UpdateTime).
@@ -575,7 +575,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 				res.Name,
 				`"pii","core"`,
 				res.Description,
-				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":[],"attributes":{}}]`,
 				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
 				"[]",
@@ -771,7 +771,7 @@ func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
 			WithArgs(
 				resource.Name,
 				resource.Description,
-				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":[],"attributes":{}}]`,
 				"[]",
 				resource.Updater.ID,
 				resource.Updater.Type,
@@ -820,7 +820,7 @@ func TestResourceAccessUpdateDiscoveryMetadata(t *testing.T) {
 			resource.Description,
 			resource.StatusMessage,
 			`{"properties":{"row_count":42}}`,
-			`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+			`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":[],"attributes":{}}]`,
 			resource.LastDiscoverStatus, resource.LastDiscoverTime,
 			resource.Updater.ID,
 			resource.Updater.Type,

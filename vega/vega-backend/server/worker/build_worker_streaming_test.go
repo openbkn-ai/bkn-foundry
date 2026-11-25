@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -340,7 +341,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 			} {
 				t.Run(operation+"/"+tc.logicalType, func(t *testing.T) {
 					var event map[string]any
-					require.NoError(t, common.UnmarshalJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
+					require.NoError(t, jsoncodec.Unmarshal([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
 					after := event["payload"].(map[string]any)["after"].(map[string]any)
 					lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
 					worker := &streamingBuildWorker{lim: lim}

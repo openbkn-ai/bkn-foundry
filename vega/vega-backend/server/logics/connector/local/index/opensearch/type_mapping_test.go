@@ -8,10 +8,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -174,10 +174,10 @@ func TestOpenSearchConnectorIsFilterable(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				for _, stored := range []bool{false, true} {
 					tc.field.Filterable = &stored
-					before, err := sonic.Marshal(tc.field)
+					before, err := jsoncodec.Marshal(tc.field)
 					require.NoError(t, err)
 					assert.Equal(t, tc.want, connector.IsFilterable(&tc.field))
-					after, err := sonic.Marshal(tc.field)
+					after, err := jsoncodec.Marshal(tc.field)
 					require.NoError(t, err)
 					assert.JSONEq(t, string(before), string(after))
 					assert.Equal(t, stored, *tc.field.Filterable)

@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -24,6 +23,7 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -120,7 +120,7 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 
 	if resultStr.Valid && resultStr.String != "" {
 		task.Result = &interfaces.DiscoverResult{}
-		_ = common.UnmarshalJSON([]byte(resultStr.String), task.Result)
+		_ = jsoncodec.Unmarshal([]byte(resultStr.String), task.Result)
 	}
 
 	return task, nil
@@ -154,7 +154,7 @@ func scanDiscoverTaskSummary(scanner discoverTaskScanner) (*interfaces.DiscoverT
 
 	if resultStr.Valid && resultStr.String != "" {
 		var result interfaces.DiscoverResult
-		if err := common.UnmarshalJSON([]byte(resultStr.String), &result); err == nil {
+		if err := jsoncodec.Unmarshal([]byte(resultStr.String), &result); err == nil {
 			task.Result = &interfaces.DiscoverTaskResultSummary{
 				CatalogID:      result.CatalogID,
 				NewCount:       result.NewCount,
@@ -451,7 +451,7 @@ func (dta *discoverTaskAccess) UpdateProgress(
 func (dta *discoverTaskAccess) MarkCompleted(
 	ctx context.Context, id string, result *interfaces.DiscoverResult, finishTime int64,
 ) (bool, error) {
-	resultJSON, err := sonic.MarshalString(result)
+	resultJSON, err := jsoncodec.MarshalString(result)
 	if err != nil {
 		return false, err
 	}

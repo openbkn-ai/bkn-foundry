@@ -6,21 +6,17 @@ package common
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"io"
 	"math"
 	"math/big"
 	"reflect"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
-
-var defaultJson = sonic.Config{
-	UseNumber:      true,
-	ValidateString: true,
-}.Froze()
 
 type normalizedJSONNumber struct {
 	significand string
@@ -44,16 +40,6 @@ func exactMapField(mapKey, fieldName string) bool {
 	return mapKey == fieldName
 }
 
-// DecodeJSON reads one JSON value and preserves numbers in interface values as json.Number.
-func DecodeJSON(reader io.Reader, target any) error {
-	return defaultJson.NewDecoder(reader).Decode(target)
-}
-
-// UnmarshalJSON decodes JSON bytes and preserves numbers in interface values as json.Number.
-func UnmarshalJSON(data []byte, target any) error {
-	return defaultJson.Unmarshal(data, target)
-}
-
 // JSONSourceValueText 归一化数据库返回的完整 JSON 文本中的顶层 null。
 // 不用于已解码的字符串值；带引号的 JSON 字符串和空字符串保持为内容。
 func JSONSourceValueText(value any) any {
@@ -75,7 +61,7 @@ func JSONQueryValueText(value any) (any, error) {
 	case []byte:
 		return string(value), nil
 	default:
-		encoded, err := sonic.Marshal(value)
+		encoded, err := jsoncodec.Marshal(value)
 		if err != nil {
 			return nil, err
 		}
@@ -164,14 +150,14 @@ func NumberAsInt64(value any) (int64, bool) {
 
 // BindJSON decodes an HTTP request body and applies Gin's validator.
 func BindJSON(reader io.Reader, target any) error {
-	if err := DecodeJSON(reader, target); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(reader), target); err != nil {
 		return err
 	}
 	return binding.Validator.ValidateStruct(target)
 }
 
-// JSONNumbersEqual compares JSON-backed values without treating float64 and
-// json.Number representations of the same number as a schema change.
+// JSONNumbersEqual compares JSON v2 values without treating different numeric
+// representations of the same number as a schema change.
 func JSONNumbersEqual(current, next any) bool {
 	currentValue, err := comparableJSONValue(current)
 	if err != nil {
@@ -182,12 +168,12 @@ func JSONNumbersEqual(current, next any) bool {
 }
 
 func comparableJSONValue(value any) (any, error) {
-	encoded, err := json.Marshal(value)
+	encoded, err := jsoncodec.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
 	var decoded any
-	if err := UnmarshalJSON(encoded, &decoded); err != nil {
+	if err := jsoncodec.Unmarshal(encoded, &decoded); err != nil {
 		return nil, err
 	}
 	return normalizeJSONNumbers(decoded), nil

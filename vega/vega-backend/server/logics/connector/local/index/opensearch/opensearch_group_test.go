@@ -6,6 +6,7 @@ package opensearch
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	osclient "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
@@ -27,9 +29,7 @@ func groupedQueryConnector(t *testing.T, pages []string, inspect func(map[string
 		Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
 			var body map[string]any
 			if request.Body != nil {
-				decoder := json.NewDecoder(request.Body)
-				decoder.UseNumber()
-				require.NoError(t, decoder.Decode(&body))
+				require.NoError(t, jsoncodec.UnmarshalDecode(jsontext.NewDecoder(request.Body), &body))
 			}
 			response := `{"_shards":{"total":1,"successful":1,"failed":0},"pit_id":"group-pit"}`
 			switch {

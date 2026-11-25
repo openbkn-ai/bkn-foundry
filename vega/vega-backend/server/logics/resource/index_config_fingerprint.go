@@ -11,13 +11,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
@@ -172,13 +173,12 @@ func BuildTaskIndexConfigContract(config *interfaces.BuildTaskIndexConfig) (inte
 func effectiveBuildTaskFeatureConfig(feature interfaces.IndexConfigFeatureContract, snapshot interfaces.BuildTaskFieldIndexFeature) (json.RawMessage, error) {
 	config := map[string]any{}
 	if len(feature.Config) > 0 && string(feature.Config) != "null" {
-		decoder := json.NewDecoder(bytes.NewReader(feature.Config))
-		decoder.UseNumber()
-		if err := decoder.Decode(&config); err != nil {
+		decoder := jsontext.NewDecoder(bytes.NewReader(feature.Config))
+		if err := jsoncodec.UnmarshalDecode(decoder, &config); err != nil {
 			return nil, err
 		}
 		var extra any
-		if err := decoder.Decode(&extra); err != io.EOF {
+		if err := jsoncodec.UnmarshalDecode(decoder, &extra); !errors.Is(err, io.EOF) {
 			if err == nil {
 				return nil, fmt.Errorf("multiple JSON values are not allowed")
 			}
@@ -280,7 +280,7 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 				feature.RefProperty = ""
 			}
 			if len(feature.Config) > 0 {
-				config, err := sonic.ConfigStd.Marshal(feature.Config)
+				config, err := jsoncodec.Marshal(feature.Config, json.DefaultOptionsV1())
 				if err != nil {
 					return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q feature %q: %w", field.Name, feature.Type, err)
 				}
@@ -322,7 +322,8 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 
 // IndexConfigFingerprint hashes a normalized contract with canonical JSON.
 func IndexConfigFingerprint(config interfaces.IndexConfigContract) (string, error) {
-	data, err := sonic.ConfigStd.Marshal(config)
+	// Keep the encoding of existing index configuration fingerprints stable.
+	data, err := jsoncodec.Marshal(config, json.DefaultOptionsV1())
 	if err != nil {
 		return "", fmt.Errorf("fingerprint index config: %w", err)
 	}
@@ -372,7 +373,7 @@ func effectiveFeatureConfig(feature interfaces.PropertyFeature, defaultEmbedding
 	if len(config) == 0 {
 		return nil, nil
 	}
-	return sonic.ConfigStd.Marshal(config)
+	return jsoncodec.Marshal(config, json.DefaultOptionsV1())
 }
 
 func stringConfigValueForFingerprint(config map[string]any, key string) string {

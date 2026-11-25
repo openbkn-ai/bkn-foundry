@@ -51,15 +51,23 @@ func TestDecodeBatch(t *testing.T) {
 		assert.Equal(t, "9223372036854775807", value.String())
 	})
 
+	t.Run("ignores unknown checkpoint and cursor fields", func(t *testing.T) {
+		checkpoint, err := DecodeBatch(`{"version":1,"mode":"batch","cursor":[{"key":"id","value":9007199254740993,"extra":{}}],"extra":true}`)
+		require.NoError(t, err)
+		require.NotNil(t, checkpoint)
+		assert.Equal(t, &SyncCheckpoint{Mode: ModeBatch, Cursor: []interfaces.KeyValue{
+			{Key: "id", Value: json.Number("9007199254740993")},
+		}}, checkpoint)
+	})
+
 	for name, mark := range map[string]string{
 		"whitespace is not an empty mark": "   ",
 		"legacy cursor array":             `[]`,
-		"obsolete version field":          `{"version":1,"mode":"batch","cursor":[]}`,
 		"missing cursor":                  `{"mode":"batch"}`,
 		"null cursor":                     `{"mode":"batch","cursor":null}`,
 		"wrong mode":                      `{"mode":"streaming","cursor":[]}`,
 		"trailing document":               `{"mode":"batch","cursor":[]} {}`,
-		"unknown field":                   `{"mode":"batch","cursor":[],"extra":true}`,
+		"duplicate field":                 `{"mode":"batch","cursor":[],"cursor":[]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			checkpoint, err := DecodeBatch(mark)

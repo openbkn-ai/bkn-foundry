@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -330,7 +331,7 @@ func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, int
 	}
 	data, err := io.ReadAll(c.Request.Body)
 	if err == nil {
-		err = common.UnmarshalJSON(data, &request)
+		err = jsoncodec.Unmarshal(data, &request)
 	}
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).

@@ -11,10 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
@@ -243,12 +242,12 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		if err := tableConnector.GetTableMeta(ctx, table, task.ResourceID != ""); err != nil {
 			// 首次探查失败也保留已知源身份，使单资源刷新能够重试。
 			if len(resource.SourceMetadata) == 0 {
-				data, marshalErr := sonic.Marshal(table)
+				data, marshalErr := jsoncodec.Marshal(table)
 				if marshalErr != nil {
 					return fmt.Errorf("serialize table metadata: %w", marshalErr)
 				}
 				sourceMetadata := make(map[string]any)
-				if decodeErr := common.UnmarshalJSON(data, &sourceMetadata); decodeErr != nil {
+				if decodeErr := jsoncodec.Unmarshal(data, &sourceMetadata); decodeErr != nil {
 					return fmt.Errorf("decode table metadata: %w", decodeErr)
 				}
 				resource.SourceMetadata = sourceMetadata
@@ -330,12 +329,12 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		resource.Description = resolveSourceDescription(resource.Description, semantic_understanding_task.SourceOriginalDescription(resource.SourceMetadata), table.Description)
 
 		// 源元数据完整保存 TableMeta，不保留旧的额外字段。
-		data, err := sonic.Marshal(table)
+		data, err := jsoncodec.Marshal(table)
 		if err != nil {
 			return fmt.Errorf("serialize table metadata: %w", err)
 		}
 		sourceMetadata := make(map[string]any)
-		if err := common.UnmarshalJSON(data, &sourceMetadata); err != nil {
+		if err := jsoncodec.Unmarshal(data, &sourceMetadata); err != nil {
 			return fmt.Errorf("decode table metadata: %w", err)
 		}
 		resource.SourceMetadata = sourceMetadata

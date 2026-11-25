@@ -16,9 +16,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -142,7 +140,7 @@ func (c *AnyShareConnector) getEntryDocLib(ctx context.Context, client *http.Cli
 
 func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, client *http.Client, namepath string) (pathInfoDTO, error) {
 	u := fmt.Sprintf("%s/api/efast/v1/file/getinfobypath", c.baseURL)
-	body, err := sonic.Marshal(map[string]string{"namepath": namepath})
+	body, err := jsoncodec.Marshal(map[string]string{"namepath": namepath})
 
 	var info pathInfoDTO
 	if err != nil {
@@ -166,7 +164,7 @@ func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, client *http.Cli
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return info, fmt.Errorf("getinfobypath http %d: %s", resp.StatusCode, truncateForLog(raw))
 	}
-	if err := common.UnmarshalJSON(raw, &info); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &info); err != nil {
 		return info, err
 	}
 	if info.DocID == "" {
@@ -210,7 +208,7 @@ func (c *AnyShareConnector) getJSON(ctx context.Context, client *http.Client, re
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s: http %d %s", reqURL, resp.StatusCode, truncateForLog(raw))
 	}
-	if err := common.UnmarshalJSON(raw, out); err != nil {
+	if err := jsoncodec.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil

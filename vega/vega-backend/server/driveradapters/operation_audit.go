@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
 	visitor2 "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
@@ -180,7 +181,7 @@ func captureOperationAuditRequest(request *http.Request) map[string]any {
 		return nil
 	}
 	var value map[string]any
-	if common.UnmarshalJSON(body, &value) != nil {
+	if jsoncodec.Unmarshal(body, &value) != nil {
 		return nil
 	}
 	return value

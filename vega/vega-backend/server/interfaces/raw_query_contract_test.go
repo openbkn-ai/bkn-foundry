@@ -9,7 +9,7 @@ package interfaces
 import (
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -211,10 +211,10 @@ func TestRawQueryRequestJSON(t *testing.T) {
 		{Query: map[string]any{"resource_id": "orders", "query": map[string]any{"match_all": map[string]any{}}}, QueryFormat: QueryFormatDSL},
 	} {
 		t.Run(string(request.QueryFormat), func(t *testing.T) {
-			encoded, err := sonic.Marshal(request)
+			encoded, err := jsoncodec.Marshal(request)
 			require.NoError(t, err)
 			var body map[string]any
-			require.NoError(t, sonic.Unmarshal(encoded, &body))
+			require.NoError(t, jsoncodec.Unmarshal(encoded, &body))
 			assert.Equal(t, string(request.QueryFormat), body["query_format"])
 			assert.Contains(t, body, "query")
 			assert.NotContains(t, body, "input_dialect")
@@ -226,7 +226,7 @@ func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 	response := RawQueryResponse{
 		SearchAfter: []any{"internal"},
 	}
-	encoded, err := sonic.Marshal(response)
+	encoded, err := jsoncodec.Marshal(response)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "has_more")
 	assert.NotContains(t, string(encoded), "query_id")
@@ -236,23 +236,23 @@ func TestRawQueryResponseDoesNotExposeLegacyPagingState(t *testing.T) {
 }
 
 func TestRawQueryResponseOptionalTotalCount(t *testing.T) {
-	withoutTotal, err := sonic.Marshal(RawQueryResponse{})
+	withoutTotal, err := jsoncodec.Marshal(RawQueryResponse{})
 	require.NoError(t, err)
 	assert.NotContains(t, string(withoutTotal), "total_count")
 
 	totalCount := int64(0)
-	withTotal, err := sonic.Marshal(RawQueryResponse{TotalCount: &totalCount})
+	withTotal, err := jsoncodec.Marshal(RawQueryResponse{TotalCount: &totalCount})
 	require.NoError(t, err)
 	assert.Contains(t, string(withTotal), `"total_count":0`)
 }
 
 func TestPagingRequestIgnoresRemovedSizeField(t *testing.T) {
 	var request PagingRequest
-	err := sonic.Unmarshal([]byte(`{"size": 10}`), &request)
+	err := jsoncodec.Unmarshal([]byte(`{"size": 10}`), &request)
 	require.NoError(t, err)
 	assert.Zero(t, request.Limit)
 
-	err = sonic.Unmarshal([]byte(`{"limit": 10}`), &request)
+	err = jsoncodec.Unmarshal([]byte(`{"limit": 10}`), &request)
 	require.NoError(t, err)
 	assert.Equal(t, 10, request.Limit)
 }

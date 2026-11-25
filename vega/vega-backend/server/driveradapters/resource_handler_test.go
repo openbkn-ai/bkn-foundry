@@ -500,6 +500,41 @@ func Test_ResourceRestHandler_GetResources(t *testing.T) {
 		assert.Contains(t, w.Body.String(), `"id":"res-2"`)
 	})
 
+	t.Run("preserves empty values of public API variables", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByIDs(gomock.Any(), []string{"res-1"}, true).Return([]*interfaces.Resource{{
+			ID:       "res-1",
+			Category: interfaces.ResourceCategoryAPI,
+			APIDefinition: &interfaces.APIDefinition{Variables: map[string]interfaces.CatalogVariable{
+				"emptyText":   {Value: ""},
+				"emptyArray":  {Value: []any{}},
+				"emptyObject": {Value: map[string]any{}},
+				"redacted":    {Sensitive: true},
+			}},
+		}}, nil)
+
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1", nil)
+		engine.ServeHTTP(recorder, req)
+
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		var response struct {
+			Entries []struct {
+				APIDefinition struct {
+					Variables map[string]map[string]any `json:"variables"`
+				} `json:"api_definition"`
+			} `json:"entries"`
+		}
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+		require.Len(t, response.Entries, 1)
+		assert.Equal(t, map[string]map[string]any{
+			"emptyText":   {"value": "", "sensitive": false},
+			"emptyArray":  {"value": []any{}, "sensitive": false},
+			"emptyObject": {"value": map[string]any{}, "sensitive": false},
+			"redacted":    {"sensitive": true},
+		}, response.Entries[0].APIDefinition.Variables)
+	})
+
 	t.Run("adds dataset row count only to resource detail responses", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rowCount := int64(7)
@@ -890,25 +925,52 @@ func TestRestHandlerDiscoverResource(t *testing.T) {
 func TestResourceRequestHTTPContract(t *testing.T) {
 	restore := setGinMode()
 	defer restore()
+	urlForMethod := func(method string) string {
+		const url = "/api/vega-backend/in/v1/resources"
+		if method == http.MethodPut {
+			return url + "/res-1"
+		}
+		return url
+	}
+	bodyForField := func(t *testing.T, field string) string {
+		t.Helper()
+		body := map[string]json.RawMessage{
+			"catalog_id":           json.RawMessage(`"catalog-1"`),
+			"name":                 json.RawMessage(`"resource"`),
+			"category":             json.RawMessage(`"api"`),
+			"api_effect_type":      json.RawMessage(`"read"`),
+			"api_definition":       json.RawMessage(`{}`),
+			"schema_definition":    json.RawMessage(`[{"name":"id","type":"integer","filterable":false}]`),
+			"expected_update_time": json.RawMessage(`1`),
+		}
+		key, value, _ := strings.Cut(field, ":")
+		body[strings.Trim(key, `"`)] = json.RawMessage(value)
+		encoded, err := json.Marshal(body)
+		require.NoError(t, err)
+		return string(encoded)
+	}
 	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		t.Run(method+"/duplicate key is rejected", func(t *testing.T) {
+			engine, _, _ := setupResourceHandlerTest(t)
+			body := strings.TrimSuffix(bodyForField(t, `"name":"resource"`), "}") + `,"name":"other"}`
+			request := httptest.NewRequest(method, urlForMethod(method), strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		})
 		for _, fields := range []string{
 			`"name":false`, `"api_effect_type":123`, `"schema_definition":{}`,
 			`"logical_type":"derived"`, `"logical_view_definition":{"sql":"SELECT 1"}`,
-			`"api_definition":{"input_schema":{}}`,
-			`"api_definition":{"request":{"method":"GET","path":"read"},"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":{"type":"array"},"result":{"rows":""}}}},"success_rule":{"http_status":[200]}}`,
-			`"api_definition":{"request":{"method":"GET","path":"read"},"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":{"type":"array"},"result":{"rows":"","columns":{"value":[{"name":"id","type":"integer"}]}}}}},"success_rule":{"http_status":[200]}}`,
-			`"api_definition":{"request":{"method":"GET","path":"items","url":"https://override.example.invalid"}}`,
+			`"api_definition":[]`,
+			`"api_definition":{"request":{"method":false,"path":"read"}}`,
+			`"api_definition":{"response":{"statuses":{"200":{"result_rows":false}}}}`,
 		} {
 			t.Run(method+"/invalid/"+fields, func(t *testing.T) {
 				engine, _, rs := setupResourceHandlerTest(t)
 				rs.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
 				rs.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
-				url := "/api/vega-backend/in/v1/resources"
-				if method == http.MethodPut {
-					url += "/res-1"
-				}
-				body := `{"catalog_id":"catalog-1","name":"resource","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":false}],"expected_update_time":1,` + fields + `}`
-				request := httptest.NewRequest(method, url, strings.NewReader(body))
+				request := httptest.NewRequest(method, urlForMethod(method), strings.NewReader(bodyForField(t, fields)))
 				request.Header.Set("Content-Type", "application/json")
 				recorder := httptest.NewRecorder()
 				engine.ServeHTTP(recorder, request)
@@ -917,6 +979,7 @@ func TestResourceRequestHTTPContract(t *testing.T) {
 		}
 		for _, fields := range []string{
 			`"unknown":null`, `"logic_type":"ignored"`, `"logic_definition":{"ignored":true}`, `"condition_constraints":{}`,
+			`"api_definition":{"input_schema":{}}`,
 			`"schema_definition":[{"name":"id","type":"integer","filterable":false,"condition_constraints":{"operations":["eq"]}}]`,
 			`"schema_definition":[{"name":"id","type":"integer","filterable":false,"foreign_property":0}]`,
 		} {
@@ -934,7 +997,6 @@ func TestResourceRequestHTTPContract(t *testing.T) {
 					assert.Empty(t, req.LogicalType)
 					assert.Nil(t, req.LogicalViewDefinition)
 				}
-				url := "/api/vega-backend/in/v1/resources"
 				status := http.StatusCreated
 				if method == http.MethodPost {
 					rs.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
@@ -942,7 +1004,6 @@ func TestResourceRequestHTTPContract(t *testing.T) {
 						return &interfaces.Resource{ID: "res-1"}, nil
 					})
 				} else {
-					url += "/res-1"
 					status = http.StatusNoContent
 					rs.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
 						check(req)
@@ -950,8 +1011,7 @@ func TestResourceRequestHTTPContract(t *testing.T) {
 						return nil
 					})
 				}
-				body := `{"catalog_id":"catalog-1","name":"resource","category":"api","api_effect_type":"read","api_definition":{},"schema_definition":[{"name":"id","type":"integer","filterable":false}],"expected_update_time":1,` + fields + `}`
-				request := httptest.NewRequest(method, url, strings.NewReader(body))
+				request := httptest.NewRequest(method, urlForMethod(method), strings.NewReader(bodyForField(t, fields)))
 				request.Header.Set("Content-Type", "application/json")
 				recorder := httptest.NewRecorder()
 				engine.ServeHTTP(recorder, request)

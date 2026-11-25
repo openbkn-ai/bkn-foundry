@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/fsnotify/fsnotify"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -29,6 +28,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/spf13/viper"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/version"
 )
 
@@ -277,7 +277,7 @@ func loadSetting(vp *viper.Viper) {
 		version.ServerName, version.ServerVersion, version.LanguageGo,
 		version.GoVersion, version.GoArch)
 
-	s, _ := sonic.MarshalString(appSetting)
+	s, _ := jsoncodec.MarshalString(appSetting)
 	logger.Debug(s)
 	logger.Infof("Application settings loaded")
 }

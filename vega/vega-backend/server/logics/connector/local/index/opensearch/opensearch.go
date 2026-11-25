@@ -10,16 +10,18 @@ package opensearch
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index"
@@ -67,7 +69,7 @@ func (c *OpenSearchConnector) ValidateAnalyzer(ctx context.Context, analyzer str
 	if analyzer == "" {
 		return true, nil
 	}
-	body, err := sonic.Marshal(map[string]any{"analyzer": analyzer, "text": "bkn"})
+	body, err := jsoncodec.Marshal(map[string]any{"analyzer": analyzer, "text": "bkn"})
 	if err != nil {
 		return false, fmt.Errorf("marshal analyzer validation request: %w", err)
 	}
@@ -272,7 +274,7 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 		"mappings": mappings,
 	}
 
-	data, err := sonic.Marshal(config)
+	data, err := jsoncodec.Marshal(config)
 	if err != nil {
 		return err
 	}
@@ -314,7 +316,7 @@ func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string,
 	}
 
 	// Build a JSON string
-	data, err := sonic.Marshal(mappings)
+	data, err := jsoncodec.Marshal(mappings)
 	if err != nil {
 		return err
 	}
@@ -415,11 +417,11 @@ func encodeBulkDocument(indexName, id string, document map[string]any, maxBytes 
 		opMeta["_id"] = id
 	}
 	delete(document, "_id")
-	opBytes, err := sonic.Marshal(map[string]any{"index": opMeta})
+	opBytes, err := jsoncodec.Marshal(map[string]any{"index": opMeta})
 	if err != nil {
 		return nil, fmt.Errorf("marshal bulk operation metadata: %w", err)
 	}
-	bodyBytes, err := sonic.Marshal(document)
+	bodyBytes, err := jsoncodec.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("marshal bulk document: %w", err)
 	}
@@ -502,7 +504,7 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 	}
 
 	var result map[string]any
-	if err := common.DecodeJSON(resp.Body, &result); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &result); err != nil {
 		return nil, err
 	}
 
@@ -522,7 +524,7 @@ func (c *OpenSearchConnector) GetDocuments(ctx context.Context, indexName string
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
-	body, err := sonic.Marshal(map[string]any{"ids": docIDs})
+	body, err := jsoncodec.Marshal(map[string]any{"ids": docIDs})
 	if err != nil {
 		return nil, fmt.Errorf("marshal document IDs: %w", err)
 	}
@@ -543,7 +545,7 @@ func (c *OpenSearchConnector) GetDocuments(ctx context.Context, indexName string
 			Source map[string]any `json:"_source"`
 		} `json:"docs"`
 	}
-	if err := common.DecodeJSON(resp.Body, &result); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &result); err != nil {
 		return nil, err
 	}
 	if len(result.Documents) != len(docIDs) {
@@ -595,6 +597,8 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 	}
 
 	var bulkBody bytes.Buffer
+	encoder := jsontext.NewEncoder(&bulkBody)
+	submittedIDs := make([]string, 0, len(updateRequests))
 	for _, updateReq := range updateRequests {
 		docID, ok := updateReq["id"].(string)
 		if !ok {
@@ -611,7 +615,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 				"_id":    docID,
 			},
 		}
-		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(metadata); err != nil {
+		if err := jsonv2.MarshalEncode(encoder, metadata); err != nil {
 			return nil, err
 		}
 
@@ -620,9 +624,10 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 			"doc":    document,
 			"upsert": document, // When the document does not exist, use the entire Document as the new document
 		}
-		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(updateDoc); err != nil {
+		if err := jsonv2.MarshalEncode(encoder, updateDoc); err != nil {
 			return nil, err
 		}
+		submittedIDs = append(submittedIDs, docID)
 	}
 
 	req := opensearchapi.BulkRequest{
@@ -642,7 +647,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 
 	// Check if any documents have failed to update
 	var result map[string]interface{}
-	if err := common.DecodeJSON(resp.Body, &result); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &result); err != nil {
 		return nil, err
 	}
 
@@ -650,14 +655,14 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName str
 	var errMsg string
 	if items, ok := result["items"].([]interface{}); ok {
 		for i, item := range items {
+			if i >= len(submittedIDs) {
+				return successDocIDs, fmt.Errorf("OpenSearch bulk update returned more items than submitted documents")
+			}
 			if itemMap, ok := item.(map[string]interface{}); ok {
 				if updateResult, ok := itemMap["update"].(map[string]interface{}); ok {
 					if status, ok := common.NumberAsInt64(updateResult["status"]); ok {
 						if status < 400 {
-							// The successfully extracted document ID
-							if docID, ok := updateRequests[i]["id"].(string); ok {
-								successDocIDs = append(successDocIDs, docID)
-							}
+							successDocIDs = append(successDocIDs, submittedIDs[i])
 						} else {
 							// Record error messages
 							if errMsg == "" {
@@ -684,6 +689,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName str
 	}
 
 	var bulkBody bytes.Buffer
+	encoder := jsontext.NewEncoder(&bulkBody)
 	for _, docID := range docIDs {
 		metadata := map[string]map[string]string{
 			"delete": {
@@ -691,7 +697,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName str
 				"_id":    docID,
 			},
 		}
-		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(metadata); err != nil {
+		if err := jsonv2.MarshalEncode(encoder, metadata); err != nil {
 			return err
 		}
 	}
@@ -711,7 +717,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName str
 		return fmt.Errorf("failed to delete documents: %s", resp.String())
 	}
 	var result map[string]any
-	if err := common.DecodeJSON(resp.Body, &result); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &result); err != nil {
 		return fmt.Errorf("decode delete documents response: %w", err)
 	}
 	if hasErrors, ok := result["errors"].(bool); ok && hasErrors {
@@ -765,7 +771,7 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexN
 	}
 	query := map[string]any{"query": filterQuery}
 
-	queryBytes, err := sonic.Marshal(query)
+	queryBytes, err := jsoncodec.Marshal(query)
 	if err != nil {
 		return nil, err
 	}
@@ -791,7 +797,7 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexN
 			Status int `json:"status"`
 		} `json:"failures"`
 	}
-	if err := common.DecodeJSON(resp.Body, &response); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &response); err != nil {
 		return nil, fmt.Errorf("invalid delete-by-query response: %w", err)
 	}
 	if response.Deleted == nil || response.VersionConflicts == nil || response.TimedOut == nil ||
@@ -995,7 +1001,7 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, indexNam
 			} `json:"index"`
 		} `json:"items"`
 	}
-	if err := common.DecodeJSON(response.Body, &decoded); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(response.Body), &decoded); err != nil {
 		return results, err
 	}
 	if len(decoded.Items) != len(documents) {

@@ -191,6 +191,14 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 			definition: map[string]any{"source_resource_id": "source-1"},
 		},
 		{
+			name:       "empty stored property containers preserve scanned statistics",
+			definition: map[string]any{"source_resource_id": "source-1"},
+			storedSchema: []*interfaces.Property{{
+				Name: "id", Type: interfaces.DataType_String,
+				Features: []interfaces.PropertyFeature{}, Attributes: map[string]any{},
+			}},
+		},
+		{
 			name: "preserves scanned statistics with a fixed filter",
 			definition: map[string]any{"source_resource_id": "source-1",
 				"filter_condition": map[string]any{"operation": "eq", "value": json.Number("1.0")}},
@@ -219,7 +227,7 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 			schema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String,
 				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
 			storedSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String,
-				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}},
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{}}}}},
 			requestSchema: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		},
 	} {

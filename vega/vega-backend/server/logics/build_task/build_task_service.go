@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -25,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -331,7 +331,7 @@ func ValidateKeys(resource *interfaces.Resource, keys []map[string]any) ([]map[s
 			}
 			tuple[position] = interfaces.KeyValue{Key: field, Value: normalized}
 		}
-		fingerprint, err := sonic.MarshalString(tuple)
+		fingerprint, err := jsoncodec.MarshalString(tuple)
 		if err != nil {
 			return nil, fmt.Errorf("could not encode keys[%d]", i)
 		}

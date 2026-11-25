@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -79,6 +80,14 @@ func TestUpdateResourceIndexName(t *testing.T) {
 }
 
 func TestGenerateDocumentID(t *testing.T) {
+	t.Run("preserves existing IDs for exact and escaped keys", func(t *testing.T) {
+		id, err := generateDocumentID([]interfaces.KeyValue{
+			{Key: "code", Value: "<&\u2028"},
+			{Key: "id", Value: json.Number("18446744073709551615")},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "a4a155bcfe38f3ad1283501a4700b5192446bd50967f49226bfeff8aac9e09c1", id)
+	})
 	keys := []interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 42}}
 
 	docID, err := generateDocumentID(keys)
@@ -148,7 +157,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 			encoded, err := json.Marshal(document)
 			require.NoError(t, err)
 			var stored map[string]any
-			require.NoError(t, common.UnmarshalJSON(encoded, &stored))
+			require.NoError(t, jsoncodec.Unmarshal(encoded, &stored))
 			assert.Contains(t, stored, "payload")
 			preview, err := common.JSONQueryValueText(stored["payload"])
 			require.NoError(t, err)

@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -85,7 +86,7 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 
 	// Parse the response data
 	smallModel := interfaces.SmallModel{}
-	if err := common.UnmarshalJSON(result, &smallModel); err != nil {
+	if err := jsoncodec.Unmarshal(result, &smallModel); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
 		logger.Errorf("Unmarshal model response failed: %v", err)
 		return nil, fmt.Errorf("unmarshal model response failed: %w", err)
@@ -147,7 +148,7 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 		} `json:"data"`
 	}
 
-	if err := common.UnmarshalJSON(result, &response); err != nil {
+	if err := jsoncodec.Unmarshal(result, &response); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal vector response failed")
 		logger.Errorf("Unmarshal vector response failed: %v", err)
 		return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
