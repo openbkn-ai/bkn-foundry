@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "migrations/bkn-backend/mariadb/0.2.2/init.sql"
 UPGRADE = SNAPSHOT.with_name("06-eval-tables.sql")
 EVAL_TABLES = {
+    "t_bkn_eval_trial_request",
     "t_bkn_eval_suite",
     "t_bkn_eval_suite_version",
     "t_bkn_eval_case",
