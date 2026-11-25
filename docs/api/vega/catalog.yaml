@@ -810,21 +810,21 @@ components:
           format: uri
           description: HTTP/HTTPS 服务根地址。HTTP 使用明文，HTTPS 要求 TLS 1.3。不得包含内嵌用户凭据、Query 或 fragment。
         options:
-          type: object
-          description: HTTP 连接与执行参数。数值选项使用整数字面量（如 30），拒绝 30.0 和 3e1。省略时使用默认值，未知选项忽略。不得作为模板变量引用，不包含凭据。
+          type: [object, "null"]
+          description: HTTP 连接与执行参数。数值选项使用整数字面量（如 30），拒绝 30.0 和 3e1。省略或传 null 时使用默认值，未知选项忽略。不得作为模板变量引用，不包含凭据。
           additionalProperties: true
           properties:
             timeout_seconds:
-              type: integer
+              type: [integer, "null"]
               minimum: 1
-              description: 每次出站调用超时（秒）；省略时默认 30 秒，固定上限为 300 秒。登录和业务 HTTP 请求分别计时，覆盖发送及响应正文读取；无登录时用于 TCP/TLS 探测。校验、构造和结果映射不计入该超时，流程沿用原始上下文的取消信号；连接测试入口不再额外创建超时。
+              description: 每次出站调用超时（秒）；省略或传 null 时默认 30 秒，固定上限为 300 秒。登录和业务 HTTP 请求分别计时，覆盖发送及响应正文读取；无登录时用于 TCP/TLS 探测。校验、构造和结果映射不计入该超时，流程沿用原始上下文的取消信号；连接测试入口不再额外创建超时。
             max_response_mib:
-              type: integer
+              type: [integer, "null"]
               minimum: 1
-              description: 单个解压后响应上限（MiB）；省略时默认 10 MiB，运行时上限为 50 MiB，默认值和上限由常量定义。
+              description: 单个解压后响应上限（MiB）；省略或传 null 时默认 10 MiB，运行时上限为 50 MiB，默认值和上限由常量定义。
         variables:
-          type: object
-          description: 自定义参数及凭据，每个成员为 value/sensitive 声明；模板以 {{ token }} 或 {{ __variables.token }} 引用实际值，不解析 value 中的模板文本。名称须以字母开头，后续只含字母、数字或下划线，不得与当前通用顶层字段或系统/模板保留名冲突。
+          type: [object, "null"]
+          description: 自定义参数及凭据，省略或传 null 表示未配置变量。每个成员为 value/sensitive 声明；模板以 {{ token }} 或 {{ __variables.token }} 引用实际值，不解析 value 中的模板文本。名称须以字母开头，后续只含字母、数字或下划线，不得与当前通用顶层字段或系统/模板保留名冲突。
           additionalProperties:
             $ref: "#/components/schemas/HTTPAPICatalogVariable"
           propertyNames:
@@ -833,8 +833,16 @@ components:
               - not:
                   enum: [base_url, options, variables, login_request]
         login_request:
-          description: 可选登录定义，复用公共 HTTP 操作结构，模板仅引用 Catalog variables；配置后在连接测试及业务请求前验证一次登录，禁止配置 Resource 业务 result_rows 或 result_total。
-          $ref: "resource.yaml#/components/schemas/HTTPOperationDefinition"
+          description: 可选登录定义，省略或传 null 表示未配置登录。复用公共 HTTP 操作结构，模板仅引用 Catalog variables；配置后在连接测试及业务请求前验证一次登录，禁止配置 Resource 业务 result_rows 或 result_total。
+          anyOf:
+            - $ref: "resource.yaml#/components/schemas/HTTPOperationDefinition"
+            - type: "null"
+          properties:
+            request:
+              properties:
+                parameters:
+                  items:
+                    required: [value]
     HTTPAPICatalogVariable:
       type: object
       description: |
@@ -881,6 +889,16 @@ components:
         - name
         - enabled
         - connector_type
+      if:
+        properties:
+          connector_type:
+            const: http
+      then:
+        properties:
+          connector_config:
+            anyOf:
+              - $ref: "#/components/schemas/HTTPAPIConnectorConfig"
+              - type: "null"
       properties:
         id:
           description: catalog ID；POST 时可省略由后端生成，PUT 时可省略并使用路径参数，显式提供时必须与路径参数一致；小写字母、数字、下划线、连字符，不能以下划线开头，最大长度 40
@@ -944,6 +962,15 @@ components:
       allOf:
         - $ref: "#/components/schemas/CatalogRequest"
         - type: object
+          if:
+            properties:
+              connector_type:
+                const: http
+          then:
+            required: [connector_config]
+            properties:
+              connector_config:
+                type: object
           properties:
             health_check_schedule:
               description: |
@@ -1062,6 +1089,14 @@ components:
       required:
         - connector_type
         - connector_config
+      if:
+        properties:
+          connector_type:
+            const: http
+      then:
+        properties:
+          connector_config:
+            $ref: "#/components/schemas/HTTPAPIConnectorConfig"
       properties:
         connector_type:
           description: 已注册且 enabled 的连接器类型标识；SQL Server 使用 `sqlserver`
