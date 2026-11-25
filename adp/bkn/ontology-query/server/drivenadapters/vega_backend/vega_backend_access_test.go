@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/smartystreets/goconvey/convey"
 	"go.opentelemetry.io/otel"
@@ -228,7 +228,7 @@ func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) 
 		convey.So(response.Paging.ExpiresAtSec, convey.ShouldNotBeNil)
 		convey.So(*response.Paging.ExpiresAtSec, convey.ShouldEqual, int64(12345))
 
-		wire, err := sonic.Marshal(response)
+		wire, err := jsoncodec.Marshal(response)
 		convey.So(err, convey.ShouldBeNil)
 		for _, literal := range expected {
 			convey.So(strings.Contains(string(wire), literal), convey.ShouldBeTrue)

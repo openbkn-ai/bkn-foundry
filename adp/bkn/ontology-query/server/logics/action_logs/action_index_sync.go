@@ -8,9 +8,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 var indexSyncMapping = map[string]any{"properties": map[string]any{
@@ -82,12 +82,12 @@ func (s *actionLogsService) ListIndexSync(ctx context.Context, now int64, limit 
 	}
 	jobs := make([]interfaces.ActionIndexSyncJob, 0, len(hits))
 	for _, hit := range hits {
-		data, err := sonic.Marshal(hit.Source)
+		data, err := jsoncodec.Marshal(hit.Source)
 		if err != nil {
 			return nil, err
 		}
 		var job interfaces.ActionIndexSyncJob
-		if err := common.UnmarshalJSON(data, &job); err != nil {
+		if err := jsoncodec.Unmarshal(data, &job); err != nil {
 			return nil, err
 		}
 		if job.Sync == nil || job.KNID == "" || job.ExecutionID == "" || job.Seq < 0 {
@@ -153,12 +153,12 @@ func (s *actionLogsService) RetryIndexSync(ctx context.Context, knID, execID str
 			return count, err
 		}
 		for _, hit := range hits {
-			data, err := sonic.Marshal(hit.Source)
+			data, err := jsoncodec.Marshal(hit.Source)
 			if err != nil {
 				return count, err
 			}
 			var job interfaces.ActionIndexSyncJob
-			if err := common.UnmarshalJSON(data, &job); err != nil {
+			if err := jsoncodec.Unmarshal(data, &job); err != nil {
 				return count, err
 			}
 			if job.KNID != knID || job.ExecutionID != execID {

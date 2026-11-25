@@ -14,10 +14,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -95,7 +95,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -122,7 +122,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -140,7 +140,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 			qas.EXPECT().AuthorizeObjectTypeQuery(gomock.Any(), knID, interfaces.MAIN_BRANCH, otID).
 				Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -265,7 +265,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByEx(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -278,7 +278,7 @@ func Test_RestHandler_GetObjectsInObjectTypeByEx(t *testing.T) {
 		Convey("失败 - Token验证失败", func() {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -326,7 +326,7 @@ func Test_RestHandler_GetObjectsInObjectType(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?branch=main", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -348,7 +348,7 @@ func Test_RestHandler_GetObjectsInObjectType(t *testing.T) {
 		})
 
 		Convey("失败 - includeTypeInfo参数无效", func() {
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?include_type_info=invalid", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -374,7 +374,7 @@ func Test_RestHandler_GetObjectsInObjectType(t *testing.T) {
 					Limit: 0,
 				},
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -398,7 +398,7 @@ func Test_RestHandler_GetObjectsInObjectType(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 
-			reqParamByte, _ := sonic.Marshal(objectQuery)
+			reqParamByte, _ := jsoncodec.Marshal(objectQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -460,7 +460,7 @@ func Test_RestHandler_GetObjectsPropertiesByIn(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -477,7 +477,7 @@ func Test_RestHandler_GetObjectsPropertiesByIn(t *testing.T) {
 				InstanceIdentities: []map[string]any{},
 				Properties:         []string{"prop1"},
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -495,7 +495,7 @@ func Test_RestHandler_GetObjectsPropertiesByIn(t *testing.T) {
 				},
 				Properties: []string{},
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -552,7 +552,7 @@ func Test_RestHandler_GetObjectsPropertiesByEx(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -565,7 +565,7 @@ func Test_RestHandler_GetObjectsPropertiesByEx(t *testing.T) {
 		Convey("失败 - Token验证失败", func() {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -614,7 +614,7 @@ func Test_RestHandler_GetObjectsProperties(t *testing.T) {
 				TotalCount: new(int64(1)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?branch=main", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -636,7 +636,7 @@ func Test_RestHandler_GetObjectsProperties(t *testing.T) {
 		})
 
 		Convey("失败 - includeTypeInfo参数无效", func() {
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?include_type_info=invalid", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -659,7 +659,7 @@ func Test_RestHandler_GetObjectsProperties(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			ots.EXPECT().GetObjectPropertyValue(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 
-			reqParamByte, _ := sonic.Marshal(propertyQuery)
+			reqParamByte, _ := jsoncodec.Marshal(propertyQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")

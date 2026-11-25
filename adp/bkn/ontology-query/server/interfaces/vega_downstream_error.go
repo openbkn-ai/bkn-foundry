@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // VegaDownstreamError preserves the status code and error body returned by vega-backend.
@@ -101,8 +101,23 @@ func (e *VegaDownstreamError) ClientMetadata() map[string]any {
 		return nil
 	}
 	field, fieldOK := e.Metadata["field"].(string)
-	limit, limitOK := e.Metadata["limit"].(float64)
-	if !fieldOK || strings.TrimSpace(field) == "" || !limitOK || math.IsNaN(limit) || math.IsInf(limit, 0) || limit <= 0 || limit > 9007199254740991 || math.Trunc(limit) != limit {
+	if !fieldOK || strings.TrimSpace(field) == "" {
+		return nil
+	}
+	var limit float64
+	switch value := e.Metadata["limit"].(type) {
+	case json.Number:
+		var err error
+		limit, err = value.Float64()
+		if err != nil {
+			return nil
+		}
+	case float64:
+		limit = value
+	default:
+		return nil
+	}
+	if math.IsNaN(limit) || math.IsInf(limit, 0) || limit <= 0 || limit > 9007199254740991 || math.Trunc(limit) != limit {
 		return nil
 	}
 	return map[string]any{"field": field, "limit": limit}
@@ -147,16 +162,16 @@ func NewVegaDownstreamError(statusCode int, raw string) *VegaDownstreamError {
 	de := &VegaDownstreamError{StatusCode: statusCode, Raw: raw}
 
 	var payload struct {
-		ErrorCode    string          `json:"error_code"`
-		Description  string          `json:"description"`
-		ErrorDetails string          `json:"error_details"`
-		Metadata     json.RawMessage `json:"metadata"`
+		ErrorCode    string `json:"error_code"`
+		Description  string `json:"description"`
+		ErrorDetails string `json:"error_details"`
+		Metadata     any    `json:"metadata"`
 	}
-	if err := sonic.Unmarshal([]byte(raw), &payload); err == nil {
+	if err := jsoncodec.Unmarshal([]byte(raw), &payload); err == nil {
 		de.ErrorCode = payload.ErrorCode
 		de.Description = payload.Description
 		de.Details = payload.ErrorDetails
-		_ = sonic.Unmarshal(payload.Metadata, &de.Metadata)
+		de.Metadata, _ = payload.Metadata.(map[string]any)
 	}
 	return de
 }

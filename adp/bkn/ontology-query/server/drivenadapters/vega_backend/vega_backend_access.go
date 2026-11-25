@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -134,7 +135,7 @@ func (v *vegaBackendAccess) GetResourceSchema(ctx context.Context,
 		return nil, interfaces.NewVegaDownstreamError(respCode, "")
 	}
 	var response interfaces.ResourceSchemaResponse
-	if err := common.UnmarshalJSON(respData, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respData, &response); err != nil {
 		return nil, fmt.Errorf("unmarshal GetResourceSchema response: %w", err)
 	}
 	if response.SchemaDefinition == nil {
@@ -178,7 +179,7 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	}
 	var response interfaces.DatasetQueryResponse
 	// Dynamic resource fields must keep their original JSON number representation.
-	if err := common.UnmarshalJSON(respData, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respData, &response); err != nil {
 		return nil, fmt.Errorf("unmarshal QueryResourceData response: %w", err)
 	}
 	return &response, nil

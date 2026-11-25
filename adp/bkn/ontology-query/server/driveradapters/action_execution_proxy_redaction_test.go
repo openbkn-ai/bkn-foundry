@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
@@ -29,7 +29,7 @@ func TestPublicActionExecutionRedactsProxySnapshot(t *testing.T) {
 	}
 
 	redacted := redactActionExecutionProxyContext(execution)
-	wire, err := sonic.Marshal(redacted)
+	wire, err := jsoncodec.Marshal(redacted)
 	if err != nil {
 		t.Fatal(err)
 	}

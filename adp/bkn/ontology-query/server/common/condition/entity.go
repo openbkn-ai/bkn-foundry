@@ -9,9 +9,8 @@ package condition
 import (
 	"reflect"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
 )
 
@@ -156,7 +155,7 @@ type CondCfg struct {
 	Operation    string     `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds     []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
 	ValueFrom    string     `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value        any        `json:"value,omitempty" mapstructure:"value"`
+	Value        any        `json:"value,omitzero" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:"-" mapstructure:",remain"`
 
@@ -174,14 +173,14 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 	}
 
 	// Serialize standard fields first.
-	data, err := sonic.Marshal(aux)
+	data, err := jsoncodec.Marshal(aux)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse into a standard map.
 	var result map[string]any
-	if err := common.UnmarshalJSON(data, &result); err != nil {
+	if err := jsoncodec.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +200,7 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 			delete(result, k)
 		}
 	}
-	return sonic.Marshal(result)
+	return jsoncodec.Marshal(result)
 }
 
 type DataProperty struct {

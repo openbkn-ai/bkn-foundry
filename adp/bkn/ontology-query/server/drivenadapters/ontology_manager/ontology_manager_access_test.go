@@ -15,8 +15,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
@@ -116,7 +116,7 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 			}{
 				ObjectTypes: []interfaces.ObjectType{objectType},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -242,7 +242,7 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 			}{
 				ObjectTypes: []interfaces.ObjectType{},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -286,7 +286,7 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 			}{
 				ObjectTypes: []interfaces.ObjectType{objectType},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -339,7 +339,7 @@ func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 			}{
 				RelationTypes: []interfaces.RelationType{relationType},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -484,7 +484,7 @@ func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 			}{
 				RelationTypes: []interfaces.RelationType{},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -531,7 +531,7 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			}{
 				ActionTypes: []interfaces.ActionType{actionType},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -698,7 +698,7 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			}{
 				ActionTypes: []interfaces.ActionType{},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -763,7 +763,7 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 			}{
 				TypePaths: []interfaces.RelationTypePath{typePath},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -805,7 +805,7 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 			}{
 				TypePaths: []interfaces.RelationTypePath{},
 			}
-			responseBytes, _ := sonic.Marshal(response)
+			responseBytes, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

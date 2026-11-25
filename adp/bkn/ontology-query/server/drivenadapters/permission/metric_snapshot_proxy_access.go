@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func NewMetricSnapshotProxyAccess(setting *common.AppSetting) interfaces.MetricSnapshotProxyAccess {
@@ -39,7 +39,7 @@ func (pa *permissionAccess) GetManagedProxy(ctx context.Context, proxyID string)
 		return nil, fmt.Errorf("invalid managed proxy state response: status %d", code)
 	}
 	var state interfaces.ManagedProxyAccountState
-	if err := sonic.Unmarshal(body, &state); err != nil {
+	if err := jsoncodec.Unmarshal(body, &state); err != nil {
 		return nil, fmt.Errorf("decode managed proxy state: %w", err)
 	}
 	return &state, nil

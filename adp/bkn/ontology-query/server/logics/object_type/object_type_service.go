@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/PaesslerAG/jsonpath"
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -649,7 +649,7 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 				}
 			}
 			params := map[string]any{}
-			err = sonic.Unmarshal([]byte(paramsJson), &params)
+			err = jsoncodec.Unmarshal([]byte(paramsJson), &params)
 			if err != nil {
 				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s paramtersJson to map, %s",
@@ -657,7 +657,7 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 			}
 
 			dynamicParams := map[string]any{}
-			err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
+			err = jsoncodec.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 			if err != nil {
 				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s dynamicParamsJson to map, %s",

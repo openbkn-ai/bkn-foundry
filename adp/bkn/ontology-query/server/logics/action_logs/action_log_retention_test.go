@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -179,7 +179,7 @@ func Test_cleanupExpired_SearchAfterKeepsDecodedSortValues(t *testing.T) {
 		_, err := svc.cleanupExpired(context.Background(), RetentionConfig{RetentionDays: 30, BatchSize: 1, MaxBatches: 5}, retentionNow)
 		So(err, ShouldBeNil)
 
-		wire, err := sonic.Marshal(second["search_after"])
+		wire, err := jsoncodec.Marshal(second["search_after"])
 		So(err, ShouldBeNil)
 		So(string(wire), ShouldEqual, `[1789000000000,"e2"]`)
 	})

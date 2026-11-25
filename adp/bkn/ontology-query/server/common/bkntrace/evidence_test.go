@@ -8,13 +8,33 @@ package bkntrace
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func TestHashValueUsesDeterministicJSONV2(t *testing.T) {
+	value := map[string]any{
+		"data": map[string]any{
+			"slice":  []string(nil),
+			"number": json.Number("9007199254740993"),
+			"map":    map[string]any(nil),
+		},
+		"html": "<>&",
+	}
+	sum := sha256.Sum256([]byte(`{"data":{"map":{},"number":9007199254740993,"slice":[]},"html":"<>&"}`))
+	want := fmt.Sprintf("sha256:%x", sum)
+	for range 16 {
+		if got := HashValue(value); got != want {
+			t.Fatalf("HashValue() = %q, want %q", got, want)
+		}
+	}
+}
 
 type captureEvidenceSender struct{ records []evidencepublisher.Record }
 

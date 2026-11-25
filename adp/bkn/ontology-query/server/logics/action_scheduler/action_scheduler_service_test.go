@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -393,12 +394,12 @@ func Test_ObjectExecutionResult(t *testing.T) {
 				Status:     interfaces.ObjectStatusSuccess,
 				Parameters: map[string]any{"target_ip": "192.168.1.1"},
 				Result:     map[string]any{"message": "OK"},
-				DurationMs: 1200,
+				DurationMs: new(int64(1200)),
 			}
 
 			So(result.Status, ShouldEqual, "success")
 			So(result.ErrorMessage, ShouldEqual, "")
-			So(result.DurationMs, ShouldEqual, int64(1200))
+			So(result.DurationMs, ShouldResemble, new(int64(1200)))
 		})
 
 		Convey("should represent failed result", func() {
@@ -411,7 +412,7 @@ func Test_ObjectExecutionResult(t *testing.T) {
 				Status:       interfaces.ObjectStatusFailed,
 				Parameters:   map[string]any{"target_ip": "192.168.1.2"},
 				ErrorMessage: "Connection timeout",
-				DurationMs:   5000,
+				DurationMs:   new(int64(5000)),
 			}
 
 			So(result.Status, ShouldEqual, "failed")
@@ -965,6 +966,15 @@ func Test_executeAsync_PerInstanceCancelledMidway(t *testing.T) {
 		So(stored[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
 		So(stored[1].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
 		So(stored[2].Status, ShouldEqual, interfaces.ObjectStatusCancelled)
+		for _, skipped := range stored[1:] {
+			raw, err := jsoncodec.Marshal(skipped)
+			So(err, ShouldBeNil)
+			var fields map[string]json.RawMessage
+			So(json.Unmarshal(raw, &fields), ShouldBeNil)
+			So(fields, ShouldNotContainKey, "start_time")
+			So(fields, ShouldNotContainKey, "end_time")
+			So(fields, ShouldNotContainKey, "duration_ms")
+		}
 	})
 }
 
