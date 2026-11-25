@@ -8,6 +8,7 @@ package action_scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -20,6 +21,25 @@ import (
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
+
+func TestDuplicateFingerprintPreservesHistoricalDigest(t *testing.T) {
+	instances := []interfaces.ObjectSystemInfo{{
+		InstanceIdentity: map[string]any{"z": json.Number("9007199254740993"), "a": "<id>\u2028"},
+	}}
+	params := map[string]any{
+		"z":    []string(nil),
+		"n":    json.Number("9007199254740993"),
+		"html": "<>&\u2028\u2029",
+	}
+	got, err := computeDuplicateFingerprint(instances, params, map[string]any{"a": nil, "scope": "a&b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "46e998cb3d091a160f2aea9f7ae2bf7c9f05f655e83a8980072b0da5350c49a1"
+	if got != want {
+		t.Fatalf("computeDuplicateFingerprint() = %q, want %q", got, want)
+	}
+}
 
 func Test_computeDuplicateFingerprint(t *testing.T) {
 	Convey("computeDuplicateFingerprint is stable across order and key order", t, func() {

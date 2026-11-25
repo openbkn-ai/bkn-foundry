@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // Prepare records only explicit committed changes. Object identities are never
@@ -51,7 +51,7 @@ func Prepare(result *interfaces.ObjectExecutionResult, executor interfaces.Accou
 			Keys       []map[string]any `json:"keys"`
 		} `json:"affected_resources"`
 	}
-	if common.UnmarshalJSON(encoded, &changes) != nil || !changes.Committed || len(changes.Resources) == 0 || len(changes.Resources) > 16 {
+	if jsoncodec.Unmarshal(encoded, &changes) != nil || !changes.Committed || len(changes.Resources) == 0 || len(changes.Resources) > 16 {
 		return
 	}
 	total := 0
@@ -106,7 +106,7 @@ func PrepareFunction(result *interfaces.ObjectExecutionResult, executor interfac
 		return
 	}
 	var output map[string]any
-	if common.UnmarshalJSON([]byte(stdout), &output) != nil {
+	if jsoncodec.Unmarshal([]byte(stdout), &output) != nil {
 		return
 	}
 	copy := *result

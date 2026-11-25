@@ -28,7 +28,7 @@ type ObjectMetricQueryRequestV1 struct {
 // ObjectMetricHavingV1 filters the final metric value, never source rows.
 type ObjectMetricHavingV1 struct {
 	Operator string `json:"operator"`
-	Value    any    `json:"value,omitempty"`
+	Value    any    `json:"value,omitzero"`
 	UnitCode string `json:"unit_code,omitempty"`
 }
 
@@ -92,7 +92,7 @@ type ObjectMetricDataEntryV1 struct {
 	DimensionCells   []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
 	Time             *int64                        `json:"time,omitempty"`
 	TimeBucket       *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
-	Value            any                           `json:"value,omitempty"`
+	Value            any                           `json:"value,omitzero"`
 	Status           string                        `json:"status"`
 	BucketKey        string                        `json:"bucket_key,omitempty"`
 	AvailableActions []string                      `json:"available_actions,omitempty"`
@@ -124,7 +124,7 @@ type ObjectMetricParticipantV1 struct {
 type ObjectMetricDrillThroughV1 struct {
 	Participants []ObjectMetricParticipantV1 `json:"participants"`
 	NextCursor   string                      `json:"next_cursor,omitempty"`
-	BucketValue  any                         `json:"bucket_value,omitempty"`
+	BucketValue  any                         `json:"bucket_value,omitzero"`
 	EvaluatedAt  int64                       `json:"evaluated_at"`
 	Status       string                      `json:"status"`
 	Warnings     []string                    `json:"warnings,omitempty"`
@@ -173,7 +173,7 @@ type ObjectMetricExpressionV1 struct {
 	NodeType        string                     `json:"node_type"`
 	PropertyRef     *ObjectMetricPropertyRefV1 `json:"property_ref,omitempty"`
 	DependencyAlias string                     `json:"dependency_alias,omitempty"`
-	Value           any                        `json:"value,omitempty"`
+	Value           any                        `json:"value,omitzero"`
 	ValueType       string                     `json:"value_type,omitempty"`
 	Function        string                     `json:"function,omitempty"`
 	Operator        string                     `json:"operator,omitempty"`
@@ -186,7 +186,7 @@ type ObjectMetricOperandV1 struct {
 	Source      string                     `json:"source"`
 	PropertyRef *ObjectMetricPropertyRefV1 `json:"property_ref,omitempty"`
 	ValueType   string                     `json:"value_type,omitempty"`
-	Value       any                        `json:"value,omitempty"`
+	Value       any                        `json:"value,omitzero"`
 }
 
 type ObjectMetricConditionV1 struct {

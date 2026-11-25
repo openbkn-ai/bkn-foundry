@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -167,7 +167,7 @@ func (aoa *agentOperatorAccess) GetBoxMetadataType(ctx context.Context, boxID, t
 			ToolID string `json:"tool_id"`
 		} `json:"tools"`
 	}
-	if err := sonic.Unmarshal(data, &box); err != nil {
+	if err := jsoncodec.Unmarshal(data, &box); err != nil {
 		return "", err
 	}
 	found := false
@@ -237,7 +237,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 
 	if respCode != http.StatusOK {
 		var opError integrationError
-		if err = sonic.Unmarshal(result, &opError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &opError); err != nil {
 			logger.Errorf("unmarshal ToolError failed: %v", err)
 			return toolResult, err
 		}
@@ -250,7 +250,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
 			boxID, toolID, httpErr.HTTPCode, httpErr.ErrorCode)
 		var body any
-		_ = sonic.Unmarshal(result, &body)
+		_ = jsoncodec.Unmarshal(result, &body)
 		return toolResult, withPlatformErrorCode(
 			fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode), body)
 	}
@@ -259,7 +259,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 		return toolResult, fmt.Errorf("proxy tool execution returned an empty response")
 	}
 
-	if err := common.UnmarshalJSON(result, &toolResult); err != nil {
+	if err := jsoncodec.Unmarshal(result, &toolResult); err != nil {
 		logger.Errorf("Unmarshal tool execution result failed, %s", err)
 		return toolResult, err
 	}
@@ -317,7 +317,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 
 	if respCode != http.StatusOK {
 		var opError integrationError
-		if err = sonic.Unmarshal(result, &opError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &opError); err != nil {
 			logger.Errorf("unmarshal integration error failed: %v\n", err)
 			return mcpResult, err
 		}
@@ -336,7 +336,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 		return mcpResult, fmt.Errorf("proxy MCP execution returned an empty response")
 	}
 
-	if err := common.UnmarshalJSON(result, &mcpResult); err != nil {
+	if err := jsoncodec.Unmarshal(result, &mcpResult); err != nil {
 		logger.Errorf("Unmarshal MCP execution result failed, %s", err)
 		return mcpResult, err
 	}
@@ -387,7 +387,7 @@ func (r mcpCallToolResult) normalize() map[string]any {
 
 	joined := strings.Join(texts, "\n")
 	var parsed any
-	if err := common.UnmarshalJSON([]byte(joined), &parsed); err == nil {
+	if err := jsoncodec.Unmarshal([]byte(joined), &parsed); err == nil {
 		switch v := parsed.(type) {
 		case map[string]any:
 			return v

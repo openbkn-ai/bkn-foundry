@@ -8,6 +8,7 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 const (
@@ -91,7 +92,8 @@ func getBknSafe(ctx context.Context, client *http.Client, url, authorization str
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxBknSafeResponseBytes))
 		return fmt.Errorf("BKN Safe returned status %d", response.StatusCode)
 	}
-	return sonic.ConfigDefault.NewDecoder(io.LimitReader(response.Body, maxBknSafeResponseBytes)).Decode(target)
+	decoder := jsontext.NewDecoder(io.LimitReader(response.Body, maxBknSafeResponseBytes))
+	return jsoncodec.UnmarshalDecode(decoder, target)
 }
 
 func builtInRoles(values []string) []string {

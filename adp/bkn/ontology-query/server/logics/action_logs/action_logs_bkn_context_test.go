@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -47,17 +47,22 @@ func Test_CreateExecution_StoresBKNContextAndMapsItAsKeyword(t *testing.T) {
 		So(props["interaction_id"], ShouldResemble, map[string]any{"type": "keyword"})
 		So(props["governance_request_id"], ShouldResemble, governanceRequestMapping)
 
-		raw, err := sonic.Marshal(stored[0])
+		raw, err := jsoncodec.Marshal(stored[0])
 		So(err, ShouldBeNil)
 		var doc map[string]any
-		So(sonic.Unmarshal(raw, &doc), ShouldBeNil)
+		So(jsoncodec.Unmarshal(raw, &doc), ShouldBeNil)
 		So(doc["conversation_id"], ShouldEqual, "conv-1")
 		So(doc["interaction_id"], ShouldEqual, "int:1")
+		for _, key := range paginationMetadataKeys {
+			So(doc, ShouldNotContainKey, key)
+		}
+		So(doc, ShouldNotContainKey, "end_time")
+		So(doc, ShouldNotContainKey, "duration_ms")
 
 		// An execution without ids omits both fields.
-		raw, _ = sonic.Marshal(stored[1])
+		raw, _ = jsoncodec.Marshal(stored[1])
 		doc = map[string]any{}
-		So(sonic.Unmarshal(raw, &doc), ShouldBeNil)
+		So(jsoncodec.Unmarshal(raw, &doc), ShouldBeNil)
 		So(doc, ShouldNotContainKey, "conversation_id")
 		So(doc, ShouldNotContainKey, "interaction_id")
 	})

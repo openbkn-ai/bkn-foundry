@@ -10,6 +10,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"sort"
@@ -17,13 +20,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
-var canonicalJSON = sonic.Config{SortMapKeys: true}.Froze()
+// Match the original JSON encoding of fingerprints stored with action executions.
+var duplicateFingerprintOptions = jsonv2.JoinOptions(
+	json.DefaultOptionsV1(),
+	jsontext.EscapeForHTML(false),
+	jsontext.EscapeForJS(false),
+)
 
 // Environment variable for duplicate execution window (seconds).
 // Set to 0 or a negative value to disable duplicate detection.
@@ -49,14 +57,14 @@ func init() {
 }
 
 // computeDuplicateFingerprint returns a stable SHA-256 hex digest of the resolved
-// instance set plus dynamic_params. Instance map keys are ordered by encoding/json;
+// instance set plus dynamic_params. Instance map keys are ordered during encoding;
 // instance digests are sorted so request order does not matter. dynamic_params are
 // included so unbound / virtual-instance actions (empty identity) with different
 // inputs are not incorrectly treated as duplicates.
 func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any, executionContext ...any) (string, error) {
 	parts := make([]string, 0, len(instances)+1)
 	for _, inst := range instances {
-		b, err := canonicalJSON.Marshal(inst.InstanceIdentity)
+		b, err := jsoncodec.Marshal(inst.InstanceIdentity, duplicateFingerprintOptions)
 		if err != nil {
 			return "", fmt.Errorf("marshal instance identity: %w", err)
 		}
@@ -69,13 +77,13 @@ func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynami
 	if len(dynamicParams) > 0 {
 		fingerprintParams = dynamicParams
 	}
-	paramsJSON, err := canonicalJSON.Marshal(fingerprintParams)
+	paramsJSON, err := jsoncodec.Marshal(fingerprintParams, duplicateFingerprintOptions)
 	if err != nil {
 		return "", fmt.Errorf("marshal dynamic_params: %w", err)
 	}
 	parts = append(parts, "dynamic_params:"+string(paramsJSON))
 	if len(executionContext) > 0 {
-		encoded, err := canonicalJSON.Marshal(executionContext)
+		encoded, err := jsoncodec.Marshal(executionContext, duplicateFingerprintOptions)
 		if err != nil {
 			return "", fmt.Errorf("marshal action context: %w", err)
 		}

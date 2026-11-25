@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -823,11 +823,11 @@ func indirectBackingResource(relationType interfaces.RelationType) (interfaces.R
 			return interfaces.ResourceInfo{}, false, nil
 		}
 		var decoded interfaces.InDirectMapping
-		data, err := sonic.Marshal(rules)
+		data, err := jsoncodec.Marshal(rules)
 		if err != nil {
 			return interfaces.ResourceInfo{}, true, err
 		}
-		if err := sonic.Unmarshal(data, &decoded); err != nil {
+		if err := jsoncodec.Unmarshal(data, &decoded); err != nil {
 			return interfaces.ResourceInfo{}, true, err
 		}
 		if decoded.BackingDataSource == nil {

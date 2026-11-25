@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -69,7 +70,11 @@ func Test_AppendResults_StoresOneDocumentPerResult(t *testing.T) {
 				return nil
 			}).Times(3)
 
-		err := svc.AppendResults(context.Background(), "kn_1", "exec_1", 100, resultsOf(1201, interfaces.ObjectStatusSuccess))
+		results := resultsOf(1201, interfaces.ObjectStatusSuccess)
+		results[0].StartTime = 1700000000000
+		results[0].EndTime = results[0].StartTime
+		results[0].DurationMs = new(int64(0))
+		err := svc.AppendResults(context.Background(), "kn_1", "exec_1", 100, results)
 		So(err, ShouldBeNil)
 
 		So(len(batches), ShouldEqual, 3)
@@ -85,6 +90,11 @@ func Test_AppendResults_StoresOneDocumentPerResult(t *testing.T) {
 		So(first.Seq, ShouldEqual, 100)
 		So(first.Status, ShouldEqual, interfaces.ObjectStatusSuccess)
 		So(first.InstanceID, ShouldEqual, "i_0")
+		raw, err := jsoncodec.Marshal(first)
+		So(err, ShouldBeNil)
+		var fields map[string]json.RawMessage
+		So(json.Unmarshal(raw, &fields), ShouldBeNil)
+		So(string(fields["duration_ms"]), ShouldEqual, "0")
 
 		// The index is known to exist from now on: no further existence checks.
 		osa.EXPECT().BulkIndexDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -221,10 +231,70 @@ func Test_GetExecution_ReadsResultsPageFromIndex(t *testing.T) {
 			KNID: "kn_1", LogID: "exec_1", ResultsLimit: 10,
 		})
 		So(err, ShouldBeNil)
-		So(exec.ResultsTotal, ShouldEqual, 8808)
-		So(exec.ResultsLimit, ShouldEqual, 10)
+		So(exec.ResultsTotal, ShouldResemble, new(8808))
+		So(exec.ResultsLimit, ShouldResemble, new(10))
 		So(len(exec.Results), ShouldEqual, 1)
 		So(exec.ActionTypeSnapshot["parameters"].([]any)[0].(map[string]any)["value"], ShouldEqual, json.Number("9007199254740993"))
 		So(exec.Results[0].Result.(map[string]any)["payload"].(map[string]any)["large_integer"], ShouldEqual, json.Number("9007199254740993"))
 	})
+}
+
+func TestGetExecutionIncludesKnownZeroPagination(t *testing.T) {
+	svc, osa := newWriteTestService(t)
+	osa.EXPECT().IndexExists(gomock.Any(), "ontology_action_executions_kn_1").Return(true, nil)
+	osa.EXPECT().SearchData(gomock.Any(), "ontology_action_executions_kn_1", gomock.Any()).
+		Return([]interfaces.Hit{{Source: map[string]any{"id": "exec_1", "status": "pending"}}}, nil)
+	osa.EXPECT().IndexExists(gomock.Any(), interfaces.ActionExecutionResultsIndex).Return(false, nil)
+
+	exec, err := svc.GetExecution(context.Background(), &interfaces.ActionLogDetailQuery{KNID: "kn_1", LogID: "exec_1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := jsoncodec.Marshal(exec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"results_total": "0", "results_offset": "0", "results_limit": "100"} {
+		if got := string(fields[name]); got != want {
+			t.Errorf("%s = %q, want %q (JSON: %s)", name, got, want, raw)
+		}
+	}
+}
+
+func TestGetExecutionRequiresResultCount(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{name: "explicit zero", body: `{"count":0}`},
+		{name: "missing", body: `{}`, wantErr: true},
+		{name: "null", body: `{"count":null}`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, osa := newWriteTestService(t)
+			svc.resultsIndexReady.Store(true)
+			osa.EXPECT().IndexExists(gomock.Any(), "ontology_action_executions_kn_1").Return(true, nil)
+			osa.EXPECT().SearchData(gomock.Any(), "ontology_action_executions_kn_1", gomock.Any()).
+				Return([]interfaces.Hit{{Source: map[string]any{"id": "exec_1"}}}, nil)
+			osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil)
+			osa.EXPECT().Count(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).
+				Return([]byte(tc.body), nil)
+
+			exec, err := svc.GetExecution(context.Background(), &interfaces.ActionLogDetailQuery{KNID: "kn_1", LogID: "exec_1"})
+			if tc.wantErr {
+				if err == nil || exec != nil {
+					t.Fatalf("GetExecution() = (%v, %v), want a count error", exec, err)
+				}
+				return
+			}
+			if err != nil || exec == nil || exec.ResultsTotal == nil || *exec.ResultsTotal != 0 {
+				t.Fatalf("GetExecution() = (%v, %v), want a known zero total", exec, err)
+			}
+		})
+	}
 }

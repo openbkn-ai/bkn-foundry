@@ -118,9 +118,9 @@ type PathsEntries struct {
 }
 
 type ObjectSystemInfo struct {
-	InstanceID       any            `json:"_instance_id,omitempty"`
+	InstanceID       any            `json:"_instance_id,omitzero"`
 	InstanceIdentity map[string]any `json:"_instance_identity,omitempty"`
-	Display          any            `json:"_display,omitempty"`
+	Display          any            `json:"_display,omitzero"`
 }
 
 // Object information in an object subgraph.

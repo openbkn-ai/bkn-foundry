@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -66,7 +66,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe resource-filter returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe resource-filter response: %w", err)
 	}
 	if response.Resources == nil {
@@ -97,7 +97,7 @@ func (pa *permissionAccess) CheckPermissions(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe checks returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe checks response: %w", err)
 	}
 	if response.Results == nil {
@@ -128,7 +128,7 @@ func (pa *permissionAccess) ResolvePropertyLevels(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe property-levels returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe property-levels response: %w", err)
 	}
 	if response.Entries == nil {
@@ -159,7 +159,7 @@ func (pa *permissionAccess) ResolveRowFilters(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe row-filters returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe row-filters response: %w", err)
 	}
 	if response.Entries == nil {

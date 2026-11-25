@@ -5,13 +5,14 @@
 package driveradapters
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -59,7 +60,7 @@ func Test_RestHandler_QueryActionLogResultsByIn(t *testing.T) {
 			w := get("?offset=200&limit=50&status=failed")
 			So(w.Code, ShouldEqual, http.StatusOK)
 			var body interfaces.ActionExecutionResultList
-			So(sonic.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			So(jsoncodec.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
 			So(body.TotalCount, ShouldEqual, 251)
 			So(body.Entries[0].ErrorMessage, ShouldEqual, "boom")
 		})
@@ -72,6 +73,33 @@ func Test_RestHandler_QueryActionLogResultsByIn(t *testing.T) {
 			als.EXPECT().QueryResults(gomock.Any(), &interfaces.ActionResultsQuery{KNID: "kn_1", LogID: "exec_1", Limit: 1000}).
 				Return(&interfaces.ActionExecutionResultList{}, nil)
 			So(get("?limit=5000").Code, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("returns explicitly empty action results", func() {
+			als.EXPECT().QueryResults(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecutionResultList{
+				Entries: []interfaces.ObjectExecutionResult{
+					{Status: "success", Result: ""},
+					{Status: "success", Result: []any{}},
+					{Status: "success", Result: map[string]any{}},
+					{Status: "success", Result: 0},
+					{Status: "pending"},
+				},
+			}, nil)
+
+			w := get("")
+			So(w.Code, ShouldEqual, http.StatusOK)
+			var body struct {
+				Entries []struct {
+					Result json.RawMessage `json:"result"`
+				} `json:"entries"`
+			}
+			So(jsoncodec.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			So(body.Entries, ShouldHaveLength, 5)
+			So(string(body.Entries[0].Result), ShouldEqual, `""`)
+			So(string(body.Entries[1].Result), ShouldEqual, `[]`)
+			So(string(body.Entries[2].Result), ShouldEqual, `{}`)
+			So(string(body.Entries[3].Result), ShouldEqual, `0`)
+			So(body.Entries[4].Result, ShouldBeNil)
 		})
 
 		Convey("rejects a page beyond the result window, a negative offset and an unknown status", func() {

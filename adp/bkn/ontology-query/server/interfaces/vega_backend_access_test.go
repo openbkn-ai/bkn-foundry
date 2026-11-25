@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func TestDatasetQueryResponsePreservesTotalPresenceAndNumbers(t *testing.T) {
@@ -23,7 +23,7 @@ func TestDatasetQueryResponsePreservesTotalPresenceAndNumbers(t *testing.T) {
 		t.Run(total.name, func(t *testing.T) {
 			input := `{"entries":[{"id":9007199254740993,"amount":1234567890123456.78}]` + total.field + `}`
 			var response DatasetQueryResponse
-			if err := common.UnmarshalJSON([]byte(input), &response); err != nil {
+			if err := jsoncodec.Unmarshal([]byte(input), &response); err != nil {
 				t.Fatal(err)
 			}
 			if (response.TotalCount == nil) != (total.want == nil) || total.want != nil && *response.TotalCount != *total.want {

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -108,7 +108,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 	if respCode != http.StatusOK {
 
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
@@ -144,7 +144,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		ObjectTypes []interfaces.ObjectType `json:"entries"`
 	}
 
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal object type info failed")
@@ -194,7 +194,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 	}
 	if respCode != http.StatusOK {
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(result, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(result, &baseError); err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal BaseError failed")
 			return nil, err
 		}
@@ -206,7 +206,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 		return nil, fmt.Errorf("object metric execution context response is empty")
 	}
 	var executionContext interfaces.ObjectMetricExecutionContextV1
-	if err := common.UnmarshalJSON(result, &executionContext); err != nil {
+	if err := jsoncodec.Unmarshal(result, &executionContext); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal execution context failed")
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 	if respCode != http.StatusOK {
 
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
@@ -296,7 +296,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 	var response struct {
 		TypePaths []interfaces.RelationTypePath `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal object type info failed")
@@ -331,21 +331,21 @@ func decodeRelationTypeMappingRules(relationType *interfaces.RelationType) error
 	if relationType == nil || relationType.MappingRules == nil {
 		return nil
 	}
-	jsonData, err := sonic.Marshal(relationType.MappingRules)
+	jsonData, err := jsoncodec.Marshal(relationType.MappingRules)
 	if err != nil {
 		return fmt.Errorf("derived Config Marshal error: %s", err.Error())
 	}
 	switch relationType.Type {
 	case interfaces.RELATION_TYPE_DIRECT:
 		var directMapping []interfaces.Mapping
-		if err := sonic.Unmarshal(jsonData, &directMapping); err != nil {
+		if err := jsoncodec.Unmarshal(jsonData, &directMapping); err != nil {
 			return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 		}
 		relationType.MappingRules = directMapping
 		return nil
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		var filteredCrossJoin interfaces.FilteredCrossJoinMapping
-		if err := sonic.Unmarshal(jsonData, &filteredCrossJoin); err != nil {
+		if err := jsoncodec.Unmarshal(jsonData, &filteredCrossJoin); err != nil {
 			return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 		}
 		relationType.MappingRules = &filteredCrossJoin
@@ -365,7 +365,7 @@ func decodeRelationTypeMappingRules(relationType *interfaces.RelationType) error
 		return nil
 	}
 	var indirectMapping interfaces.InDirectMapping
-	if err := sonic.Unmarshal(jsonData, &indirectMapping); err != nil {
+	if err := jsoncodec.Unmarshal(jsonData, &indirectMapping); err != nil {
 		return fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 	}
 	relationType.MappingRules = &indirectMapping
@@ -432,7 +432,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	if respCode != http.StatusOK {
 
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
@@ -466,7 +466,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	var response struct {
 		RelationTypes []interfaces.RelationType `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal relation type info failed")
@@ -546,7 +546,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 	if respCode != http.StatusOK {
 
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaseError failed")
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaseError failed: %v", err), err)
 			return nil, err
@@ -567,7 +567,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 	var response struct {
 		RelationTypes []interfaces.RelationType `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal relation types info failed")
 		otellog.LogError(ctx, fmt.Sprintf("Unmalshal relation types info failed: %v", err), err)
 		return nil, err
@@ -648,7 +648,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	if respCode != http.StatusOK {
 
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
@@ -681,7 +681,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var response struct {
 		ActionTypes []interfaces.ActionType `json:"entries"`
 	}
-	if err = common.UnmarshalJSON(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal action type info failed")
@@ -699,7 +699,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	var rawResponse struct {
 		Entries []map[string]any `json:"entries"`
 	}
-	if err = common.UnmarshalJSON(result, &rawResponse); err != nil {
+	if err = jsoncodec.Unmarshal(result, &rawResponse); err != nil {
 		logger.Errorf("unmalshal raw action type info failed: %v\n", err)
 		// Still return the parsed struct, but leave raw data as nil.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
@@ -755,7 +755,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 	if respCode != http.StatusOK {
 		logger.Errorf("GetRiskTypesByIDs failed: %v", result)
 		var baseError httperrors.BaseError
-		if err = sonic.Unmarshal(result, &baseError); err != nil {
+		if err = jsoncodec.Unmarshal(result, &baseError); err != nil {
 			return nil, fmt.Errorf("decode risk types error response: %w", err)
 		}
 		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_RiskType_InternalError_GetRiskTypesByIDsFailed, baseError)
@@ -765,7 +765,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 	var response struct {
 		Entries []interfaces.RiskType `json:"entries"`
 	}
-	if err = sonic.Unmarshal(result, &response); err != nil {
+	if err = jsoncodec.Unmarshal(result, &response); err != nil {
 		logger.Errorf("Unmarshal risk types failed: %v", err)
 		return nil, fmt.Errorf("unmarshal risk types failed: %w", err)
 	}
@@ -780,7 +780,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 // not exist) rather than about the definition, so the caller is not told the definition is missing.
 func versionRefusal(ctx context.Context, body []byte) *httperrors.HTTPError {
 	var baseError httperrors.BaseError
-	if len(body) == 0 || sonic.Unmarshal(body, &baseError) != nil || !oerrors.IsPassThroughKNVersionError(baseError.ErrorCode) {
+	if len(body) == 0 || jsoncodec.Unmarshal(body, &baseError) != nil || !oerrors.IsPassThroughKNVersionError(baseError.ErrorCode) {
 		return nil
 	}
 	return httperrors.NewHTTPError(ctx, http.StatusNotFound, baseError.ErrorCode)

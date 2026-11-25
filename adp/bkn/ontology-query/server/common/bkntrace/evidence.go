@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
-
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 const (
@@ -107,7 +107,8 @@ type eventContext struct {
 }
 
 func HashValue(value any) string {
-	raw, err := sonic.ConfigStd.Marshal(value)
+	// Keep the JSON representation used by existing evidence hashes.
+	raw, err := jsoncodec.Marshal(value, json.DefaultOptionsV1())
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}

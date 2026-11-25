@@ -9,8 +9,10 @@ package action_logs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -61,8 +63,9 @@ func Test_mapToActionExecution(t *testing.T) {
 
 		Convey("should handle results array", func() {
 			m := map[string]any{
-				"id":     "exec_123",
-				"status": "completed",
+				"id":          "exec_123",
+				"status":      "completed",
+				"duration_ms": json.Number("0"),
 				"results": []any{
 					map[string]any{
 						"_instance_identity": map[string]any{"pod_ip": "192.168.1.1"},
@@ -75,9 +78,15 @@ func Test_mapToActionExecution(t *testing.T) {
 			exec, err := mapToActionExecution(m)
 
 			So(err, ShouldBeNil)
+			So(exec.DurationMs, ShouldResemble, new(int64(0)))
+			raw, err := jsoncodec.Marshal(exec)
+			So(err, ShouldBeNil)
+			var fields map[string]json.RawMessage
+			So(json.Unmarshal(raw, &fields), ShouldBeNil)
+			So(string(fields["duration_ms"]), ShouldEqual, "0")
 			So(len(exec.Results), ShouldEqual, 1)
 			So(exec.Results[0].Status, ShouldEqual, "success")
-			So(exec.Results[0].DurationMs, ShouldEqual, 1200)
+			So(exec.Results[0].DurationMs, ShouldResemble, new(int64(1200)))
 		})
 
 		Convey("should handle empty map", func() {
@@ -173,6 +182,51 @@ func Test_QueryExecutions_IndexNotExists_ReturnsEmpty(t *testing.T) {
 	})
 }
 
+func TestQueryExecutionsOnlyReportsKnownTotals(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		indexExists bool
+		needTotal   bool
+		countBody   string
+		countErr    error
+		want        string
+	}{
+		{name: "not requested", indexExists: true},
+		{name: "index absent and count not requested"},
+		{name: "index absent", needTotal: true, want: "0"},
+		{name: "known zero", indexExists: true, needTotal: true, countBody: `{"count":0}`, want: "0"},
+		{name: "known positive", indexExists: true, needTotal: true, countBody: `{"count":3}`, want: "3"},
+		{name: "count missing", indexExists: true, needTotal: true, countBody: `{}`},
+		{name: "count failed", indexExists: true, needTotal: true, countErr: errors.New("count unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, osa := newWriteTestService(t)
+			osa.EXPECT().IndexExists(gomock.Any(), gomock.Any()).Return(tc.indexExists, nil)
+			if tc.indexExists {
+				osa.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+				if tc.needTotal {
+					osa.EXPECT().Count(gomock.Any(), gomock.Any(), gomock.Any()).Return([]byte(tc.countBody), tc.countErr)
+				}
+			}
+			result, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{KNID: "kn_1", NeedTotal: tc.needTotal})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := jsoncodec.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(fields["total_count"]); got != tc.want {
+				t.Fatalf("total_count = %q, want %q (JSON: %s)", got, tc.want, raw)
+			}
+		})
+	}
+}
+
 func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
 	Convey("QueryExecutions must not read per-instance results from OpenSearch", t, func() {
 		ctrl := gomock.NewController(t)
@@ -183,19 +237,34 @@ func Test_QueryExecutions_ExcludesResultsFromSource(t *testing.T) {
 		mockOSA.EXPECT().SearchData(gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, q any) ([]interfaces.Hit, error) {
 				captured, _ = q.(map[string]any)
-				return []interfaces.Hit{{Source: map[string]any{
-					"id":             "exec_123",
-					"status":         "completed",
-					"dynamic_params": map[string]any{"large_integer": json.Number("9007199254740993")},
-				}}}, nil
+				return []interfaces.Hit{
+					{Source: map[string]any{
+						"id":             "exec_123",
+						"status":         "completed",
+						"dynamic_params": map[string]any{"large_integer": json.Number("9007199254740993")},
+					}},
+					{Source: map[string]any{"id": "exec_456", "status": "completed", "target_count": json.Number("8")}},
+				}, nil
 			})
 
 		svc := &actionLogsService{osAccess: mockOSA}
 		res, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{KNID: "kn_001"})
 
 		So(err, ShouldBeNil)
-		So(len(res.Entries), ShouldEqual, 1)
+		So(len(res.Entries), ShouldEqual, 2)
 		So(res.Entries[0].DynamicParams["large_integer"], ShouldEqual, json.Number("9007199254740993"))
+		data, err := jsoncodec.Marshal(res)
+		So(err, ShouldBeNil)
+		var wire struct {
+			Entries []map[string]json.RawMessage `json:"entries"`
+		}
+		So(json.Unmarshal(data, &wire), ShouldBeNil)
+		So(wire.Entries, ShouldHaveLength, 2)
+		So(wire.Entries[0], ShouldNotContainKey, "target_count")
+		So(string(wire.Entries[1]["target_count"]), ShouldEqual, "8")
+		for _, key := range paginationMetadataKeys {
+			So(wire.Entries[0], ShouldNotContainKey, key)
+		}
 
 		source, ok := captured["_source"].(map[string]any)
 		So(ok, ShouldBeTrue)

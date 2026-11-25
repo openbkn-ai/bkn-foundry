@@ -13,10 +13,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -64,7 +64,7 @@ func Test_RestHandler_GetObjectsSubgraphByIn(t *testing.T) {
 				TotalCount: new(int64(0)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -98,7 +98,7 @@ func Test_RestHandler_GetObjectsSubgraphByIn(t *testing.T) {
 				Entries: []interfaces.ObjectSubGraph{},
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(pathsQuery)
+			reqParamByte, _ := jsoncodec.Marshal(pathsQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?query_type="+interfaces.QUERY_TYPE_RELATION_TYPE_PATH, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -167,7 +167,7 @@ func Test_RestHandler_GetObjectsSubgraphByEx(t *testing.T) {
 				TotalCount: new(int64(0)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -180,7 +180,7 @@ func Test_RestHandler_GetObjectsSubgraphByEx(t *testing.T) {
 		Convey("失败 - Token验证失败", func() {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -228,7 +228,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 				TotalCount: new(int64(0)),
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?branch=main", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -249,7 +249,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 		})
 
 		Convey("失败 - includeLogicParams参数无效", func() {
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?include_logic_params=invalid", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -271,7 +271,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 		Convey("失败 - 原始 search_after 不可作为分页状态", func() {
 			invalidQuery := subgraphQuery
 			invalidQuery.SearchAfter = []any{"raw-property-watermark-1342"}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -291,7 +291,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 				Direction:         interfaces.DIRECTION_FORWARD,
 				PathLength:        2,
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -314,7 +314,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
 
-			reqParamByte, _ := sonic.Marshal(subgraphQuery)
+			reqParamByte, _ := jsoncodec.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -381,7 +381,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 				Entries: []interfaces.ObjectSubGraph{},
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(pathsQuery)
+			reqParamByte, _ := jsoncodec.Marshal(pathsQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?branch=main", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -416,7 +416,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 					},
 				},
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -442,7 +442,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 			invalidQuery.TypePaths[0].ObjectTypes = append([]interfaces.ObjectTypeWithKeyField(nil),
 				pathsQuery.TypePaths[0].ObjectTypes...)
 			invalidQuery.TypePaths[0].ObjectTypes[0].SearchAfter = []any{"raw-property-watermark-1342"}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -459,7 +459,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			kns.EXPECT().SearchSubgraphByTypePath(gomock.Any(), gomock.Any()).Return(interfaces.PathsEntries{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
 
-			reqParamByte, _ := sonic.Marshal(pathsQuery)
+			reqParamByte, _ := jsoncodec.Marshal(pathsQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
