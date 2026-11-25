@@ -47,6 +47,16 @@ func Test_computeDuplicateFingerprint(t *testing.T) {
 			So(hc, ShouldNotEqual, ha)
 		})
 
+		Convey("an empty dynamic parameter map has the same fingerprint as no parameters", func() {
+			empty, err := computeDuplicateFingerprint(a, map[string]any{})
+			So(err, ShouldBeNil)
+			So(empty, ShouldEqual, ha)
+
+			explicit, err := computeDuplicateFingerprint(a, map[string]any{"message": ""})
+			So(err, ShouldBeNil)
+			So(explicit, ShouldNotEqual, ha)
+		})
+
 		Convey("same virtual instance with different dynamic_params produce different hashes", func() {
 			virtual := []interfaces.ObjectSystemInfo{
 				{InstanceIdentity: map[string]any{}},
@@ -137,7 +147,7 @@ func Test_defaultDuplicateCheck(t *testing.T) {
 }
 
 func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
-	Convey("ExecuteAction returns 409 when defaultDuplicateCheck finds in-flight duplicate", t, func() {
+	Convey("ExecuteAction rejects an empty parameter map when an execution with no parameters is in flight", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
@@ -174,11 +184,22 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 			TotalCount: new(int64(1)),
 		}, nil)
 
-		logsService.EXPECT().QueryExecutions(gomock.Any(), gomock.Any()).Return(
-			&interfaces.ActionExecutionList{
-				Entries: []interfaces.ActionExecution{{ID: "exec_old", Status: interfaces.ExecutionStatusRunning}},
-			}, nil,
-		)
+		request := &interfaces.ActionExecutionRequest{
+			KNID:               "kn_001",
+			ActionTypeID:       "at_001",
+			InstanceIdentities: []map[string]any{{"id": "pod-1"}},
+			DynamicParams:      map[string]any{},
+		}
+		targets := []interfaces.ObjectSystemInfo{{InstanceIdentity: request.InstanceIdentities[0]}}
+		inFlightHash, err := computeDuplicateFingerprint(targets, nil, actionType.OperationConfig, request.ObjectInput)
+		So(err, ShouldBeNil)
+		logsService.EXPECT().QueryExecutions(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, query *interfaces.ActionLogQuery) (*interfaces.ActionExecutionList, error) {
+				So(query.InstanceIdentityHash, ShouldEqual, inFlightHash)
+				return &interfaces.ActionExecutionList{
+					Entries: []interfaces.ActionExecution{{ID: "exec_old", Status: interfaces.ExecutionStatusRunning}},
+				}, nil
+			})
 
 		service := &actionSchedulerService{
 			omAccess:    omAccess,
@@ -189,11 +210,7 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 		}
 		service.duplicateCheckHook = service.defaultDuplicateCheck
 
-		_, err := service.ExecuteAction(context.Background(), &interfaces.ActionExecutionRequest{
-			KNID:               "kn_001",
-			ActionTypeID:       "at_001",
-			InstanceIdentities: []map[string]any{{"id": "pod-1"}},
-		})
+		_, err = service.ExecuteAction(context.Background(), request)
 		So(err, ShouldNotBeNil)
 		httpErr, ok := err.(*httperrors.HTTPError)
 		So(ok, ShouldBeTrue)

@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
@@ -190,7 +190,7 @@ func (kns *knowledgeNetworkService) beginProxyPublish(ctx context.Context, kn *i
 		return nil, proxyHTTPError(ctx, http.StatusConflict, "knowledge network proxy is not active")
 	}
 
-	lockOwner := uuid.NewString()
+	lockOwner := uuid.NewV7().String()
 	if err := kns.acquireProxyLock(ctx, kn.KNID, lockOwner); err != nil {
 		if createdMapping && !checkMissingWrite {
 			kns.abortCreatedProxy(context.WithoutCancel(ctx), &proxyPublishPlan{
@@ -1127,8 +1127,13 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 			return nil, err
 		}
 	}
-	plan := &proxyPublishPlan{mapping: mapping, delegatorID: grantorID, lockOwner: uuid.NewString(),
-		modelVersion: mapping.PublishedModelVersion, createdMapping: createdMapping}
+	plan := &proxyPublishPlan{
+		mapping:        mapping,
+		delegatorID:    grantorID,
+		lockOwner:      uuid.NewV7().String(),
+		modelVersion:   mapping.PublishedModelVersion,
+		createdMapping: createdMapping,
+	}
 	if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
 		return nil, err
 	}
@@ -1277,7 +1282,10 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 		return proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
 	}
 	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleDeleting {
-		plan := &proxyPublishPlan{mapping: mapping, lockOwner: uuid.NewString()}
+		plan := &proxyPublishPlan{
+			mapping:   mapping,
+			lockOwner: uuid.NewV7().String(),
+		}
 		if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
 			return err
 		}

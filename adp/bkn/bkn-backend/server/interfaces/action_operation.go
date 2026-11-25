@@ -32,7 +32,7 @@ type ActionOperationConfig struct {
 	RelationTypeID       string         `json:"relation_type_id,omitempty" mapstructure:"relation_type_id"`
 	RelationOperation    string         `json:"relation_operation,omitempty" mapstructure:"relation_operation"`
 	AnchorRole           string         `json:"anchor_role,omitempty" mapstructure:"anchor_role"`
-	OtherObjectCondition *ActionCondCfg `json:"other_object_condition,omitempty" mapstructure:"other_object_condition"`
+	OtherObjectCondition *ActionCondCfg `json:"other_object_condition,omitzero" mapstructure:"other_object_condition"`
 }
 
 // ValidateIdentitySchedule keeps the legacy schedule transport within the

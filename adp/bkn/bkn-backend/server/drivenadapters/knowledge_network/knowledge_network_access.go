@@ -14,9 +14,9 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -942,34 +942,34 @@ func (kna *knowledgeNetworkAccess) GetNeighborPathsBatch(ctx context.Context, ot
 		}
 
 		// 2.0 Deserialize mapping rules.
-		err = sonic.Unmarshal(mappingRulesBytes, &relationType.MappingRules)
+		err = jsoncodec.Unmarshal(mappingRulesBytes, &relationType.MappingRules)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal mappingRules after getting relation type, err", err)
 			return nil, err
 		}
 		// 2.0 Deserialize the data source.
-		err = sonic.Unmarshal(dataSourceBytes, &neighbor.DataSource)
+		err = jsoncodec.Unmarshal(dataSourceBytes, &neighbor.DataSource)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataSource after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.1 Deserialize data properties.
-		err = sonic.Unmarshal(dataPropertiesBytes, &neighbor.DataProperties)
+		err = jsoncodec.Unmarshal(dataPropertiesBytes, &neighbor.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.2 Deserialize logical properties.
-		err = sonic.Unmarshal(logicPropertiesBytes, &neighbor.LogicProperties)
+		err = jsoncodec.Unmarshal(logicPropertiesBytes, &neighbor.LogicProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal logicProperties after getting object type, err", err)
 			return nil, err
 		}
 
 		// 2.3 Deserialize primary keys.
-		err = sonic.Unmarshal(primaryKeysBytes, &neighbor.PrimaryKeys)
+		err = jsoncodec.Unmarshal(primaryKeysBytes, &neighbor.PrimaryKeys)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal primaryKeys after getting object type, err", err)
 			return nil, err

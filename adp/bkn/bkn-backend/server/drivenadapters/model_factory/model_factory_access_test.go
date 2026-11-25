@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
@@ -74,7 +74,7 @@ func Test_modelFactoryAccess_GetModelByID(t *testing.T) {
 				BatchSize:    32,
 				MaxTokens:    512,
 			}
-			respData, _ := sonic.Marshal(model)
+			respData, _ := jsoncodec.Marshal(model)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -149,7 +149,7 @@ func Test_modelFactoryAccess_GetModelByName(t *testing.T) {
 				ModelID:   "model1",
 				ModelName: modelName,
 			}
-			respData, _ := sonic.Marshal(model)
+			respData, _ := jsoncodec.Marshal(model)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -221,7 +221,7 @@ func Test_modelFactoryAccess_GetDefaultModel(t *testing.T) {
 				ModelID:   "system-model",
 				ModelName: "default-model",
 			}
-			respData, _ := sonic.Marshal(model)
+			respData, _ := jsoncodec.Marshal(model)
 
 			mockHTTPClient.EXPECT().
 				GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -279,7 +279,7 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 					{Vector: []float32{0.5, 0.6}},
 				},
 			}
-			respData, _ := sonic.Marshal(response)
+			respData, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

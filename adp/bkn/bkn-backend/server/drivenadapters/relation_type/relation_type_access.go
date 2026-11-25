@@ -14,9 +14,9 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -246,7 +246,7 @@ func (rta *relationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.
 }
 
 func relationTypeInsertValues(relationType *interfaces.RelationType) ([]any, error) {
-	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
+	mappingRulesBytes, err := jsoncodec.Marshal(relationType.MappingRules)
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +813,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(relationType.Tags)
 	// 2.0 Serialize the data source.
-	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
+	mappingRulesBytes, err := jsoncodec.Marshal(relationType.MappingRules)
 	if err != nil {
 		logger.Errorf("Failed to marshal MappingRules, err: %v", common.SafeErrorSummary(err))
 		return err
@@ -961,7 +961,7 @@ func (rta *relationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.
 }
 
 func relationTypeUpdateValues(relationType *interfaces.RelationType) ([]any, error) {
-	mappingRulesBytes, err := sonic.Marshal(relationType.MappingRules)
+	mappingRulesBytes, err := jsoncodec.Marshal(relationType.MappingRules)
 	if err != nil {
 		return nil, err
 	}

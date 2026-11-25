@@ -318,13 +318,15 @@ func ObjectTypeRefs(items []*interfaces.ObjectType) []EvidenceRef {
 			"has_status":  item.Status != nil,
 			"update_time": item.UpdateTime,
 		}
-		if item.DataProperties != nil || item.LogicProperties != nil {
-			summary["property_count"] = len(item.DataProperties) + len(item.LogicProperties)
-			summary["data_property_count"] = len(item.DataProperties)
-			summary["logic_property_count"] = len(item.LogicProperties)
+		dataPropertyCount := len(item.DataProperties)
+		logicPropertyCount := len(item.LogicProperties)
+		if propertyCount := dataPropertyCount + logicPropertyCount; propertyCount > 0 {
+			summary["property_count"] = propertyCount
+			summary["data_property_count"] = dataPropertyCount
+			summary["logic_property_count"] = logicPropertyCount
 		}
-		if item.PrimaryKeys != nil {
-			summary["primary_key_count"] = len(item.PrimaryKeys)
+		if primaryKeyCount := len(item.PrimaryKeys); primaryKeyCount > 0 {
+			summary["primary_key_count"] = primaryKeyCount
 		}
 		refs = append(refs, EvidenceRef{
 			RefID:   "object:" + knID + ":" + objectTypeID,

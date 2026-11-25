@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -442,14 +442,14 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 			if _, exists := existing[objectID]; exists {
 				continue
 			}
-			relationID, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
-			}
 			relations = append(relations, &interfaces.ConceptGroupRelation{
-				ID: relationID.String(), KNID: plan.KNID, Branch: plan.Branch, CGID: groupID,
-				ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, ConceptID: objectID,
-				CreateTime: currentTime,
+				ID:          uuid.NewV7().String(),
+				KNID:        plan.KNID,
+				Branch:      plan.Branch,
+				CGID:        groupID,
+				ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE,
+				ConceptID:   objectID,
+				CreateTime:  currentTime,
 			})
 		}
 	}

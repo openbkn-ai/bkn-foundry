@@ -8,7 +8,7 @@ package common
 import (
 	"context"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // storedDeprecation is the f_deprecation column: why a definition is deprecated and what replaces it.
@@ -27,7 +27,7 @@ func EncodeLifecycle(status, reason, replacedBy string) (any, any, error) {
 	if reason == "" && replacedBy == "" {
 		return status, nil, nil
 	}
-	b, err := sonic.Marshal(storedDeprecation{Reason: reason, ReplacedBy: replacedBy})
+	b, err := jsoncodec.Marshal(storedDeprecation{Reason: reason, ReplacedBy: replacedBy})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -89,7 +89,7 @@ type KNProxyAccount struct {
 	SyncedModelVersion    string `json:"synced_model_version"`
 	// ResolvedBinding is populated only by the internal proxy-resolution endpoint.
 	// It is read from the published snapshot and is never persisted on the mapping.
-	ResolvedBinding     *KNProxyBinding `json:"resolved_binding,omitempty"`
+	ResolvedBinding     *KNProxyBinding `json:"resolved_binding,omitzero"`
 	PendingModelVersion string          `json:"-"`
 	SyncGeneration      int64           `json:"-"`
 	PublishedGeneration int64           `json:"-"`

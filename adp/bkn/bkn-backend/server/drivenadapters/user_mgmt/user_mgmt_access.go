@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -109,7 +109,7 @@ func (uma *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*
 		} `json:"user_names"`
 	}{}
 
-	if err := sonic.Unmarshal(result, &response); err != nil {
+	if err := jsoncodec.Unmarshal(result, &response); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal account names response failed")
 		common.LogSafeError(ctx, "Unmarshal account names response failed", err)
 		return fmt.Errorf("unmarshal account names response failed: %w", err)

@@ -15,7 +15,7 @@ type CypherPlan struct {
 	// semi_join, list_comparison or carried.
 	Shape string `json:"shape"`
 	// Graph says the result holds nodes, relationships or other graph values.
-	Graph      bool                  `json:"graph,omitempty"`
+	Graph      bool                  `json:"graph,omitzero"`
 	Objects    []CypherPlanObject    `json:"objects"`
 	Relations  []CypherPlanRelation  `json:"relations,omitempty"`
 	Conditions []CypherPlanCondition `json:"conditions,omitempty"`
@@ -71,12 +71,12 @@ type CypherPlanCondition struct {
 type CypherPlanColumn struct {
 	Name string           `json:"name"`
 	Kind string           `json:"kind"`
-	Type *CypherValueType `json:"type,omitempty"`
+	Type *CypherValueType `json:"type,omitzero"`
 }
 
 // CypherPlanOrder is one sort key, by returned column or property.
 type CypherPlanOrder struct {
 	Column     string `json:"column,omitempty"`
 	Property   string `json:"property,omitempty"`
-	Descending bool   `json:"descending,omitempty"`
+	Descending bool   `json:"descending,omitzero"`
 }

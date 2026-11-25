@@ -53,8 +53,8 @@ type ValueType struct {
 // field is not declared; an enum goes with none of range, length and pattern.
 type ValueTypeDefinition struct {
 	Enum    []*ValueTypeEnumItem `json:"enum,omitempty" mapstructure:"enum,omitempty"`
-	Range   *ValueRange          `json:"range,omitempty" mapstructure:"range,omitempty"`
-	Length  *LengthRange         `json:"length,omitempty" mapstructure:"length,omitempty"`
+	Range   *ValueRange          `json:"range,omitzero" mapstructure:"range,omitempty"`
+	Length  *LengthRange         `json:"length,omitzero" mapstructure:"length,omitempty"`
 	Pattern string               `json:"pattern,omitempty" mapstructure:"pattern,omitempty"`
 	Unit    string               `json:"unit,omitempty" mapstructure:"unit,omitempty"`
 }
@@ -64,7 +64,7 @@ type ValueTypeDefinition struct {
 type ValueTypeEnumItem struct {
 	Value       string `json:"value" mapstructure:"value"`
 	Display     string `json:"display" mapstructure:"display"`
-	Deprecated  bool   `json:"deprecated,omitempty" mapstructure:"deprecated,omitempty"`
+	Deprecated  bool   `json:"deprecated,omitzero" mapstructure:"deprecated,omitempty"`
 	Description string `json:"description,omitempty" mapstructure:"description,omitempty"`
 }
 

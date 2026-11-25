@@ -14,7 +14,6 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/agent_operator"
@@ -50,7 +49,6 @@ type service struct {
 	// tools calls rule tools as the account in the context.
 	tools interfaces.CallerToolAccess
 	now   func() int64
-	newID func() string
 }
 
 func newService(appSetting *common.AppSetting, store *store, classes *classes) *service {
@@ -62,15 +60,7 @@ func newService(appSetting *common.AppSetting, store *store, classes *classes) *
 		names:       user_mgmt.NewUserMgmtService(appSetting),
 		tools:       agent_operator.NewCallerToolAccess(appSetting),
 		now:         func() int64 { return time.Now().UnixMilli() },
-		newID:       newEventID,
 	}
-}
-
-func newEventID() string {
-	if id, err := uuid.NewV7(); err == nil {
-		return id.String()
-	}
-	return uuid.NewString()
 }
 
 var _ interfaces.KnEventServiceV1 = (*service)(nil)
@@ -186,7 +176,6 @@ func (s *service) op(ctx context.Context) op {
 	return op{
 		now:   s.now(),
 		actor: s.actor(ctx),
-		newID: s.newID,
 		title: func(typeName, objectName string) string {
 			title, err := i18n.Render(lang, "BknBackend.KnEvent.RuleEventTitle",
 				map[string]any{"type": typeName, "object": objectName})

@@ -110,7 +110,7 @@ type KnEventType struct {
 	CheckFailures int `json:"check_failures"`
 	// Trial is the run of the rule tool when the tool or the schedule was
 	// saved; only the response of that save has it.
-	Trial *KnEventRuleTrial `json:"trial,omitempty"`
+	Trial *KnEventRuleTrial `json:"trial,omitzero"`
 }
 
 // KnEventRuleTool is the tool the platform calls to check a rule: a Cypher

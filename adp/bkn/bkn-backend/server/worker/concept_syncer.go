@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -575,14 +575,14 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 	networkDoc.ObjectMetrics = nil
 
 	// Convert to map for dataset
-	docBytes, err := sonic.Marshal(&networkDoc)
+	docBytes, err := jsoncodec.Marshal(&networkDoc)
 	if err != nil {
 		logger.Errorf("Failed to marshal KN: %s", err.Error())
 		return err
 	}
 
 	var doc map[string]any
-	if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+	if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 		logger.Errorf("Failed to unmarshal KN: %s", err.Error())
 		return err
 	}
@@ -643,14 +643,14 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 		objectType.ModuleType = interfaces.MODULE_TYPE_OBJECT_TYPE
 
 		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(objectType)
+		docBytes, err := jsoncodec.Marshal(objectType)
 		if err != nil {
 			logger.Errorf("Failed to marshal ObjectType: %s", err.Error())
 			return err
 		}
 
 		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+		if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal ObjectType: %s", err.Error())
 			return err
 		}
@@ -665,7 +665,7 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 			for _, lp := range logicProps {
 				if lpMap, ok := lp.(map[string]any); ok {
 					if params, exists := lpMap["parameters"]; exists {
-						paramsBytes, err := sonic.Marshal(params)
+						paramsBytes, err := jsoncodec.Marshal(params)
 						if err != nil {
 							logger.Errorf("Failed to marshal logic_properties parameters: %s", err.Error())
 							return err
@@ -731,14 +731,14 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 		actionType.ModuleType = interfaces.MODULE_TYPE_ACTION_TYPE
 
 		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(actionType)
+		docBytes, err := jsoncodec.Marshal(actionType)
 		if err != nil {
 			logger.Errorf("Failed to marshal ActionType: %s", err.Error())
 			return err
 		}
 
 		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+		if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal ActionType: %s", err.Error())
 			return err
 		}
@@ -746,7 +746,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 
 		// Serialize parameters to JSON string
 		if params, exists := doc["parameters"]; exists {
-			paramsBytes, err := sonic.Marshal(params)
+			paramsBytes, err := jsoncodec.Marshal(params)
 			if err != nil {
 				logger.Errorf("Failed to marshal action_type parameters: %s", err.Error())
 				return err
@@ -756,7 +756,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 
 		// Serialize condition to JSON string
 		if cond, exists := doc["condition"]; exists && cond != nil {
-			condBytes, err := sonic.Marshal(cond)
+			condBytes, err := jsoncodec.Marshal(cond)
 			if err != nil {
 				logger.Errorf("Failed to marshal action_type condition: %s", err.Error())
 				return err
@@ -822,14 +822,14 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		relationType.ModuleType = interfaces.MODULE_TYPE_RELATION_TYPE
 
 		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(relationType)
+		docBytes, err := jsoncodec.Marshal(relationType)
 		if err != nil {
 			logger.Errorf("Failed to marshal RelationType: %s", err.Error())
 			return err
 		}
 
 		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+		if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal RelationType: %s", err.Error())
 			return err
 		}
@@ -892,14 +892,14 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 		conceptGroup.ModuleType = interfaces.MODULE_TYPE_CONCEPT_GROUP
 
 		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(conceptGroup)
+		docBytes, err := jsoncodec.Marshal(conceptGroup)
 		if err != nil {
 			logger.Errorf("Failed to marshal ConceptGroup: %s", err.Error())
 			return err
 		}
 
 		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+		if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal ConceptGroup: %s", err.Error())
 			return err
 		}
@@ -957,14 +957,14 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 		riskType.ModuleType = interfaces.MODULE_TYPE_RISK_TYPE
 
 		// Convert to map for dataset
-		docBytes, err := sonic.Marshal(riskType)
+		docBytes, err := jsoncodec.Marshal(riskType)
 		if err != nil {
 			logger.Errorf("Failed to marshal RiskType: %s", err.Error())
 			return err
 		}
 
 		var doc map[string]any
-		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
+		if err := jsoncodec.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal RiskType: %s", err.Error())
 			return err
 		}
@@ -1075,7 +1075,7 @@ func (cs *ConceptSyncer) getAllObjectTypesFromDatasetByKnID(ctx context.Context,
 					if paramsStr, exists := lpMap["parameters"]; exists {
 						if paramsStrStr, ok := paramsStr.(string); ok {
 							var params []interfaces.Parameter
-							if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
+							if err := jsoncodec.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 								logger.Errorf("Failed to unmarshal logic_properties parameters: %s", err.Error())
 								return map[string]*interfaces.ObjectType{}, err
 							}
@@ -1182,7 +1182,7 @@ func (cs *ConceptSyncer) getAllActionTypesFromDatasetByKnID(ctx context.Context,
 		if condStr, exists := entry["condition"]; exists {
 			if condStrStr, ok := condStr.(string); ok && condStrStr != "" {
 				var condCfg interfaces.ActionCondCfg
-				if err := sonic.Unmarshal([]byte(condStrStr), &condCfg); err != nil {
+				if err := jsoncodec.Unmarshal([]byte(condStrStr), &condCfg); err != nil {
 					logger.Errorf("Failed to unmarshal action_type condition: %s", err.Error())
 					return map[string]*interfaces.ActionType{}, err
 				}
@@ -1196,7 +1196,7 @@ func (cs *ConceptSyncer) getAllActionTypesFromDatasetByKnID(ctx context.Context,
 		if paramsStr, exists := entry["parameters"]; exists {
 			if paramsStrStr, ok := paramsStr.(string); ok {
 				var params []interfaces.Parameter
-				if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
+				if err := jsoncodec.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 					logger.Errorf("Failed to unmarshal action_type parameters: %s", err.Error())
 					return map[string]*interfaces.ActionType{}, err
 				}

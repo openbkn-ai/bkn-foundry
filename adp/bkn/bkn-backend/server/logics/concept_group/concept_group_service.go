@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -1649,11 +1649,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 	otCGIDs := make([]string, 0, len(groupsToAdd))
 	relations := make([]*interfaces.ConceptGroupRelation, 0, len(groupsToAdd))
 	for _, otID := range groupsToAdd {
-		generatedID, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return nil, fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
-		}
-		cgRelationID := generatedID.String()
+		cgRelationID := uuid.NewV7().String()
 		relations = append(relations, &interfaces.ConceptGroupRelation{
 			ID:          cgRelationID,
 			KNID:        knID,

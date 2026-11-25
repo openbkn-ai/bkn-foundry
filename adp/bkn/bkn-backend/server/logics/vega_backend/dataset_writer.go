@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -23,12 +23,12 @@ type DatasetDocument struct {
 
 // NewDatasetDocument retains the established map payload sent to Vega.
 func NewDatasetDocument(id string, value any) (DatasetDocument, error) {
-	body, err := sonic.Marshal(value)
+	body, err := jsoncodec.Marshal(value)
 	if err != nil {
 		return DatasetDocument{}, err
 	}
 	var document map[string]any
-	if err := sonic.Unmarshal(body, &document); err != nil {
+	if err := jsoncodec.Unmarshal(body, &document); err != nil {
 		return DatasetDocument{}, err
 	}
 	document["_id"] = id

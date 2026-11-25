@@ -17,8 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -336,7 +336,7 @@ func (s *service) lockAnyState(ctx context.Context, tx *sql.Tx, knID string) (*i
 
 func (s *service) newEvent(ctx context.Context, knID, eventType string, from, to int, notes, key string) *interfaces.KNVersionEvent {
 	return &interfaces.KNVersionEvent{
-		ID: strings.ReplaceAll(uuid.NewString(), "-", ""), KNID: knID, Type: eventType,
+		ID: strings.ReplaceAll(uuid.NewV7().String(), "-", ""), KNID: knID, Type: eventType,
 		FromVersion: from, ToVersion: to, Notes: notes, Operator: s.operator(ctx),
 		CreateTime: s.now(), IdempotencyKey: key,
 	}

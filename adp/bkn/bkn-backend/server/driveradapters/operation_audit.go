@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -154,16 +154,8 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		if r == nil || r.auditRecorder == nil || c.GetBool("operation_audit_skip") || c.Writer.Status() < 200 || c.Writer.Status() >= 300 || c.Writer.Status() == http.StatusAccepted {
 			return
 		}
-		requestID, err := operationAuditRequestID(c)
-		if err != nil {
-			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
-			return
-		}
-		attemptID, err := uuid.NewV7()
-		if err != nil {
-			logger.Errorf("operation audit attempt ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
-			return
-		}
+		requestID := operationAuditRequestID(c)
+		attemptID := uuid.NewV7().String()
 		visitor, _ := operationAuditVisitor(c)
 		actor := r.operationAuditIdentity(c.Request.Context(), c.GetHeader("Authorization"), visitor)
 		if actor.ActorID == "" || actor.ActorName == "" || actor.ActorName == actor.ActorID {
@@ -177,7 +169,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		now := time.Now().UTC()
 		entry := operationaudit.Entry{
-			EventID:            attemptID.String(),
+			EventID:            attemptID,
 			EventTime:          now,
 			RecordedAt:         now,
 			KnowledgeNetworkID: facts.knowledgeNetworkID,
@@ -460,10 +452,10 @@ func boundedFailure(value map[string]any, status int) (string, string) {
 	return boundText(code, 128), boundText(message, 512)
 }
 
-func operationAuditRequestID(c *gin.Context) (string, error) {
+func operationAuditRequestID(c *gin.Context) string {
 	if value, exists := c.Get(operationAuditRequestKey); exists {
 		if requestID, ok := value.(string); ok && requestID != "" {
-			return requestID, nil
+			return requestID
 		}
 	}
 	requestID := firstNonEmptyHeader(c, headerBKNRequestID, headerLegacyRequestID)
@@ -471,16 +463,12 @@ func operationAuditRequestID(c *gin.Context) (string, error) {
 		requestID = ""
 	}
 	if requestID == "" {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return "", fmt.Errorf("generate operation audit request UUIDv7: %w", err)
-		}
-		requestID = "req_" + id.String()
+		requestID = "req_" + uuid.NewV7().String()
 	}
 	c.Request.Header.Set(headerBKNRequestID, requestID)
 	c.Set(operationAuditRequestKey, requestID)
 	c.Header(headerBKNRequestID, requestID)
-	return requestID, nil
+	return requestID
 }
 
 func operationAuditPrintableASCII(value string) bool {

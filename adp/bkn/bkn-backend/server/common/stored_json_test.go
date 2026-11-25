@@ -6,6 +6,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -33,4 +34,30 @@ func Test_UnmarshalStoredJSON_EmptyColumnIsUnset(t *testing.T) {
 		// Malformed content is still an error: only emptiness is treated as "never set".
 		So(UnmarshalStoredJSON([]byte("{not json"), &properties), ShouldNotBeNil)
 	})
+}
+
+func TestUnmarshalStoredJSONRetainsExactNumbers(t *testing.T) {
+	var data struct {
+		Label string         `json:"label"`
+		Data  map[string]any `json:"data"`
+	}
+	raw := []byte(`{"label":"value","data":{"id":9007199254740993}}`)
+	if err := UnmarshalStoredJSON(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Label != "value" || data.Data["id"] != json.Number("9007199254740993") {
+		t.Fatalf("decoded column = %#v", data)
+	}
+}
+
+func TestUnmarshalStoredJSONRejectsInvalidJSONV2Input(t *testing.T) {
+	for _, raw := range []string{
+		`{"label":"first","label":"duplicate"}`,
+		"{\"label\":\"invalid\xff\"}",
+	} {
+		var value map[string]any
+		if err := UnmarshalStoredJSON([]byte(raw), &value); err == nil {
+			t.Errorf("UnmarshalStoredJSON(%q) accepted invalid input", raw)
+		}
+	}
 }

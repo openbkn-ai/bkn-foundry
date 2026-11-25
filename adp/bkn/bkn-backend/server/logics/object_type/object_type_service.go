@@ -17,11 +17,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/bytedance/sonic"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -1861,7 +1861,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			for _, property := range properties {
 				if value, ok := property.(map[string]any); ok {
 					if parameters, exists := value["parameters"]; exists {
-						encoded, err := sonic.Marshal(parameters)
+						encoded, err := jsoncodec.Marshal(parameters)
 						if err != nil {
 							return err
 						}
@@ -2090,7 +2090,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 							if paramsStr, exists := lpMap["parameters"]; exists {
 								if paramsStrStr, ok := paramsStr.(string); ok && paramsStrStr != "" {
 									var params []interfaces.Parameter
-									if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
+									if err := jsoncodec.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 										logger.Errorf("Failed to unmarshal object_type logic_properties parameters: %s", err.Error())
 										return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 											berrors.BknBackend_InternalError_UnMarshalDataFailed).
@@ -2880,11 +2880,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 
 	// Create.
 	for _, cg := range objectType.ConceptGroups {
-		generatedID, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
-		}
-		cgRelationID := generatedID.String()
+		cgRelationID := uuid.NewV7().String()
 		err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
 			ID:          cgRelationID,
 			KNID:        objectType.KNID,
@@ -2987,11 +2983,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	if len(groupsToAdd) > 0 {
 		// Build records for new relationships.
 		for _, cgID := range groupsToAdd {
-			generatedID, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return fmt.Errorf("generate concept group relation UUIDv7: %w", generateErr)
-			}
-			cgRelationID := generatedID.String()
+			cgRelationID := uuid.NewV7().String()
 			err = ots.cga.CreateConceptGroupRelation(ctx, tx, &interfaces.ConceptGroupRelation{
 				ID:          cgRelationID,
 				KNID:        objectType.KNID,
