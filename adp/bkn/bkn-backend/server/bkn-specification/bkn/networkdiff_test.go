@@ -337,3 +337,25 @@ func TestDiffNetworkModels_CreatedMetricOmitsStorageMetadata(t *testing.T) {
 		assert.NotContains(t, all, field+" ", "storage field %q leaked into a created metric", field)
 	}
 }
+
+// A metric is carried as a JSON record, not a Go struct. Present on one side only, it is still
+// listed field by field like a created object type, rather than as one row holding the record.
+func TestDiffNetworkModels_DeletedMetricIsReportedFieldByField(t *testing.T) {
+	base := networkWith("net-a", "网")
+	base.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款后的实付金额", "v2", "rev-1", 1763000000000)}
+	target := networkWith("net-a", "网")
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+
+	require.Len(t, result.Entries, 1)
+	entry := result.Entries[0]
+	assert.Equal(t, DiffDelete, entry.Action)
+	description := changeByPath(t, entry.Changes, "definition.description")
+	assert.Equal(t, DiffDelete, description.Kind)
+	assert.Equal(t, "扣除退款后的实付金额", description.Old)
+	assert.Equal(t, "published", changeByPath(t, entry.Changes, "definition.lifecycle.status").Old)
+	assert.Equal(t, "1", changeByPath(t, entry.Changes, "definition.version").Old)
+	for _, change := range entry.Changes {
+		assert.NotEqual(t, ".", change.Path, "the record must not collapse into one row")
+	}
+}
