@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -51,7 +51,7 @@ func NewClient() *Client {
 func (c *Client) Request(ctx context.Context, method, url string, body any) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
-		jsonData, err := sonic.Marshal(body)
+		jsonData, err := jsoncodec.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}

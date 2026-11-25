@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -25,6 +24,7 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -149,15 +149,15 @@ func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = common.UnmarshalJSON([]byte(sourceMetadata.String), &resource.SourceMetadata)
+		_ = jsoncodec.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
 	}
 	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		if err := common.UnmarshalJSON([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition); err != nil {
 			return nil, err
 		}
 	}
 	if indexConfig.Valid && indexConfig.String != "" {
-		_ = common.UnmarshalJSON([]byte(indexConfig.String), &resource.IndexConfig)
+		_ = jsoncodec.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 	}
 	resource.LogicDefinitionStr = logicDefinition.String
 	return resource, nil
@@ -222,15 +222,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
 	// Serialize source metadata, schema definition, and index configuration.
-	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
-	if resource.SourceMetadata == nil {
-		sourceMetadataBytes = []byte("{}")
-	}
-	schemaDefinitionBytes, _ := sonic.Marshal(resource.SchemaDefinition)
-	if resource.SchemaDefinition == nil {
-		schemaDefinitionBytes = []byte("[]")
-	}
-	indexConfigBytes, _ := sonic.Marshal(resource.IndexConfig)
+	sourceMetadataBytes, _ := jsoncodec.Marshal(resource.SourceMetadata)
+	schemaDefinitionBytes, _ := jsoncodec.Marshal(resource.SchemaDefinition)
+	indexConfigBytes, _ := jsoncodec.Marshal(resource.IndexConfig)
 	if resource.IndexConfig == nil {
 		indexConfigBytes = []byte("{}")
 	}
@@ -619,18 +613,12 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
 	// Serialize schema definition and index configuration.
-	schemaDefinitionBytes, _ := sonic.Marshal(resource.SchemaDefinition)
-	if resource.SchemaDefinition == nil {
-		schemaDefinitionBytes = []byte("[]")
-	}
-	indexConfigBytes, _ := sonic.Marshal(resource.IndexConfig)
+	schemaDefinitionBytes, _ := jsoncodec.Marshal(resource.SchemaDefinition)
+	indexConfigBytes, _ := jsoncodec.Marshal(resource.IndexConfig)
 	if resource.IndexConfig == nil {
 		indexConfigBytes = []byte("{}")
 	}
-	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
-	if resource.SourceMetadata == nil {
-		sourceMetadataBytes = []byte("{}")
-	}
+	sourceMetadataBytes, _ := jsoncodec.Marshal(resource.SourceMetadata)
 
 	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_name", resource.Name).
@@ -813,13 +801,10 @@ func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context,
 	defer span.End()
 
 	span.SetAttributes(attr.Key("resource_id").String(resource.ID))
-	schemaDefinitionBytes, err := sonic.Marshal(resource.SchemaDefinition)
+	schemaDefinitionBytes, err := jsoncodec.Marshal(resource.SchemaDefinition)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal schema definition failed")
 		return 0, err
-	}
-	if resource.SchemaDefinition == nil {
-		schemaDefinitionBytes = []byte("[]")
 	}
 	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_name", resource.Name).
@@ -865,21 +850,15 @@ func (ra *resourceAccess) UpdateDiscoveryMetadata(ctx context.Context,
 	defer span.End()
 
 	span.SetAttributes(attr.Key("resource_id").String(resource.ID))
-	sourceMetadataBytes, err := sonic.Marshal(resource.SourceMetadata)
+	sourceMetadataBytes, err := jsoncodec.Marshal(resource.SourceMetadata)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal source metadata failed")
 		return 0, err
 	}
-	if resource.SourceMetadata == nil {
-		sourceMetadataBytes = []byte("{}")
-	}
-	schemaDefinitionBytes, err := sonic.Marshal(resource.SchemaDefinition)
+	schemaDefinitionBytes, err := jsoncodec.Marshal(resource.SchemaDefinition)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal schema definition failed")
 		return 0, err
-	}
-	if resource.SchemaDefinition == nil {
-		schemaDefinitionBytes = []byte("[]")
 	}
 
 	builder := sq.Update(RESOURCE_TABLE_NAME).

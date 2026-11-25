@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -184,7 +184,7 @@ func (c *OpenSearchConnector) executeGroupedQuery(ctx context.Context, indexName
 			if err != nil {
 				return nil, err
 			}
-			encodedKey, err := sonic.Marshal(values)
+			encodedKey, err := jsoncodec.Marshal(values)
 			if err != nil {
 				return nil, err
 			}
@@ -259,7 +259,7 @@ func (c *OpenSearchConnector) executeGroupedQuery(ctx context.Context, indexName
 					continue
 				}
 			}
-			encoded, err := sonic.Marshal(row)
+			encoded, err := jsoncodec.Marshal(row)
 			if err != nil {
 				return nil, err
 			}

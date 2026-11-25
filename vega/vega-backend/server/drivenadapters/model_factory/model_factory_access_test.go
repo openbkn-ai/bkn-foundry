@@ -12,13 +12,13 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -56,7 +56,7 @@ func TestModelFactoryAccessGetModelByID(t *testing.T) {
 			ModelID:   modelID,
 			ModelName: "test-model",
 		}
-		respData, err := sonic.Marshal(model)
+		respData, err := jsoncodec.Marshal(model)
 		require.NoError(t, err)
 
 		mockHTTPClient.EXPECT().
@@ -181,7 +181,7 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 				{Vector: []float32{0.5, 0.6}},
 			},
 		}
-		respData, err := sonic.Marshal(response)
+		respData, err := jsoncodec.Marshal(response)
 		require.NoError(t, err)
 
 		mockHTTPClient.EXPECT().
@@ -202,7 +202,7 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 
 	t.Run("forwards an empty model ID to model factory", func(t *testing.T) {
 		mfa, mockHTTPClient := setup(t)
-		respData, err := sonic.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
+		respData, err := jsoncodec.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
 		require.NoError(t, err)
 		mockHTTPClient.EXPECT().
 			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -219,7 +219,7 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 
 	t.Run("forwards empty input to model factory", func(t *testing.T) {
 		mfa, mockHTTPClient := setup(t)
-		respData, err := sonic.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
+		respData, err := jsoncodec.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
 		require.NoError(t, err)
 		mockHTTPClient.EXPECT().
 			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

@@ -16,15 +16,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/bytedance/sonic"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -331,7 +331,7 @@ func ValidateKeys(resource *interfaces.Resource, keys []map[string]any) ([]map[s
 			}
 			tuple[position] = interfaces.KeyValue{Key: field, Value: normalized}
 		}
-		fingerprint, err := sonic.MarshalString(tuple)
+		fingerprint, err := jsoncodec.MarshalString(tuple)
 		if err != nil {
 			return nil, fmt.Errorf("could not encode keys[%d]", i)
 		}
@@ -438,12 +438,8 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 	}
 
 	now := time.Now().UnixMilli()
-	generatedID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("generate build task UUIDv7: %w", err)
-	}
 	buildTask := &interfaces.BuildTask{
-		ID:          generatedID.String(),
+		ID:          uuid.NewV7().String(),
 		ScheduleID:  req.ScheduleID,
 		TriggerType: interfaces.BuildTaskTriggerManual,
 		ResourceID:  resource.ID,
@@ -464,11 +460,7 @@ func (bts *buildTaskService) newBuildTaskFromCreateRequest(ctx context.Context, 
 	if req.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
 		buildTask.IndexName = resource.LocalIndexName
 	} else if req.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
-		indexID, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("generate build index UUIDv7: %w", err)
-		}
-		buildTask.IndexName = fmt.Sprintf("%s-%s", interfaces.BuildIndexPrefix, indexID)
+		buildTask.IndexName = fmt.Sprintf("%s-%s", interfaces.BuildIndexPrefix, uuid.NewV7())
 	}
 	if buildTask.IndexName == "" && req.ExecuteType != interfaces.BuildTaskExecuteTypeKeys {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).

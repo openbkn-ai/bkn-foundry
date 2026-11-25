@@ -18,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -68,14 +69,14 @@ func (baa *bknAgentAccess) Run(ctx context.Context, req *interfaces.BknAgentRunR
 	}
 
 	var resp interfaces.BknAgentRunResponse
-	if err := common.UnmarshalJSON(respBody, &resp); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal bkn-agent run response failed: %w", err)
 	}
 	if resp.TaskID == "" {
 		var fallback struct {
 			ID string `json:"id"`
 		}
-		if err := common.UnmarshalJSON(respBody, &fallback); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &fallback); err != nil {
 			return nil, fmt.Errorf("unmarshal bkn-agent run response fallback id failed: %w", err)
 		}
 		resp.TaskID = fallback.ID
@@ -115,7 +116,7 @@ func (baa *bknAgentAccess) GetTask(ctx context.Context, taskID string) (*interfa
 	}
 
 	var task interfaces.BknAgentTask
-	if err := common.UnmarshalJSON(respBody, &task); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &task); err != nil {
 		return nil, fmt.Errorf("unmarshal bkn-agent task response failed: %w", err)
 	}
 	if task.TaskID == "" {

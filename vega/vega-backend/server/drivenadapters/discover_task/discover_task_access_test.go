@@ -14,10 +14,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -56,6 +56,7 @@ func TestDiscoverTaskAccessGetByID(t *testing.T) {
 		assert.Equal(t, int64(15), got.LastProgressTime)
 		assert.Equal(t, "u1", got.Creator.ID)
 		require.NotNil(t, got.Result)
+		assert.Zero(t, got.Result.SkippedCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -88,7 +89,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		assert.Equal(t, "task-1", got[0].ID)
 		require.NotNil(t, got[0].Result)
 		assert.Equal(t, 2, got[0].Result.NewCount)
-		serialized, err := sonic.MarshalString(got[0])
+		serialized, err := jsoncodec.MarshalString(got[0])
 		require.NoError(t, err)
 		assert.NotContains(t, serialized, "large detail")
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -180,7 +181,7 @@ func TestDiscoverTaskAccessCountFailuresPersistence(t *testing.T) {
 				status = interfaces.DiscoverTaskStatusCompleted
 				result.UpdatedCount = 1
 			}
-			encoded, err := sonic.MarshalString(result)
+			encoded, err := jsoncodec.MarshalString(result)
 			require.NoError(t, err)
 			mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_message = ?, f_progress = ?, f_result = ?, f_status = ? WHERE f_id = ? AND f_status = ?").WithArgs(int64(999), result.Message, 100, encoded, status, "task-1", interfaces.DiscoverTaskStatusRunning).WillReturnResult(sqlmock.NewResult(0, 1))
 			updated, err := access.MarkCompleted(context.Background(), "task-1", result, 999)
@@ -298,7 +299,7 @@ func TestDiscoverTaskAccessMarkCompleted(t *testing.T) {
 		defer cleanup()
 
 		mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_progress = ?, f_result = ?, f_status = ? WHERE f_id = ? AND f_status = ?").
-			WithArgs(int64(999), 100, `{"catalog_id":"catalog-1","new_count":1,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"message":"done"}`, interfaces.DiscoverTaskStatusCompleted, "task-1", interfaces.DiscoverTaskStatusRunning).
+			WithArgs(int64(999), 100, `{"catalog_id":"catalog-1","new_count":1,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"skipped_count":0,"message":"done"}`, interfaces.DiscoverTaskStatusCompleted, "task-1", interfaces.DiscoverTaskStatusRunning).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		updated, err := access.MarkCompleted(context.Background(), "task-1", &interfaces.DiscoverResult{
@@ -317,7 +318,7 @@ func TestDiscoverTaskAccessMarkCompleted(t *testing.T) {
 		defer cleanup()
 
 		mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_progress = ?, f_result = ?, f_status = ? WHERE f_id = ? AND f_status = ?").
-			WithArgs(int64(999), 100, `{"catalog_id":"catalog-1","new_count":0,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"message":""}`, interfaces.DiscoverTaskStatusCompleted, "task-1", interfaces.DiscoverTaskStatusRunning).
+			WithArgs(int64(999), 100, `{"catalog_id":"catalog-1","new_count":0,"stale_count":0,"unchanged_count":0,"updated_count":0,"restored_count":0,"failed_count":0,"skipped_count":0,"message":""}`, interfaces.DiscoverTaskStatusCompleted, "task-1", interfaces.DiscoverTaskStatusRunning).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
 		updated, err := access.MarkCompleted(context.Background(), "task-1", &interfaces.DiscoverResult{

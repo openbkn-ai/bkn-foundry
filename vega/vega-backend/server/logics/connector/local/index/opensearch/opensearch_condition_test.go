@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
@@ -132,7 +132,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				require.NoError(t, err)
 				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(condition, schema)
 				require.NoError(t, err)
-				encoded, err := sonic.Marshal(query)
+				encoded, err := jsoncodec.Marshal(query)
 				require.NoError(t, err)
 				assert.Contains(t, string(encoded), `"allowed_source"`)
 				assert.Contains(t, string(encoded), `"blocked_source"`)
@@ -483,7 +483,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				require.NoError(t, err)
 				dsl, err := conn.ConvertFilterCondition(condition, schema)
 				require.NoError(t, err)
-				encoded, err := sonic.Marshal(dsl)
+				encoded, err := jsoncodec.Marshal(dsl)
 				require.NoError(t, err)
 				assert.Contains(t, string(encoded), `"physical.title.raw"`)
 				assert.NotContains(t, string(encoded), "title_alias")

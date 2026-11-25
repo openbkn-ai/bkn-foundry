@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/licverify"
@@ -22,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -114,7 +114,7 @@ func Test_ConnectorTypeRestHandler_UpdateConnectorType(t *testing.T) {
 	const url = "/api/vega-backend/v1/connector-types/" + tp
 	newPutRequest := func(t *testing.T, body any) *http.Request {
 		t.Helper()
-		reqParamByte, err := sonic.Marshal(body)
+		reqParamByte, err := jsoncodec.Marshal(body)
 		require.NoError(t, err)
 		req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 		req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)

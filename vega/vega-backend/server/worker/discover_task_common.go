@@ -9,12 +9,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 )
@@ -37,12 +37,12 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 	status := interfaces.DiscoverStatusUnchanged
 
 	// Convert the structure to a map to facilitate the calculation of the hash after serialization (sorted by key)
-	data, err := sonic.Marshal(resource.SourceMetadata)
+	data, err := jsoncodec.Marshal(resource.SourceMetadata)
 	if err != nil {
 		return ""
 	}
 	sourceMetadata := make(map[string]any)
-	err = common.UnmarshalJSON(data, &sourceMetadata)
+	err = jsoncodec.Unmarshal(data, &sourceMetadata)
 	if err != nil {
 		return ""
 	}
@@ -60,7 +60,8 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 		return ""
 	}
 	metadata := resource.SourceMetadata
-	bytes, err := sonic.ConfigStd.Marshal(metadata)
+	// Compare null and empty collections as distinct persisted values.
+	bytes, err := jsoncodec.Marshal(metadata, json.DefaultOptionsV1())
 	if err != nil {
 		return ""
 	}

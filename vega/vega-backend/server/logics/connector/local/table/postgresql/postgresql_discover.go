@@ -14,9 +14,8 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -970,12 +969,12 @@ func (c *PostgresqlConnector) CountRows(ctx context.Context, sourceIdentifier st
 // DecodeTableMeta decodes source metadata and restores missing legacy name components.
 // Historical components are assumed not to contain dots or SQL quoting characters.
 func (c *PostgresqlConnector) DecodeTableMeta(metadata map[string]any) (*interfaces.TableMeta, error) {
-	data, err := sonic.Marshal(metadata)
+	data, err := jsoncodec.Marshal(metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize table metadata: %w", err)
 	}
 	table := &interfaces.TableMeta{}
-	if err := common.UnmarshalJSON(data, table); err != nil {
+	if err := jsoncodec.Unmarshal(data, table); err != nil {
 		return nil, fmt.Errorf("failed to decode table metadata: %w", err)
 	}
 	if _, ok := metadata["description"]; !ok {

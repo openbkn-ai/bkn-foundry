@@ -14,6 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -97,7 +98,7 @@ func (u *userMgmtAccess) GetAccountNames(ctx context.Context, accountInfos []*in
 		} `json:"user_names"`
 	}{}
 
-	if err := common.UnmarshalJSON(result, &response); err != nil {
+	if err := jsoncodec.Unmarshal(result, &response); err != nil {
 		logger.Errorf("Unmarshal account names response failed: %v", err)
 		return fmt.Errorf("unmarshal account names response failed: %w", err)
 	}

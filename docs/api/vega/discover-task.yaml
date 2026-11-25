@@ -331,7 +331,7 @@ components:
           type: integer
         skipped_count:
           type: integer
-          description: count_only 中不支持计数而跳过的资源数；旧结果可省略
+          description: count_only 中不支持计数而跳过的资源数。没有跳过时返回 0，历史记录缺少该字段时按 0 读取。
         failed_count:
           description: Number of resources that failed during discovery
           type: integer
@@ -461,7 +461,7 @@ components:
         updated_count: { type: integer }
         restored_count: { type: integer }
         failed_count: { type: integer }
-        skipped_count: { type: integer, description: count_only 中不支持计数而跳过的资源数 }
+        skipped_count: { type: integer, description: count_only 中不支持计数而跳过的资源数。没有跳过时返回 0。 }
     DiscoverTaskSummary:
       description: Discovery-task list summary. Use the single-task detail endpoint for the complete result and its message.
       type: object

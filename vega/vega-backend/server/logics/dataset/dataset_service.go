@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -75,12 +75,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 		return query_error.DecimalIndexHTTPError(ctx, err)
 	}
 
-	indexID, err := uuid.NewV7()
-	if err != nil {
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-			WithErrorDetails("generate dataset index UUIDv7 failed")
-	}
-	indexName := fmt.Sprintf("%s-%s", interfaces.DatasetIndexPrefix, indexID)
+	indexName := fmt.Sprintf("%s-%s", interfaces.DatasetIndexPrefix, uuid.NewV7())
 	resourcelogic.InitializeJSONIndexAttributes(res.SchemaDefinition)
 	err = ds.lim.CreateIndex(ctx, indexName, schema, map[string]string{"resource_id": res.ID})
 	if err != nil {

@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -22,7 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -108,7 +107,7 @@ func (suts *semanticUnderstandingTaskService) Apply(ctx context.Context, id stri
 			return nil, false, semanticApplyInternalError(ctx, err)
 		}
 		var details map[string]any
-		if err := common.UnmarshalJSON([]byte(result.DetailJSON), &details); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(result.DetailJSON), &details); err != nil {
 			return nil, false, semanticApplyInternalError(ctx, err)
 		}
 		details["apply_mode"] = req.ApplyMode
@@ -171,10 +170,7 @@ func validateSemanticTaskSchema(task *interfaces.SemanticUnderstandingTask, reso
 			Fields           []semanticSchemaField `json:"schema_definition"`
 		} `json:"resource"`
 	}
-	if err := validateSemanticJSON(task.Input); err != nil {
-		return err
-	}
-	if err := common.UnmarshalJSON([]byte(task.Input), &snapshot); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(task.Input), &snapshot); err != nil {
 		return err
 	}
 	if snapshot.Resource.ID != task.ResourceID || resourceInfo.ID != task.ResourceID || resourceInfo.CatalogID != task.CatalogID ||
@@ -225,7 +221,7 @@ func semanticSchemaFingerprint(fields []semanticSchemaField) (string, error) {
 
 func validateSemanticResultFields(resultJSON string, resourceInfo *interfaces.Resource) error {
 	var envelope map[string]json.RawMessage
-	if err := common.UnmarshalJSON([]byte(resultJSON), &envelope); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(resultJSON), &envelope); err != nil {
 		return err
 	}
 	resourceJSON := strings.TrimSpace(string(envelope["resource"]))
@@ -233,10 +229,7 @@ func validateSemanticResultFields(resultJSON string, resourceInfo *interfaces.Re
 		return fmt.Errorf("result must contain a resource object")
 	}
 	var result interfaces.SemanticUnderstandingResourceResult
-	if err := validateSemanticJSON(resultJSON); err != nil {
-		return err
-	}
-	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return err
 	}
 	if strings.TrimSpace(resultJSON) == "null" {
@@ -268,56 +261,4 @@ func validateSemanticResultFields(resultJSON string, resourceInfo *interfaces.Re
 		seen[field.Name] = true
 	}
 	return nil
-}
-
-// validateSemanticJSON 拒绝重复键，避免快照或模型结果通过后值覆盖前值改变校验语义。
-func validateSemanticJSON(payload string) error {
-	decoder := json.NewDecoder(strings.NewReader(payload))
-	decoder.UseNumber()
-	if err := consumeSemanticJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); err != io.EOF {
-		return fmt.Errorf("semantic JSON contains trailing data")
-	}
-	return nil
-}
-
-func consumeSemanticJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		keys := map[string]bool{}
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok || keys[key] {
-				return fmt.Errorf("semantic JSON contains an invalid or duplicate key")
-			}
-			keys[key] = true
-			if err := consumeSemanticJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for decoder.More() {
-			if err := consumeSemanticJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-	default:
-		return fmt.Errorf("unexpected semantic JSON delimiter")
-	}
-	_, err = decoder.Token()
-	return err
 }

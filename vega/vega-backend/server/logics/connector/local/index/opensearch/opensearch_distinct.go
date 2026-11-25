@@ -19,9 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -229,7 +228,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 						return nil, fmt.Errorf("exact distinct bucket is missing its group key")
 					}
 				}
-				encoded, err := sonic.Marshal(groupKey)
+				encoded, err := jsoncodec.Marshal(groupKey)
 				if err != nil {
 					return nil, err
 				}
@@ -359,7 +358,7 @@ func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
 	method, path string, body map[string]any, budget string) (map[string]any, error) {
 	var reader io.Reader
 	if body != nil {
-		encoded, err := sonic.Marshal(body)
+		encoded, err := jsoncodec.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
@@ -418,7 +417,7 @@ func (c *OpenSearchConnector) aggregationRequest(ctx context.Context,
 		return nil, interfaces.NewQueryExecutionBudgetError(budget+"_response_memory", nil)
 	}
 	var result map[string]any
-	if err := common.UnmarshalJSON(encoded, &result); err != nil {
+	if err := jsoncodec.Unmarshal(encoded, &result); err != nil {
 		return nil, fmt.Errorf("decode aggregation response failed")
 	}
 	if search {

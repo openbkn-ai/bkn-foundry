@@ -749,8 +749,9 @@ components:
           description: |
             连接器配置（结构由 ConnectorType.field_config 决定）。普通读取不返回敏感字段；
             静态敏感字段定义的读取不受许可证档位限制；连接器未装配、无法取得字段定义时，
-            普通和受保护的配置读取均返回不可用错误，不返回未过滤的配置。逻辑 Catalog 无连接配置时可为 null。
-          type: [object, "null"]
+            普通和受保护的配置读取均返回不可用错误，不返回未过滤的配置。
+            逻辑 Catalog 无连接配置时返回空对象（{}）。
+          type: object
           additionalProperties: true
         metadata:
           description: 扩展元信息；关系型 Catalog 探查后可包含 schemas 快照

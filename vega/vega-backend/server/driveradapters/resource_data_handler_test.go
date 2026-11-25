@@ -586,6 +586,56 @@ func TestResourceDataOperationsDoNotRequireViewDetail(t *testing.T) {
 	})
 }
 
+func TestResourceDataRestHandlerQueryZeroLengthBinary(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	length, content := int64(0), ""
+	for _, tc := range []struct {
+		mode  string
+		value interfaces.ResourceValue
+		want  string
+	}{
+		{
+			mode:  interfaces.BinaryModeContent,
+			value: interfaces.ResourceValue{Mode: interfaces.ResourceValueModeContent, ByteLength: &length, Data: &content},
+			want:  `{"mode":"content","byte_length":0,"data":""}`,
+		},
+		{
+			mode:  interfaces.BinaryModeMetadata,
+			value: interfaces.ResourceValue{Mode: interfaces.ResourceValueModeMetadata, ByteLength: &length},
+			want:  `{"mode":"metadata","byte_length":0}`,
+		},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			engine, rs, _, rds := setupResourceDataHandlerTest(t)
+			resource := &interfaces.Resource{
+				ID: "res-1", Category: interfaces.ResourceCategoryTable, Enabled: true, Status: interfaces.ResourceStatusActive,
+				SchemaDefinition: []*interfaces.Property{{Name: "blob", Type: interfaces.DataType_Binary}},
+			}
+			rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+			rds.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{
+				Entries: []map[string]any{{"blob": tc.value}},
+			}, nil)
+
+			body := strings.NewReader(fmt.Sprintf(`{"binary_mode":%q}`, tc.mode))
+			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", body)
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+			req.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			var response struct {
+				Entries []map[string]json.RawMessage `json:"entries"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Len(t, response.Entries, 1)
+			assert.JSONEq(t, tc.want, string(response.Entries[0]["blob"]))
+		})
+	}
+}
+
 func Test_ResourceDataRestHandler_CreateResourceData(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -142,12 +142,8 @@ func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.B
 		}
 		return
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		logger.Errorf("Generate build schedule trigger ID failed: schedule_id=%s", s.ID)
-		return
-	}
-	claimed, err := w.sa.ClaimRun(ctx, s.ID, s.UpdateTime, s.NextRun, now.UnixMilli(), next.UnixMilli(), id.String())
+	id := uuid.NewV7().String()
+	claimed, err := w.sa.ClaimRun(ctx, s.ID, s.UpdateTime, s.NextRun, now.UnixMilli(), next.UnixMilli(), id)
 	if err != nil {
 		logger.Errorf("Claim build schedule failed: schedule_id=%s", s.ID)
 		return
@@ -155,7 +151,7 @@ func (w *BuildScheduleWorker) runScheduleAt(ctx context.Context, s *interfaces.B
 	if claimed == 0 {
 		return
 	}
-	runID = id.String()
+	runID = id
 	result, err = w.ss.ExecuteSchedule(ctx, s)
 	if err != nil {
 		logger.Errorf("Build schedule call failed: schedule_id=%s", s.ID)

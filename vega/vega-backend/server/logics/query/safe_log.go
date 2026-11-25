@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func SafeQuerySummary(query any) string {
@@ -21,7 +21,7 @@ func SafeQuerySummary(query any) string {
 		queryBytes = []byte(value)
 	default:
 		queryType = "structured"
-		queryBytes, _ = sonic.Marshal(value)
+		queryBytes, _ = jsoncodec.Marshal(value)
 	}
 	hash := sha256.Sum256(queryBytes)
 	return fmt.Sprintf("query_type=%s query_hash=%s query_length=%d", queryType, hex.EncodeToString(hash[:]), len(queryBytes))

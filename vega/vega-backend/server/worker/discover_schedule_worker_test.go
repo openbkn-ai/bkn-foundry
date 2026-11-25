@@ -10,8 +10,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,8 +97,9 @@ func TestDiscoverScheduleWorkerRunScheduleAt(t *testing.T) {
 			var runID string
 			gomock.InOrder(
 				access.EXPECT().ClaimRun(gomock.Any(), schedule.ID, schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), next, gomock.Any()).DoAndReturn(func(ctx context.Context, _ string, _, _, _, _ int64, token string) (int64, error) {
-					_, err := uuid.Parse(token)
+					parsed, err := uuid.Parse(token)
 					require.NoError(t, err)
+					assert.Equal(t, byte(7), parsed[6]>>4)
 					runID = token
 					assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
 					return 1, nil
