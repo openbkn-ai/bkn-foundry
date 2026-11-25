@@ -113,7 +113,7 @@ bkn-backend/
 
 依赖要求：
 
-- Go 1.26.0+
+- Go 1.27.4+
 - MariaDB 11.4+ 或 DM8
 - OpenSearch 2.x
 - 调试集成路径时，需要可访问的 VEGA、model-factory 和 bkn-safe 依赖。

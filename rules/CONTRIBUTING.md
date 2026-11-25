@@ -524,7 +524,7 @@ BKN Foundry is polyglot. You only need the toolchain(s) for the module(s) you to
 
 - **Git** (always)
 - **Java** (JDK 17+) and Maven for most ADP backend modules
-- **Go** (1.23+) for `infra/oss-gateway-backend`, several CLIs and small services
+- **Go** (1.27.4+) for `infra/oss-gateway-backend`, several CLIs and small services
 - **Python** (3.11+) for `infra/mf-model-manager`, model / data utilities
 - **Node.js** — OpenBKN CLIs require **22+** (per [`@openbkn/bkn-sdk` on npm](https://www.npmjs.com/package/@openbkn/bkn-sdk)).
 - **Docker** + a Kubernetes (single-node K3s / kubeadm / Docker Desktop) for end-to-end testing

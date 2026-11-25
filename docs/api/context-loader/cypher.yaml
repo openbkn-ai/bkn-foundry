@@ -146,6 +146,8 @@ paths:
         逐表读取再关联，只支持基础写法；CASE、coalesce、标量函数、对分组再统计、比较两个列表、把节点传给下一个 MATCH、
         collect 会返回 400，读取量过大或超时也返回 400；返回节点、关系和虚拟边与 SQL 数据源上相同；UNION 也可用，每段各自读取。
         经关联表连接两端的关系（知识库构建的网络里常见）可以写在 MATCH 里，写在 OPTIONAL MATCH 里返回 400 并点名该关系类。
+        数据源可以让字段只能返回、不能过滤（`search_schema` / `get_object_types` 里标 `filterable: false`，
+        JSON 字段默认如此）：可以返回它，但在 WHERE 或内联属性里按它过滤会在读数据前返回 400 `Unsupported` 并点名该属性。
 
         **不支持**（会被拒绝，报错指名是哪个语法与位置）：
         变长路径 `[:R*1..3]`、`XOR`、`date()` / `datetime()` / `localdatetime()`、`coalesce()`、上面的标量函数、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
@@ -198,7 +200,9 @@ paths:
           description: |
             缺少 `kn_id` / `query`，或语句用了不支持的语法、引用了不存在的对象类 /
             关系类 / 属性，或带 `collect` 的查询证据达到 10000 行（`BknBackend.Cypher.ReadBudgetExceeded`，
-            请加过滤条件或减小 LIMIT）。编译器的拒绝原样透传，`error_details` 里带构造名与位置。
+            请加过滤条件或减小 LIMIT），或在数据集、索引上按不能过滤的属性过滤（`BknBackend.Cypher.Unsupported`，
+            点名该属性；数据源拒绝了条件但没能提前识别时为 `BknBackend.Cypher.InvalidParameter`）。
+            编译器的拒绝原样透传，`error_details` 里带构造名与位置。
           content:
             application/json:
               schema:
@@ -290,7 +294,8 @@ components:
             为 true 时不执行查询、不读数据，只返回 `plan`（此时 `entries` 为空）：查询形状、对象和关系、条件、
             分组、返回列及类型、行数上限、会读的属性、行范围被收窄的对象类和提醒。查询的解析、授权和编译与执行时
             完全相同，所以会被拒的写法返回与执行时相同的错误和改写提示。不返回 SQL。例外：explain 看不出数据存在哪里，
-            对象类绑定数据集、索引或跨多个数据源时才被拒的写法（CASE、coalesce 等），explain 照样通过，执行时才被拒。
+            对象类绑定数据集、索引或跨多个数据源时才被拒的写法（CASE、coalesce、按 `filterable: false` 的属性过滤等），
+            explain 照样通过，执行时才被拒。
         timeout_sec:
           type: integer
           minimum: 1

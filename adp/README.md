@@ -68,7 +68,7 @@ VEGA provides a unified SQL interface for heterogeneous data sources, decoupling
 
 ### Prerequisites
 
-- **Go**: 1.26.0+ (for Ontology)
+- **Go**: 1.27.4+ (for Ontology)
 - **Java**: JDK 1.8+ (for VEGA)
 - **Node.js**: 18+ (for Web Console)
 - **Database**: MariaDB 11.4+ or DM8

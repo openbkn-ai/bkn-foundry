@@ -60,6 +60,10 @@ paths:
         **`unit`**：非精简模式下，`data_properties[].unit` 来自属性本身，或来自它引用的值类型
         （引用了值类型的属性不能自己声明单位，单位只写在值类型里）；枚举与非枚举值类型都适用。
         精简模式不输出；读取值类型失败时不输出，属性保留 `value_type`。
+
+        **`filterable`**：`data_properties[].filterable` 只在为 `false` 时出现，表示绑定资源能返回该属性、
+        但拒绝按它过滤（JSON 字段默认如此）。这时按类型推断的比较算子都不能用，查询条件和 Cypher 的 WHERE
+        里都不要写它，取回值后再比对。精简模式同样输出；取自 bkn-backend 对象类详情，读不到时不输出。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - name: x-kn-id

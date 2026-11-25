@@ -529,3 +529,116 @@ func TestObjectTypeRowCountsBatchesPolicies(t *testing.T) {
 		}
 	}
 }
+
+// #3365: a field the bound resource cannot filter on is said so on the property, and the
+// comparisons its type would offer are not; index operators read their own index fields and stay.
+func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	stale := true
+	objectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:       "ot1",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "code", Type: "string", MappedField: &interfaces.Field{Name: "code"}},
+				// A stored definition may carry a value an earlier response had; it is not kept.
+				{Name: "claim_value", Type: "json", MappedField: &interfaces.Field{Name: "claim_value"}, Filterable: &stale},
+				{Name: "status", Type: "string", MappedField: &interfaces.Field{Name: "status"}},
+				{Name: "summary", Type: "string", MappedField: &interfaces.Field{Name: "summary"}},
+				{Name: "legacy", Type: "string", MappedField: &interfaces.Field{Name: "legacy"}},
+				{Name: "body", Type: "text", MappedField: &interfaces.Field{Name: "body"}},
+			},
+		},
+	}
+	filterable, unfilterable := true, false
+	resource := &interfaces.VegaResource{
+		ID:               "r1",
+		Category:         interfaces.ResourceCategoryDataset,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "code", Type: "string", Filterable: &filterable},
+			{Name: "claim_value", Type: "json", Filterable: &unfilterable},
+			{Name: "status", Type: "string", Filterable: &unfilterable},
+			{Name: "summary", Type: "string", Filterable: &unfilterable,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Fulltext}}},
+			// An older vega-backend sends no switch at all.
+			{Name: "legacy", Type: "string"},
+			// Compared through its keyword subfield in the index, as Cypher and vega-backend do.
+			{Name: "body", Type: "text", Filterable: &unfilterable,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
+		},
+	}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {resource: resource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	props := objectType.DataProperties
+	if props[0].Filterable == nil || !*props[0].Filterable || len(props[0].ConditionOperations) == 0 {
+		t.Errorf("code: filterable = %v, ops = %v, want filterable with its comparisons", props[0].Filterable, props[0].ConditionOperations)
+	}
+	if props[1].Filterable == nil || *props[1].Filterable || len(props[1].ConditionOperations) != 0 {
+		t.Errorf("claim_value: filterable = %v, ops = %v, want not filterable and no operators", props[1].Filterable, props[1].ConditionOperations)
+	}
+	if props[2].Filterable == nil || *props[2].Filterable || len(props[2].ConditionOperations) != 0 {
+		t.Errorf("status: filterable = %v, ops = %v, want the type's comparisons dropped", props[2].Filterable, props[2].ConditionOperations)
+	}
+	if props[3].Filterable == nil || *props[3].Filterable || fmt.Sprint(props[3].ConditionOperations) != fmt.Sprint(interfaces.DSL_TEXT_OPS) {
+		t.Errorf("summary: filterable = %v, ops = %v, want only its full-text operators %v",
+			props[3].Filterable, props[3].ConditionOperations, interfaces.DSL_TEXT_OPS)
+	}
+	if props[4].Filterable != nil || len(props[4].ConditionOperations) == 0 {
+		t.Errorf("legacy: filterable = %v, ops = %v, want it absent and the type's comparisons kept", props[4].Filterable, props[4].ConditionOperations)
+	}
+	if props[5].Filterable == nil || !*props[5].Filterable ||
+		fmt.Sprint(props[5].ConditionOperations) != fmt.Sprint(interfaces.DSL_KEYWORD_OPS) {
+		t.Errorf("body: filterable = %v, ops = %v, want filterable through its keyword subfield with only %v",
+			props[5].Filterable, props[5].ConditionOperations, interfaces.DSL_KEYWORD_OPS)
+	}
+	encoded, err := json.Marshal(props[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"filterable":false`) {
+		t.Errorf("claim_value encodes as %s, want filterable false on the wire", encoded)
+	}
+}
+
+// A table is read from its data source by Cypher, where a text field whose own
+// switch is off is refused even with a keyword subfield in its index; the detail
+// says so too. The index's keyword operators stay listed.
+func TestProcessObjectTypeDetailsKeepsATableTextFieldUnfilterable(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:       "ot1",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "body", Type: "text", MappedField: &interfaces.Field{Name: "body"}},
+			},
+		},
+	}
+	unfilterable := false
+	resource := &interfaces.VegaResource{
+		ID:               "r1",
+		Category:         "table",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "body", Type: "text", Filterable: &unfilterable,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
+		},
+	}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {resource: resource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := objectType.DataProperties[0]
+	if body.Filterable == nil || *body.Filterable ||
+		fmt.Sprint(body.ConditionOperations) != fmt.Sprint(interfaces.DSL_KEYWORD_OPS) {
+		t.Errorf("body: filterable = %v, ops = %v, want not filterable with the index's %v",
+			body.Filterable, body.ConditionOperations, interfaces.DSL_KEYWORD_OPS)
+	}
+}

@@ -115,6 +115,12 @@ func (s *actionLogsService) AppendResults(ctx context.Context, knID, execID stri
 		docs := make([]interfaces.BulkDocument, 0, end-start)
 		for i := start; i < end; i++ {
 			seq := firstSeq + i
+			if results[i].IndexSync != nil {
+				if err := s.storeIndexSyncResult(ctx, knID, execID, seq, results[i]); err != nil {
+					return err
+				}
+				continue
+			}
 			docs = append(docs, interfaces.BulkDocument{
 				ID: resultDocumentID(execID, seq),
 				Body: storedExecutionResult{
@@ -125,6 +131,9 @@ func (s *actionLogsService) AppendResults(ctx context.Context, knID, execID stri
 					ObjectExecutionResult: results[i],
 				},
 			})
+		}
+		if len(docs) == 0 {
+			continue
 		}
 		if err := s.osAccess.BulkIndexDocuments(ctx, interfaces.ActionExecutionResultsIndex, docs); err != nil {
 			return fmt.Errorf("failed to store results of execution %s: %w", execID, err)

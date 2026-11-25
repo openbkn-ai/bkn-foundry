@@ -142,6 +142,7 @@ type ActionExecution struct {
 // Under ExecutionModeOnce a single result stands for the whole execution, and the matched
 // instances it covers are carried in Targets.
 type ObjectExecutionResult struct {
+	IndexSync *ActionIndexSync `json:"index_sync,omitempty"`
 	ObjectSystemInfo
 	Targets      []ObjectSystemInfo `json:"targets,omitempty"` // instances covered by this invocation (once mode only)
 	Status       string             `json:"status"`            // "pending" | "success" | "failed"
@@ -174,6 +175,7 @@ type ExecutionOutcome struct {
 
 // ActionLogQuery represents query parameters for execution logs (supports both GET query params and JSON body)
 type ActionLogQuery struct {
+	GovernanceRequestID  string   `json:"governance_request_id,omitempty" form:"governance_request_id" binding:"max=128"`
 	KNID                 string   `json:"-" form:"-"`
 	ActionTypeID         string   `json:"action_type_id,omitempty" form:"action_type_id"`
 	Status               string   `json:"status,omitempty" form:"status"`

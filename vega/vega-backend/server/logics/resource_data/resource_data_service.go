@@ -245,8 +245,12 @@ func (rds *resourceDataService) queryWithCursor(ctx context.Context, resource *i
 	}
 
 	// Reject disabled fields before vector resolution can call the model service.
+	filterFields := fieldMap
+	if usesLocalIndex {
+		filterFields = withUnqueryableSourceFields(fieldMap, resource.SchemaDefinition)
+	}
 	for _, cfg := range []*interfaces.FilterCondCfg{params.FixedFilterCondCfg, params.FilterCondCfg} {
-		if err := filter_condition.ValidateFilterable(cfg, fieldMap); err != nil {
+		if err := filter_condition.ValidateFilterable(cfg, filterFields); err != nil {
 			if cfg == params.FixedFilterCondCfg {
 				return nil, interfaces.NewStoredConditionBuildError(err)
 			}
@@ -808,6 +812,35 @@ func (rds *resourceDataService) executeSourceQueryWithCursor(ctx context.Context
 		return nil, httpErr
 	}
 
+}
+
+// withUnqueryableSourceFields 返回经本地索引查询时用于过滤能力校验的字段集。
+// 本地索引的查询 schema 不含 JSON、binary、other 字段，按这类字段过滤原本要到构造条件时
+// 才报「not found in schema」，而资源明明声明并返回了该字段（bkn-foundry #3365）。
+// 这里按源端字段补回并标记为不可过滤，使校验如实报告「不可过滤」。
+// 不修改 fields 本身：条件仍按查询 schema 构造。
+func withUnqueryableSourceFields(fields map[string]*interfaces.Property, source []*interfaces.Property) map[string]*interfaces.Property {
+	var checked map[string]*interfaces.Property
+	for _, property := range source {
+		if property == nil || property.Name == "" {
+			continue
+		}
+		if _, ok := fields[property.Name]; ok {
+			continue
+		}
+		if checked == nil {
+			checked = make(map[string]*interfaces.Property, len(fields)+1)
+			for name, field := range fields {
+				checked[name] = field
+			}
+		}
+		off := false
+		checked[property.Name] = &interfaces.Property{Name: property.Name, Type: property.Type, Filterable: &off}
+	}
+	if checked == nil {
+		return fields
+	}
+	return checked
 }
 
 // prepareSortParams prepares sort parameters to only include fields defined in resource SchemaDefinition

@@ -113,3 +113,18 @@ func (mr *MockActionSchedulerServiceMockRecorder) GetExecution(ctx, knID, execut
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExecution", reflect.TypeOf((*MockActionSchedulerService)(nil).GetExecution), ctx, knID, executionID)
 }
+
+// RetryActionIndexSync mocks base method.
+func (m *MockActionSchedulerService) RetryActionIndexSync(ctx context.Context, knID, executionID string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RetryActionIndexSync", ctx, knID, executionID)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RetryActionIndexSync indicates an expected call of RetryActionIndexSync.
+func (mr *MockActionSchedulerServiceMockRecorder) RetryActionIndexSync(ctx, knID, executionID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetryActionIndexSync", reflect.TypeOf((*MockActionSchedulerService)(nil).RetryActionIndexSync), ctx, knID, executionID)
+}

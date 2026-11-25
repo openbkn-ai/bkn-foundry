@@ -30,5 +30,7 @@ var cypherEnUS = i18n.I18nMessages{
 		"BknBackend.Cypher.InvalidParameter.Detail.TimeoutOutOfRange":    "timeout_sec must be between 1 and {{.max}} seconds; leave it out to use the configured {{.max}} seconds.",
 
 		"BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceOptionalLink": "The query reads object types stored in a dataset or an index, or in more than one data source. Relation type {{.relation}} links its ends through a link table, which such data takes in MATCH but not in OPTIONAL MATCH: write it as a MATCH, or query the two sides separately.",
+		"BknBackend.Cypher.InvalidParameter.Detail.UnfilterableProperty":     "Property {{.property}} of object type {{.objectType}} can be returned, but its data source cannot filter on it, so it cannot be used in a WHERE condition. Filter on another property, such as a key or a business identifier, or drop the condition and compare the values the query returns.",
+		"BknBackend.Cypher.InvalidParameter.Detail.ConditionRejected":        "The data source rejected a condition in the query, usually a filter on a property it cannot filter on. Check the conditions in WHERE and filter on another property.",
 	},
 }

@@ -338,8 +338,9 @@ func WithUnrestrictedPermissionsOmitted(detail *interfaces.KnowledgeNetworkDetai
 }
 
 // TrimObjectTypesToIndexBackedOps keeps only operators whose availability
-// cannot be inferred from the property type. REST and MCP both call this helper
-// so their advertised schema stays byte-for-byte equivalent.
+// cannot be inferred from the property type, and filterable only where it is
+// false. REST and MCP both call this helper so their advertised schema stays
+// byte-for-byte equivalent.
 func TrimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
 	for _, objectType := range objectTypes {
 		if objectType == nil {
@@ -357,6 +358,9 @@ func TrimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
 				}
 			}
 			property.ConditionOperations = filtered
+			// The comparison operators left out above are derived from the property type,
+			// which holds unless the data source refuses them all: that is the switch kept.
+			property.Filterable = interfaces.OnlyUnfilterable(property.Filterable)
 		}
 	}
 }

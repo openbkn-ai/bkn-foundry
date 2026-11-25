@@ -89,8 +89,17 @@ func (s *localSearchImpl) backfillConditionOperations(
 			unavailable = append(unavailable, detail.ID)
 		}
 		ops := map[string][]interfaces.KnOperationType{}
+		// A property whose data source refuses conditions has no comparison operator,
+		// which an agent cannot tell from its type: the switch travels with the operators.
+		unfilterable := map[string]*bool{}
 		for _, p := range detail.DataProperties {
-			if p == nil || len(p.ConditionOperations) == 0 {
+			if p == nil {
+				continue
+			}
+			if off := interfaces.OnlyUnfilterable(p.Filterable); off != nil {
+				unfilterable[p.Name] = off
+			}
+			if len(p.ConditionOperations) == 0 {
 				continue
 			}
 			selected := p.ConditionOperations
@@ -102,12 +111,18 @@ func (s *localSearchImpl) backfillConditionOperations(
 			}
 			ops[p.Name] = selected
 		}
-		if len(ops) == 0 {
+		if len(ops) == 0 && len(unfilterable) == 0 {
 			continue
 		}
 		for _, objType := range targets {
 			for _, p := range objType.DataProperties {
-				if p == nil || len(p.ConditionOperations) > 0 {
+				if p == nil {
+					continue
+				}
+				if off := unfilterable[p.Name]; off != nil {
+					p.Filterable = off
+				}
+				if len(p.ConditionOperations) > 0 {
 					continue
 				}
 				if objType.EffectivePermissions != nil &&

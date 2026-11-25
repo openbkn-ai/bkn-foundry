@@ -45,6 +45,7 @@ func Test_CreateExecution_StoresBKNContextAndMapsItAsKeyword(t *testing.T) {
 		props := mapping.(map[string]any)["properties"].(map[string]any)
 		So(props["conversation_id"], ShouldResemble, map[string]any{"type": "keyword"})
 		So(props["interaction_id"], ShouldResemble, map[string]any{"type": "keyword"})
+		So(props["governance_request_id"], ShouldResemble, governanceRequestMapping)
 
 		raw, err := sonic.Marshal(stored[0])
 		So(err, ShouldBeNil)
@@ -65,6 +66,7 @@ func Test_CreateExecution_StoresBKNContextAndMapsItAsKeyword(t *testing.T) {
 		props := executionsIndexBody["mappings"].(map[string]any)["properties"].(map[string]any)
 		So(props["conversation_id"], ShouldResemble, map[string]any{"type": "keyword"})
 		So(props["interaction_id"], ShouldResemble, map[string]any{"type": "keyword"})
+		So(props["governance_request_id"], ShouldResemble, governanceRequestMapping)
 	})
 
 	Convey("a failed mapping update does not fail the execution and is not retried within the backoff window", t, func() {
@@ -104,21 +106,25 @@ func Test_QueryExecutions_FiltersByBKNContext(t *testing.T) {
 				query = q.(map[string]any)
 				return []interfaces.Hit{{Source: map[string]any{
 					"id": "e1", "status": "completed", "conversation_id": "conv-1", "interaction_id": "int-1",
+					"governance_request_id": "request-1:foo",
 				}}}, nil
 			})
 
 		svc := &actionLogsService{osAccess: osa}
 		res, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{
 			KNID: "kn_1", Status: "completed", ConversationID: "conv-1", InteractionID: "int-1",
+			GovernanceRequestID: "request-1:foo",
 		})
 		So(err, ShouldBeNil)
 		So(res.Entries[0].ConversationID, ShouldEqual, "conv-1")
 		So(res.Entries[0].InteractionID, ShouldEqual, "int-1")
+		So(res.Entries[0].GovernanceRequestID, ShouldEqual, "request-1:foo")
 
 		must := query["query"].(map[string]any)["bool"].(map[string]any)["must"].([]map[string]any)
 		So(must, ShouldContain, map[string]any{"term": map[string]any{"conversation_id": "conv-1"}})
 		So(must, ShouldContain, map[string]any{"term": map[string]any{"interaction_id": "int-1"}})
 		So(must, ShouldContain, map[string]any{"term": map[string]any{"status": "completed"}})
+		So(must, ShouldContain, map[string]any{"term": map[string]any{"governance_request_id.keyword": "request-1:foo"}})
 	})
 
 	Convey("without the filters the query is unchanged, and old records read back without ids", t, func() {
@@ -138,6 +144,7 @@ func Test_QueryExecutions_FiltersByBKNContext(t *testing.T) {
 		must, _ := query["query"].(map[string]any)["bool"].(map[string]any)["must"].([]map[string]any)
 		for _, cond := range must {
 			So(cond["term"], ShouldNotContainKey, "conversation_id")
+			So(cond["term"], ShouldNotContainKey, "governance_request_id.keyword")
 		}
 	})
 }

@@ -36,6 +36,7 @@ type actionLogsService struct {
 
 	// resultsIndexReady caches that the shared results index exists.
 	resultsIndexReady atomic.Bool
+	syncMappingReady  atomic.Bool
 
 	// mappingsCurrent caches the execution indexes whose mapping already carries
 	// executionsMappingAdditions, so the mapping is put once per index and process.
@@ -370,6 +371,9 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		})
 	}
 
+	if query.GovernanceRequestID != "" {
+		mustConditions = append(mustConditions, map[string]any{"term": map[string]any{"governance_request_id.keyword": query.GovernanceRequestID}})
+	}
 	if query.ConversationID != "" {
 		mustConditions = append(mustConditions, map[string]any{
 			"term": map[string]any{"conversation_id": query.ConversationID},
@@ -560,12 +564,13 @@ var executionsIndexBody = map[string]any{
 			// term queries still match because the fingerprint is a single [0-9a-f] token.
 			"instance_identity_hash": map[string]any{"type": "keyword"},
 			// Caller-declared correlation labels; see executionsMappingAdditions for old indexes.
-			"conversation_id":      map[string]any{"type": "keyword"},
-			"interaction_id":       map[string]any{"type": "keyword"},
-			"results":              map[string]any{"type": "nested"},
-			"dynamic_params":       map[string]any{"type": "object", "enabled": false},
-			"action_source":        map[string]any{"type": "object", "enabled": false},
-			"action_type_snapshot": map[string]any{"type": "object", "enabled": false},
+			"conversation_id":       map[string]any{"type": "keyword"},
+			"interaction_id":        map[string]any{"type": "keyword"},
+			"governance_request_id": governanceRequestMapping,
+			"results":               map[string]any{"type": "nested"},
+			"dynamic_params":        map[string]any{"type": "object", "enabled": false},
+			"action_source":         map[string]any{"type": "object", "enabled": false},
+			"action_type_snapshot":  map[string]any{"type": "object", "enabled": false},
 		},
 	},
 }
@@ -575,10 +580,15 @@ var executionsIndexBody = map[string]any{
 // dynamic mapping would make them text, which an exact-match term filter cannot match for ids
 // containing "-", "." or ":". Adding a field to a mapping is additive: documents written before
 // stay as they are and simply have no such field.
+// The keyword subfield matches historical dynamic string mappings and keeps
+// request identifiers exact, including punctuation, without changing their type.
+var governanceRequestMapping = map[string]any{"type": "text", "fields": map[string]any{"keyword": map[string]any{"type": "keyword", "ignore_above": 256}}}
+
 var executionsMappingAdditions = map[string]any{
 	"properties": map[string]any{
-		"conversation_id": map[string]any{"type": "keyword"},
-		"interaction_id":  map[string]any{"type": "keyword"},
+		"conversation_id":       map[string]any{"type": "keyword"},
+		"interaction_id":        map[string]any{"type": "keyword"},
+		"governance_request_id": governanceRequestMapping,
 	},
 }
 

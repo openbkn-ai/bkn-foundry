@@ -6,7 +6,7 @@
 // is the only thing bkn-safe pulls from bkn-comm-go.
 module github.com/openbkn-ai/bkn-foundry/bkn-safe/server
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/IBM/sarama v1.61.1

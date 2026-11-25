@@ -2852,14 +2852,15 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 					var storedErr *interfaces.StoredConditionBuildError
 					require.ErrorAs(t, err, &storedErr)
 					require.NotNil(t, storedErr.Cause)
-					assert.Contains(t, storedErr.Cause.Error(), "not found")
+					// 本地索引查询 schema 不含此类字段，但资源声明了它：报不可过滤而非字段不存在（#3365）。
+					assert.Contains(t, storedErr.Cause.Error(), `"payload" is not filterable`)
 					return
 				}
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				if !stored {
-					assert.Contains(t, httpErr.ErrorDetails, "not found")
+					assert.Contains(t, httpErr.ErrorDetails, `"payload" is not filterable`)
 				}
 			})
 		}

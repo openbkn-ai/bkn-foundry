@@ -2573,6 +2573,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 		if prop != nil {
 			// The persisted definition has no response-time index feature projection.
 			prop.IndexFeatures = nil
+			prop.Filterable = nil
 		}
 	}
 	resource, metadataUnavailable := ots.projectObjectTypeIndexStatus(ctx, objectType, resources)
@@ -2590,14 +2591,27 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 				if prop == nil {
 					continue
 				}
+				fieldRefused := false
 				if prop.MappedField != nil {
 					if property, exists := propertiesMap[prop.MappedField.Name]; exists {
 						objectType.DataProperties[j].MappedField.DisplayName = property.DisplayName
 						objectType.DataProperties[j].MappedField.Type = property.Type
+						if property.Filterable != nil {
+							// The same judgement Cypher refuses a condition by, so the two agree.
+							filterable := !logics.VegaPropertyRefusesConditions(resource, property)
+							objectType.DataProperties[j].Filterable = &filterable
+							fieldRefused = !*property.Filterable
+						}
 					}
 					objectType.DataProperties[j].IndexFeatures = featuresByField[prop.MappedField.Name]
 				}
 				ops := ots.processConditionOperations(objectType, prop, dslView)
+				if fieldRefused {
+					// The type baseline is what the field itself is compared by, which the resource
+					// refuses. Index operators read the index's own fields and stay, a text field's
+					// keyword comparisons among them.
+					ops = nil
+				}
 				if prop.MappedField != nil {
 					ops = applyIndexCapOps(ops, indexCaps[prop.MappedField.Name])
 				}

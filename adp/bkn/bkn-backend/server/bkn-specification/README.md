@@ -19,7 +19,7 @@ the separate deployment upgrade script, not through BKN archive compatibility.
 
 ## Requirements
 
-- **Go 1.26.0+**
+- **Go 1.27.4+**
 
 ## Structure
 

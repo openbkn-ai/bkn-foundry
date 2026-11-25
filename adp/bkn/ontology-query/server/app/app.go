@@ -45,6 +45,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_index_sync"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	proxycontext "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/proxy_context"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
@@ -163,6 +164,10 @@ func (server *Application) Run() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
+	syncService := action_index_sync.New(action_logs.NewIndexSyncStore(server.appSetting), vega_backend.NewIndexSyncAccess(server.appSetting))
+	syncDone := make(chan struct{})
+	go func() { defer close(syncDone); syncService.Run(ctx) }()
+	defer func() { stop(); <-syncDone }()
 	var runtimeDone <-chan error
 	var flusher evidenceFlusher
 	if server.evidenceRuntime != nil {

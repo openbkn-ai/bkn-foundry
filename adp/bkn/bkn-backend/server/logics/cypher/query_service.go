@@ -1213,7 +1213,11 @@ func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfac
 		// them, so the executor runs nothing it does not already run.
 		plan = compiled.graph.flat
 	}
-	columns, entries, err := s.runBindJoin(ctx, query, compiled, plan, false)
+	// Every condition the executor pushes is checked against the resources' own
+	// schemas first, so one on a field they cannot filter on is refused by name.
+	checked := *compiled
+	checked.schema = compiled.schema.withUnfilterable(s.unfilterableColumns(ctx, plan))
+	columns, entries, err := s.runBindJoin(ctx, query, &checked, plan, false)
 	if errors.Is(err, errQueryOutOfTime) {
 		return nil, queryTimeoutError(ctx)
 	}
@@ -1252,7 +1256,38 @@ func executionError(ctx context.Context, err error) error {
 	if dependencyTimedOut(err) {
 		return queryTimeoutError(ctx)
 	}
+	var unfilterable *UnfilterableConditionError
+	if errors.As(err, &unfilterable) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
+			"BknBackend.Cypher.InvalidParameter.Detail.UnfilterableProperty",
+			map[string]any{"property": unfilterable.Property, "objectType": unfilterable.ObjectType})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(localizedText)
+	}
+	if conditionRejected(err) {
+		// The read carried only what the statement wrote, so the data source
+		// refusing it is the statement's to change, not a failure to retry.
+		// Its message may quote the caller's values, so it does not travel.
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
+			"BknBackend.Cypher.InvalidParameter.Detail.ConditionRejected", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).
+			WithErrorDetails(localizedText)
+	}
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_QueryFailed)
+}
+
+// conditionRejected reports the resource data API refusing a read as a bad
+// request: a condition on a field it cannot filter on is the usual cause.
+func conditionRejected(err error) bool {
+	var dependencyErr *interfaces.DependencyError
+	return errors.As(err, &dependencyErr) && dependencyErr.Dependency == "vega" &&
+		dependencyErr.Operation == "resource_data" && dependencyErr.HTTPStatus == http.StatusBadRequest
 }
 
 // pageSize is how many rows to ask vega-backend for. The statement's own LIMIT

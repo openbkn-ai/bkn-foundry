@@ -24,7 +24,7 @@ bkn-safe 是 OpenBKN 的认证、鉴权和用户目录服务。它配合**上游
 
 ``` bash
 bkn-safe/
-  server/                 服务本体 (module bkn-safe, go 1.26)
+  server/                 服务本体 (module bkn-safe, go 1.27.4)
     main.go               装配: db -> migrate -> authz -> seed -> http
     config/               环境变量配置
     internal/
@@ -42,7 +42,7 @@ bkn-safe/
 ## 构建 / 测试
 
 ```bash
-# 使用 Go 1.26.0 或更新版本
+# 使用 Go 1.27.4 或更新版本
 cd server && go build ./... && go test ./...
 ```
 

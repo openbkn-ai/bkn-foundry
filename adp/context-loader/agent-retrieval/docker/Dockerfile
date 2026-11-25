@@ -1,6 +1,6 @@
 # Multi-stage build: compile Go in builder (the original separate Azure pipeline compile stage is now inline); prod keeps only the binary.
 ########################### Stage 0: builder ########################
-ARG BUILD_IMAGE=golang:1.26.9
+ARG BUILD_IMAGE=golang:1.27.4
 ARG baseImage=ubuntu:22.04
 
 FROM ${BUILD_IMAGE} AS builder
@@ -12,6 +12,7 @@ COPY adp/context-loader/agent-retrieval /workspace/adp/context-loader/agent-retr
 
 RUN set -ex; \
     cd /workspace/adp/context-loader/agent-retrieval; \
+    go version; \
     go mod download; \
     go build -ldflags '-s -w -checklinkname=0' -o /out/agent-retrieval ./server/main.go
 

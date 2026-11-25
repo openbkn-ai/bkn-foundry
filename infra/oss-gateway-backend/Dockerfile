@@ -1,5 +1,5 @@
 # Global build arguments must be declared before FROM.
-ARG GO_BUILD_IMAGE=golang:1.26.9
+ARG GO_BUILD_IMAGE=golang:1.27.4
 ARG BASE_IMAGE=ubuntu:24.04
 
 # Build stage.
@@ -9,7 +9,7 @@ ENV GOPROXY=${GOPROXY}
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go version && go mod download
 
 COPY . .
 

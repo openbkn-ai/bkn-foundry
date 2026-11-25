@@ -1,6 +1,6 @@
 module github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/PaesslerAG/jsonpath v0.1.1
@@ -15,6 +15,7 @@ require (
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
+	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/sjson v1.2.5
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0

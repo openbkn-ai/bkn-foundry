@@ -69,6 +69,10 @@ type DataProperty struct {
 	Comment             string            `json:"comment,omitempty"`              // Comment
 	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
+	// Filterable is bkn-backend's reading of the bound resource: false means the property
+	// can be returned but the data source refuses a condition on it. Absent when the
+	// resource metadata was not read (the export view, or an older bkn-backend).
+	Filterable *bool `json:"filterable,omitempty"`
 
 	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8), stored and returned by
 	// bkn-backend. A property without declarations carries none of them.
