@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // Recall asks bkn-backend to leave deprecated concepts out.
 func TestCoarseRecallExcludesDeprecatedConcepts(t *testing.T) {
 	req := (&localSearchImpl{}).buildCoarseRecallQuery("kn1", "订单", 20, nil)
-	body, err := sonic.Marshal(req)
+	body, err := jsoncodec.Marshal(req)
 	if err != nil {
 		t.Fatal(err)
 	}

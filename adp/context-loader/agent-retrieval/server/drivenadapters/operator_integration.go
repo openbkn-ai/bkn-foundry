@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -143,7 +143,7 @@ func (o *operatorIntegrationClient) readToolDetail(ctx context.Context, operatio
 
 	resp := &interfaces.GetToolDetailResponse{}
 	resultByt := utils.ObjectToByte(respBody)
-	err = sonic.Unmarshal(resultByt, resp)
+	err = jsoncodec.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#%s] Unmarshal failed, body: %s, err: %v",
 			operation, string(resultByt), err)
@@ -189,7 +189,7 @@ func (o *operatorIntegrationClient) readMCPToolDetail(ctx context.Context, opera
 	}
 
 	resultByt := utils.ObjectToByte(respBody)
-	err = sonic.Unmarshal(resultByt, &listResp)
+	err = jsoncodec.Unmarshal(resultByt, &listResp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#%s] Unmarshal failed, body: %s, err: %v",
 			operation, string(resultByt), err)
@@ -249,7 +249,7 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	}
 
 	var result map[string]interface{}
-	err = unmarshalPrecise(respBody, &result)
+	err = jsoncodec.Unmarshal(respBody, &result)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolCallResponseInvalid", map[string]any{})
@@ -283,7 +283,7 @@ func (o *operatorIntegrationClient) CallMCPToolAsProxy(ctx context.Context,
 		return nil, skillUpstreamError(ctx, code, "MCPToolCallRequestFailed", err)
 	}
 	var result map[string]interface{}
-	if err := unmarshalPrecise(body, &result); err != nil {
+	if err := jsoncodec.Unmarshal(body, &result); err != nil {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolCallResponseInvalid", map[string]any{})
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
@@ -333,7 +333,7 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 		Status       string `json:"status"`
 		MetadataType string `json:"metadata_type"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(body), &box); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(body), &box); err != nil {
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal box failed: %v", err)
 		return out, nil
 	}
@@ -360,7 +360,7 @@ func (o *operatorIntegrationClient) ToolBoxLifecycle(ctx context.Context, boxID 
 			} `json:"metadata"`
 		} `json:"tools"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(body), &listed); err != nil {
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#ToolBoxLifecycle] unmarshal tools failed: %v", err)
 		return &interfaces.ToolBoxLifecycle{EnabledTools: map[string]struct{}{}}, nil
 	}
@@ -400,7 +400,7 @@ func (o *operatorIntegrationClient) MCPServerIsUsable(ctx context.Context, mcpID
 			Status string `json:"status"`
 		} `json:"base_info"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
 		o.logger.WithContext(ctx).Warnf("[OperatorIntegration#MCPServerIsUsable] unmarshal failed: %v", err)
 		return false, nil
 	}

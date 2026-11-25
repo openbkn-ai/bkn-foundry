@@ -7,11 +7,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -23,7 +24,7 @@ import (
 // are returned unchanged.
 func offerKnVersion(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
-	if err := sonic.Unmarshal(input, &schema); err != nil {
+	if err := jsoncodec.Unmarshal(input, &schema); err != nil {
 		return input
 	}
 	properties, _ := schema["properties"].(map[string]any)
@@ -38,7 +39,7 @@ func offerKnVersion(input json.RawMessage) json.RawMessage {
 		"type":        "integer",
 		"description": "Draft revision to pin; only with kn_version=draft.",
 	}
-	raw, err := sonic.ConfigStd.Marshal(schema)
+	raw, err := jsoncodec.Marshal(schema, jsonv2.Deterministic(true))
 	if err != nil {
 		return input
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func conceptFixture() *KnowledgeNetworkDetail {
@@ -101,7 +101,7 @@ func TestTheDroppedFieldsLeaveNoEmptyKeys(t *testing.T) {
 	d := conceptFixture()
 
 	d.Slim(DetailLevelSummary)
-	encoded, err := sonic.ConfigStd.Marshal(d)
+	encoded, err := jsoncodec.Marshal(d)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}

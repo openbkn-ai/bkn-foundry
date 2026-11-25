@@ -8,8 +8,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -59,7 +59,7 @@ func (o *operatorIntegrationClient) SearchCapabilities(ctx context.Context,
 	var raw struct {
 		Entries []interfaces.CapabilityHit `json:"entries"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchCapabilities] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.CapabilitySearchResponseInvalid", map[string]any{})
 		if renderErr != nil {

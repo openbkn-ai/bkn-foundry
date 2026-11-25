@@ -14,7 +14,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type payloadArtifactScope struct {
@@ -54,7 +54,7 @@ func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, 
 		return "", "", errors.New("payload artifact requires interaction identity")
 	}
 	var content any
-	if err := common.UnmarshalPreciseJSON(raw, &content); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &content); err != nil {
 		return "", "", err
 	}
 	digest, err := hashArtifactContent(content)

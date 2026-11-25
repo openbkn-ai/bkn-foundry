@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/smartystreets/goconvey/convey"
@@ -106,4 +108,32 @@ func TestBuildMCPToolResult_TOON(t *testing.T) {
 		_, err = json.Marshal(result)
 		convey.So(err, convey.ShouldBeNil)
 	})
+}
+
+func TestToolResultRunesMatchesMCPResponse(t *testing.T) {
+	resp := map[string]any{"description": strings.Repeat("图<&>", 100)}
+	for _, format := range []rest.ResponseFormat{rest.FormatJSON, rest.FormatTOON} {
+		t.Run(string(format), func(t *testing.T) {
+			result, err := BuildMCPToolResult(resp, format)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var payload struct {
+				Content           []mcp.TextContent `json:"content"`
+				StructuredContent json.RawMessage   `json:"structuredContent"`
+			}
+			if err := json.Unmarshal(wire, &payload); err != nil {
+				t.Fatal(err)
+			}
+			want := max(utf8.RuneCountInString(payload.Content[0].Text), utf8.RuneCount(payload.StructuredContent))
+			got, err := toolResultRunes(resp, format)
+			if err != nil || got != want {
+				t.Fatalf("toolResultRunes = %d, %v; want %d", got, err, want)
+			}
+		})
+	}
 }

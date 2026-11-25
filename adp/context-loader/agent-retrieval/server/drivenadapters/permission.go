@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -61,7 +61,7 @@ func (a *permissionAccess) FilterResources(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe resource-filter returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe resource-filter response: %w", err)
 	}
 	if response.Resources == nil {
@@ -90,7 +90,7 @@ func (a *permissionAccess) CheckPermissions(ctx context.Context,
 	if len(body) == 0 {
 		return response, fmt.Errorf("bkn-safe checks returned an empty response")
 	}
-	if err := sonic.Unmarshal(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return response, fmt.Errorf("decode bkn-safe checks response: %w", err)
 	}
 	if response.Results == nil {

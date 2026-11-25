@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -81,7 +81,7 @@ func (o *operatorIntegrationClient) ListPublishedToolboxes(
 				Status  string `json:"status"`
 			} `json:"data"`
 		}
-		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+		if err = jsoncodec.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
 			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Unmarshal failed, err: %v", err)
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolboxCatalogResponseInvalid", map[string]any{})
 			if renderErr != nil {
@@ -157,7 +157,7 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 				Metadata    map[string]any `json:"metadata"`
 			} `json:"tools"`
 		}
-		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
+		if err = jsoncodec.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
 			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Unmarshal failed, err: %v", err)
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolCatalogResponseInvalid", map[string]any{})
 			if renderErr != nil {
@@ -384,7 +384,7 @@ func (o *operatorIntegrationClient) SearchBoundTools(ctx context.Context,
 	var raw struct {
 		Entries []interfaces.ToolHit `json:"entries"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundTools] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolSearchResponseInvalid", map[string]any{})
 		if renderErr != nil {

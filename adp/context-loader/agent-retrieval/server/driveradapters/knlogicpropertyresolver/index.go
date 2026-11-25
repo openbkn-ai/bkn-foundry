@@ -81,7 +81,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
+	if err = common.BindJSON(c.Request.Body, req); err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Bind JSON failed: %v", err)
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)

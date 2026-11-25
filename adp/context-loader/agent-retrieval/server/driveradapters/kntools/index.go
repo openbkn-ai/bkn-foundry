@@ -70,7 +70,7 @@ func (h *knToolsHandler) SearchCapabilities(c *gin.Context) {
 func (h *knToolsHandler) ExecuteTool(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsTools.ExecuteToolReq{}
-	if err := common.BindPreciseJSON(c.Request.Body, req); err != nil {
+	if err := common.BindJSON(c.Request.Body, req); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}

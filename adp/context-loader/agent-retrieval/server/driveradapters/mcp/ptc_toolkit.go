@@ -9,14 +9,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // PTCToolkit renders the tool surface of this service into "a description + a stub".
@@ -174,7 +173,7 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 	}
 	// The schema default is rendered into executable Python. Preserve a value wider
 	// than float64's mantissa so the generated literal does not change its value.
-	if common.UnmarshalPreciseJSON(raw, &schema) != nil {
+	if jsoncodec.Unmarshal(raw, &schema) != nil {
 		return nil
 	}
 	required := make(map[string]bool, len(schema.Required))
@@ -359,7 +358,7 @@ func ptcReturnKeys(tool MCPToolInfo) string {
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
 	}
-	if len(tool.OutputSchema) == 0 || sonic.Unmarshal(tool.OutputSchema, &schema) != nil {
+	if len(tool.OutputSchema) == 0 || jsoncodec.Unmarshal(tool.OutputSchema, &schema) != nil {
 		return "dict"
 	}
 	if len(schema.Properties) == 0 {
@@ -392,7 +391,7 @@ func ptcItemKeys(raw json.RawMessage) string {
 			Properties map[string]json.RawMessage `json:"properties"`
 		} `json:"items"`
 	}
-	if sonic.Unmarshal(raw, &field) != nil || field.Type != "array" {
+	if jsoncodec.Unmarshal(raw, &field) != nil || field.Type != "array" {
 		return ""
 	}
 	if len(field.Items.Properties) == 0 {
@@ -665,7 +664,7 @@ func buildPTCToolkitVariant(
 	}
 	// Version covers the entire tool table: the client caches it, and it will become invalid as long as the tool surface seen by the model changes.
 	// Light hash digest+stub will allow changes such as new tools and description changes to silently use the old cache.
-	fingerprint, err := sonic.ConfigStd.Marshal(exposed)
+	fingerprint, err := jsoncodec.Marshal(exposed, jsonv2.Deterministic(true))
 	if err != nil {
 		return nil, err
 	}

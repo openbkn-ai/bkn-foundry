@@ -48,7 +48,7 @@ func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 
 	// 2. Parse the request body (flattened parameters)
 	var parameters map[string]interface{}
-	if err := common.BindPreciseJSON(c.Request.Body, &parameters); err != nil {
+	if err := common.BindJSON(c.Request.Body, &parameters); err != nil {
 		// Allow empty parameters {}
 		if err.Error() == "EOF" {
 			parameters = make(map[string]interface{})

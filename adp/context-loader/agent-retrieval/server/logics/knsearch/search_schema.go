@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/creasty/defaults"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -327,12 +327,12 @@ func toAnySlice(v any) []any {
 	if v == nil {
 		return []any{}
 	}
-	data, err := sonic.Marshal(v)
+	data, err := jsoncodec.Marshal(v)
 	if err != nil {
 		return []any{}
 	}
 	var slice []any
-	if err := sonic.Unmarshal(data, &slice); err != nil {
+	if err := jsoncodec.Unmarshal(data, &slice); err != nil {
 		return []any{}
 	}
 	return slice

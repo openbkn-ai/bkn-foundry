@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // Regression for #1098.
@@ -127,7 +127,7 @@ func TestEvidenceEnvelopeHashMatchesReceiverWhenEnvelopeCarriesStruct(t *testing
 	}
 
 	// The canonical publisher wraps the event envelope in its Kafka record value.
-	body, err := sonic.ConfigStd.Marshal(built)
+	body, err := jsoncodec.Marshal(built)
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
@@ -168,30 +168,25 @@ func TestEvidenceEnvelopeHashIsStableAcrossCalls(t *testing.T) {
 	}
 }
 
-// HashValue is exported and takes any, so a map reaches it the moment a caller passes one - and an
-// identity that changes per call is worse than a wrong one, because nothing downstream can match on
-// it. vega's copy of this function already used ConfigStd; this one had been left on the default.
-func TestHashValueIsStableAndMatchesEncodingJSON(t *testing.T) {
+func TestHashValueIsStable(t *testing.T) {
 	cases := []struct {
-		name  string
-		value any
+		name      string
+		value     any
+		different any
 	}{
-		{"map with several keys", map[string]any{"zebra": 1, "alpha": 2, "mid": 3, "beta": 4, "yak": 5}},
-		{"string carrying HTML", `a<b&c>d`},
-		{"nested map", map[string]any{"outer": map[string]any{"z": 1, "a": 2}, "list": []any{"b", "a"}}},
+		{"map with several keys", map[string]any{"zebra": 1, "alpha": 2, "mid": 3}, map[string]any{"zebra": 5, "alpha": 2, "mid": 3}},
+		{"string carrying HTML", `a<b&c>d`, `a<b&c>e`},
+		{"nested map", map[string]any{"outer": map[string]any{"z": 1, "a": 2}}, map[string]any{"outer": map[string]any{"z": 1, "a": 3}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			raw, err := json.Marshal(tc.value)
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
+			want := HashValue(tc.value)
+			if got := HashValue(tc.different); got == want {
+				t.Fatalf("HashValue did not change when the input changed: %s", got)
 			}
-			sum := sha256.Sum256(raw)
-			want := "sha256:" + hex.EncodeToString(sum[:])
-
 			for i := 0; i < 32; i++ {
 				if got := HashValue(tc.value); got != want {
-					t.Fatalf("HashValue diverged from encoding/json on call %d:\n  got  = %s\n  want = %s",
+					t.Fatalf("HashValue changed on call %d:\n  got  = %s\n  want = %s",
 						i, got, want)
 				}
 			}

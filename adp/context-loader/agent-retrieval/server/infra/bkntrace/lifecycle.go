@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -21,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -191,7 +193,7 @@ type PayloadEnvelope struct {
 	Mode          string          `json:"mode"`
 	MediaType     string          `json:"media_type"`
 	ByteLength    int             `json:"byte_length"`
-	Inline        json.RawMessage `json:"inline,omitempty"`
+	Inline        json.RawMessage `json:"inline,omitzero"`
 	Ref           string          `json:"ref,omitempty"`
 	OmittedReason string          `json:"omitted_reason,omitempty"`
 }
@@ -503,6 +505,9 @@ func (c *LifecycleClient) prepareFinishAttempt(
 		"artifact_refs":          input.ArtifactRefs,
 		"partial_reasons":        input.PartialReasons,
 	}
+	if input.BusinessRefs == nil {
+		body["business_refs"] = nil
+	}
 	if input.EvidenceExpectation != nil {
 		body["evidence_expectation"] = input.EvidenceExpectation
 	}
@@ -525,7 +530,7 @@ func (c *LifecycleClient) prepareFinishAttempt(
 	}
 	path := "/operations/" + url.PathEscape(input.OperationID) + "/attempts/" +
 		strconv.FormatUint(uint64(input.Attempt), 10) + ":" + action
-	raw, err := sonic.Marshal(body)
+	raw, err := jsoncodec.Marshal(body)
 	return preparedFinishAttempt{path: path, body: json.RawMessage(raw)}, err
 }
 
@@ -537,35 +542,86 @@ func boundedJSONPayload(raw json.RawMessage) PayloadEnvelope {
 
 func boundedJSONPayloadWithWriter(ctx context.Context, writer PayloadArtifactWriter, raw json.RawMessage) (PayloadEnvelope, string, error) {
 	var value any
-	if err := common.UnmarshalPreciseJSON(raw, &value); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &value); err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
 			OmittedReason: "serialization_failed",
 		}, "", nil
 	}
-	canonical, err := sonic.ConfigStd.Marshal(value)
+	canonical, err := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	if err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
 			OmittedReason: "serialization_failed",
 		}, "", nil
 	}
-	if len(canonical) > maxInlinePayloadBytes {
-		if writer != nil {
-			ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
-			if writeErr == nil && strings.TrimSpace(ref) != "" {
-				return PayloadEnvelope{Mode: "referenced", MediaType: "application/json", ByteLength: len(canonical), Ref: strings.TrimSpace(ref)}, strings.TrimSpace(ref), nil
-			}
-			return PayloadEnvelope{Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical), OmittedReason: "artifact_write_failed"}, "", writeErr
+	inlineLength := len(canonical)
+	if inlineLength <= maxInlinePayloadBytes {
+		coreLength, err := coreInlinePayloadLength(canonical)
+		if err != nil {
+			return PayloadEnvelope{
+				Mode:          "omitted",
+				MediaType:     "application/json",
+				ByteLength:    inlineLength,
+				OmittedReason: "serialization_failed",
+			}, "", nil
+		}
+		if coreLength <= maxInlinePayloadBytes {
+			return PayloadEnvelope{
+				Mode: "inline", MediaType: "application/json", ByteLength: inlineLength, Inline: canonical,
+			}, "", nil
+		}
+		inlineLength = coreLength
+	}
+
+	// Core's artifact verifier preserves number spellings and escapes U+2028 and U+2029.
+	// It also accepts the legacy length with HTML escaping if that clears the inline limit.
+	artifactLength := len(canonical) + 3*(bytes.Count(canonical, []byte("\u2028"))+bytes.Count(canonical, []byte("\u2029")))
+	if artifactLength <= maxInlinePayloadBytes {
+		artifactLength += 5 * (bytes.Count(canonical, []byte("<")) + bytes.Count(canonical, []byte(">")) + bytes.Count(canonical, []byte("&")))
+	}
+	if writer != nil && artifactLength > maxInlinePayloadBytes {
+		ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
+		ref = strings.TrimSpace(ref)
+		if writeErr == nil && ref != "" {
+			return PayloadEnvelope{
+				Mode:       "referenced",
+				MediaType:  "application/json",
+				ByteLength: artifactLength,
+				Ref:        ref,
+			}, ref, nil
 		}
 		return PayloadEnvelope{
-			Mode: "omitted", MediaType: "application/json", ByteLength: len(canonical),
-			OmittedReason: "payload_too_large",
-		}, "", nil
+			Mode:          "omitted",
+			MediaType:     "application/json",
+			ByteLength:    artifactLength,
+			OmittedReason: "artifact_write_failed",
+		}, "", writeErr
 	}
 	return PayloadEnvelope{
-		Mode: "inline", MediaType: "application/json", ByteLength: len(canonical), Inline: canonical,
+		Mode:          "omitted",
+		MediaType:     "application/json",
+		ByteLength:    inlineLength,
+		OmittedReason: "payload_too_large",
 	}, "", nil
+}
+
+var coreInlineNumbers = jsonv2.WithUnmarshalers(jsonv2.UnmarshalFromFunc(func(decoder *jsontext.Decoder, dst *any) error {
+	if *dst == nil && decoder.PeekKind() == '0' {
+		*dst = float64(0)
+	}
+	return errors.ErrUnsupported
+}))
+
+// Match sessionvo.InlineJSONPayload in Trace Core. Only the length is used;
+// the float64 values decoded here never reach the wire or the artifact store.
+func coreInlinePayloadLength(raw []byte) (int, error) {
+	var value any
+	if err := jsoncodec.Unmarshal(raw, &value, coreInlineNumbers); err != nil {
+		return 0, err
+	}
+	canonical, err := jsoncodec.Marshal(value, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+	return len(canonical), err
 }
 
 func appendUniqueLifecycleRef(values []string, value string) []string {
@@ -597,7 +653,7 @@ func (c *LifecycleClient) do(
 	}
 	var reader io.Reader
 	if body != nil {
-		raw, err := sonic.Marshal(body)
+		raw, err := jsoncodec.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
@@ -620,9 +676,10 @@ func (c *LifecycleClient) do(
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	decoder := jsontext.NewDecoder(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var envelope errorEnvelope
-		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil || envelope.Error.Code == "" {
+		if err := jsoncodec.UnmarshalDecode(decoder, &envelope); err != nil || envelope.Error.Code == "" {
 			if resp.StatusCode >= http.StatusInternalServerError {
 				return &APIError{HTTPStatus: resp.StatusCode, Code: "trace_core_unavailable", Message: "Trace Core returned an unavailable response", Retryable: true}, nil
 			}
@@ -641,7 +698,7 @@ func (c *LifecycleClient) do(
 	if target == nil {
 		return nil, nil
 	}
-	if err := common.DecodePreciseJSON(io.LimitReader(resp.Body, 1<<20), target); err != nil {
+	if err := jsoncodec.UnmarshalDecode(decoder, target); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidLifecycleResponse, err)
 	}
 	if interaction, ok := target.(*Interaction); ok {

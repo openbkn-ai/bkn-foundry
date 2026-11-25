@@ -4,6 +4,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+- Context Loader's JSON v2 migration changes the PTC toolkit fingerprint. Rebuild the sandbox image with the regenerated SDK and upgrade it alongside Context Loader so `run_code` can start.
+
 - `execute_skill` takes `entry_point` (a `.py` file of the Skill package, for example `scripts/main.py`) and `arguments` (the script's argv, one element per argument) and sends them to the execution factory, which runs the script with Python. `entry_shell` is deprecated: a `python <script> [args]` value is still accepted and translated, any other form (for example `bash run.sh`) is forwarded unchanged and refused by the execution factory with its reason; `entry_shell` carries its own arguments and cannot be sent together with `entry_point` or `arguments`. `get_skill_content` returns the factory's `runtime` (`runtime`, `executable`, `entry_points`, `reason`); for a Skill that is not executable, such as a package with Shell/Bash scripts only, `message` says so with the reason, so the agent reads it but does not try to run it. Requires the execution factory with the Python-only Skill contract (#3209). (#3213)
   - Deployment: Rebuild and upgrade the sandbox image together with Context Loader (the tool metadata changed the generated SDK toolkit fingerprint).
 

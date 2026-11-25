@@ -115,7 +115,7 @@ func (s *localSearchImpl) rerankInstances(
 		if result.Index < 0 || result.Index >= len(head) {
 			continue
 		}
-		head[result.Index].RerankerScore = result.RelevanceScore
+		head[result.Index].RerankerScore = float64Ptr(result.RelevanceScore)
 		applied++
 	}
 	if applied == 0 {
@@ -126,12 +126,9 @@ func (s *localSearchImpl) rerankInstances(
 	outcome := rerankOutcome{scored: true}
 	minScore, maxScore := math.Inf(1), math.Inf(-1)
 	for _, node := range head {
-		if node.RerankerScore < minScore {
-			minScore = node.RerankerScore
-		}
-		if node.RerankerScore > maxScore {
-			maxScore = node.RerankerScore
-		}
+		score := rerankerSortScore(node)
+		minScore = min(minScore, score)
+		maxScore = max(maxScore, score)
 	}
 	outcome.top = maxScore
 	outcome.degenerate = maxScore-minScore <= rerankScoreSpreadEpsilon
@@ -139,8 +136,9 @@ func (s *localSearchImpl) rerankInstances(
 	fusionOrder := append([]*interfaces.KnSearchNode(nil), head...)
 	reranked := append([]*interfaces.KnSearchNode(nil), head...)
 	sort.SliceStable(reranked, func(i, j int) bool {
-		if reranked[i].RerankerScore != reranked[j].RerankerScore {
-			return reranked[i].RerankerScore > reranked[j].RerankerScore
+		left, right := rerankerSortScore(reranked[i]), rerankerSortScore(reranked[j])
+		if left != right {
+			return left > right
 		}
 		return reranked[i].Score > reranked[j].Score
 	})
@@ -155,15 +153,16 @@ func (s *localSearchImpl) rerankInstances(
 		return nodes, outcome
 	}
 
-	// The on mode only changes the order and does not overwrite the Score.
-	//
-	// Coverage is wrong: Candidates that are not backfilled by the model (which will happen if the manufacturer returns one less) will be assigned 0, and those beyond top_n will be assigned a value of 0.
-	// The tail has never entered the model, so two rulers, fusion score and model score, appear simultaneously in one response - press score.
-	// The caller of secondary sorting will get the wrong order, and when Score contains omitempty, 0 points will make the entire field disappear.
-	//
-	// Fusion points are a single dimension earned by PR1 that is comparable across object types and should not be destroyed by refinement. What Jingpai wants to express is.
-	// "Who should be ranked first" is reflected in the return order; the rerank_score is brought out separately as to how many points the model has judged.
+	// On mode reorders the head and keeps the fusion score on every row.
+	// Only rows actually scored by the model carry reranker_score.
 	return append(reranked, tail...), outcome
+}
+
+func rerankerSortScore(node *interfaces.KnSearchNode) float64 {
+	if node.RerankerScore == nil {
+		return 0
+	}
+	return *node.RerankerScore
 }
 
 // rerankOutcome says whether the model's judgement can be trusted as a filter this time round.

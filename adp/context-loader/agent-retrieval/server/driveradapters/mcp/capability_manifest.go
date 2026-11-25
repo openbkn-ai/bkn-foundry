@@ -15,8 +15,8 @@ import (
 
 	msdk "github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 const (
@@ -41,7 +41,7 @@ func capabilityProfileJSON(toolName string) json.RawMessage {
 	profile := resolveCapabilityProfile(mustLoadCapabilityManifest(), msdk.Tool{
 		Name: toolName, RawInputSchema: input, RawOutputSchema: output,
 	})
-	raw, err := sonic.ConfigStd.Marshal(profile)
+	raw, err := jsoncodec.Marshal(profile)
 	if err != nil {
 		panic("marshal capability profile: " + err.Error())
 	}

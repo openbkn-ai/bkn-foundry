@@ -13,7 +13,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -317,7 +317,7 @@ func guardPayloadJSON(payload any) (json.RawMessage, error) {
 			return append(json.RawMessage(nil), value...), nil
 		}
 	}
-	raw, err := sonic.Marshal(payload)
+	raw, err := jsoncodec.Marshal(payload)
 	return raw, err
 }
 

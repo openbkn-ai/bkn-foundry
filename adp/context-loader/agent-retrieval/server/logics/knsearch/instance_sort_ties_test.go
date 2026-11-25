@@ -24,9 +24,9 @@ func sortedNames(nodes []*interfaces.KnSearchNode) []string {
 // says nothing about relevance and drifts with corpus and document length.
 func TestSortNodesByScore_CrossTypeTiesIgnoreRawScores(t *testing.T) {
 	nodes := []*interfaces.KnSearchNode{
-		{ObjectTypeID: "term_alias", InstanceName: "alias", Score: 1, RecallScore: 3.99, BM25Score: 3.99},
-		{ObjectTypeID: "term", InstanceName: "term", Score: 1, RecallScore: 14.70, BM25Score: 14.70},
-		{ObjectTypeID: "fact", InstanceName: "fact", Score: 1, KnnScore: 0.72, RecallScore: 0.72},
+		{ObjectTypeID: "term_alias", InstanceName: "alias", Score: 1, RecallScore: 3.99, BM25Score: float64Ptr(3.99)},
+		{ObjectTypeID: "term", InstanceName: "term", Score: 1, RecallScore: 14.70, BM25Score: float64Ptr(14.70)},
+		{ObjectTypeID: "fact", InstanceName: "fact", Score: 1, KnnScore: float64Ptr(0.72), RecallScore: 0.72},
 	}
 
 	sortNodesByScore(nodes)

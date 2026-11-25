@@ -16,9 +16,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 //go:embed prompts/tool_dynamic_params.md
@@ -70,7 +70,7 @@ func (d *dynamicParamsLLM) GenerateToolParams(
 	}
 
 	var rawResult map[string]any
-	if err = common.UnmarshalPreciseJSON([]byte(resultStr), &rawResult); err != nil {
+	if err = jsoncodec.Unmarshal([]byte(resultStr), &rawResult); err != nil {
 		d.logger.WithContext(ctx).Errorf("  ├─ [LLM] Tool JSON parsing failed: %v, raw=%s", err, resultStr)
 		return nil, nil, fmt.Errorf("unmarshal tool llm result failed: %w", err)
 	}
