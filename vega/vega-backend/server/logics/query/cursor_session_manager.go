@@ -9,14 +9,13 @@ package query
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -113,12 +112,8 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
-	generatedID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("generate cursor session UUIDv7: %w", err)
-	}
 	session := &interfaces.CursorSession{
-		ID:              generatedID.String(),
+		ID:              uuid.NewV7().String(),
 		AccountID:       accountID,
 		QuotaOwnerID:    accountID,
 		CatalogID:       catalogID,
@@ -144,12 +139,8 @@ func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string
 		keepAliveSec = interfaces.DefaultCursorKeepAliveSec
 	}
 	now := time.Now().Unix()
-	generatedID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("generate cursor session UUIDv7: %w", err)
-	}
 	session := &interfaces.CursorSession{
-		ID:                     generatedID.String(),
+		ID:                     uuid.NewV7().String(),
 		AccountID:              accountID,
 		QuotaOwnerID:           quotaOwnerID,
 		CatalogID:              resource.CatalogID,

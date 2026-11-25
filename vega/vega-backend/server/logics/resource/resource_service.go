@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/mohae/deepcopy"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -165,11 +165,7 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 	}
 	id := req.ID
 	if id == "" {
-		generatedID, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("generate resource UUIDv7: %w", err)
-		}
-		id = generatedID.String()
+		id = uuid.NewV7().String()
 	}
 
 	now := time.Now().UnixMilli()

@@ -185,7 +185,7 @@ func childOperationID(parentOperationID, operationName string, attempt, callOrdi
 	if callOrdinal < 1 {
 		callOrdinal = 1
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%d", parentOperationID, strings.TrimSpace(operationName), attempt, callOrdinal)))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s|%s|%d|%d", parentOperationID, strings.TrimSpace(operationName), attempt, callOrdinal))
 	return "op_" + hex.EncodeToString(sum[:])
 }
 

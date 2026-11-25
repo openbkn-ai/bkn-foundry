@@ -17,9 +17,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
@@ -76,16 +76,8 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit fact rejected: action=%s target_type=%s actor=%s missing readable actor", rule.Action, rule.TargetType, actor.ID)
 			return
 		}
-		requestID, err := operationAuditRequestID(c)
-		if err != nil {
-			logger.Errorf("operation audit request ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
-			return
-		}
-		attemptID, err := uuid.NewV7()
-		if err != nil {
-			logger.Errorf("operation audit event ID generation failed: action=%s target_type=%s error=%v", rule.Action, rule.TargetType, err)
-			return
-		}
+		requestID := operationAuditRequestID(c)
+		attemptID := uuid.NewV7().String()
 		now := time.Now().UTC()
 		targetID, targetName := operationAuditTarget(c, rule.TargetType, request, requestID)
 		if targetID == "" || targetName == "" || targetName == targetID {
@@ -94,7 +86,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		}
 		outcome, failureCode, failureMessage := operationAuditOutcome(c)
 		entry := operationaudit.Entry{
-			EventID:        attemptID.String(),
+			EventID:        attemptID,
 			EventTime:      now,
 			RecordedAt:     now,
 			ActorID:        actor.ID,
@@ -232,23 +224,19 @@ func operationAuditOutcome(c *gin.Context) (string, string, string) {
 	return "failure", fmt.Sprintf("http_%d", status), "management request failed"
 }
 
-func operationAuditRequestID(c *gin.Context) (string, error) {
+func operationAuditRequestID(c *gin.Context) string {
 	if value, exists := c.Get(operationAuditRequestKey); exists {
 		if requestID, ok := value.(string); ok && requestID != "" {
-			return requestID, nil
+			return requestID
 		}
 	}
 	if traceContext, ok := common.GetTraceContextFromCtx(c.Request.Context()); ok && strings.TrimSpace(traceContext.RequestID) != "" {
-		return rememberOperationAuditRequestID(c, strings.TrimSpace(traceContext.RequestID)), nil
+		return rememberOperationAuditRequestID(c, strings.TrimSpace(traceContext.RequestID))
 	}
 	if value := strings.TrimSpace(c.GetHeader(common.HeaderBKNRequestID)); value != "" {
-		return rememberOperationAuditRequestID(c, value), nil
+		return rememberOperationAuditRequestID(c, value)
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", fmt.Errorf("generate operation audit request UUIDv7: %w", err)
-	}
-	return rememberOperationAuditRequestID(c, "req_"+id.String()), nil
+	return rememberOperationAuditRequestID(c, "req_"+uuid.NewV7().String())
 }
 
 func rememberOperationAuditRequestID(c *gin.Context, requestID string) string {

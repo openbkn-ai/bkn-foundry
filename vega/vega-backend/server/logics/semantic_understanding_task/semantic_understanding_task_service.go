@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -213,11 +213,7 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	accountInfo := accountInfoFromContext(ctx)
 
 	now := time.Now().UnixMilli()
-	generatedID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("generate semantic understanding task UUIDv7: %w", err)
-	}
-	task.ID = generatedID.String()
+	task.ID = uuid.NewV7().String()
 	task.Status = interfaces.SemanticUnderstandingTaskStatusPending
 	task.Creator = accountInfo
 	task.CreateTime = now

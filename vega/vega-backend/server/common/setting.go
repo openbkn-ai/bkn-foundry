@@ -8,6 +8,7 @@ package common
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -22,13 +23,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	libmq "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/spf13/viper"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/version"
 )
 
@@ -116,7 +117,7 @@ type AppSetting struct {
 	LogSetting          logger.LogSetting         `mapstructure:"log"`
 	OtelSetting         otel.OtelConfig           `mapstructure:"otel"`
 	CryptoSetting       CryptoSetting             `mapstructure:"crypto"`
-	DepServices         map[string]map[string]any `mapstructure:"depServices"`
+	DepServices         map[string]map[string]any `mapstructure:"depServices" json:"-"`
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
 	QuerySetting        QueryConfig               `mapstructure:"query"`
 	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
@@ -277,8 +278,11 @@ func loadSetting(vp *viper.Viper) {
 		version.ServerName, version.ServerVersion, version.LanguageGo,
 		version.GoVersion, version.GoArch)
 
-	s, _ := jsoncodec.MarshalString(appSetting)
-	logger.Debug(s)
+	if s, err := jsoncodec.MarshalString(appSetting, json.FormatDurationAsNano(true)); err != nil {
+		logger.Warnf("Failed to encode application settings for debug logging: %v", err)
+	} else {
+		logger.Debug(s)
+	}
 	logger.Infof("Application settings loaded")
 }
 

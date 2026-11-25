@@ -9,8 +9,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	mock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -111,7 +111,7 @@ func TestBuildScheduleWorkerRunSchedule(t *testing.T) {
 					triggerID = id
 					parsed, err := uuid.Parse(id)
 					require.NoError(t, err)
-					assert.Equal(t, uuid.Version(7), parsed.Version())
+					assert.Equal(t, byte(7), parsed[6]>>4)
 					assert.Equal(t, s.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
 					return 1, nil
 				}),

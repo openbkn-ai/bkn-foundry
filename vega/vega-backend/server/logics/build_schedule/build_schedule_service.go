@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -121,12 +121,8 @@ func (s *buildScheduleService) Create(ctx context.Context, req *interfaces.Build
 	if err != nil {
 		return "", err
 	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildSchedule_InternalError_CreateFailed)
-	}
 	schedule := &interfaces.BuildSchedule{
-		ID:          id.String(),
+		ID:          uuid.NewV7().String(),
 		Name:        req.Name,
 		ResourceID:  resource.ID,
 		CatalogID:   resource.CatalogID,
