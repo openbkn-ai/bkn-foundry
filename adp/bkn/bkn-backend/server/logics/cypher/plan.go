@@ -1108,7 +1108,38 @@ func (p *planner) planExpressionComparison(node ExpressionComparison) (PlanPredi
 		}
 		return nil, planErrorf(side.expressionPosition(), "comparing a number with a value that is not one")
 	}
+	if err := p.checkAggregateDate(sides, planned); err != nil {
+		return nil, err
+	}
 	return PlanExpressionComparison{Left: planned[0], Operator: node.Operator, Right: planned[1]}, nil
+}
+
+// checkAggregateDate holds min or max over a property to what a comparison
+// with the property itself is held to: a date constant only against dates, and
+// a string against a date property only when it is a date.
+func (p *planner) checkAggregateDate(sides [2]Expression, planned [2]PlanExpression) error {
+	for i := range sides {
+		aggregate, ok := planned[i].(PlanAggregate)
+		if !ok || aggregate.Star || aggregate.Argument != nil || aggregate.Property == "" ||
+			(aggregate.Function != "MIN" && aggregate.Function != "MAX") {
+			continue
+		}
+		constant, ok := planned[1-i].(PlanValueLiteral)
+		if !ok {
+			continue
+		}
+		var written Operand
+		if parameter, ok := sides[1-i].(ParameterRef); ok {
+			written.Parameter = &parameter
+		}
+		if err := p.checkTemporal(aggregate.Table, aggregate.Property, constant.Value); err != nil {
+			return err
+		}
+		if err := p.checkDateString(aggregate.Table, aggregate.Property, constant.Value, written); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // planComparedValue plans one side of a computed comparison. Unlike a term of
@@ -1143,6 +1174,23 @@ func (p *planner) planComparedValue(side Expression) (PlanExpression, numberKind
 				"comparing a computed value with %s, which is boolean; compare it on its own", node)
 		}
 		return PlanValueColumn{Table: table, Column: column, Property: node.Property}, kind, nil
+	case Aggregate:
+		if node.Function != "MIN" && node.Function != "MAX" {
+			return p.planExpression(side)
+		}
+		// min and max give what they are over, so max(s.shipped_on) is a
+		// date and compares as one; only arithmetic needs a number.
+		planned, kind, err := p.planAggregateOver(node)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		if planned.Argument == nil {
+			if _, declared := p.propertyKind(planned.Table, planned.Property); strings.ToLower(declared) == dtype.DATATYPE_BOOLEAN {
+				return nil, kindUnknown, planErrorf(node.Pos,
+					"comparing a computed value with %s, which is boolean; compare it on its own", node)
+			}
+		}
+		return *planned, kind, nil
 	default:
 		return p.planExpression(side)
 	}

@@ -245,6 +245,8 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN *", "RETURN *"},
 		{"MATCH (a:Order) RETURN sum(a)", "sum over a whole node"},
 		{"MATCH (a:Order) RETURN lower(a.id)", "the function lower() is not supported"},
+		{"MATCH (a:Order)-[:R]->(b:Customer) WHERE max(b.x) > a.y RETURN a.id",
+			"max() here is not supported: aggregate in a WITH and test the name it gives in that WITH's WHERE"},
 		{"MATCH (a:Order) WHERE a.x + 1 IN [2] RETURN a.id", "arithmetic here"},
 		{"MATCH (a:Order) RETURN a.x ^ 2", "exponentiation"},
 		{"MATCH (a:Order) RETURN CASE WHEN a.x > 1 THEN true END", "a boolean as the result of CASE"},

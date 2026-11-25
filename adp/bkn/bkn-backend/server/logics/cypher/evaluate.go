@@ -1002,6 +1002,20 @@ func evaluateDateComparison(predicate PlanPredicate, s scope) (truth, error) {
 			return truthUnknown, nil
 		}
 		return orderTruth(order, node.Operator)
+	case PlanExpressionComparison:
+		left, err := evaluateExpression(node.Left, s)
+		if err != nil {
+			return truthUnknown, err
+		}
+		right, err := evaluateExpression(node.Right, s)
+		if err != nil {
+			return truthUnknown, err
+		}
+		order, ok := compareDates(left, right)
+		if !ok {
+			return truthUnknown, nil
+		}
+		return orderTruth(order, node.Operator)
 	default:
 		return evaluatePredicate(predicate, s)
 	}
