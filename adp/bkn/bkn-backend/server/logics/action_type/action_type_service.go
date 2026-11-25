@@ -934,7 +934,15 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除行动类概念索引失败")
-			return err
+
+			// Vega returns ordinary errors. Normalize them to HTTPError before propagating.
+			// Otherwise handler type assertions panic before headers are written and the gateway reports 502.
+			var httpErr *httperrors.HTTPError
+			if errors.As(err, &httpErr) {
+				return httpErr
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,

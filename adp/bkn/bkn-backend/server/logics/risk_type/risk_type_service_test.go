@@ -18,6 +18,7 @@ package risk_type
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -260,6 +261,35 @@ func TestRiskTypeServiceDeleteRiskTypesAuthorizationCleanup(t *testing.T) {
 			[]string{"risk-1"}).Return(int64(1), nil)
 		vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 	}
+
+	t.Run("returns an HTTPError when Vega answers the concept document delete with a plain error", func(t *testing.T) {
+		service, dbMock, rta, ps, vbs := newService(t)
+		dbMock.ExpectBegin()
+		rta.EXPECT().CheckRiskTypeExistByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, "risk-1").
+			Return("Risk 1", true, nil)
+		ps.EXPECT().CheckPermission(gomock.Any(),
+			interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/risk-1"},
+			[]string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
+		rta.EXPECT().DeleteRiskTypesByIDs(gomock.Any(), gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1"}).Return(int64(1), nil)
+		vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			Return(errors.New("DeleteDatasetDocumentByID returned HTTP 500"))
+		dbMock.ExpectRollback()
+
+		err := service.DeleteRiskTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
+			[]string{"risk-1"})
+		httpErr, ok := err.(*httperrors.HTTPError)
+		if !ok {
+			t.Fatalf("DeleteRiskTypesByIDs() error = %T %v, want *httperrors.HTTPError", err, err)
+		}
+		if httpErr.HTTPCode != http.StatusInternalServerError || httpErr.BaseError.ErrorCode != berrors.BknBackend_RiskType_InternalError {
+			t.Fatalf("DeleteRiskTypesByIDs() error = %d %s, want 500 %s", httpErr.HTTPCode, httpErr.BaseError.ErrorCode,
+				berrors.BknBackend_RiskType_InternalError)
+		}
+		if err := dbMock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("database expectations were not met: %v", err)
+		}
+	})
 
 	t.Run("does not clean Safe when commit fails", func(t *testing.T) {
 		service, dbMock, rta, ps, vbs := newService(t)
