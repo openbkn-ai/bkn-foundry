@@ -13,9 +13,14 @@ Query tools call Context Loader as the run's user through the run's session
 (the Agent also mounts context_loader with an empty allow-list, so the session
 opens but none of its tools reach the model). Found instances stay candidates;
 show_instances and run_cypher plan nodes and edges as merge_subgraph actions.
+
+The network's published metrics are listed in the instructions and read with
+query_metric and show_metric_participants (graph_explorer_metrics), so that a
+figure the network defines is not worked out again with Cypher.
 """
 
 import asyncio
+import dataclasses
 import inspect
 import json
 import logging
@@ -30,6 +35,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.core import builtin_tools, context_loader
 from app.core import graph_explorer_data as data
+from app.core import graph_explorer_metrics as gm
 from app.core.graph_explorer_data import text
 
 PROVIDER_NAME = "graph_explorer"
@@ -67,6 +73,8 @@ MAX_OBJECT_TYPES = 2000
 EXPAND_SEEDS = 50
 EXPAND_CONCURRENCY = 4
 EXPAND_THRESHOLD = 20
+# Object types whose published metrics the instructions list at most.
+METRIC_TYPES = 100
 # Properties listed per object type in the schema the prompt carries.
 SCHEMA_PROPERTIES = 40
 # Networks up to this many object types get their properties in that schema; larger
@@ -164,6 +172,33 @@ class AnalysisCard(BaseModel):
     no: int = Field(ge=1)
     title: str = ""
     kind: str = ""
+    # What a metric card reads, as a metric step's progress gives it, with the metric's
+    # time_grain when it is read by period: a later question goes on from it. One that is
+    # not valid is left out, not the card.
+    metric: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_a_valid_metric(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("metric") is not None:
+            try:
+                value = {**value, "metric": CardMetric.model_validate(value["metric"]).model_dump()}
+            except ValidationError:
+                value = {**value, "metric": None}
+        return value
+
+
+class CardMetric(BaseModel):
+    """A metric card's query; gm.card_query checks that its drill holds together."""
+
+    model_config = {"extra": "ignore"}
+    metric_id: str = Field(min_length=1)
+    version: int = Field(ge=1)
+    owner_object_type_id: str = ""
+    group_by: list[Any] = Field(default_factory=list)
+    drill: list[Any] = Field(default_factory=list)
+    time: Optional[dict[str, Any]] = None
+    time_grain: str = ""
 
 
 def _valid(model: type[BaseModel], items: Any, bound: int) -> tuple[list, list]:
@@ -202,6 +237,8 @@ class CanvasContext(BaseModel):
     # The cards of the analysis the question is asked in; absent outside an
     # analysis, where the card tool is not offered.
     analysis_cards: Optional[list[AnalysisCard]] = None
+    # The card the user asks this question from, when they asked from one.
+    analysis_from: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -230,6 +267,13 @@ class CanvasContext(BaseModel):
         # Absent means the question is not asked in an analysis; an analysis stays one.
         if value.get("analysis_cards") is not None:
             value["analysis_cards"], _ = _valid(AnalysisCard, value["analysis_cards"], MAX_CARDS)
+        asked_from = value.get("analysis_from")
+        cards = value.get("analysis_cards") or []
+        value["analysis_from"] = (
+            asked_from
+            if isinstance(asked_from, int) and any(card.no == asked_from for card in cards)
+            else None
+        )
         return value
 
 
@@ -438,6 +482,10 @@ async def _network(run: builtin_tools.Run) -> dict:
         cached = run.state["network"] = {
             "object_types": object_types,
             "relation_types": relation_types,
+            # get_kn_detail counts each type's published metrics; get_object_types lists them.
+            "metric_types": [
+                t["id"] for t in types if isinstance(t.get("related_metric_count"), int) and t["related_metric_count"] > 0
+            ],
             # get_kn_detail could not list them: the network is too large.
             "relations_unlisted": detail.get("relation_types") is None,
             **({"properties_shown": shown} if shown is not None else {}),
@@ -484,7 +532,28 @@ async def _metas(run: builtin_tools.Run, ot_ids) -> dict[str, data.ObjectTypeMet
             meta = data.meta_from(raw)
             if meta:
                 cache[meta.id] = meta
+                # A definition read by id carries the type's published metrics: kept for
+                # _metric_catalog, which then costs no call of its own.
+                run.state.setdefault("type_metrics", {})[meta.id] = raw.get("related_metrics") or []
     return {i: cache[i] for i in dict.fromkeys(ot_ids) if i in cache}
+
+
+async def _metric_catalog(run: builtin_tools.Run) -> dict[str, gm.Metric]:
+    """The published metrics the caller can read, by id, in the order of their object
+    types; read once per run."""
+    cached = run.state.get("metric_catalog")
+    if cached is None:
+        owners = (await _network(run)).get("metric_types") or []
+        await _metas(run, owners[:METRIC_TYPES])
+        listed = run.state.get("type_metrics", {})
+        cached = {}
+        for ot_id in owners[:METRIC_TYPES]:
+            for raw in listed.get(ot_id) or []:
+                metric = gm.metric_from(raw)
+                if metric and metric.id not in cached:
+                    cached[metric.id] = metric
+        run.state["metric_catalog"] = cached
+    return cached
 
 
 # ---- working state ----
@@ -727,6 +796,20 @@ class AnalysisConfig(TypedDict, total=False):
         dict[str, str],
         Field(description="For kind chain: object type id -> the relation type, from that type to itself, drawn upstream to downstream."),
     ]
+
+
+class MetricDrill(TypedDict, total=False):
+    bucket: Annotated[
+        dict[str, str],
+        Field(description="The bucket of the level above by its values, dimension -> value as the rows show them; values an earlier step picked may be left out."),
+    ]
+    period: Annotated[str, Field(description="For a metric read by period: the bucket's period as the rows name it, e.g. 2026-03.")]
+    by: Required[Annotated[str, Field(min_length=1, description="The dimension to split that bucket by.")]]
+
+
+class DayRange(TypedDict):
+    start: Annotated[str, Field(description="First day, YYYY-MM-DD.")]
+    end: Annotated[str, Field(description="Last day, YYYY-MM-DD, included.")]
 
 
 class Filter(TypedDict, total=False):
@@ -1696,6 +1779,150 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         _record(run, "show_html", html=html, **shown)
         return _dump({"shown": shown})
 
+    async def read_metric(
+        metric: str, version: int | None, group_by, drill, time
+    ) -> gm.Reading:
+        listed = (await _metric_catalog(run)).get(metric.strip())
+        if listed is None:
+            raise ToolException(
+                f"No published metric {metric} that you can read on this network; use an id the instructions list."
+            )
+        if version is not None and version != listed.version:
+            listed = dataclasses.replace(listed, version=version)
+        window = gm.day_range(time["start"], time["end"]) if time else None
+
+        async def call(name: str, **arguments) -> dict:
+            return await _call(run, name, **arguments)
+
+        return await gm.read(
+            call, listed, list(group_by or []), list(drill or []), window, run.state.setdefault("metric_shapes", {})
+        )
+
+    def keep_metric_step(tool: str, given: dict, reading: gm.Reading, **more: Any) -> None:
+        """The step's metric query as the card keeps it, for the page (see _progress);
+        `input` is what the model gave, to match the step by."""
+        run.state.setdefault("metric_steps", []).append(
+            {"tool": tool, "input": {k: v for k, v in given.items() if v is not None}, **gm.spec(reading), **more}
+        )
+
+    async def query_metric(
+        metric: Annotated[str, Field(min_length=1, description="The metric's id, as the instructions list it.")],
+        group_by: Annotated[
+            Optional[list[str]], Field(description="Dimensions to split the metric by, written as the list writes them.")
+        ] = None,
+        drill: Annotated[
+            Optional[list[MetricDrill]],
+            Field(description="Level by level: the bucket of the level above to go into, and the dimension to split it by."),
+        ] = None,
+        time: Annotated[
+            Optional[DayRange], Field(description="Only these days (UTC+8); for a metric with a time dimension.")
+        ] = None,
+        chart: Annotated[
+            Optional[gm.Chart],
+            Field(
+                description="In an analysis, also show the level as a chart card after the metric card: number for"
+                " one figure, bar or pie for one dimension, stacked for two, line (or bar, stacked) for a metric"
+                " read by period and not drilled into one period."
+            ),
+        ] = None,
+        version: Annotated[Optional[int], Field(ge=1, description="Defaults to the version the instructions list.")] = None,
+    ) -> str:
+        """Read a published metric of this network (one the instructions list) by its own
+        definition. Without group_by or drill it gives the metric's total, one row per
+        period for a metric read by period. group_by splits it by dimensions the metric
+        opens. drill goes down level by level: each step names one bucket of the level
+        above by its values (and its period, for a metric read by period) and the
+        dimension to split it by. There is no filter or sort: to look at one value, drill
+        into its bucket. Returns at most 200 rows, each with its values, period and exact
+        value, `drill` when it can be drilled into and `participants` when its instances
+        can be listed with show_metric_participants; and what the level can still be
+        split by. Plans nothing for the canvas."""
+        reading = await read_metric(metric, version, group_by, drill, time)
+        out = gm.answer(reading)
+        kept: dict[str, Any] = {}
+        if chart:
+            if _canvas(run).analysis_cards is None:
+                out["chart"] = "Not drawn: a chart card is only for a question asked in an analysis."
+            elif chart not in gm.views(reading):
+                raise ToolException(
+                    f"A {chart} chart cannot show this level; it can be drawn as {', '.join(gm.views(reading))}."
+                )
+            else:
+                kept["chart"] = chart
+        keep_metric_step(
+            "query_metric",
+            {"metric": metric, "group_by": group_by, "drill": drill, "time": time, "chart": chart, "version": version},
+            reading,
+            **kept,
+        )
+        return _dump(out)
+
+    async def show_metric_participants(
+        metric: Annotated[str, Field(min_length=1, description="The metric's id, as the instructions list it.")],
+        bucket: Annotated[
+            Optional[dict[str, str]],
+            Field(description="The row whose instances to list, dimension -> value as query_metric showed it; values the drill picked may be left out."),
+        ] = None,
+        period: Annotated[
+            Optional[str], Field(description="For a metric read by period: the row's period, e.g. 2026-03.")
+        ] = None,
+        group_by: Annotated[Optional[list[str]], Field(description="As in the query_metric call the row came from.")] = None,
+        drill: Annotated[Optional[list[MetricDrill]], Field(description="As in the query_metric call the row came from.")] = None,
+        time: Annotated[Optional[DayRange], Field(description="As in the query_metric call the row came from.")] = None,
+        version: Annotated[Optional[int], Field(ge=1, description="Defaults to the version the instructions list.")] = None,
+    ) -> str:
+        """Plan for the canvas the instances a published metric counted in one row (a
+        bucket) of a query_metric level, with the relations among them, as show_instances
+        does. Give the same metric, group_by, drill and time as that query_metric call,
+        and the row. Reads at most 1000 instances; those of the object type the metric
+        counts are planned, within the canvas limit."""
+        reading = await read_metric(metric, version, group_by, drill, time)
+
+        async def call(name: str, **arguments) -> dict:
+            return await _call(run, name, **arguments)
+
+        cells, found, more, warnings = await gm.participants(call, reading, bucket or {}, period)
+        owner = reading.metric.owner
+        owned = [
+            p["instance_identity"] for p in found if p.get("role") == "owner" and isinstance(p.get("instance_identity"), dict)
+        ]
+        metas = await _metas(run, [owner])
+        meta = metas.get(owner)
+        nodes: list[dict] = []
+        skipped = 0
+        if meta and meta.primary_keys:
+            # Only those the canvas has room for are fetched; _merge plans what it can.
+            present, room, wanted = _present_nodes(run), max(0, _room(run)), []
+            for identity in owned:
+                if data.instance_id(owner, meta.primary_keys, identity) in present:
+                    wanted.append(identity)
+                elif room > 0:
+                    wanted.append(identity)
+                    room -= 1
+                else:
+                    skipped += 1
+            nodes = await _fetch_by_identity(run, meta, wanted)
+        edges = await _edges_among(run, nodes, metas) if nodes else []
+        planned = _merge(run, nodes, edges)
+        if skipped:
+            _warn(run, f"The canvas holds at most {_canvas(run).limits.max_nodes} nodes; {skipped} were not planned.")
+            planned["left_out"] = planned.get("left_out", 0) + skipped
+        keep_metric_step(
+            "show_metric_participants",
+            {"metric": metric, "bucket": bucket, "period": period, "group_by": group_by, "drill": drill, "time": time, "version": version},
+            reading,
+            cells=cells,
+        )
+        out: dict[str, Any] = {"participants": len(found)}
+        if more:
+            out["more"] = f"The bucket has more than the {len(found)} read."
+        others = len(found) - len(owned)
+        if others:
+            out["other_roles"] = f"{others} reached along a relation path are counted, not planned."
+        if warnings:
+            out["warnings"] = warnings
+        return _dump({**out, **_summary(nodes, with_properties=False), "edges": _edge_summary(edges), **planned})
+
     return [
         _tool(fn)
         for fn in (
@@ -1714,6 +1941,8 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             manual_group,
             edit_analysis_cards,
             show_html,
+            query_metric,
+            show_metric_participants,
         )
     ]
 
@@ -1780,9 +2009,50 @@ async def _instructions(run: builtin_tools.Run) -> str:
             "",
             "Relation types (id, name): source object type -> target object type:",
             *relations,
+            *(await _metric_instructions(run, network)),
             *_card_instructions(run),
         ]
     )
+
+
+async def _metric_instructions(run: builtin_tools.Run, network: dict) -> list[str]:
+    """The published metrics and when to use them; nothing for a network without any."""
+    try:
+        metrics = list((await _metric_catalog(run)).values())
+    except ToolException as exc:
+        # The schema still helps; figures are then worked out with Cypher.
+        logger.warning("graph explorer metrics unavailable: %s", exc)
+        return []
+    if not metrics:
+        return []
+    names = {ot_id: t["name"] for ot_id, t in network["object_types"].items()}
+    in_analysis = getattr(_canvas(run), "analysis_cards", None) is not None
+    return [
+        "",
+        "Published metrics of this network (id, version, name, the object type it counts; unit; dimensions it"
+        " can be split by; time dimension; description). They are the network's own definitions of these"
+        " figures, not configure_analysis metric cards:",
+        *gm.catalog(metrics, names),
+        "",
+        "For a count, amount, ratio, ranking or trend, first look for a metric above whose name and"
+        " description fit the question. When one fits, read the figure with query_metric, split and drill"
+        " with it too, and list the instances behind a figure with show_metric_participants; do not work"
+        " the same figure out again with run_cypher. Use run_cypher only when no metric fits or the metric"
+        " does not open the dimension needed, and say why in the answer (e.g. the metric Win rate does not"
+        " open the dimension Opponent). When unsure a metric means what the user asked, say which metric you used."
+        " This comes before the advice above on statistics with run_cypher and on charting figures.",
+        (
+            "In an analysis each query_metric becomes a metric card; drilling the same metric further in the"
+            " same answer, with the same group_by and time and the earlier drill as its start, updates that"
+            " card. The picture of figures read from a metric is query_metric's chart, not configure_analysis"
+            " or show_html. A metric card the cards below list comes with what it reads in query_metric's"
+            " arguments: to go on from it (split it further, drill into a bucket, the instances of one), give"
+            " those arguments and add to them."
+            if in_analysis
+            else "Here the figures of a metric are in your answer only: do not draw their instances or"
+            " configure_analysis for them unless the user asks."
+        ),
+    ]
 
 
 def _check_chain(run: builtin_tools.Run, chart: dict) -> None:
@@ -1800,15 +2070,23 @@ def _check_chain(run: builtin_tools.Run, chart: dict) -> None:
 def _card_instructions(run: builtin_tools.Run) -> list[str]:
     """The analysis cards, when the question is asked in an analysis: the user
     names them as `#<number>`, which is easily taken for a node."""
-    cards = getattr(_canvas(run), "analysis_cards", None)
+    canvas = _canvas(run)
+    cards = getattr(canvas, "analysis_cards", None)
     if cards is None:
         return []
-    listed = [
-        f"- #{card.no} {_brief(card.title or card.kind, CARD_TITLE_CAP)} ({_brief(card.kind, CARD_TITLE_CAP)})"
-        for card in cards[-CARD_LIST:]
-    ]
+
+    def line(card: AnalysisCard) -> str:
+        out = f"- #{card.no} {_brief(card.title or card.kind, CARD_TITLE_CAP)} ({_brief(card.kind, CARD_TITLE_CAP)})"
+        reads = gm.card_query(card.metric) if card.metric else None
+        if reads:
+            out += f"; reads query_metric {json.dumps(reads, ensure_ascii=False)}"
+        return out
+
+    listed = [line(card) for card in cards[-CARD_LIST:]]
     if len(cards) > CARD_LIST:
         listed.insert(0, f"(This analysis has {len(cards)} cards; the latest {CARD_LIST} are listed.)")
+    if canvas.analysis_from is not None:
+        listed.append(f"The user asks this question from card #{canvas.analysis_from}.")
     return [
         "",
         "This question is asked in an analysis made of cards. `#<number>` in the user's message names a card,"
@@ -1863,13 +2141,15 @@ def _progress(run: builtin_tools.Run) -> dict | None:
     """The actions planned since the last call, with the graph data they name, and
     the graph queries finished since then with what each found (`cypher`, in the
     order they finished: tool calls may run side by side, so the page matches a
-    query to its step by text)."""
+    query to its step by text). Metric steps (`metrics`) come the same way, each
+    with the arguments the model gave."""
     actions = _actions(run)
     start = run.state.get("emitted", 0)
     run.state["emitted"] = len(actions)
     new = actions[start:]
     cypher = run.state.pop("cypher_results", [])
-    if not new and not cypher:
+    metrics = run.state.pop("metric_steps", [])
+    if not new and not cypher and not metrics:
         return None
     merges = [a for a in new if a["type"] == "merge_subgraph"]
 
@@ -1882,6 +2162,8 @@ def _progress(run: builtin_tools.Run) -> dict | None:
         "aggregates": named(_planned_aggregates(run), "aggregate_ids"),
         "actions": new,
         **({"cypher": cypher} if cypher else {}),
+        # The metric steps finished since then, each as the card keeps its query.
+        **({"metrics": metrics} if metrics else {}),
     }
 
 
@@ -1946,6 +2228,8 @@ TOOL_NAMES = frozenset(
         "manual_group",
         "edit_analysis_cards",
         "show_html",
+        "query_metric",
+        "show_metric_participants",
     }
 )
 
