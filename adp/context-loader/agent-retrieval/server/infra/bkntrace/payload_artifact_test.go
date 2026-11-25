@@ -46,29 +46,59 @@ func TestLargePayloadUsesReferencedArtifactInsteadOfOmission(t *testing.T) {
 }
 
 func TestPayloadEscapedByCoreUsesReferencedArtifact(t *testing.T) {
-	writer := &payloadArtifactWriterStub{}
-	raw := json.RawMessage(`{"body":"` + strings.Repeat("<", 180000) + `","id":9007199254740993}`)
-	payload, ref, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
-	if err != nil || payload.Mode != "referenced" || ref == "" {
-		t.Fatalf("payload mode = %q, size = %d, ref = %q, err = %v", payload.Mode, payload.ByteLength, ref, err)
-	}
-	if payload.ByteLength <= maxInlinePayloadBytes || !bytes.Contains(writer.raw, []byte(`9007199254740993`)) {
-		t.Fatalf("reference size = %d, preserves precise number = %t", payload.ByteLength, bytes.Contains(writer.raw, []byte(`9007199254740993`)))
-	}
-	if !bytes.Equal(writer.raw, raw) {
-		t.Fatalf("artifact encoding changed the input bytes: got %d bytes, want %d", len(writer.raw), len(raw))
+	for _, tc := range []struct {
+		name   string
+		body   string
+		number string
+	}{
+		{name: "HTML and wide integer", body: strings.Repeat("<", 180000), number: "9007199254740993"},
+		{name: "HTML and decimal", body: strings.Repeat("<>&", 60000), number: "12.50"},
+		{name: "line separators and decimal", body: strings.Repeat("\u2028\u2029", 90000), number: "12.50"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := &payloadArtifactWriterStub{}
+			raw := json.RawMessage(`{"body":"` + tc.body + `","id":` + tc.number + `}`)
+			payload, ref, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
+			if err != nil || payload.Mode != "referenced" || ref == "" || payload.ByteLength <= maxInlinePayloadBytes {
+				t.Fatalf("payload mode = %q, size = %d, ref = %q, err = %v", payload.Mode, payload.ByteLength, ref, err)
+			}
+			if !bytes.Equal(writer.raw, raw) {
+				t.Fatalf("artifact encoding changed the input bytes: got %d bytes, want %d", len(writer.raw), len(raw))
+			}
+
+			decoder := json.NewDecoder(bytes.NewReader(writer.raw))
+			decoder.UseNumber()
+			var content any
+			if err := decoder.Decode(&content); err != nil {
+				t.Fatal(err)
+			}
+			var canonical bytes.Buffer
+			encoder := json.NewEncoder(&canonical)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(content); err != nil {
+				t.Fatal(err)
+			}
+			escaped, err := json.Marshal(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonicalLength := canonical.Len() - 1 // Encoder.Encode appends a newline.
+			if payload.ByteLength != canonicalLength && payload.ByteLength != len(escaped) {
+				t.Fatalf("reference size = %d, Core accepts %d or %d", payload.ByteLength, canonicalLength, len(escaped))
+			}
+		})
 	}
 }
 
-func TestPayloadNumberExpandedByCoreUsesReferencedArtifact(t *testing.T) {
+func TestPayloadNumberExpandedByCoreIsOmitted(t *testing.T) {
 	writer := &payloadArtifactWriterStub{}
 	raw := json.RawMessage(`{"body":"` + strings.Repeat("x", maxInlinePayloadBytes-32) + `","id":1e20}`)
-	payload, _, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
-	if err != nil || payload.Mode != "referenced" || payload.ByteLength <= maxInlinePayloadBytes {
-		t.Fatalf("payload mode = %q, size = %d, err = %v", payload.Mode, payload.ByteLength, err)
+	payload, ref, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
+	if err != nil || payload.Mode != "omitted" || payload.OmittedReason != "payload_too_large" || payload.ByteLength <= maxInlinePayloadBytes {
+		t.Fatalf("payload mode = %q, reason = %q, size = %d, err = %v", payload.Mode, payload.OmittedReason, payload.ByteLength, err)
 	}
-	if len(writer.raw) > maxInlinePayloadBytes || !bytes.Contains(writer.raw, []byte(`"id":1e20`)) {
-		t.Fatalf("artifact size = %d, original number preserved = %t", len(writer.raw), bytes.Contains(writer.raw, []byte(`"id":1e20`)))
+	if ref != "" || payload.Ref != "" || writer.raw != nil {
+		t.Fatalf("unexpected artifact: ref = %q, payload.ref = %q, size = %d", ref, payload.Ref, len(writer.raw))
 	}
 }
 

@@ -555,48 +555,54 @@ func boundedJSONPayloadWithWriter(ctx context.Context, writer PayloadArtifactWri
 			OmittedReason: "serialization_failed",
 		}, "", nil
 	}
-	byteLength := len(canonical)
-	if byteLength <= maxInlinePayloadBytes {
+	inlineLength := len(canonical)
+	if inlineLength <= maxInlinePayloadBytes {
 		coreLength, err := coreInlinePayloadLength(canonical)
 		if err != nil {
 			return PayloadEnvelope{
 				Mode:          "omitted",
 				MediaType:     "application/json",
-				ByteLength:    byteLength,
+				ByteLength:    inlineLength,
 				OmittedReason: "serialization_failed",
 			}, "", nil
 		}
-		// Core escapes strings and normalizes number spellings before applying its inline limit.
-		byteLength = max(byteLength, coreLength)
-	}
-	if byteLength > maxInlinePayloadBytes {
-		if writer != nil {
-			ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
-			if writeErr == nil && strings.TrimSpace(ref) != "" {
-				return PayloadEnvelope{
-						Mode:       "referenced",
-						MediaType:  "application/json",
-						ByteLength: byteLength,
-						Ref:        strings.TrimSpace(ref),
-					},
-					strings.TrimSpace(ref), nil
-			}
+		if coreLength <= maxInlinePayloadBytes {
 			return PayloadEnvelope{
-				Mode:          "omitted",
-				MediaType:     "application/json",
-				ByteLength:    byteLength,
-				OmittedReason: "artifact_write_failed",
-			}, "", writeErr
+				Mode: "inline", MediaType: "application/json", ByteLength: inlineLength, Inline: canonical,
+			}, "", nil
+		}
+		inlineLength = coreLength
+	}
+
+	// Core's artifact verifier preserves number spellings and escapes U+2028 and U+2029.
+	// It also accepts the legacy length with HTML escaping if that clears the inline limit.
+	artifactLength := len(canonical) + 3*(bytes.Count(canonical, []byte("\u2028"))+bytes.Count(canonical, []byte("\u2029")))
+	if artifactLength <= maxInlinePayloadBytes {
+		artifactLength += 5 * (bytes.Count(canonical, []byte("<")) + bytes.Count(canonical, []byte(">")) + bytes.Count(canonical, []byte("&")))
+	}
+	if writer != nil && artifactLength > maxInlinePayloadBytes {
+		ref, _, writeErr := writer.Put(ctx, "application/json", canonical)
+		ref = strings.TrimSpace(ref)
+		if writeErr == nil && ref != "" {
+			return PayloadEnvelope{
+				Mode:       "referenced",
+				MediaType:  "application/json",
+				ByteLength: artifactLength,
+				Ref:        ref,
+			}, ref, nil
 		}
 		return PayloadEnvelope{
 			Mode:          "omitted",
 			MediaType:     "application/json",
-			ByteLength:    byteLength,
-			OmittedReason: "payload_too_large",
-		}, "", nil
+			ByteLength:    artifactLength,
+			OmittedReason: "artifact_write_failed",
+		}, "", writeErr
 	}
 	return PayloadEnvelope{
-		Mode: "inline", MediaType: "application/json", ByteLength: len(canonical), Inline: canonical,
+		Mode:          "omitted",
+		MediaType:     "application/json",
+		ByteLength:    inlineLength,
+		OmittedReason: "payload_too_large",
 	}, "", nil
 }
 
