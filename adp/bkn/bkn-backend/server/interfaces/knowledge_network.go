@@ -324,6 +324,10 @@ type Statistics struct {
 	// an MCP tool is addressed by (mcp_id, tool_name) and runs through the MCP proxy, so Studio's
 	// split of functions_total into 函数/API by metadata_type does not apply to them.
 	MCPToolsTotal int `json:"mcp_tools_total"`
+	// EventClassesTotal counts the object types whose kinds include event; they are counted in
+	// object_types_total too. Absent from the statistics of a navigation-only network, whose
+	// visible rows do not say which object types are event classes.
+	EventClassesTotal *int `json:"event_classes_total,omitempty"`
 }
 
 // Business knowledge network pagination query.

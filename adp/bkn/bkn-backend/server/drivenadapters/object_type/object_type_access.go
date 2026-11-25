@@ -1894,6 +1894,11 @@ func processQueryCondition(query interfaces.ObjectTypesQueryParams, subBuilder s
 		subBuilder = subBuilder.Where(sq.Eq{"ot.f_id": query.OTIDS})
 	}
 
+	if query.Kind != "" {
+		// f_kinds holds a JSON array of strings, so a kind is matched with its quotes.
+		subBuilder = subBuilder.Where(sq.Expr("instr(ot.f_kinds, ?) > 0", `"`+query.Kind+`"`))
+	}
+
 	return subBuilder
 }
 

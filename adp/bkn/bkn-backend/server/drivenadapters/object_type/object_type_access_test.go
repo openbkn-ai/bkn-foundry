@@ -876,6 +876,20 @@ func Test_objectTypeAccess_GetObjectTypesTotal(t *testing.T) {
 			}
 		})
 
+		Convey("GetObjectTypesTotal counts one kind by its quoted name\n", func() {
+			kindSQL := fmt.Sprintf("SELECT COUNT(ot.f_id) FROM %s AS ot WHERE ot.f_kn_id = ? "+
+				"AND ot.f_branch = ? AND instr(ot.f_kinds, ?) > 0", OT_TABLE_NAME)
+			smock.ExpectQuery(kindSQL).WithArgs("kn1", "main", `"event"`).
+				WillReturnRows(sqlmock.NewRows([]string{"COUNT(ot.f_id)"}).AddRow(2))
+
+			eventQuery := query
+			eventQuery.Kind = interfaces.ObjectTypeKindEvent
+			total, err := ota.GetObjectTypesTotal(testCtx, eventQuery)
+			So(err, ShouldBeNil)
+			So(total, ShouldEqual, 2)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("GetObjectTypesTotal Failed  Query error\n", func() {
 			expectedErr := errors.New("Query error")
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnError(expectedErr)

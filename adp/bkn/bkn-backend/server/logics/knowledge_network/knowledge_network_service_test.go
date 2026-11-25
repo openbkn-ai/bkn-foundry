@@ -775,11 +775,16 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 					interfaces.CAPABILITY_TYPE_FUNCTION: 4,
 					interfaces.CAPABILITY_TYPE_API:      2,
 				}, nil)
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), interfaces.ObjectTypesQueryParams{
+				KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Kind: interfaces.ObjectTypeKindEvent,
+			}).Return(2, nil)
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldBeNil)
 			So(stats, ShouldNotBeNil)
 			So(stats.OtTotal, ShouldEqual, 10)
+			So(stats.EventClassesTotal, ShouldNotBeNil)
+			So(*stats.EventClassesTotal, ShouldEqual, 2)
 			So(stats.RtTotal, ShouldEqual, 5)
 			So(stats.AtTotal, ShouldEqual, 3)
 			So(stats.CgTotal, ShouldEqual, 2)

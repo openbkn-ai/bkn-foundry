@@ -464,6 +464,8 @@ type ObjectTypesQueryParams struct {
 	Branch      string
 	KNID        string
 	OTIDS       []string // Filter by object type IDs
+	// Kind keeps only the object types whose kinds include it, such as event for event classes.
+	Kind string
 }
 
 // Object search list.
