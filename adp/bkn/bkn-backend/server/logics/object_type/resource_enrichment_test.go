@@ -553,6 +553,7 @@ func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
 	filterable, unfilterable := true, false
 	resource := &interfaces.VegaResource{
 		ID:               "r1",
+		Category:         interfaces.ResourceCategoryDataset,
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "code", Type: "string", Filterable: &filterable},
@@ -601,5 +602,43 @@ func TestProcessObjectTypeDetailsProjectsResourceFilterability(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"filterable":false`) {
 		t.Errorf("claim_value encodes as %s, want filterable false on the wire", encoded)
+	}
+}
+
+// A table is read from its data source by Cypher, where a text field whose own
+// switch is off is refused even with a keyword subfield in its index; the detail
+// says so too. The index's keyword operators stay listed.
+func TestProcessObjectTypeDetailsKeepsATableTextFieldUnfilterable(t *testing.T) {
+	service := &objectTypeService{appSetting: &common.AppSetting{}}
+	objectType := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID:       "ot1",
+			DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "r1"},
+			DataProperties: []*interfaces.DataProperty{
+				{Name: "body", Type: "text", MappedField: &interfaces.Field{Name: "body"}},
+			},
+		},
+	}
+	unfilterable := false
+	resource := &interfaces.VegaResource{
+		ID:               "r1",
+		Category:         "table",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "body", Type: "text", Filterable: &unfilterable,
+				Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Keyword}}},
+		},
+	}
+
+	if err := service.processObjectTypeDetails(context.Background(), objectType, map[string]vegaResourceLookup{
+		"r1": {resource: resource},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := objectType.DataProperties[0]
+	if body.Filterable == nil || *body.Filterable ||
+		fmt.Sprint(body.ConditionOperations) != fmt.Sprint(interfaces.DSL_KEYWORD_OPS) {
+		t.Errorf("body: filterable = %v, ops = %v, want not filterable with the index's %v",
+			body.Filterable, body.ConditionOperations, interfaces.DSL_KEYWORD_OPS)
 	}
 }

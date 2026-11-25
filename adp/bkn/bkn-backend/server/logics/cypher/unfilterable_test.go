@@ -92,24 +92,30 @@ func TestQueryOutsideSQLStillReturnsAnUnfilterableProperty(t *testing.T) {
 	}
 }
 
-// A text field whose own switch is off is still compared through its keyword
-// subfield in the local index, which vega-backend checks instead, so it is not
-// refused. Without a queryable index the field itself is checked, and refused.
+// A dataset's text field whose own switch is off is still compared through its
+// keyword subfield in the local index, which vega-backend checks instead, so it is
+// not refused. Without a queryable index the field itself is checked, and refused;
+// so is a table's, which Cypher reads from the data source even when it has an index.
 func TestQueryOutsideSQLLeavesATextFieldWithAKeywordSubfield(t *testing.T) {
-	for status, refused := range map[string]bool{
-		interfaces.ResourceLocalIndexStatusAvailable: false,
-		interfaces.ResourceLocalIndexStatusReadOnly:  false,
-		"": true,
+	for name, c := range map[string]struct {
+		category, status string
+		refused          bool
+	}{
+		"dataset available": {"dataset", interfaces.ResourceLocalIndexStatusAvailable, false},
+		"dataset readonly":  {"dataset", interfaces.ResourceLocalIndexStatusReadOnly, false},
+		"dataset no index":  {"dataset", "", true},
+		"table available":   {"table", interfaces.ResourceLocalIndexStatusAvailable, true},
 	} {
-		t.Run("index "+status, func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			resources := unfilterableAmount("text",
 				interfaces.PropertyFeature{FeatureName: "keyword", FeatureType: interfaces.FieldFeatureType_Keyword})
-			resources["res_order"].LocalIndexStatus = status
+			resources["res_order"].Category = c.category
+			resources["res_order"].LocalIndexStatus = c.status
 			service, vega := unfilterableService(resources)
 			_, err := service.Query(callerContext(), interfaces.CypherQuery{
 				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) WHERE o.amount = 5 RETURN o.id AS id",
 			})
-			if refused {
+			if c.refused {
 				var httpErr *httperrors.HTTPError
 				if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest ||
 					httpErr.ErrorCode != "BknBackend.Cypher.Unsupported" || len(vega.readers) != 0 {

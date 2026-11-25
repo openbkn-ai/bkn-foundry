@@ -7,6 +7,9 @@
 package interfaces
 
 const (
+	// ResourceCategoryDataset is a resource whose data lives in its managed local index.
+	ResourceCategoryDataset = "dataset"
+
 	ResourceLocalIndexStatusAvailable = "available"
 	// ResourceLocalIndexStatusReadOnly means the published index can serve queries while a full rebuild is pending.
 	ResourceLocalIndexStatusReadOnly = "readonly"

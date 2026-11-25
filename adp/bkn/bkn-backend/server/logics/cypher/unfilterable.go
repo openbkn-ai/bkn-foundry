@@ -22,8 +22,8 @@ import (
 //
 // Only a condition on the field itself is checked. The executor pushes comparisons
 // (==, !=, in, like, prefix, null), and vega-backend checks those against the field,
-// except on a text field with a keyword subfield in a queryable local index, which
-// serves them instead (logics.VegaPropertyRefusesConditions). A condition kept as a
+// except on a dataset's text field with a keyword subfield in its queryable local
+// index, which serves them instead (logics.VegaPropertyRefusesConditions). A condition kept as a
 // residual is evaluated here and never reaches the data source.
 
 // UnfilterableConditionError is a statement whose condition names a property the
