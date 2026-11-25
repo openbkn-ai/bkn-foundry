@@ -9,7 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -59,17 +59,17 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	if resource == nil {
 		return ""
 	}
-	metadata := resource.SourceMetadata
-	// Compare null and empty collections as distinct persisted values.
-	bytes, err := jsoncodec.Marshal(metadata, json.DefaultOptionsV1())
+	metadata := any(resource.SourceMetadata)
+	if resource.SourceMetadata == nil {
+		// 库中读出的 null 会解码成 nil map，比较时保留它与空对象的区别。
+		metadata = nil
+	}
+	encoded, err := jsoncodec.Marshal(metadata, jsonv2.Deterministic(true))
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(bytes)
-	hashStr := hex.EncodeToString(sum[:])
-	//logger.Infof("SourceMetadata hash: %s, orig: %s", hashStr, bytes)
-
-	return hashStr
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
 
 func updateDiscoverResultForEnrichStatus(result *interfaces.DiscoverResult, status string) {
