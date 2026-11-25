@@ -64,7 +64,12 @@ func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynami
 	}
 	sort.Strings(parts)
 
-	paramsJSON, err := canonicalJSON.Marshal(dynamicParams)
+	// Omitted and empty parameters both mean the execution supplies no inputs.
+	var fingerprintParams any
+	if len(dynamicParams) > 0 {
+		fingerprintParams = dynamicParams
+	}
+	paramsJSON, err := canonicalJSON.Marshal(fingerprintParams)
 	if err != nil {
 		return "", fmt.Errorf("marshal dynamic_params: %w", err)
 	}
