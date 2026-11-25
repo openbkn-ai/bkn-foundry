@@ -28,69 +28,51 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-// Action and skill REST execution still requires managed context; REST tool
-// execution and reads allow ad-hoc calls with the caller's existing permissions.
-func TestRESTExecutionRequiresManagedContext(t *testing.T) {
+// Contextless REST execution keeps the caller's authorization and reaches its
+// business handler without reading or writing the Trace service.
+func TestRESTExecutionAllowsOptionalManagedContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cases := []struct {
-		path      string
-		body      string
-		wantCalls int
-		wantCode  string
-	}{
-		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q"}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q"}`, 1, ""},
-		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 1, ""},
-		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q"}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/v1/kn/run_cypher", `{"query":"q"}`, 1, ""},
-		{"/api/agent-retrieval/internal-v1/kn/search_schema", `{"query":"q"}`, 1, ""},
-		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", `{"query":"q"}`, 1, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.path, func(t *testing.T) {
-			downstreamCalls := 0
-			var seenBody map[string]any
-			router := gin.New()
-			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("http://core.test", nil)))
-			// The handler binds its body the way the real ones do. A stub that
-			// ignores the body cannot tell a request that was let through from one
-			// that arrived drained, which is exactly the gap that let a middleware
-			// consuming the body without putting it back look correct.
-			router.POST("/*path", func(c *gin.Context) {
-				downstreamCalls++
-				if err := c.ShouldBindJSON(&seenBody); err != nil {
-					t.Errorf("%s: handler could not bind the body: %v", tc.path, err)
-				}
-				c.Status(http.StatusNoContent)
-			})
-
-			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(tc.body))
-			request.Header.Set("Content-Type", "application/json")
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-
-			if downstreamCalls != tc.wantCalls {
-				t.Fatalf("%s: downstream calls = %d, want %d (status %d, body %s)",
-					tc.path, downstreamCalls, tc.wantCalls, response.Code, response.Body)
+	for _, prefix := range []string{"/api/agent-retrieval/v1/kn/", "/api/agent-retrieval/in/v1/kn/"} {
+		for _, tool := range []string{"execute_action", "execute_skill", "execute_tool", "run_cypher", "search_schema"} {
+			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+				t.Run(prefix+tool+body, func(t *testing.T) {
+					core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						t.Errorf("contextless REST called Trace: %s %s", r.Method, r.URL.Path)
+						w.WriteHeader(http.StatusServiceUnavailable)
+					}))
+					defer core.Close()
+					downstreamCalls := 0
+					router := gin.New()
+					router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+					router.POST("/*path", func(c *gin.Context) {
+						downstreamCalls++
+						var input map[string]any
+						if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+							t.Fatalf("handler body=%#v error=%v", input, err)
+						}
+						if c.GetHeader("Authorization") != "Bearer caller-token" {
+							t.Error("caller credential was lost")
+						}
+						traceContext, _ := common.GetTraceContextFromCtx(c.Request.Context())
+						if traceContext.OperationID != "" || traceContext.InteractionID != "" {
+							t.Errorf("contextless REST received fabricated lifecycle identity: %#v", traceContext)
+						}
+						c.Status(http.StatusNoContent)
+					})
+					request := httptest.NewRequest(http.MethodPost, prefix+tool, strings.NewReader(body))
+					request.Header.Set("Content-Type", "application/json")
+					request.Header.Set("Authorization", "Bearer caller-token")
+					response := httptest.NewRecorder()
+					router.ServeHTTP(response, request)
+					if response.Code != http.StatusNoContent || downstreamCalls != 1 {
+						t.Fatalf("status=%d calls=%d body=%s", response.Code, downstreamCalls, response.Body)
+					}
+					if response.Header().Get("bkn-operation-id") != "" || response.Header().Get("bkn-receipt-id") != "" {
+						t.Errorf("contextless REST returned Trace identity: %v", response.Header())
+					}
+				})
 			}
-			if tc.wantCalls > 0 && seenBody["query"] != "q" {
-				t.Fatalf("%s: handler saw %#v, want the original body", tc.path, seenBody)
-			}
-			if tc.wantCode != "" {
-				var envelope struct {
-					Error bkntrace.APIError `json:"error"`
-				}
-				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-					t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
-				}
-				if response.Code != http.StatusBadRequest || envelope.Error.Code != tc.wantCode ||
-					envelope.Error.RequiredAction != "create_conversation" {
-					t.Fatalf("status=%d error=%#v, want 400 conversation_required/create_conversation", response.Code, envelope.Error)
-				}
-			}
-		})
+		}
 	}
 }
 
@@ -177,52 +159,6 @@ func TestRESTExecutionRemainsAvailableWhenCaptureDisabled(t *testing.T) {
 	}
 }
 
-func TestRESTExecutionFallsBackWhenTraceCoreUnavailable(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	for _, status := range []int{http.StatusNotFound, http.StatusServiceUnavailable} {
-		core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet || r.URL.Path != "/api/agent-observability/v1/operations/__rest_context_probe__" {
-				t.Errorf("unexpected probe: %s %s", r.Method, r.URL.Path)
-			}
-			code := "operation_not_found"
-			if status == http.StatusServiceUnavailable {
-				code = "trace_core_unavailable"
-			}
-			w.WriteHeader(status)
-			_, _ = w.Write([]byte(`{"error":{"code":"` + code + `"}}`))
-		}))
-		for _, path := range []string{
-			"/api/agent-retrieval/v1/kn/execute_action",
-			"/api/agent-retrieval/v1/kn/execute_skill",
-		} {
-			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
-				calls := 0
-				router := gin.New()
-				router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
-				router.POST("/*path", func(c *gin.Context) {
-					calls++
-					var input map[string]any
-					if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
-						t.Errorf("handler body = %#v, bind error = %v", input, err)
-					}
-					c.Status(http.StatusNoContent)
-				})
-				request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
-				request.Header.Set("Content-Type", "application/json")
-				response := httptest.NewRecorder()
-				router.ServeHTTP(response, request)
-				if status == http.StatusServiceUnavailable && (response.Code != http.StatusNoContent || calls != 1 || response.Header().Get("X-BKN-Trace-Available") == "true") {
-					t.Errorf("outage status=%d calls=%d headers=%v", response.Code, calls, response.Header())
-				}
-				if status == http.StatusNotFound && (response.Code != http.StatusBadRequest || calls != 0) {
-					t.Errorf("healthy Core status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
-				}
-			}
-		}
-		core.Close()
-	}
-}
-
 // TestRESTContextOptionalityBoundary pins where "ad hoc" ends.
 //
 // The rule is one line - state an id and the call is managed, state none and it
@@ -247,42 +183,44 @@ func TestRESTContextOptionalityBoundary(t *testing.T) {
 		{"context without ids is refused", `{"sql":"select 1","bkn_context":{"parent_operation_id":"op1"}}`, 0, "conversation_required"},
 		{"misspelt field is refused", `{"sql":"select 1","bkn_context":{"conversationId":"c1"}}`, 0, "invalid_business_context"},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			downstreamCalls := 0
-			router := gin.New()
-			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
-			router.POST("/*path", func(c *gin.Context) {
-				downstreamCalls++
-				c.Status(http.StatusNoContent)
+	for _, tool := range []string{"run_cypher", "execute_action", "execute_skill"} {
+		for _, tc := range cases {
+			t.Run(tool+"/"+tc.name, func(t *testing.T) {
+				downstreamCalls := 0
+				router := gin.New()
+				router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+				router.POST("/*path", func(c *gin.Context) {
+					downstreamCalls++
+					c.Status(http.StatusNoContent)
+				})
+
+				request := httptest.NewRequest(
+					http.MethodPost,
+					"/api/agent-retrieval/v1/kn/"+tool,
+					bytes.NewBufferString(tc.body),
+				)
+				request.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+
+				if downstreamCalls != tc.wantCalls {
+					t.Fatalf("downstream calls = %d, want %d (status %d, body %s)",
+						downstreamCalls, tc.wantCalls, response.Code, response.Body)
+				}
+				if tc.wantCode == "" {
+					return
+				}
+				var envelope struct {
+					Error bkntrace.APIError `json:"error"`
+				}
+				if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+					t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
+				}
+				if envelope.Error.Code != tc.wantCode {
+					t.Fatalf("error code = %q, want %q", envelope.Error.Code, tc.wantCode)
+				}
 			})
-
-			request := httptest.NewRequest(
-				http.MethodPost,
-				"/api/agent-retrieval/v1/kn/run_cypher",
-				bytes.NewBufferString(tc.body),
-			)
-			request.Header.Set("Content-Type", "application/json")
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-
-			if downstreamCalls != tc.wantCalls {
-				t.Fatalf("downstream calls = %d, want %d (status %d, body %s)",
-					downstreamCalls, tc.wantCalls, response.Code, response.Body)
-			}
-			if tc.wantCode == "" {
-				return
-			}
-			var envelope struct {
-				Error bkntrace.APIError `json:"error"`
-			}
-			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-				t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
-			}
-			if envelope.Error.Code != tc.wantCode {
-				t.Fatalf("error code = %q, want %q", envelope.Error.Code, tc.wantCode)
-			}
-		})
+		}
 	}
 }
 

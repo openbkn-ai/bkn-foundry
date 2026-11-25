@@ -15,6 +15,7 @@ package kntools
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -642,21 +643,29 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	run := func(executionContext context.Context) (map[string]any, error) {
-		return proxyOperator.ExecutePublishedToolAsProxy(executionContext, &interfaces.ExecutePublishedToolRequest{
+		result, err := proxyOperator.ExecutePublishedToolAsProxy(executionContext, &interfaces.ExecutePublishedToolRequest{
 			ArgumentFormat: req.ArgumentFormat,
 			ToolboxID:      toolboxID,
 			ToolID:         toolID,
 			Parameters:     req.Arguments,
 		}, proxy)
+		if err == nil && result != nil && state.MetadataType == "function" {
+			result = maps.Clone(result)
+			result["execution_evidence"] = map[string]any{
+				"kn_id": knID, "toolbox_id": toolboxID, "tool_id": toolID,
+				"metadata_type": "function",
+				"version":       normalizedFunctionVersion(state.EnabledToolDescriptors[toolID].Version),
+			}
+		}
+		return result, err
 	}
 	if state.MetadataType != "function" || s.managedFunctionTrace == nil {
 		return run(ctx)
 	}
 	traceContext, hasTraceContext := common.GetTraceContextFromCtx(ctx)
 	if !hasTraceContext || traceContext.OperationID == "" {
-		// HTTP execution must pass the outer lifecycle guard before reaching this
-		// service. Direct service calls without an Operation still run without
-		// inventing a provenance parent.
+		// Direct REST and service execution use the authorization checks above.
+		// Explicit managed contexts retain their existing lifecycle guard.
 		return run(ctx)
 	}
 	descriptor := state.EnabledToolDescriptors[toolID]
