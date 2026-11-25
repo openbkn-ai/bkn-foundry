@@ -7,6 +7,8 @@
 package rest
 
 import (
+	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"net/http"
 	"strings"
@@ -66,6 +68,14 @@ func ReplyError(c *gin.Context, err error) {
 		logger.Errorf("localized error rendering failed: %v", renderErr)
 	}
 	body, encodeErr := jsoncodec.Marshal(httpErr.BaseError)
+	if encodeErr != nil {
+		// Keep the original business error when its details use a legacy JSON representation.
+		body, encodeErr = jsoncodec.Marshal(httpErr.BaseError,
+			json.ReportErrorsWithLegacySemantics(true),
+			json.FormatDurationAsNano(true),
+			jsontext.AllowInvalidUTF8(true),
+		)
+	}
 	if encodeErr != nil {
 		logger.Errorf("error response JSON encoding failed: error_code=%s", httpErr.ErrorCode)
 		ctx := i18n.WithLanguage(c.Request.Context(), httpErr.Lang)

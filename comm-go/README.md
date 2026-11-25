@@ -14,6 +14,10 @@ openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，modul
 `rest.HTTPClient` 返回的动态 JSON 数字也使用该类型。解码默认拒绝重复的对象键和无效的
 UTF-8，结构体字段名区分大小写。`UnmarshalDecode` 每次从 `jsontext.Decoder` 读取一个值。
 
+编码时，nil slice 和 map 分别输出 `[]` 和 `{}`。`omitempty` 根据编码后的 JSON 值判断，
+因此 `false` 和 `0` 会保留。需要省略 Go 零值的字段可用 `omitzero`。
+`rest.ReplyError` 遇到旧版可编码的错误详情时会兼容重试，保留原 HTTP 状态码和业务错误码。
+
 例如，在已引用包含该变更的 comm-go 版本的 bkn-safe EE 模块中：
 
 ```bash

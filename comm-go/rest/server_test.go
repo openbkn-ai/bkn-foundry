@@ -13,6 +13,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -183,6 +185,46 @@ func TestErrorResponseUsesConstructionLanguage(t *testing.T) {
 	}
 	if body["error_code"] != httperrors.PublicError_BadRequest || !strings.Contains(body["description"].(string), "request") {
 		t.Fatalf("body=%s", rec.Body)
+	}
+}
+
+func TestReplyErrorPreservesBusinessErrorWithLegacyDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name    string
+		details any
+		want    string
+	}{
+		{name: "Go error", details: errors.New("private cause"), want: `{}`},
+		{name: "duration", details: 1500 * time.Millisecond, want: `1500000000`},
+		{name: "invalid UTF-8", details: "bad\xff", want: `"bad�"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx := i18n.WithLanguage(t.Context(), i18n.AmericanEnglish)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+			err := httperrors.NewHTTPError(ctx, http.StatusBadRequest, httperrors.PublicError_BadRequest).
+				WithErrorDetails(tc.details).WithMetadata(map[string]any{"items": []string(nil)})
+			ReplyError(c, err)
+
+			if recorder.Code != http.StatusBadRequest || !utf8.Valid(recorder.Body.Bytes()) {
+				t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.Bytes())
+			}
+			var body struct {
+				ErrorCode   string                     `json:"error_code"`
+				Description string                     `json:"description"`
+				Details     json.RawMessage            `json:"error_details"`
+				Metadata    map[string]json.RawMessage `json:"metadata"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.ErrorCode != err.ErrorCode || body.Description == "" || body.Description != err.Description ||
+				string(body.Details) != tc.want || string(body.Metadata["items"]) != `[]` {
+				t.Fatalf("unexpected response: %s", recorder.Body)
+			}
+		})
 	}
 }
 
