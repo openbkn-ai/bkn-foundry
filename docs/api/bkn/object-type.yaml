@@ -1796,6 +1796,19 @@ components:
           readOnly: true
           items:
             $ref: "#/components/schemas/ObjectTypeIndexFeature"
+        filterable:
+          description: |
+            Whether the mapped Vega resource field accepts a condition on the field itself, projected from the
+            resource schema while responding (false by default for a JSON field). false means the property can
+            be returned but a condition on it is refused: condition_operations then lists only the operators an
+            index on the field provides, such as match or knn, and Cypher refuses a WHERE or inline condition on it
+            with 400 BknBackend.Cypher.Unsupported. A dataset's text field with a keyword subfield in its available
+            local index is true even when its own switch is off: comparisons go through the subfield, and
+            condition_operations lists them without match. On a table the field's own switch decides. Read-only: it is not accepted in requests or stored with the
+            definition. Returned by the detail and search endpoints; omitted when the property has no mapped
+            field or the resource schema was not read.
+          type: boolean
+          readOnly: true
     ObjectTypeIndexStatus:
       description: |
         Whether the object type's bound Vega resource index can currently be used. It is projected from the

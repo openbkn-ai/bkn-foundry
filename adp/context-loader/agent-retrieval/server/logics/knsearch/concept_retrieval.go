@@ -1015,6 +1015,7 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			for j, prop := range obj.DataProperties {
 				p := convertDeclaredProperty(prop, brief)
 				p.ConditionOperations = prop.ConditionOperations
+				p.Filterable = interfaces.OnlyUnfilterable(prop.Filterable)
 				if includeColumns {
 					p.Column = mappedFieldColumn(prop.MappedField, prop.Name)
 				}

@@ -176,6 +176,9 @@ func (e *bindJoinExecutor) prepare() error {
 		walkPredicateColumns(term, need)
 		if len(tables) == 1 && !e.plan.Tables[tables[0]].Optional {
 			if pushed, ok := pushFilter(term); ok {
+				if err := e.checkFilterable(tables[0], term); err != nil {
+					return err
+				}
 				e.filters[tables[0]] = append(e.filters[tables[0]], pushed)
 				continue
 			}
@@ -203,6 +206,9 @@ func (e *bindJoinExecutor) prepare() error {
 				// can attach, which is exactly what reading it filtered does.
 				if len(tables) == 1 && tables[0] == join.OptionalTable {
 					if pushed, ok := pushFilter(term); ok {
+						if err := e.checkFilterable(join.OptionalTable, term); err != nil {
+							return err
+						}
 						e.filters[join.OptionalTable] = append(e.filters[join.OptionalTable], pushed)
 						continue
 					}

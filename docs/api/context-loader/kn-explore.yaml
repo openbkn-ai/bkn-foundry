@@ -884,6 +884,13 @@ components:
 
             **构造查询条件时以本字段为准**：这是建网时随对象类定义落库的声明，
             不同对象类可以不同。
+        filterable:
+          type: boolean
+          description: |
+            只在为 `false` 时出现：绑定资源能返回这个字段，但拒绝按它过滤（JSON 字段默认如此）。
+            这时按类型推断的比较算子都不能用，查询条件和 Cypher 的 WHERE 里都不要写它，取回值后再比对；
+            `condition_operations` 里只剩字段上的索引提供的算子（如 `match`、`knn`）。
+            按 id 查询 `get_object_types` 时返回，取自 bkn-backend 对象类详情；不出现表示可按类型过滤。
 
     LogicProperty:
       type: object

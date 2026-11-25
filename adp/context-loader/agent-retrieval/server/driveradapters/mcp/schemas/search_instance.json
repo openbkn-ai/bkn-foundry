@@ -146,7 +146,7 @@
                 "type": "object",
                 "additionalProperties": true
               },
-              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。"
+              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。filterable=false 表示数据源能返回该属性、但不能按它过滤：比较算子都不能用，条件、filters 和 Cypher 的 WHERE 里都不要写它，取回值后再比对。"
             },
             "index_operations": {
               "type": "array",

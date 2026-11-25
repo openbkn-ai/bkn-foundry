@@ -424,6 +424,7 @@ RETURN h AS source, '主场结果' AS relationType,
 | `collect` | 不支持 |
 
 - 用到不支持的写法时返回 400，说明哪些写法不能用。explain 只做编译，看不出对象类存放在哪里，所以这类拒绝要到执行时才会出现。
+- 数据源可以让一个字段只能返回、不能过滤，比如知识库里的 JSON 字段，对象类详情和 search_schema 里标为 `filterable: false`。在 WHERE 或内联属性里按它过滤会返回 400 `Unsupported` 并指出属性名，查询不会读数据；返回它、按其他属性过滤都不受影响，需要比对它的值时先取回再比对。
 - 数据要逐表读出再关联，比 SQL 慢；要读的数据超过上限或超时会返回 400 `ReadBudgetExceeded`，请加条件缩小范围。
 - 这里只有关系类能按键关联。两个节点只靠 `a.code = b.code` 这类相等条件连起来时，两边会先全部读出、两两组合，再按条件过滤，很容易超过上限；能用关系类就用关系类。explain 不会对这种情况给出提醒。
 
@@ -462,10 +463,10 @@ RETURN h AS source, '主场结果' AS relationType,
 | HTTP | error_code | 含义 |
 | --- | --- | --- |
 | 400 | `BknBackend.Cypher.SyntaxError` | 无法解析 |
-| 400 | `BknBackend.Cypher.Unsupported` | 合法的 openCypher，但不在支持的子集内；或模式里有两部分既没连起来、又都没有条件 |
+| 400 | `BknBackend.Cypher.Unsupported` | 合法的 openCypher，但不在支持的子集内；或模式里有两部分既没连起来、又都没有条件；或在数据集、索引上按不能过滤的属性过滤 |
 | 400 | `BknBackend.Cypher.InvalidQuery` | 与模型不匹配：未知标签或属性、类型不符等 |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` 超过 10000 |
-| 400 | `BknBackend.Cypher.InvalidParameter` | 查询为空或过长、参数不合法 |
+| 400 | `BknBackend.Cypher.InvalidParameter` | 查询为空或过长、参数不合法；或数据集、索引的数据源拒绝了查询里的条件 |
 | 400 | `BknBackend.Cypher.ReadBudgetExceeded` | `collect` 读取的证据达到 10000 行；或数据集、索引上的查询要读的数据超过上限或超时 |
 | 403 | `BknBackend.Cypher.PropertyForbidden` | 写到了脱敏或仅结构的属性 |
 | 403 | `BknBackend.Cypher.Forbidden` | 数据源拒绝了查询读取的资源，知识网络的代理账号也不可用 |

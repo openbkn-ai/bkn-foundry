@@ -7,6 +7,9 @@
 package interfaces
 
 const (
+	// ResourceCategoryDataset is a resource whose data lives in its managed local index.
+	ResourceCategoryDataset = "dataset"
+
 	ResourceLocalIndexStatusAvailable = "available"
 	// ResourceLocalIndexStatusReadOnly means the published index can serve queries while a full rebuild is pending.
 	ResourceLocalIndexStatusReadOnly = "readonly"
@@ -28,6 +31,10 @@ type Property struct {
 	OriginalName string            `json:"original_name"`
 	Description  string            `json:"description"`
 	Features     []PropertyFeature `json:"features,omitempty"`
+	// Filterable is whether the resource data API accepts a condition on the field itself.
+	// vega-backend resolves a missing switch from the field type before returning a resource,
+	// so nil only means an older vega-backend that does not send it.
+	Filterable *bool `json:"filterable,omitempty"`
 }
 
 // PropertyFeature represents a field feature (keyword, fulltext, vector).
