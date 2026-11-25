@@ -8,15 +8,13 @@ package driveradapters
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -36,14 +34,10 @@ const (
 	headerBKNEvidenceEventID   = "bkn-evidence-event-id"
 )
 
-func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.RequestContext, error) {
+func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestContext {
 	requestID := firstNonEmptyHeader(c, headerBKNRequestID, headerLegacyRequestID)
 	if requestID == "" {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return bkntrace.RequestContext{}, fmt.Errorf("generate request UUIDv7: %w", err)
-		}
-		requestID = "req_" + id.String()
+		requestID = "req_" + uuid.NewV7().String()
 	}
 	accountID := strings.TrimSpace(vis.ID)
 	if accountID == "" {
@@ -62,20 +56,12 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 	interactionID := strings.TrimSpace(c.GetHeader(headerBKNInteractionID))
 	sessionScopePresent := conversationID != "" && interactionID != ""
 	if interactionID == "" {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return bkntrace.RequestContext{}, fmt.Errorf("generate interaction UUIDv7: %w", err)
-		}
-		interactionID = "int_" + id.String()
+		interactionID = "int_" + uuid.NewV7().String()
 	}
 	operationID := strings.TrimSpace(c.GetHeader(headerBKNOperationID))
 	operationScopePresent := operationID != ""
 	if operationID == "" {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return bkntrace.RequestContext{}, fmt.Errorf("generate operation UUIDv7: %w", err)
-		}
-		operationID = "op_" + id.String()
+		operationID = "op_" + uuid.NewV7().String()
 	}
 	observedAt := strings.TrimSpace(c.GetHeader(headerBKNEventObservedAt))
 	if observedAt == "" {
@@ -102,7 +88,7 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) (bkntrace.Request
 		ClaimID:                strings.TrimSpace(c.GetHeader(headerBKNClaimID)),
 		Attempt:                attempt,
 		ObservedAt:             observedAt,
-	}, nil
+	}
 }
 
 func bknTraceSubjectType(accountType string) string {
@@ -116,11 +102,7 @@ func emitObjectTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	requestContext, err := bknTraceRequestContext(c, vis)
-	if err != nil {
-		logger.Errorf("build BKN trace request context failed: %v", err)
-		return
-	}
+	requestContext := bknTraceRequestContext(c, vis)
 	eventID := bkntrace.EmitSchemaReadEvents(ctx, requestContext, bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindObjectType,
 		Operation:     operation,
@@ -137,11 +119,7 @@ func emitRelationTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.V
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	requestContext, err := bknTraceRequestContext(c, vis)
-	if err != nil {
-		logger.Errorf("build BKN trace request context failed: %v", err)
-		return
-	}
+	requestContext := bknTraceRequestContext(c, vis)
 	eventID := bkntrace.EmitSchemaReadEvents(ctx, requestContext, bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindRelationType,
 		Operation:     operation,
@@ -158,11 +136,7 @@ func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 	if !bkntrace.EvidenceEnabled() {
 		return
 	}
-	requestContext, err := bknTraceRequestContext(c, vis)
-	if err != nil {
-		logger.Errorf("build BKN trace request context failed: %v", err)
-		return
-	}
+	requestContext := bknTraceRequestContext(c, vis)
 	eventID := bkntrace.EmitSchemaReadEvents(ctx, requestContext, bkntrace.ReadSubject{
 		EntityKind:    bkntrace.EntityKindActionType,
 		Operation:     operation,

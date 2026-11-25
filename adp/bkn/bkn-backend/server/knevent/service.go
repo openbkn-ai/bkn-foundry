@@ -16,7 +16,6 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -50,7 +49,6 @@ type service struct {
 	// transaction of the write; nil reads them from the store.
 	recognitions func(ctx context.Context, tx *sql.Tx, knID, classID string) ([]string, error)
 	now          func() int64
-	newID        func() string
 }
 
 func newService(appSetting *common.AppSetting, store *store) *service {
@@ -60,15 +58,7 @@ func newService(appSetting *common.AppSetting, store *store) *service {
 		networks:    knowledge_network.NewKNService(appSetting),
 		names:       user_mgmt.NewUserMgmtService(appSetting),
 		now:         func() int64 { return time.Now().UnixMilli() },
-		newID:       newEventID,
 	}
-}
-
-func newEventID() string {
-	if id, err := uuid.NewV7(); err == nil {
-		return id.String()
-	}
-	return uuid.NewString()
 }
 
 var _ interfaces.KnEventServiceV1 = (*service)(nil)
@@ -160,7 +150,6 @@ func (s *service) op(ctx context.Context) op {
 	return op{
 		now:         s.now(),
 		actor:       s.actor(ctx),
-		newID:       s.newID,
 		executionID: interfaces.ExecutionIDOf(ctx),
 		title: func(typeName, objectName string) string {
 			title, err := i18n.Render(lang, "BknBackend.KnEvent.RuleEventTitle",

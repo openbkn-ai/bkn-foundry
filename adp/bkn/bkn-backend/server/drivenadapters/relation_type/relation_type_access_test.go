@@ -16,8 +16,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -249,7 +249,7 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
 
-		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
+		mappingRulesBytes, _ := jsoncodec.Marshal(testRelationType.MappingRules)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
@@ -536,7 +536,7 @@ func Test_relationTypeAccess_GetRelationTypeByID(t *testing.T) {
 		branch := "main"
 		rtID := "rt1"
 
-		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
+		mappingRulesBytes, _ := jsoncodec.Marshal(testRelationType.MappingRules)
 
 		Convey("GetRelationTypeByID Success \n", func() {
 			rows := sqlmock.NewRows([]string{
@@ -616,7 +616,7 @@ func Test_relationTypeAccess_GetRelationTypesByIDs(t *testing.T) {
 		branch := "main"
 		rtIDs := []string{"rt1", "rt2"}
 
-		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
+		mappingRulesBytes, _ := jsoncodec.Marshal(testRelationType.MappingRules)
 
 		Convey("GetRelationTypesByIDs Success \n", func() {
 			rows := sqlmock.NewRows([]string{
@@ -987,7 +987,7 @@ func Test_relationTypeAccess_GetAllRelationTypesByKnID(t *testing.T) {
 			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
 
-		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
+		mappingRulesBytes, _ := jsoncodec.Marshal(testRelationType.MappingRules)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",

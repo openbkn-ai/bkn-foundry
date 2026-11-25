@@ -15,6 +15,7 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type predicateRowFilterStub struct {
@@ -80,9 +81,9 @@ func TestObjectQueryReportsWhetherRowFilterNarrowedResult(t *testing.T) {
 				t.Fatalf("resource reads = %d, want %d", len(vega.paramsHistory), tc.wantReads)
 			}
 
-			body, err := json.Marshal(result)
+			body, err := jsoncodec.Marshal(result)
 			if err != nil {
-				t.Fatalf("json.Marshal() error = %v", err)
+				t.Fatalf("jsoncodec.Marshal() error = %v", err)
 			}
 			var wire map[string]any
 			if err := json.Unmarshal(body, &wire); err != nil {

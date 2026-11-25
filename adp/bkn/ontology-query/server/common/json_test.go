@@ -6,12 +6,29 @@ import (
 	"testing"
 )
 
-func TestDecodeJSONPreservesLargeInteger(t *testing.T) {
-	var target map[string]any
-	if err := DecodeJSON(strings.NewReader(`{"value":110101199001152345}`), &target); err != nil {
-		t.Fatalf("DecodeJSON() error = %v", err)
+func TestBindJSONPreservesLargeInteger(t *testing.T) {
+	var target struct {
+		Value any `json:"value"`
 	}
-	if got, ok := target["value"].(json.Number); !ok || got.String() != "110101199001152345" {
-		t.Fatalf("value = %#v, want json.Number preserving literal", target["value"])
+	if err := BindJSON(strings.NewReader(`{"value":110101199001152345}`), &target); err != nil {
+		t.Fatalf("BindJSON() error = %v", err)
+	}
+	if got, ok := target.Value.(json.Number); !ok || got.String() != "110101199001152345" {
+		t.Fatalf("value = %#v, want json.Number preserving literal", target.Value)
+	}
+}
+
+func TestBindJSONUsesV2FieldMatching(t *testing.T) {
+	var target struct {
+		Value string `json:"value"`
+	}
+	if err := BindJSON(strings.NewReader(`{"value":"expected","VALUE":"ignored","extra":true}`), &target); err != nil {
+		t.Fatal(err)
+	}
+	if target.Value != "expected" {
+		t.Fatalf("value = %q, want %q", target.Value, "expected")
+	}
+	if err := BindJSON(strings.NewReader(`{"value":"first","value":"second"}`), &target); err == nil {
+		t.Fatal("BindJSON() accepted a duplicate field")
 	}
 }

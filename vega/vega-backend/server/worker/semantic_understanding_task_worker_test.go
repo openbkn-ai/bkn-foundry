@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	// "net/http" // Catalog 父目录测试恢复时启用。
@@ -15,12 +16,12 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/bytedance/sonic"
 	// "github.com/openbkn-ai/bkn-foundry/comm-go/rest" // Catalog 父目录测试恢复时启用。
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	vegalocale "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
@@ -315,8 +316,8 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		markCompleted := taskService.EXPECT().
 			InternalMarkCompleted(gomock.Any(), gomock.Any(), "semantic-task-1", `{"confidence":0.82,"resource":{"display_name":"Business Resource","description":"business resource","confidence":0.82},"fields":[{"name":"id","display_name":"标识","description":"identifier","confidence":0.81}],"warnings":[]}`, 0.82, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *sql.Tx, _ string, _ string, _ float64, detailJSON string) (bool, error) {
-				var detail map[string]sonic.NoCopyRawMessage
-				require.NoError(t, sonic.Unmarshal([]byte(detailJSON), &detail))
+				var detail map[string]json.RawMessage
+				require.NoError(t, jsoncodec.Unmarshal([]byte(detailJSON), &detail))
 				assert.Contains(t, detail, "resource")
 				assert.Contains(t, detail, "fields")
 				assert.Contains(t, detail, "warnings")
@@ -1598,8 +1599,8 @@ func TestReconcileResourceSemanticSampleWarnings(t *testing.T) {
 
 func extractWarningDetailsForTest(t *testing.T, payload string) string {
 	t.Helper()
-	var object map[string]sonic.NoCopyRawMessage
-	require.NoError(t, sonic.Unmarshal([]byte(payload), &object))
+	var object map[string]json.RawMessage
+	require.NoError(t, jsoncodec.Unmarshal([]byte(payload), &object))
 	raw, ok := object["warning_details"]
 	require.True(t, ok)
 	return string(raw)

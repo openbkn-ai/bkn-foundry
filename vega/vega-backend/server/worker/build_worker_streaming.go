@@ -19,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
@@ -308,11 +309,11 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				continue
 			}
 
-			if err := common.UnmarshalJSON(msg.Key, &keyMap); err != nil {
+			if err := jsoncodec.Unmarshal(msg.Key, &keyMap); err != nil {
 				logger.Errorf("Failed to unmarshal message key: %v", err)
 				time.Sleep(retryInterval)
 				continue
-			} else if err := common.UnmarshalJSON(msg.Value, &valueMap); err != nil {
+			} else if err := jsoncodec.Unmarshal(msg.Value, &valueMap); err != nil {
 				logger.Errorf("Failed to unmarshal message value: %v", err)
 				time.Sleep(retryInterval)
 				continue

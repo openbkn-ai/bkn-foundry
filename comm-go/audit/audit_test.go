@@ -9,6 +9,7 @@ package audit
 import (
 	"encoding/json"
 	"testing"
+	"uuid"
 
 	"github.com/IBM/sarama"
 )
@@ -21,6 +22,19 @@ type recordingProducer struct {
 func (p *recordingProducer) SendMessage(msg *sarama.ProducerMessage) (int32, int64, error) {
 	p.message = msg
 	return 0, 0, nil
+}
+
+func TestTransformLogGeneratesUUIDV7(t *testing.T) {
+	auditLog := &AuditLog{Detail: map[string]string{}}
+	transformLog(auditLog)
+
+	id, err := uuid.Parse(auditLog.ID)
+	if err != nil {
+		t.Fatalf("audit log ID is not a UUID: %v", err)
+	}
+	if id[6]>>4 != 7 || id.String() != auditLog.ID {
+		t.Fatalf("audit log ID = %q, want a canonical UUID v7", auditLog.ID)
+	}
 }
 
 func TestSendLogJSON(t *testing.T) {

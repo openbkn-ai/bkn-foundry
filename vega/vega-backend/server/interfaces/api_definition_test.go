@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -56,8 +57,8 @@ func TestHTTPOperationDefinitionMapDecode(t *testing.T) {
 		"future_login": true
 	}`
 	var input, original map[string]any
-	require.NoError(t, common.UnmarshalJSON([]byte(source), &input))
-	require.NoError(t, common.UnmarshalJSON([]byte(source), &original))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(source), &input))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(source), &original))
 
 	var definition interfaces.HTTPOperationDefinition
 	require.NoError(t, common.DecodeMapToStruct(input, &definition))
@@ -90,11 +91,11 @@ func TestHTTPOperationDefinitionMapDecode(t *testing.T) {
 	encoded, err := json.Marshal(definition)
 	require.NoError(t, err)
 	var roundTrip interfaces.HTTPOperationDefinition
-	require.NoError(t, common.UnmarshalJSON(encoded, &roundTrip))
+	require.NoError(t, jsoncodec.Unmarshal(encoded, &roundTrip))
 	assert.Equal(t, definition, roundTrip, "动态 Schema、Body 和条件中的 null 与精确数值应无损往返")
 
 	var output map[string]any
-	require.NoError(t, common.UnmarshalJSON(encoded, &output))
+	require.NoError(t, jsoncodec.Unmarshal(encoded, &output))
 	assert.NotContains(t, output, "future_login")
 	assert.NotContains(t, output["request"], "future_request")
 	outputResponse := output["response"].(map[string]any)
@@ -114,12 +115,12 @@ func TestHTTPOperationDefinitionJSONRoundTrip(t *testing.T) {
 				`"response":{"content_type":"application/json","statuses":{"default":{"description":"response","schema":` + schema + `}}},` +
 				`"success_rule":{"http_status":[200]}}`
 			var definition interfaces.HTTPOperationDefinition
-			require.NoError(t, common.UnmarshalJSON([]byte(source), &definition))
+			require.NoError(t, jsoncodec.Unmarshal([]byte(source), &definition))
 			encoded, err := json.Marshal(definition)
 			require.NoError(t, err)
 			var expected, actual map[string]any
-			require.NoError(t, common.UnmarshalJSON([]byte(source), &expected))
-			require.NoError(t, common.UnmarshalJSON(encoded, &actual))
+			require.NoError(t, jsoncodec.Unmarshal([]byte(source), &expected))
+			require.NoError(t, jsoncodec.Unmarshal(encoded, &actual))
 			assert.Equal(t, expected, actual, "省略可选字段，保留 false Schema 与任意 JSON 数据")
 		})
 	}
@@ -158,9 +159,9 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 		"paging_rule":{"mode":"page","default_limit":2,"max_limit":5,"page_base":0}
 	}`
 	var input, original map[string]any
-	require.NoError(t, common.UnmarshalJSON([]byte(source), &input))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(source), &input))
 	input["future_api"] = true
-	require.NoError(t, common.UnmarshalJSON([]byte(source), &original))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(source), &original))
 	original["future_api"] = true
 	var decoded interfaces.APIDefinition
 	require.NoError(t, common.DecodeMapToStruct(input, &decoded))
@@ -199,7 +200,7 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 	encoded, err := json.Marshal(request.APIDefinition)
 	require.NoError(t, err)
 	var shape map[string]any
-	require.NoError(t, common.UnmarshalJSON(encoded, &shape))
+	require.NoError(t, jsoncodec.Unmarshal(encoded, &shape))
 	assert.Equal(t, original["variables"], shape["variables"])
 	assert.NotContains(t, shape, "operation")
 	assert.NotContains(t, shape, "HTTPOperationDefinition")
@@ -216,6 +217,32 @@ func TestAPIDefinitionSharedHTTPEntryPoints(t *testing.T) {
 }
 
 func TestAPIDefinitionUnmarshalJSON(t *testing.T) {
+	t.Run("distinguishes explicit empty response paths from omitted paths in JSON v2", func(t *testing.T) {
+		empty := ""
+		missing := interfaces.HTTPResponseDefinition{Description: "rows", Schema: true}
+		encoded, err := jsoncodec.Marshal(missing)
+		require.NoError(t, err)
+		for _, tc := range []struct {
+			field string
+			rows  *string
+			total *string
+		}{
+			{field: "result_rows", rows: &empty},
+			{field: "result_total", total: &empty},
+		} {
+			t.Run(tc.field, func(t *testing.T) {
+				explicit := missing
+				explicit.ResultRows = tc.rows
+				explicit.ResultTotal = tc.total
+				withPath, err := jsoncodec.Marshal(explicit)
+				require.NoError(t, err)
+				assert.Contains(t, string(withPath), `"`+tc.field+`":""`)
+				assert.NotContains(t, string(encoded), `"`+tc.field+`"`)
+				assert.False(t, common.JSONNumbersEqual(explicit, missing))
+			})
+		}
+	})
+
 	t.Run("preserves public HTTP shapes and exact resource construction values", func(t *testing.T) {
 		var definition interfaces.APIDefinition
 		source := `{"request":{"method":"POST","path":"read","body":{"type":"object","properties":{"amount":{"type":"number","value":12345678901234567890.123456789}}}},"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result_rows":""},"default":{"description":"rejected","schema":false}}},"success_rule":{"http_status":[200],"body_filter_condition":{"field":"optional","operation":"eq","value":null}},"paging_rule":{"mode":"page","default_limit":1,"max_limit":10,"page_base":0}}`
@@ -244,24 +271,31 @@ func TestAPIDefinitionUnmarshalJSON(t *testing.T) {
 		assert.NotContains(t, shape, "HTTPOperationDefinition")
 		assert.NotContains(t, shape, "operation")
 	})
+	t.Run("ignores unknown members at every level", func(t *testing.T) {
+		const input = `{
+			"input_schema": {},
+			"request": {"method":"GET","path":"read","url":"https://example.invalid"},
+			"response": {"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"pointer":"/rows"}}}},
+			"paging_rule": {"mode":"offset","default_limit":2,"max_limit":5,"response":{"total":"$.total"}}
+		}`
+		const known = `{
+			"request": {"method":"GET","path":"read"},
+			"response": {"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true}}},
+			"paging_rule": {"mode":"offset","default_limit":2,"max_limit":5}
+		}`
+		var actual, expected interfaces.APIDefinition
+		require.NoError(t, json.Unmarshal([]byte(input), &actual))
+		require.NoError(t, json.Unmarshal([]byte(known), &expected))
+		assert.Equal(t, expected, actual)
+	})
 	for name, source := range map[string]string{
-		"legacy paging response":            `{"paging_rule":{"mode":"offset","default_limit":2,"max_limit":5,"response":{"total":"$.total","has_more":"$.more"}}}`,
-		"invalid result_total type":         `{"response":{"statuses":{"200":{"result_total":false}}}}`,
-		"removed result_has_more":           `{"response":{"statuses":{"200":{"result_has_more":"$.more"}}}}`,
-		"legacy input schema":               `{"input_schema":{}}`,
-		"unknown request field":             `{"request":{"method":"GET","path":"read","url":"https://example.invalid"}}`,
-		"legacy variable construction type": `{"variables":{"timeout":{"type":"string","value":"30"}}}`,
-		"legacy variable serialization":     `{"variables":{"timeout":{"value":"30","serialize":"json"}}}`,
-		"legacy result rows":                `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"rows":""}}}}}`,
-		"legacy response map":               `{"response":{"200":{"description":"rows"}}}`,
-		"legacy content map":                `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","content":{"application/json":{"schema":true}}}}}}`,
-		"legacy columns value":              `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"rows":"","columns":{"value":[{"name":"id"}]}}}}}}`,
-		"legacy columns path":               `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"rows":"","columns":{"path":"$.columns"}}}}}}`,
-		"legacy columns null":               `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"rows":"","columns":null}}}}}`,
-		"unknown extraction field":          `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result":{"pointer":"/rows"}}}}}`,
-		"invalid header type":               `{"request":{"method":"GET","path":"read","headers":{"Authorization":false}}}`,
-		"invalid result_rows type":          `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result_rows":false}}}}`,
-		"multiple JSON values":              `{} {}`,
+		"invalid result_total type": `{"response":{"statuses":{"200":{"result_total":false}}}}`,
+		"invalid header type":       `{"request":{"method":"GET","path":"read","headers":{"Authorization":false}}}`,
+		"invalid result_rows type":  `{"response":{"content_type":"application/json","statuses":{"200":{"description":"rows","schema":true,"result_rows":false}}}}`,
+		"invalid paging limit":      `{"paging_rule":{"default_limit":false}}`,
+		"non-object definition":     `[]`,
+		"duplicate member":          `{"request":{"path":"read","path":"other"}}`,
+		"multiple JSON values":      `{} {}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			original := interfaces.APIDefinition{HTTPOperationDefinition: interfaces.HTTPOperationDefinition{Request: &interfaces.HTTPRequestDefinition{Method: "GET", Path: "unchanged"}}}

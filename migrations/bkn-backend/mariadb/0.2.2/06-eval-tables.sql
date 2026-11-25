@@ -446,3 +446,16 @@ CREATE TABLE IF NOT EXISTS t_bkn_eval_root_cause_analysis (
     INDEX idx_eval_analysis_history (kn_id, requested_by, run_id, case_run_id, result_revision, created_at, id),
     CONSTRAINT fk_eval_analysis_case_run FOREIGN KEY (case_run_id) REFERENCES t_bkn_eval_case_run (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS t_bkn_eval_trial_request (
+    request_key CHAR(64) NOT NULL,
+    kn_id VARCHAR(128) NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    request_id VARCHAR(36) NOT NULL,
+    definition_sha256 CHAR(64) NOT NULL,
+    response_json JSON NULL,
+    created_at DATETIME(6) NOT NULL,
+    completed_at DATETIME(6) NULL,
+    PRIMARY KEY (request_key),
+    UNIQUE KEY uk_eval_trial_request (kn_id, requested_by, request_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

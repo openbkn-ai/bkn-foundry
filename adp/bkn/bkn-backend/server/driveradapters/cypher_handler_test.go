@@ -298,27 +298,45 @@ func TestRunCypherQueryPassesExplain(t *testing.T) {
 	}
 }
 
-// limited comes back on both faces: the internal one lists its fields, and a
-// field it leaves out is dropped.
 func TestRunCypherQueryPassesLimited(t *testing.T) {
-	for _, face := range []string{"", "in/"} {
-		t.Run("face "+face, func(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		face    string
+		limited bool
+	}{
+		{"public limited", "", true},
+		{"public not limited", "", false},
+		{"internal limited", "in/", true},
+		{"internal not limited", "in/", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			engine, cypherQueries, knowledgeNetworks := cypherTestHandler(t)
 			knowledgeNetworks.EXPECT().CheckKNExistByID(gomock.Any(), cypherKNID, interfaces.MAIN_BRANCH).
 				Return(cypherKNID, true, nil)
 			cypherQueries.EXPECT().Query(gomock.Any(), gomock.Any()).
 				Return(&interfaces.CypherQueryResult{
-					Columns: []interfaces.RawQueryColumn{{Name: "id"}}, Entries: []map[string]any{{"id": 1}}, Limited: true,
+					Columns: []interfaces.RawQueryColumn{{Name: "id"}}, Entries: []map[string]any{{"id": 1}}, Limited: tc.limited,
 				}, nil)
 
-			recorder := postCypher(engine, cypherURL(face, cypherKNID),
+			recorder := postCypher(engine, cypherURL(tc.face, cypherKNID),
 				`{"query":"MATCH (o:Order) RETURN o.id AS id"}`,
 				map[string]string{
 					interfaces.HTTP_HEADER_ACCOUNT_ID:   "user-42",
 					interfaces.HTTP_HEADER_ACCOUNT_TYPE: "user",
 				})
-			if recorder.Code != http.StatusOK || !bytes.Contains(recorder.Body.Bytes(), []byte(`"limited":true`)) {
-				t.Fatalf("status = %d, body = %s, want limited", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(recorder.Body.Bytes(), &fields); err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			if tc.limited {
+				want = "true"
+			}
+			if got := string(fields["limited"]); got != want {
+				t.Fatalf("limited field = %q, want %q (empty means omitted)", got, want)
 			}
 		})
 	}

@@ -26,7 +26,7 @@ type CypherValueType struct {
 	ObjectTypeID   string                      `json:"object_type_id,omitempty"`
 	RelationTypeID string                      `json:"relation_type_id,omitempty"`
 	Fields         map[string]*CypherValueType `json:"fields,omitempty"`
-	Element        *CypherValueType            `json:"element,omitempty"`
+	Element        *CypherValueType            `json:"element,omitzero"`
 }
 
 // CypherExecution says how complete a graph-valued answer is. Matching reads

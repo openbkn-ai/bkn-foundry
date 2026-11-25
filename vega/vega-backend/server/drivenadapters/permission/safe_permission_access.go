@@ -16,8 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -144,7 +143,7 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
-	b, _ := sonic.Marshal(body)
+	b, _ := jsoncodec.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(b))
 	if err != nil {
 		return err
@@ -166,7 +165,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
 	}
 	if out != nil && len(data) > 0 {
-		return common.UnmarshalJSON(data, out)
+		return jsoncodec.Unmarshal(data, out)
 	}
 	return nil
 }

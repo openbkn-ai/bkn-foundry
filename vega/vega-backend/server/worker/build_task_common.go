@@ -14,10 +14,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/mohae/deepcopy"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
@@ -58,7 +57,7 @@ func generateDocumentID(keys []interfaces.KeyValue) (string, error) {
 		}
 	}
 
-	serialized, err := sonic.Marshal(keys)
+	serialized, err := jsoncodec.Marshal(keys)
 	if err != nil {
 		return "", fmt.Errorf("marshal build key values: %w", err)
 	}
@@ -121,7 +120,7 @@ func normalizeJSONValue(value any) (any, error) {
 		text = string(typed)
 	default:
 		// 已解码值保持原形；拒绝无法编码的值，避免在 bulk 写入时才发现。
-		if _, err := sonic.Marshal(value); err != nil {
+		if _, err := jsoncodec.Marshal(value); err != nil {
 			return nil, fmt.Errorf("invalid JSON value: %w", err)
 		}
 		return value, nil
@@ -130,7 +129,7 @@ func normalizeJSONValue(value any) (any, error) {
 		return text, nil // 空字符串是内容，不用空值替代。
 	}
 	var parsed any
-	if err := common.UnmarshalJSON([]byte(text), &parsed); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(text), &parsed); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 	return parsed, nil

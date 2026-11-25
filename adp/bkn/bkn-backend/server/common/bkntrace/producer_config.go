@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/kafkasender"
 )
@@ -95,13 +95,20 @@ func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	}
 	return evidencePublisherConfig{
 		Publisher: evidencepublisher.Config{
-			ProducerID: producerID, BaseStreamID: streamID, WorkloadIdentity: identity,
-			ProcessBootID:   uuid.NewString(),
-			QueueMaxRecords: queueMaxRecords, QueueMaxBytes: queueMaxBytes,
-			MaxRecordBytes: maxRecordBytes, MaxAttempts: maxAttempts,
-			RetryBackoff: time.Duration(retryBackoffMs) * time.Millisecond,
+			ProducerID:       producerID,
+			BaseStreamID:     streamID,
+			WorkloadIdentity: identity,
+			ProcessBootID:    uuid.NewV7().String(),
+			QueueMaxRecords:  queueMaxRecords,
+			QueueMaxBytes:    queueMaxBytes,
+			MaxRecordBytes:   maxRecordBytes,
+			MaxAttempts:      maxAttempts,
+			RetryBackoff:     time.Duration(retryBackoffMs) * time.Millisecond,
 		},
-		Brokers: brokers, Mechanism: mechanism, Username: username, Password: password,
+		Brokers:   brokers,
+		Mechanism: mechanism,
+		Username:  username,
+		Password:  password,
 	}, nil
 }
 

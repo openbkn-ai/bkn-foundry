@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
 
@@ -249,7 +249,7 @@ func (s *actionLogsService) countResults(ctx context.Context, query map[string]a
 	var count struct {
 		Count int64 `json:"count"`
 	}
-	if err := sonic.Unmarshal(countBytes, &count); err != nil {
+	if err := jsoncodec.Unmarshal(countBytes, &count); err != nil {
 		return 0, fmt.Errorf("failed to parse result count: %w", err)
 	}
 	return count.Count, nil

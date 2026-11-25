@@ -11,21 +11,22 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
-	"github.com/bytedance/sonic"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -212,11 +213,7 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	accountInfo := accountInfoFromContext(ctx)
 
 	now := time.Now().UnixMilli()
-	generatedID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf("generate semantic understanding task UUIDv7: %w", err)
-	}
-	task.ID = generatedID.String()
+	task.ID = uuid.NewV7().String()
 	task.Status = interfaces.SemanticUnderstandingTaskStatusPending
 	task.Creator = accountInfo
 	task.CreateTime = now
@@ -619,7 +616,7 @@ func (suts *semanticUnderstandingTaskService) attachUnmaskedSampleRows(ctx conte
 		return fmt.Errorf("resource data service is unavailable")
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := common.UnmarshalJSON([]byte(task.Input), &input); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(task.Input), &input); err != nil {
 		return fmt.Errorf("unmarshal semantic understanding input: %w", err)
 	}
 	if input.Options.SamplePolicy == nil || input.Options.SamplePolicy.Masked {
@@ -693,7 +690,7 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any, schema []*inter
 		}
 
 		candidate := append(limited, limitedRow)
-		candidateJSON, err := sonic.Marshal(candidate)
+		candidateJSON, err := jsoncodec.Marshal(candidate)
 		if err != nil {
 			return nil, false, err
 		}
@@ -1042,7 +1039,7 @@ func buildResourceAgentInputProperties(properties []*interfaces.Property) []inte
 }
 
 func marshalSemanticUnderstandingInput(input any) (string, string, error) {
-	inputBytes, err := sonic.ConfigStd.Marshal(input)
+	inputBytes, err := jsoncodec.Marshal(input, json.DefaultOptionsV1())
 	if err != nil {
 		return "", "", err
 	}

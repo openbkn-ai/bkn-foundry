@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
@@ -245,22 +244,25 @@ func (s *actionLogsService) queryResultsIndex(ctx context.Context, knID, execID,
 		return nil, fmt.Errorf("failed to count results of execution %s: %w", execID, err)
 	}
 	var countResult struct {
-		Count int `json:"count"`
+		Count *int `json:"count"`
 	}
-	if err := sonic.Unmarshal(countBytes, &countResult); err != nil {
+	if err := jsoncodec.Unmarshal(countBytes, &countResult); err != nil {
 		return nil, fmt.Errorf("failed to parse result count of execution %s: %w", execID, err)
 	}
-	page.TotalCount = countResult.Count
+	if countResult.Count == nil {
+		return nil, fmt.Errorf("failed to parse result count of execution %s: missing count", execID)
+	}
+	page.TotalCount = *countResult.Count
 	return page, nil
 }
 
 func decodeStoredResult(source map[string]any) (interfaces.ObjectExecutionResult, error) {
-	data, err := sonic.Marshal(source)
+	data, err := jsoncodec.Marshal(source)
 	if err != nil {
 		return interfaces.ObjectExecutionResult{}, err
 	}
 	var stored storedExecutionResult
-	if err := common.UnmarshalJSON(data, &stored); err != nil {
+	if err := jsoncodec.Unmarshal(data, &stored); err != nil {
 		return interfaces.ObjectExecutionResult{}, err
 	}
 	return stored.ObjectExecutionResult, nil

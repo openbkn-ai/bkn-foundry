@@ -19,14 +19,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 func TestCatalogAccessCreate(t *testing.T) {
-	for _, tc := range []struct{ name, kind, category, connector, config string }{
-		{"API category and exact configuration round trip", interfaces.CatalogTypePhysical, interfaces.ConnectorCategoryAPI, "vendor-service", `{"variables":{"numbers":{"value":[9007199254740993,1234567890123456.78]}}}`},
-		{"logical category remains empty", interfaces.CatalogTypeLogical, "", "", `null`},
+	const apiConfig = `{"variables":{"numbers":{"value":[9007199254740993,1234567890123456.78]}}}`
+	for _, tc := range []struct{ name, kind, category, connector, inputConfig, storedConfig string }{
+		{"API category and exact configuration round trip", interfaces.CatalogTypePhysical, interfaces.ConnectorCategoryAPI, "vendor-service", apiConfig, apiConfig},
+		{"logical catalog writes an empty config object", interfaces.CatalogTypeLogical, "", "", `null`, `{}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			access, mock, cleanup := newCatalogAccessMock(t)
@@ -36,20 +38,22 @@ func TestCatalogAccessCreate(t *testing.T) {
 			catalog.Category = tc.category
 			catalog.ConnectorType = tc.connector
 			catalog.ConnectorCfg = nil
-			require.NoError(t, common.UnmarshalJSON([]byte(tc.config), &catalog.ConnectorCfg))
+			require.NoError(t, jsoncodec.Unmarshal([]byte(tc.inputConfig), &catalog.ConnectorCfg))
 			mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_catalog (f_id,f_name,f_tags,f_description,f_type,f_enabled,f_builtin,f_connector_type,f_category,f_connector_config,f_metadata,f_health_check_status,f_last_check_time,f_health_check_result,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
-				WithArgs(catalog.ID, catalog.Name, `"tag-a","tag-b"`, catalog.Description, tc.kind, catalog.Enabled, catalog.Builtin, tc.connector, tc.category, tc.config, `{}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Creator.ID, catalog.Creator.Type, catalog.CreateTime, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime).
+				WithArgs(catalog.ID, catalog.Name, `"tag-a","tag-b"`, catalog.Description, tc.kind, catalog.Enabled, catalog.Builtin, tc.connector, tc.category, tc.storedConfig, `{}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Creator.ID, catalog.Creator.Type, catalog.CreateTime, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 			require.NoError(t, access.Create(context.Background(), nil, catalog))
 			values := catalogRowValues(catalog)
-			values[9] = tc.config
+			values[9] = tc.storedConfig
 			mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).
 				WithArgs(catalog.ID).
 				WillReturnRows(catalogRows().AddRow(values...))
 			stored, err := access.GetByID(t.Context(), catalog.ID)
 			require.NoError(t, err)
 			require.NotNil(t, stored)
-			assert.Equal(t, catalog.ConnectorCfg, stored.ConnectorCfg)
+			var expected interfaces.ConnectorConfig
+			require.NoError(t, jsoncodec.Unmarshal([]byte(tc.storedConfig), &expected))
+			assert.Equal(t, expected, stored.ConnectorCfg)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -228,12 +232,19 @@ func TestCatalogAccessGetByID(t *testing.T) {
 			catalog.Type = tc.kind
 			catalog.Category = tc.category
 			catalog.ConnectorType = tc.connector
-			mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).WithArgs(catalog.ID).WillReturnRows(catalogRows().AddRow(catalogRowValues(catalog)...))
+			values := catalogRowValues(catalog)
+			if tc.kind == interfaces.CatalogTypeLogical {
+				values[9] = `null`
+			}
+			mock.ExpectQuery(regexp.QuoteMeta(catalogSelectSQL("f_id = ?"))).WithArgs(catalog.ID).WillReturnRows(catalogRows().AddRow(values...))
 			got, err := access.GetByID(context.Background(), catalog.ID)
 			require.NoError(t, err)
 			require.NotNil(t, got)
 			assert.Equal(t, tc.category, got.Category)
 			assert.Equal(t, tc.connector, got.ConnectorType)
+			if tc.kind == interfaces.CatalogTypeLogical {
+				assert.Nil(t, got.ConnectorCfg)
+			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}

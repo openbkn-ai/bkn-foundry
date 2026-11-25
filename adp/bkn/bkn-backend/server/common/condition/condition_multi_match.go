@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 )
@@ -86,7 +86,7 @@ func (cond *MultiMatchCond) Convert(ctx context.Context, vectorizer func(ctx con
 		v = fmt.Sprintf("%q", vStr)
 	}
 
-	fields, err := sonic.Marshal(cond.mFilterFieldNames)
+	fields, err := jsoncodec.Marshal(cond.mFilterFieldNames)
 	if err != nil {
 		return "", fmt.Errorf("condition [multi_match] marshal fields error: %s", err.Error())
 	}

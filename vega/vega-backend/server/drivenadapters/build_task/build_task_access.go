@@ -16,12 +16,12 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -126,13 +126,13 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		return nil, err
 	}
 	if indexConfigJSON != "" {
-		if err := common.UnmarshalJSON([]byte(indexConfigJSON), &buildTask.IndexConfig); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(indexConfigJSON), &buildTask.IndexConfig); err != nil {
 			return nil, err
 		}
 	}
 
 	if keysJSON.Valid {
-		if err := common.UnmarshalJSON([]byte(keysJSON.String), &buildTask.Keys); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(keysJSON.String), &buildTask.Keys); err != nil {
 			return nil, errors.New("decode persisted build task keys failed")
 		}
 	}
@@ -192,7 +192,7 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Create build task")
 	defer span.End()
 
-	indexConfigJSON, err := sonic.MarshalString(buildTask.IndexConfig)
+	indexConfigJSON, err := jsoncodec.MarshalString(buildTask.IndexConfig)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal index config failed")
 		return err
@@ -200,7 +200,7 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 
 	var keysJSON any
 	if len(buildTask.Keys) > 0 {
-		encoded, err := sonic.MarshalString(buildTask.Keys)
+		encoded, err := jsoncodec.MarshalString(buildTask.Keys)
 		if err != nil {
 			return fmt.Errorf("encode build task keys: %w", err)
 		}

@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
@@ -58,7 +58,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 			return ctx.Err()
 		}
 		job := &jobs[i]
-		token := uuid.NewString()
+		token := uuid.NewV7().String()
 		claimed, err := s.store.ClaimIndexSync(ctx, job, token, s.now().UnixMilli(), s.now().Add(2*time.Minute).UnixMilli())
 		if err != nil {
 			return err

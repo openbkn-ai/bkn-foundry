@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
@@ -210,7 +211,7 @@ func tableOf(result any) (eventTable, error) {
 		Entries []map[string]any  `json:"entries"`
 		Limited bool              `json:"limited"`
 	}
-	if err := common.UnmarshalJSON(encoded, &reply); err != nil {
+	if err := jsoncodec.Unmarshal(encoded, &reply); err != nil {
 		return eventTable{}, err
 	}
 	if reply.Entries == nil && reply.Columns == nil {

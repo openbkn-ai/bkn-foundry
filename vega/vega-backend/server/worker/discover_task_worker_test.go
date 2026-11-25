@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
@@ -733,7 +733,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							data, err := json.Marshal(resource.SourceMetadata)
 							require.NoError(t, err)
 							table = &interfaces.TableMeta{}
-							require.NoError(t, common.UnmarshalJSON(data, table))
+							require.NoError(t, jsoncodec.Unmarshal(data, table))
 						}
 						if entry == "resource" {
 							if !countWithoutRefresh {
@@ -768,7 +768,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 							data, err := json.Marshal(resource.SourceMetadata)
 							require.NoError(t, err)
 							index = &interfaces.IndexMeta{}
-							require.NoError(t, common.UnmarshalJSON(data, index))
+							require.NoError(t, jsoncodec.Unmarshal(data, index))
 							c.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{index}, nil)
 						} else {
 							c.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryIndex)

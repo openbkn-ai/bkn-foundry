@@ -91,14 +91,14 @@ type ImpactContractItem struct {
 }
 
 type ActionTypeWithKeyField struct {
-	OperationConfig *ActionOperationConfig `json:"operation_config,omitempty" mapstructure:"operation_config"`
+	OperationConfig *ActionOperationConfig `json:"operation_config,omitzero" mapstructure:"operation_config"`
 	ATID            string                 `json:"id" mapstructure:"id"`
 	ATName          string                 `json:"name" mapstructure:"name"`
 	ActionType      string                 `json:"action_type" mapstructure:"action_type"`
 	ActionIntent    string                 `json:"action_intent,omitempty" mapstructure:"action_intent"`
 	ObjectTypeID    string                 `json:"object_type_id" mapstructure:"object_type_id"`
 	ObjectType      SimpleObjectType       `json:"object_type,omitempty" mapstructure:"object_type"` // Bound object type for display
-	Condition       *ActionCondCfg         `json:"condition,omitempty" mapstructure:"condition"`
+	Condition       *ActionCondCfg         `json:"condition,omitzero" mapstructure:"condition"`
 	Affect          *ActionAffect          `json:"affect" mapstructure:"affect"`
 	// ImpactContracts and the legacy affect field are mutually exclusive. When only affect is supplied,
 	// validation adds one contract with expected_operation from action_type and retains affect.
@@ -116,7 +116,7 @@ type ActionType struct {
 	// leaves them out keeps the stored ones.
 	Aliases []string `json:"aliases,omitempty" mapstructure:"aliases"`
 	// Lifecycle says whether the action type is still in use (BKN spec 3.0, §4.3); nil is active.
-	Lifecycle *Lifecycle `json:"lifecycle,omitempty" mapstructure:"lifecycle"`
+	Lifecycle *Lifecycle `json:"lifecycle,omitzero" mapstructure:"lifecycle"`
 	// declared names the declaration fields the JSON carried, null included.
 	declared map[string]bool
 	KNID     string `json:"kn_id" mapstructure:"kn_id"`
@@ -163,7 +163,7 @@ type ActionCondCfg struct {
 	Operation string           `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds  []*ActionCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
 	ValueFrom string           `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value     any              `json:"value,omitempty" mapstructure:"value"`
+	Value     any              `json:"value,omitzero" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:",omitempty" mapstructure:",remain,squash"`
 
@@ -208,8 +208,8 @@ type ActionTypesQueryParams struct {
 // Action type search list.
 type ActionTypes struct {
 	Entries    []*ActionType `json:"entries"`
-	TotalCount int64         `json:"total_count,omitempty"`
-	NextCursor *string       `json:"next_cursor,omitempty"`
+	TotalCount int64         `json:"total_count,omitzero"`
+	NextCursor *string       `json:"next_cursor,omitzero"`
 	OverallMs  int64         `json:"overall_ms"`
 }
 

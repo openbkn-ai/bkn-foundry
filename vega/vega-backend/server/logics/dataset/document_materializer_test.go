@@ -7,6 +7,7 @@ package dataset
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,7 +20,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
@@ -123,7 +124,7 @@ func TestMaterializeDocument(t *testing.T) {
 		mfs := vmock.NewMockModelFactoryService(ctrl)
 		ds := &datasetService{mfs: mfs}
 		var input map[string]any
-		require.NoError(t, common.DecodeJSON(strings.NewReader(`{"content_vector":[0.1,0.2]}`), &input))
+		require.NoError(t, jsoncodec.UnmarshalDecode(jsontext.NewDecoder(strings.NewReader(`{"content_vector":[0.1,0.2]}`)), &input))
 
 		document, err := ds.materializeDocument(context.Background(), resource, input)
 
@@ -140,7 +141,7 @@ func TestMaterializeDocument(t *testing.T) {
 			}},
 		}
 		var input map[string]any
-		require.NoError(t, common.DecodeJSON(strings.NewReader(`{"_vector":[0.1,0.2]}`), &input))
+		require.NoError(t, jsoncodec.UnmarshalDecode(jsontext.NewDecoder(strings.NewReader(`{"_vector":[0.1,0.2]}`)), &input))
 
 		document, err := (&datasetService{}).materializeDocument(context.Background(), resource, input)
 

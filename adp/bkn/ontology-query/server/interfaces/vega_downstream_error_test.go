@@ -7,6 +7,7 @@
 package interfaces
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -38,6 +39,9 @@ func Test_VegaDownstreamError(t *testing.T) {
 		if !err.CanExposeQueryClientMessage() {
 			t.Fatal("keyword limit guidance must survive the query proxy")
 		}
+		if got := err.Metadata["limit"]; got != json.Number("256") {
+			t.Fatalf("decoded keyword limit = %#v (%T), want json.Number", got, got)
+		}
 		metadata := err.ClientMetadata()
 		if len(metadata) != 2 || metadata["field"] != "status" || metadata["limit"] != float64(256) {
 			t.Fatalf("expected only safe keyword metadata, got %v", metadata)
@@ -49,8 +53,21 @@ func Test_VegaDownstreamError(t *testing.T) {
 	})
 
 	t.Run("rejects invalid keyword metadata and unexpected status codes", func(t *testing.T) {
-		for _, metadata := range []string{`null`, `{}`, `"malformed"`, `[]`, `{"field":"status","limit":"256"}`, `{"field":"status","limit":-1}`, `{"field":"status","limit":1.5}`, `{"field":" ","limit":256}`, `{"field":"status","limit":9007199254740992}`} {
-			err := NewVegaDownstreamError(http.StatusBadRequest, `{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit","error_details":"private diagnostic","metadata":`+metadata+`}`)
+		for _, metadata := range []string{
+			`null`, `{}`, `"malformed"`, `[]`,
+			`{"field":"status","limit":"256"}`,
+			`{"field":"status","limit":-1}`,
+			`{"field":"status","limit":1.5}`,
+			`{"field":" ","limit":256}`,
+			`{"field":"status","limit":9007199254740992}`,
+			`{"field":"status","limit":1e400}`,
+		} {
+			err := NewVegaDownstreamError(http.StatusBadRequest,
+				`{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit",`+
+					`"description":"keyword limit exceeded","error_details":"private diagnostic","metadata":`+metadata+`}`)
+			if !err.CanExposeQueryClientMessage() || err.Description != "keyword limit exceeded" {
+				t.Fatalf("invalid metadata must preserve the error envelope: %s", metadata)
+			}
 			if err.ClientMetadata() != nil || strings.Contains(err.ClientMessage(), "private") || err.ClientMessage() == "" {
 				t.Fatalf("invalid metadata must use safe guidance: %s", metadata)
 			}

@@ -8,12 +8,14 @@ package knowledge_network
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -264,6 +266,11 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(result.TotalCount, ShouldNotBeNil)
 			So(*result.TotalCount, ShouldEqual, 0)
+			raw, err := jsoncodec.Marshal(result)
+			So(err, ShouldBeNil)
+			var fields map[string]json.RawMessage
+			So(json.Unmarshal(raw, &fields), ShouldBeNil)
+			So(string(fields["current_path_number"]), ShouldEqual, "0")
 		})
 
 		Convey("失败 - 获取起点对象错误", func() {
@@ -396,6 +403,25 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 	})
 }
 
+func TestBuildSubgraphFromObjectsOmitsUncomputedPathCount(t *testing.T) {
+	service := &knowledgeNetworkService{}
+	graph := service.buildSubgraphFromObjects(&interfaces.SubGraphQueryBaseOnObjects{}, nil, []interfaces.Relation{{}}, nil)
+	if len(graph.RelationPaths) != 1 {
+		t.Fatalf("got %d relation paths, want 1", len(graph.RelationPaths))
+	}
+	raw, err := jsoncodec.Marshal(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := fields["current_path_number"]; present {
+		t.Fatalf("current_path_number must be absent: %s", raw)
+	}
+}
+
 func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 	Convey("Test knowledgeNetworkService SearchSubgraphByTypePath", t, func() {
 		mockCtrl := gomock.NewController(t)
@@ -470,6 +496,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldBeNil)
 			So(len(result.Entries), ShouldEqual, 1)
+			So(result.Entries[0].CuurentPathNumber, ShouldResemble, new(len(result.Entries[0].RelationPaths)))
 		})
 
 		Convey("失败 - 关系类不存在", func() {

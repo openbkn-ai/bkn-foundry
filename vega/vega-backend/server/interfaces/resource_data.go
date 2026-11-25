@@ -123,7 +123,7 @@ type ResourceValue struct {
 	Reason     string `json:"reason,omitempty"`
 	Mode       string `json:"mode"`
 	ByteLength *int64 `json:"byte_length,omitempty"`
-	Data       any    `json:"data,omitempty"`
+	Data       any    `json:"data,omitzero"`
 }
 
 // AggregateOutputAlias 解析实际输出的聚合列，包含 HAVING count(*) 生成的隐式计数列。

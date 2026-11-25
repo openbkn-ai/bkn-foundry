@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -298,12 +298,11 @@ func (s *actionLogsService) GetExecution(ctx context.Context, query *interfaces.
 		return nil, err
 	}
 	exec.Results = page.Entries
-	resultsTotal := page.TotalCount
 
 	// Set pagination metadata
-	exec.ResultsTotal = resultsTotal
-	exec.ResultsOffset = resultsOffset
-	exec.ResultsLimit = resultsLimit
+	exec.ResultsTotal = new(page.TotalCount)
+	exec.ResultsOffset = &resultsOffset
+	exec.ResultsLimit = &resultsLimit
 
 	return exec, nil
 }
@@ -325,9 +324,13 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		return nil, fmt.Errorf("failed to query executions: %w", err)
 	}
 	if !exists {
-		return &interfaces.ActionExecutionList{
+		result := &interfaces.ActionExecutionList{
 			Entries: []interfaces.ActionExecution{},
-		}, nil
+		}
+		if query.NeedTotal {
+			result.TotalCount = new(0)
+		}
+		return result, nil
 	}
 
 	// Build the must conditions
@@ -401,7 +404,11 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 			return nil, fmt.Errorf("failed to query executions: %w", err)
 		}
 		if len(executionIDs) == 0 {
-			return &interfaces.ActionExecutionList{Entries: []interfaces.ActionExecution{}}, nil
+			result := &interfaces.ActionExecutionList{Entries: []interfaces.ActionExecution{}}
+			if query.NeedTotal {
+				result.TotalCount = new(0)
+			}
+			return result, nil
 		}
 		mustConditions = append(mustConditions, map[string]any{
 			"terms": map[string]any{"id": executionIDs},
@@ -518,9 +525,9 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		countBytes, err := s.osAccess.Count(ctx, indexName, countQuery)
 		if err == nil {
 			var countResult struct {
-				Count int `json:"count"`
+				Count *int `json:"count"`
 			}
-			if sonic.Unmarshal(countBytes, &countResult) == nil {
+			if jsoncodec.Unmarshal(countBytes, &countResult) == nil {
 				result.TotalCount = countResult.Count
 			}
 		}
@@ -731,13 +738,13 @@ func isCancellable(status string) bool {
 
 // mapToActionExecution converts a map to ActionExecution
 func mapToActionExecution(m map[string]any) (*interfaces.ActionExecution, error) {
-	data, err := sonic.Marshal(m)
+	data, err := jsoncodec.Marshal(m)
 	if err != nil {
 		return nil, err
 	}
 
 	var exec interfaces.ActionExecution
-	if err := common.UnmarshalJSON(data, &exec); err != nil {
+	if err := jsoncodec.Unmarshal(data, &exec); err != nil {
 		return nil, err
 	}
 

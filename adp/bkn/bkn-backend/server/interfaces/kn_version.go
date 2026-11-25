@@ -10,8 +10,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // Reserved branches of a versioned network: the draft, and one immutable branch per version.
@@ -113,7 +112,7 @@ type KNVersioningView struct {
 	RunningVersion  int          `json:"running_version"`
 	PreviousVersion int          `json:"previous_version"`
 	FullHistory     bool         `json:"full_history"`
-	Draft           *KNDraftView `json:"draft,omitempty"`
+	Draft           *KNDraftView `json:"draft,omitzero"`
 }
 
 type KNDraftView struct {
@@ -183,7 +182,7 @@ type KNVersion struct {
 	DraftRevision int64            `json:"draft_revision"`
 	IndexBuild    string           `json:"-"`
 	Notes         string           `json:"notes"`
-	Source        *KNVersionSource `json:"source,omitempty"`
+	Source        *KNVersionSource `json:"source,omitzero"`
 	Publisher     AccountInfo      `json:"publisher"`
 	PublishTime   int64            `json:"publish_time"`
 	StatusBy      AccountInfo      `json:"status_by"`
@@ -267,7 +266,7 @@ const KNProblemBrokenReference = "broken_reference"
 
 type KNPublishResult struct {
 	*KNVersion
-	PurgedVersion int `json:"purged_version,omitempty"`
+	PurgedVersion int `json:"purged_version,omitzero"`
 	// Warnings never fail the publish; PublishedMetrics are the metric versions it made live.
 	Warnings         []*KNPublishWarning `json:"warnings,omitempty"`
 	PublishedMetrics []*MetricVersionRef `json:"published_metrics,omitempty"`
@@ -451,7 +450,7 @@ const (
 
 // NewDefinitionRevision returns a new revision for an inserted or changed definition.
 func NewDefinitionRevision() string {
-	return strings.ReplaceAll(uuid.NewString(), "-", "")
+	return strings.ReplaceAll(uuid.NewV7().String(), "-", "")
 }
 
 // Revisioned is a definition whose revision is returned on reads.

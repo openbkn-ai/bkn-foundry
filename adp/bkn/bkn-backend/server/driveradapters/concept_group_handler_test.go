@@ -15,11 +15,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -78,7 +78,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 		Convey("Failed CreateConceptGroup ShouldBind Error\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 
-			reqParamByte, _ := sonic.Marshal([]interfaces.ConceptGroup{conceptGroup})
+			reqParamByte, _ := jsoncodec.Marshal([]interfaces.ConceptGroup{conceptGroup})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -102,7 +102,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 		Convey("CG name is null\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 
-			reqParamByte, _ := sonic.Marshal(interfaces.ConceptGroup{})
+			reqParamByte, _ := jsoncodec.Marshal(interfaces.ConceptGroup{})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -133,7 +133,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, expectedErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -181,7 +181,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByName(gomock.Any(), knID, gomock.Any(), conceptGroup.CGName).Return("", false, nil)
 			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -209,7 +209,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 				"relation_types":  []map[string]any{{"id": "rt1"}},
 				"action_types":    []map[string]any{{"id": "at1"}},
 			}
-			reqParamByte, _ := sonic.Marshal(request)
+			reqParamByte, _ := jsoncodec.Marshal(request)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -232,7 +232,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -245,7 +245,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -261,7 +261,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup(t *testing.T) {
 			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			urlIn := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/concept-groups/" + cgID
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -535,7 +535,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("group1", true, nil)
 			cgs.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), knID, gomock.Any(), cgID, gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -547,7 +547,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -560,7 +560,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -580,7 +580,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, expectedErr)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -613,7 +613,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("group1", true, nil)
 			cgs.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), knID, gomock.Any(), cgID, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -628,7 +628,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 			cgs.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), knID, gomock.Any(), cgID, gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 
 			urlIn := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/concept-groups/" + cgID + "/object-types"
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -851,7 +851,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroupByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/concept-groups", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -883,7 +883,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroupByIn(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByName(gomock.Any(), knID, gomock.Any(), conceptGroup.CGName).Return("", false, nil)
 			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/concept-groups/"+cgID, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -962,7 +962,7 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroupByIn(t *testing.T)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("group1", true, nil)
 			cgs.EXPECT().AddObjectTypesToConceptGroup(gomock.Any(), gomock.Any(), knID, gomock.Any(), cgID, gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/concept-groups/"+cgID+"/object-types", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -1046,7 +1046,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup_extraCases(t *testing.T) {
 		}
 
 		Convey("Failed when validate_dependency is invalid\n", func() {
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, url+"?validate_dependency=notbool", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1061,7 +1061,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup_extraCases(t *testing.T) {
 				ModuleType: "wrong_module",
 				CommonInfo: interfaces.CommonInfo{Comment: "test"},
 			}
-			reqParamByte, _ := sonic.Marshal(cg)
+			reqParamByte, _ := jsoncodec.Marshal(cg)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1078,7 +1078,7 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup_extraCases(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", httpErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1126,7 +1126,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1143,7 +1143,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1155,7 +1155,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("old_group", true, nil)
 
-			reqParamByte, _ := sonic.Marshal(interfaces.ConceptGroup{})
+			reqParamByte, _ := jsoncodec.Marshal(interfaces.ConceptGroup{})
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1173,7 +1173,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("old_name", true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByName(gomock.Any(), knID, gomock.Any(), conceptGroup.CGName).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1186,7 +1186,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("old_name", true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByName(gomock.Any(), knID, gomock.Any(), conceptGroup.CGName).Return(cgID, true, nil)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1205,7 +1205,7 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 			cgs.EXPECT().CheckConceptGroupExistByName(gomock.Any(), knID, gomock.Any(), conceptGroup.CGName).Return("", false, nil)
 			cgs.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httpErr)
 
-			reqParamByte, _ := sonic.Marshal(conceptGroup)
+			reqParamByte, _ := jsoncodec.Marshal(conceptGroup)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()

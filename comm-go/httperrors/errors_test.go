@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func TestMetadataMergesAndOwnsTopLevelMap(t *testing.T) {
@@ -70,7 +70,9 @@ func TestDelayedRenderingAcrossSerializationPaths(t *testing.T) {
 			}
 			err = err.WithMetadata(map[string]any{"limit": 10}).WithErrorDetails("public detail")
 			for _, value := range []any{err, *err} {
-				for _, marshal := range []func(any) ([]byte, error){json.Marshal, jsoncodec.Marshal} {
+				for _, marshal := range []func(any) ([]byte, error){json.Marshal, func(v any) ([]byte, error) {
+					return jsoncodec.Marshal(v)
+				}} {
 					data, marshalErr := marshal(value)
 					if marshalErr != nil {
 						t.Fatal(marshalErr)

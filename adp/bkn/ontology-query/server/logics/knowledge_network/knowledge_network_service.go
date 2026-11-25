@@ -143,7 +143,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 	// 4. Assemble the final result.
 	objectGraph.TotalCount = startObjects.TotalCount
 	objectGraph.Cursor = startObjects.Cursor
-	objectGraph.CuurentPathNumber = len(objectGraph.RelationPaths)
+	objectGraph.CuurentPathNumber = new(len(objectGraph.RelationPaths))
 
 	span.SetStatus(codes.Ok, "")
 	return *objectGraph, nil
@@ -324,7 +324,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		Objects:           typePathObjectCtx.objectsMap,
 		TotalCount:        startObjects.TotalCount,
 		Cursor:            startObjects.Cursor,
-		CuurentPathNumber: len(typePathObjectCtx.relationPaths),
+		CuurentPathNumber: new(len(typePathObjectCtx.relationPaths)),
 	}
 }
 

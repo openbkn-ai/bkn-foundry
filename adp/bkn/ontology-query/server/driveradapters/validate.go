@@ -16,9 +16,9 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -35,7 +35,7 @@ func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
 
 	if strings.HasPrefix(raw, "[") {
 		var values interfaces.SearchAfterArray
-		if err := common.UnmarshalJSON([]byte(raw), &values); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(raw), &values); err != nil {
 			return nil, err
 		}
 		return values, nil
@@ -46,7 +46,7 @@ func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		var decoded any
-		if err := common.UnmarshalJSON([]byte(part), &decoded); err == nil {
+		if err := jsoncodec.Unmarshal([]byte(part), &decoded); err == nil {
 			if number, ok := decoded.(json.Number); ok {
 				values = append(values, number)
 				continue

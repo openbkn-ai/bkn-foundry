@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -450,6 +451,106 @@ func TestResolveSourceDescription(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, resolveSourceDescription(tc.description, tc.originalDescription, tc.discoveredDescription))
+		})
+	}
+}
+
+func TestEnrichTableMetadataComparesHistoricalSnapshot(t *testing.T) {
+	numericFields := []string{"char_max_len", "num_precision", "num_scale", "datetime_precision"}
+	for _, tc := range []struct {
+		name             string
+		emptyCollections bool
+		nestedColumns    bool
+		omitNumericZeros bool
+		changeColumn     bool
+		wantStatus       string
+		wantUpdated      int
+		wantUnchanged    int
+	}{
+		{name: "omitted numeric zeros become explicit", emptyCollections: true, omitNumericZeros: true, wantStatus: interfaces.DiscoverStatusUpdated, wantUpdated: 1},
+		{name: "stored numeric zeros remain unchanged", emptyCollections: true, wantStatus: interfaces.DiscoverStatusUnchanged, wantUnchanged: 1},
+		{name: "null top-level containers become empty", wantStatus: interfaces.DiscoverStatusUpdated, wantUpdated: 1},
+		{name: "null nested column lists become empty", emptyCollections: true, nestedColumns: true, wantStatus: interfaces.DiscoverStatusUpdated, wantUpdated: 1},
+		{name: "changed column precision", emptyCollections: true, changeColumn: true, wantStatus: interfaces.DiscoverStatusUpdated, wantUpdated: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			table := &interfaces.TableMeta{
+				Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "id", Type: "int4"}},
+			}
+			if tc.emptyCollections {
+				table.Properties = map[string]any{}
+				table.PKs = []string{}
+				table.Indices = []interfaces.TableIndexMeta{}
+				table.ForeignKeys = []interfaces.TableForeignKeyMeta{}
+			}
+			if tc.nestedColumns {
+				table.Indices = []interfaces.TableIndexMeta{{Name: "by_id"}}
+				table.ForeignKeys = []interfaces.TableForeignKeyMeta{{Name: "owner", RefTable: "owners"}}
+			}
+			legacyJSON, err := json.Marshal(table) // Encode nil collections as historical nulls.
+			require.NoError(t, err)
+			var legacyMetadata map[string]any
+			require.NoError(t, jsoncodec.Unmarshal(legacyJSON, &legacyMetadata))
+			legacyColumn := legacyMetadata["columns"].([]any)[0].(map[string]any)
+			for _, field := range numericFields {
+				if tc.omitNumericZeros {
+					delete(legacyColumn, field)
+				} else {
+					legacyColumn[field] = json.Number("0")
+				}
+			}
+			legacyJSON, err = json.Marshal(legacyMetadata)
+			require.NoError(t, err)
+			resource := &interfaces.Resource{
+				ID: "r1", Category: interfaces.ResourceCategoryTable, SourceIdentifier: "orders", SourceMetadata: legacyMetadata,
+			}
+			if tc.changeColumn {
+				table.Columns[0].NumPrecision++
+			}
+
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			connector := vmock.NewMockTableConnector(ctrl)
+			connector.EXPECT().GetTableMeta(gomock.Any(), table, false).Return(nil)
+			connector.EXPECT().MapType("int4").Return(interfaces.DataType_Integer)
+			var savedMetadata map[string]any
+			rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, int64(0)).
+				DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
+					assert.Equal(t, tc.wantStatus, saved.LastDiscoverStatus)
+					savedMetadata = saved.SourceMetadata
+					return nil
+				})
+			result := &interfaces.DiscoverResult{}
+			task := &interfaces.DiscoverTask{DiscoverActions: &interfaces.DiscoverActions{Refresh: true}}
+			items := []tableDiscoverItem{{resource: resource, tableMeta: table, markAfterEnrich: true}}
+			require.NoError(t, (&DiscoverTaskWorker{rs: rs}).enrichTableMetadata(t.Context(), task, connector, items,
+				result, &discoverTaskReconcileProgress{lastProgress: 95}))
+
+			assert.Equal(t, tc.wantUpdated, result.UpdatedCount)
+			assert.Equal(t, tc.wantUnchanged, result.UnchangedCount)
+			require.NotNil(t, savedMetadata)
+			assert.Equal(t, map[string]any{}, savedMetadata["properties"])
+			assert.Equal(t, []any{}, savedMetadata["primary_keys"])
+			column := savedMetadata["columns"].([]any)[0].(map[string]any)
+			for _, field := range numericFields {
+				want := json.Number("0")
+				if field == "num_precision" && tc.changeColumn {
+					want = "1"
+				}
+				assert.Equal(t, want, column[field], field)
+			}
+			if tc.nestedColumns {
+				assert.Equal(t, []any{}, savedMetadata["indices"].([]any)[0].(map[string]any)["columns"])
+				key := savedMetadata["foreign_keys"].([]any)[0].(map[string]any)
+				assert.Equal(t, []any{}, key["columns"])
+				assert.Equal(t, []any{}, key["ref_columns"])
+			} else {
+				assert.Equal(t, []any{}, savedMetadata["indices"])
+				assert.Equal(t, []any{}, savedMetadata["foreign_keys"])
+			}
+			var originalMetadata map[string]any
+			require.NoError(t, jsoncodec.Unmarshal(legacyJSON, &originalMetadata))
+			assert.Equal(t, originalMetadata, legacyMetadata)
 		})
 	}
 }

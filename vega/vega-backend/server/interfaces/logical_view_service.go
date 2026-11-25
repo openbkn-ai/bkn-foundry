@@ -10,11 +10,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
 
@@ -88,11 +88,9 @@ type DerivedLogicalViewDefinition struct {
 
 func (d *DerivedLogicalViewDefinition) UnmarshalJSON(data []byte) error {
 	type definition DerivedLogicalViewDefinition
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
+	decoder := jsontext.NewDecoder(bytes.NewReader(data))
 	var parsed definition
-	if err := decoder.Decode(&parsed); err != nil {
+	if err := jsoncodec.UnmarshalDecode(decoder, &parsed); err != nil {
 		return err
 	}
 	*d = DerivedLogicalViewDefinition(parsed)
@@ -104,12 +102,12 @@ func DecodeDerivedLogicalViewDefinition(raw any) (*DerivedLogicalViewDefinition,
 	if raw == nil {
 		return nil, fmt.Errorf("logical_view_definition is required")
 	}
-	encoded, err := sonic.Marshal(raw)
+	encoded, err := jsoncodec.Marshal(raw)
 	if err != nil {
 		return nil, err
 	}
 	var definition DerivedLogicalViewDefinition
-	if err := common.UnmarshalJSON(encoded, &definition); err != nil {
+	if err := jsoncodec.Unmarshal(encoded, &definition); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(definition.SourceResourceID) == "" {
@@ -186,40 +184,40 @@ type ViewProperty struct {
 func (v *ViewProperty) UnmarshalJSON(data []byte) error {
 	// 1. Detect whether it is a pure string (wildcard mode "*" or projection mode "field_a")
 	var s string
-	if err := common.UnmarshalJSON(data, &s); err == nil {
+	if err := jsoncodec.Unmarshal(data, &s); err == nil {
 		v.Name = s
 		return nil
 	}
 
 	// 2. Detect whether it is an object
-	var raw map[string]sonic.NoCopyRawMessage
-	if err := common.UnmarshalJSON(data, &raw); err != nil {
+	var raw map[string]json.RawMessage
+	if err := jsoncodec.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
 	// Decode the fields of the base class Property (Name, Type, DisplayName, OriginalName, Description, Features)
 	type PropertyAlias Property
 	var propAlias PropertyAlias
-	if err := common.UnmarshalJSON(data, &propAlias); err != nil {
+	if err := jsoncodec.Unmarshal(data, &propAlias); err != nil {
 		return err
 	}
 	v.Property = Property(propAlias)
 
 	// Decode from_node
 	if rawFromNode, ok := raw["from_node"]; ok {
-		_ = common.UnmarshalJSON(rawFromNode, &v.FromNode)
+		_ = jsoncodec.Unmarshal(rawFromNode, &v.FromNode)
 	}
 
 	// Decoding from: It could be string (mapping mode) or array (alignment mode)
 	if rawFrom, ok := raw["from"]; ok {
 		// Try string
 		var fromStr string
-		if err := common.UnmarshalJSON(rawFrom, &fromStr); err == nil {
+		if err := jsoncodec.Unmarshal(rawFrom, &fromStr); err == nil {
 			v.From = fromStr
 		} else {
 			// Try array
 			var fromList []*OutputFieldRef
-			if err := common.UnmarshalJSON(rawFrom, &fromList); err == nil {
+			if err := jsoncodec.Unmarshal(rawFrom, &fromList); err == nil {
 				v.FromList = fromList
 			}
 		}
@@ -235,7 +233,7 @@ func (v *ViewProperty) MarshalJSON() ([]byte, error) {
 	if v.Name != "" && v.Type == "" && v.From == "" && v.FromNode == "" &&
 		len(v.FromList) == 0 && v.DisplayName == "" && v.OriginalName == "" &&
 		v.Description == "" && len(v.Features) == 0 {
-		return sonic.Marshal(v.Name)
+		return jsoncodec.Marshal(v.Name)
 	}
 
 	// Otherwise, serialize it as an object (form 3, 4, 5)
@@ -254,7 +252,7 @@ func (v *ViewProperty) MarshalJSON() ([]byte, error) {
 		tmp.From = v.From
 	}
 
-	return sonic.Marshal(tmp)
+	return jsoncodec.Marshal(tmp)
 }
 
 func (v *ViewProperty) String() string {
@@ -266,15 +264,15 @@ type DSLCfg struct {
 	From           int              `json:"from"`
 	Size           int              `json:"size"`
 	Sort           []map[string]any `json:"sort,omitempty"`
-	TrackScores    bool             `json:"track_scores,omitempty"`
-	TrackTotalHits bool             `json:"track_total_hits,omitempty"`
+	TrackScores    bool             `json:"track_scores,omitzero"`
+	TrackTotalHits bool             `json:"track_total_hits,omitzero"`
 	SearchAfter    []any            `json:"search_after,omitempty"`
 	Query          struct {
 		Bool struct {
 			Should         []any `json:"should,omitempty"`
 			Filter         []any `json:"filter,omitempty"`
 			Must           []any `json:"must,omitempty"`
-			MinShouldMatch int   `json:"minimum_should_match,omitempty"`
+			MinShouldMatch int   `json:"minimum_should_match,omitzero"`
 		} `json:"bool"`
 	} `json:"query"`
 	Pit *struct {
@@ -284,7 +282,7 @@ type DSLCfg struct {
 }
 
 func (dsl DSLCfg) String() string {
-	bytes, _ := sonic.MarshalIndent(dsl, "", "  ")
+	bytes, _ := jsoncodec.Marshal(dsl, jsontext.WithIndent("  "))
 	return string(bytes)
 }
 

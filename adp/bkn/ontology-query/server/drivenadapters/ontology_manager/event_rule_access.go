@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -107,7 +109,7 @@ func (c *eventRuleAccessClient) post(ctx context.Context, name, url string, head
 		oteltrace.AddHttpAttrs4Error(span, status, "DependencyError", "HTTP status is not 200")
 		return bknBackendRefusal(ctx, status, response)
 	}
-	if err := common.UnmarshalJSON(response, result); err != nil {
+	if err := jsoncodec.Unmarshal(response, result); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, status, "InternalError", "Unmarshal response failed")
 		return fmt.Errorf("%s: invalid response: %w", strings.ToLower(name), err)
 	}

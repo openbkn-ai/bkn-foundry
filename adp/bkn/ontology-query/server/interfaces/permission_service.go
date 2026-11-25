@@ -123,7 +123,7 @@ type PropertyAccessDecision struct {
 // support only exact string, integer and boolean values.
 type RowFilterValue struct {
 	Type    string  `json:"type"`
-	String  *string `json:"string,omitempty"`
+	String  *string `json:"string,omitzero"`
 	Integer *int64  `json:"integer,omitempty"`
 	Boolean *bool   `json:"boolean,omitempty"`
 }

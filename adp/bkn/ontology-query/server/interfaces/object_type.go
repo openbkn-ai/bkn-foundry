@@ -77,7 +77,7 @@ type Objects struct {
 	// RowFilterApplied reports that the caller's effective row filter narrowed
 	// this query. It never exposes the predicate itself, so callers can explain
 	// a possibly incomplete result without learning the policy.
-	RowFilterApplied bool `json:"row_filter_applied,omitempty"`
+	RowFilterApplied bool `json:"row_filter_applied,omitzero"`
 	// Incomplete reports that a scan could not read every matching object,
 	// because the object type cannot be paged past its first page.
 	Incomplete bool `json:"-"`
@@ -207,10 +207,10 @@ type Parameter struct {
 	Source    string  `json:"source" mapstructure:"source"` // Source type.
 	Operation string  `json:"operation,omitempty" mapstructure:"operation,omitempty"`
 	ValueFrom string  `json:"value_from,omitempty" mapstructure:"value_from,omitempty"`
-	Value     any     `json:"value,omitempty" mapstructure:"value,omitempty"`
-	Comment   *string `json:"comment,omitempty" mapstructure:"comment"` // Parameter note used when assigning live metric inputs to object-type metric properties.
+	Value     any     `json:"value,omitzero" mapstructure:"value,omitempty"`
+	Comment   *string `json:"comment,omitzero" mapstructure:"comment"` // Parameter note used when assigning live metric inputs to object-type metric properties.
 	Required  bool    `json:"required,omitempty" mapstructure:"required,omitempty"`
-	Default   any     `json:"default,omitempty" mapstructure:"default,omitempty"`
+	Default   any     `json:"default,omitzero" mapstructure:"default,omitempty"`
 }
 
 // Object property-value request body.

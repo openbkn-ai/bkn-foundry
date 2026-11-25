@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
@@ -408,12 +408,12 @@ func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *in
 		if !ok {
 			return nil, fmt.Errorf("connector does not support single-resource index metadata refresh")
 		}
-		data, err := sonic.Marshal(resource.SourceMetadata)
+		data, err := jsoncodec.Marshal(resource.SourceMetadata)
 		if err != nil {
 			return nil, fmt.Errorf("serialize index metadata: %w", err)
 		}
 		meta := &interfaces.IndexMeta{}
-		if err := common.UnmarshalJSON(data, meta); err != nil {
+		if err := jsoncodec.Unmarshal(data, meta); err != nil {
 			return nil, fmt.Errorf("decode index metadata: %w", err)
 		}
 		if meta.Name == "" {

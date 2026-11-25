@@ -15,24 +15,51 @@ import (
 	"go.uber.org/mock/gomock"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/stretchr/testify/require"
 )
 
-func TestDiscoverStatusAfterEnrichPreservesExactCount(t *testing.T) {
-	for _, count := range []any{int64(9007199254740993), json.Number("9007199254740993")} {
-		resource := &interfaces.Resource{SourceMetadata: map[string]any{
-			"properties": map[string]any{"row_count": count, "row_count_time": int64(100)},
-		}}
-		beforeHash := sourceSnapshotHash(resource)
+func TestDiscoverStatusAfterEnrich(t *testing.T) {
+	t.Run("preserves exact counts", func(t *testing.T) {
+		for _, count := range []any{int64(9007199254740993), json.Number("9007199254740993")} {
+			resource := &interfaces.Resource{SourceMetadata: map[string]any{
+				"properties": map[string]any{"row_count": count, "row_count_time": int64(100)},
+			}}
+			beforeHash := sourceSnapshotHash(resource)
 
-		status := discoverStatusAfterEnrich(resource, beforeHash)
+			status := discoverStatusAfterEnrich(resource, beforeHash)
 
-		require.Equal(t, interfaces.DiscoverStatusUnchanged, status)
-		require.Equal(t, beforeHash, sourceSnapshotHash(resource))
-		properties := resource.SourceMetadata["properties"].(map[string]any)
-		require.Equal(t, json.Number("9007199254740993"), properties["row_count"])
-		require.Equal(t, json.Number("100"), properties["row_count_time"])
+			require.Equal(t, interfaces.DiscoverStatusUnchanged, status)
+			require.Equal(t, beforeHash, sourceSnapshotHash(resource))
+			properties := resource.SourceMetadata["properties"].(map[string]any)
+			require.Equal(t, json.Number("9007199254740993"), properties["row_count"])
+			require.Equal(t, json.Number("100"), properties["row_count_time"])
+		}
+	})
+
+	for _, tc := range []struct {
+		name     string
+		stored   string
+		observed map[string]any
+		wantJSON string
+	}{
+		{name: "metadata", stored: `null`, observed: map[string]any{}, wantJSON: `{}`},
+		{name: "slice", stored: `{"columns":null}`, observed: map[string]any{"columns": []string(nil)}, wantJSON: `{"columns":[]}`},
+		{name: "map", stored: `{"properties":null}`, observed: map[string]any{"properties": map[string]any(nil)}, wantJSON: `{"properties":{}}`},
+	} {
+		t.Run(tc.name+" changes from stored null to an empty collection", func(t *testing.T) {
+			resource := &interfaces.Resource{}
+			require.NoError(t, jsoncodec.Unmarshal([]byte(tc.stored), &resource.SourceMetadata))
+			beforeHash := sourceSnapshotHash(resource)
+
+			resource.SourceMetadata = tc.observed
+			require.Equal(t, interfaces.DiscoverStatusUpdated, discoverStatusAfterEnrich(resource, beforeHash))
+			raw, err := jsoncodec.Marshal(resource.SourceMetadata)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.wantJSON, string(raw))
+			require.Equal(t, interfaces.DiscoverStatusUnchanged, discoverStatusAfterEnrich(resource, sourceSnapshotHash(resource)))
+		})
 	}
 }
 

@@ -131,7 +131,7 @@ func (a *eventAction) ruleVersion(ctx context.Context, at *interfaces.ActionType
 		ObjectType string                         `json:"object_type"`
 		Condition  *interfaces.ActionCondCfg      `json:"condition,omitempty"`
 		Targets    *interfaces.ActionEventTargets `json:"targets,omitempty"`
-		Function   int64                          `json:"function,omitempty"`
+		Function   int64                          `json:"function,omitzero"`
 	}{ObjectType: at.ObjectTypeID, Condition: at.Condition, Targets: at.OperationConfig.Targets}
 	if targets := at.OperationConfig.Targets; targets != nil && targets.Function != nil && a.tools != nil {
 		tool, err := a.tools.GetCallerTool(ctx, targets.Function.BoxID, targets.Function.ToolID)

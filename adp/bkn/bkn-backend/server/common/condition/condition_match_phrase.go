@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type MatchPhraseCond struct {
@@ -60,7 +60,7 @@ func (cond *MatchPhraseCond) Convert(ctx context.Context, vectorizer func(ctx co
 		v = fmt.Sprintf("%q", vStr)
 	}
 
-	fields, err := sonic.Marshal(cond.mFilterFieldNames)
+	fields, err := jsoncodec.Marshal(cond.mFilterFieldNames)
 	if err != nil {
 		return "", fmt.Errorf("condition [match_phrase] marshal fields error: %s", err.Error())
 	}

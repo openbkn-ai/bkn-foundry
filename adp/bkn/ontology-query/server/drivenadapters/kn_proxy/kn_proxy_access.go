@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -80,7 +80,7 @@ func (a *knowledgeNetworkProxyAccess) ResolveKnowledgeNetworkProxy(
 	}
 	if status != http.StatusOK {
 		response := proxyErrorResponse{}
-		_ = sonic.Unmarshal(body, &response)
+		_ = jsoncodec.Unmarshal(body, &response)
 		return nil, &interfaces.KnowledgeNetworkProxyResolveError{
 			StatusCode: status,
 			Code:       strings.TrimSpace(response.ErrorCode),
@@ -91,7 +91,7 @@ func (a *knowledgeNetworkProxyAccess) ResolveKnowledgeNetworkProxy(
 	}
 
 	var mapping interfaces.KnowledgeNetworkProxyAccount
-	if err := sonic.Unmarshal(body, &mapping); err != nil {
+	if err := jsoncodec.Unmarshal(body, &mapping); err != nil {
 		return nil, fmt.Errorf("decode BKN proxy lookup response: %w", err)
 	}
 	return &mapping, nil

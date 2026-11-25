@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/fileset"
@@ -310,7 +311,7 @@ func (c *AnyShareConnector) fetchOAuthToken(ctx context.Context, client *http.Cl
 		return "", connectionError(ctx, "oauth2 token request failed", err)
 	}
 	var tr tokenResponse
-	if err := common.UnmarshalJSON(body, &tr); err != nil {
+	if err := jsoncodec.Unmarshal(body, &tr); err != nil {
 		return "", errors.New("oauth2 token response decode failed")
 	}
 	if tr.Error != "" || tr.AccessToken == "" {

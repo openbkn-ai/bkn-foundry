@@ -19,8 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/mohae/deepcopy"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -28,6 +28,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -164,11 +165,7 @@ func (rs *resourceService) prepareNewResource(ctx context.Context, req *interfac
 	}
 	id := req.ID
 	if id == "" {
-		generatedID, err := uuid.NewV7()
-		if err != nil {
-			return nil, fmt.Errorf("generate resource UUIDv7: %w", err)
-		}
-		id = generatedID.String()
+		id = uuid.NewV7().String()
 	}
 
 	now := time.Now().UnixMilli()
@@ -541,14 +538,14 @@ func decodeResourceLogicFields(resource *interfaces.Resource) {
 		}
 		resource.APIEffectType = resource.LogicType
 		if resource.LogicDefinitionStr != "" {
-			_ = common.UnmarshalJSON([]byte(resource.LogicDefinitionStr), &resource.APIDefinition)
+			_ = jsoncodec.Unmarshal([]byte(resource.LogicDefinitionStr), &resource.APIDefinition)
 		}
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		resource.LogicalType = resource.LogicType
 		if resource.LogicDefinitionStr != "" {
 			// Preserve the existing read behavior; view validation handles invalid stored definitions.
-			_ = common.UnmarshalJSON([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
+			_ = jsoncodec.Unmarshal([]byte(resource.LogicDefinitionStr), &resource.LogicalViewDefinition)
 		}
 	}
 }
@@ -2109,9 +2106,6 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 			features[i].Description = ""
 			features[i].IsDefault = false
 			features[i].IsNative = false
-			if len(features[i].Config) == 0 {
-				features[i].Config = nil
-			}
 		}
 		slices.SortFunc(features, func(left, right interfaces.PropertyFeature) int {
 			if result := strings.Compare(left.FeatureType, right.FeatureType); result != 0 {
@@ -2139,14 +2133,7 @@ func mutableFeaturesEqual(current, requested []interfaces.PropertyFeature) bool 
 				config[key] = value
 			}
 		}
-		if len(config) == 0 && len(requestedCopy[i].Config) == 0 {
-			// A legacy nil config and an omitted request config are equivalent once
-			// the server-maintained dimension is excluded from this comparison.
-			currentCopy[i].Config = nil
-			requestedCopy[i].Config = nil
-		} else {
-			currentCopy[i].Config = config
-		}
+		currentCopy[i].Config = config
 	}
 	return common.JSONNumbersEqual(currentCopy, requestedCopy)
 }

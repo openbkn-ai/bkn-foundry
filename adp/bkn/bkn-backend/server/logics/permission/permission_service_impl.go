@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -702,7 +702,7 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdatePermissionResource")
 	defer span.End()
 
-	bytes, err := sonic.Marshal(resource)
+	bytes, err := jsoncodec.Marshal(resource)
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_MarshalDataFailed).WithErrorDetails(err)

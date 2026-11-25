@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ import (
 func TestFilterCondCfgWireContract(t *testing.T) {
 	const stored = `{"operation":"and","sub_conditions":[{"field":"amount","operation":"eq","value":9007199254740993},{"operation":"or","sub_conditions":[{"field":"enabled","operation":"eq","value":false},{"field":"count","operation":"eq","value":0}]}]}`
 	var fromJSON FilterCondCfg
-	require.NoError(t, common.UnmarshalJSON([]byte(stored), &fromJSON))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(stored), &fromJSON))
 	assert.Equal(t, "amount", fromJSON.SubConds[0].Field)
 	assert.Equal(t, json.Number("9007199254740993"), fromJSON.SubConds[0].Value)
 	assert.Equal(t, "enabled", fromJSON.SubConds[1].SubConds[0].Field)
@@ -25,7 +25,7 @@ func TestFilterCondCfgWireContract(t *testing.T) {
 	assert.Equal(t, json.Number("0"), fromJSON.SubConds[1].SubConds[1].Value)
 
 	var storedMap map[string]any
-	require.NoError(t, common.UnmarshalJSON([]byte(stored), &storedMap))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(stored), &storedMap))
 	var fromMap FilterCondCfg
 	require.NoError(t, mapstructure.Decode(storedMap, &fromMap))
 	assert.Equal(t, fromJSON, fromMap)
@@ -38,7 +38,7 @@ func TestFilterCondCfgWireContract(t *testing.T) {
 		assert.NotContains(t, string(encoded), `"name"`)
 
 		var encodedMap map[string]any
-		require.NoError(t, common.UnmarshalJSON(encoded, &encodedMap))
+		require.NoError(t, jsoncodec.Unmarshal(encoded, &encodedMap))
 		var roundTrip FilterCondCfg
 		require.NoError(t, mapstructure.Decode(encodedMap, &roundTrip))
 		expected := *condition

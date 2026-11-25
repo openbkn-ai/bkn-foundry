@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -193,7 +193,7 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 }
 
 func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
-	bytes, err := sonic.Marshal(resource)
+	bytes, err := jsoncodec.Marshal(resource)
 	if err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_MarshalDataFailed).WithErrorDetails(err)

@@ -11,17 +11,18 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
-
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 const (
@@ -107,7 +108,7 @@ type eventContext struct {
 }
 
 func HashValue(value any) string {
-	raw, err := sonic.ConfigStd.Marshal(value)
+	raw, err := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}

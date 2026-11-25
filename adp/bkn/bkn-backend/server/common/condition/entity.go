@@ -153,7 +153,7 @@ type CondCfg struct {
 	Operation string     `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds  []*CondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
 	ValueFrom string     `json:"value_from,omitempty" mapstructure:"value_from"`
-	Value     any        `json:"value,omitempty" mapstructure:"value"`
+	Value     any        `json:"value,omitzero" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:",inline" mapstructure:",remain,squash"`
 

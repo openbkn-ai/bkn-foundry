@@ -13,10 +13,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -66,7 +66,7 @@ func Test_RestHandler_GetActionsInActionTypeByIn(t *testing.T) {
 				TotalCount: 1,
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -94,7 +94,7 @@ func Test_RestHandler_GetActionsInActionTypeByIn(t *testing.T) {
 			invalidQuery := interfaces.ActionQuery{
 				InstanceIdentities: []map[string]any{},
 			}
-			reqParamByte, _ := sonic.Marshal(invalidQuery)
+			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -108,7 +108,7 @@ func Test_RestHandler_GetActionsInActionTypeByIn(t *testing.T) {
 		Convey("失败 - Service返回错误", func() {
 			ats.EXPECT().GetActionsByActionTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Actions{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ActionType_InternalError))
 
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -167,7 +167,7 @@ func Test_RestHandler_GetActionsInActionTypeByEx(t *testing.T) {
 				TotalCount: 1,
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -180,7 +180,7 @@ func Test_RestHandler_GetActionsInActionTypeByEx(t *testing.T) {
 		Convey("失败 - Token验证失败", func() {
 			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -230,7 +230,7 @@ func Test_RestHandler_GetActionsInActionType(t *testing.T) {
 				TotalCount: 1,
 			}, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?branch=main", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
@@ -252,7 +252,7 @@ func Test_RestHandler_GetActionsInActionType(t *testing.T) {
 		})
 
 		Convey("失败 - includeTypeInfo参数无效", func() {
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url+"?include_type_info=invalid", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -273,7 +273,7 @@ func Test_RestHandler_GetActionsInActionType(t *testing.T) {
 		})
 
 		Convey("失败 - Method Override无效", func() {
-			reqParamByte, _ := sonic.Marshal(actionQuery)
+			reqParamByte, _ := jsoncodec.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "POST")

@@ -22,11 +22,11 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/bytedance/sonic"
 	osclient "github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -155,7 +155,7 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		var query map[string]any
-		require.NoError(t, sonic.Unmarshal(body, &query))
+		require.NoError(t, jsoncodec.Unmarshal(body, &query))
 		queries <- query
 		requestCount++
 		w.Header().Set("Content-Type", "application/json")
@@ -202,7 +202,7 @@ func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
 				body, err := io.ReadAll(r.Body)
 				require.NoError(t, err)
 				var query map[string]any
-				require.NoError(t, sonic.Unmarshal(body, &query))
+				require.NoError(t, jsoncodec.Unmarshal(body, &query))
 				queries <- query
 				w.Header().Set("Content-Type", "application/json")
 				_, err = w.Write([]byte(`{` + completeSearchMetadata + `,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]},"aggregations":{"__value":{"value":0},"group_by_body":{"buckets":[]},"group_by_body_alias":{"buckets":[]}}}`))

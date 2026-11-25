@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -186,14 +186,8 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 			continue
 		}
 
-		generatedID, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			span.SetStatus(codes.Error, common.SafeErrorSummary(generateErr))
-			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_CapabilityBinding_InternalError).WithErrorDetails(generateErr.Error())
-		}
 		binding := &interfaces.CapabilityBinding{
-			ID:             generatedID.String(),
+			ID:             uuid.NewV7().String(),
 			KNID:           knID,
 			Branch:         branch,
 			CapabilityType: capabilityType,

@@ -1007,12 +1007,13 @@ components:
         一个只读业务操作的最终定义。请求、响应和成功规则与 Catalog 登录复用同一契约，
         由 EE 按场景校验。Catalog 和 Resource 均可声明敏感变量，登录仅使用 Catalog 配置。
         查询调用方不能覆盖已保存的目标或认证配置。
-        本阶段拒绝调用方过滤条件及依赖过滤值/SQL 转换的执行；不提供 input_schema、
-        input 或独立业务载荷。所有 Schema 内联，Draft 2020-12；禁止 Schema 引用。
+        查询可传入 filter_condition。资源定义可将过滤值绑定到上游请求，或将完整条件树序列化为 SQL。
+        无效或无法完整转换的条件返回 400。查询不提供 input 或独立业务载荷。
+        所有 Schema 内联，采用 Draft 2020-12，禁止 Schema 引用。
+        定义中未声明的字段会被静默忽略。创建和更新时，历史字段 input_schema 也遵循此规则，保存的定义会省略该字段。
       type: object
       allOf:
         - $ref: "#/components/schemas/HTTPOperationDefinition"
-      unevaluatedProperties: false
       properties:
         variables:
           description: |
@@ -1077,23 +1078,37 @@ components:
         parameters:
           description: |
             仅 Query 参数，name 唯一，不含 in。
-            主值直接引用已声明变量中的缺失成员或数组项时，使用 default_value。未配置默认值时，省略可选参数，必填参数报错。
+            Resource 业务请求可省略 value。省略 value 或直接引用缺失值时，必填参数使用 default_value，未配置默认值则报错；可选参数直接省略。
+            Catalog 登录必须配置 value。直接引用已声明变量中的缺失成员或数组项时，使用已配置的 default_value，否则省略可选参数，必填参数报错。
             未声明变量、路径类型不匹配和显式 null 均报错。
           type: [array, "null"]
           items:
             type: object
-            required: [name, value]
+            required: [name]
             additionalProperties: true
             properties:
               name:
                 type: string
                 minLength: 1
-              value: {}
+              value:
+                not:
+                  type: "null"
               default_value:
                 description: 可选缺省值，不接受 null；未配置与合法的空字符串/0/false 区分
+                not:
+                  type: "null"
               required:
                 type: boolean
                 default: false
+            if:
+              required: [required]
+              properties:
+                required:
+                  const: true
+            then:
+              anyOf:
+                - required: [value]
+                - required: [default_value]
         body:
           description: 标准 Schema 加 value/serialize/serialize_options 的构造节点；保留标准关键字，不执行 Schema 默认值填充
           type: [object, "null"]
@@ -1170,8 +1185,8 @@ components:
         相对完整正文的成功条件。组仅支持 and/or，叶子仅支持 eq/empty/null/not_exist。
         eq 比较 JSON 标量，value 可显式为 null；其他叶子不接受 value/value_from。
         field 使用受限单节点路径，不能是空字符串或单独的 $，不执行模板或 SQL。
+        未声明的字段会被静默忽略。
       type: object
-      additionalProperties: false
       required: [operation]
       properties:
         field:
@@ -1222,8 +1237,8 @@ components:
         这两处合计须引用 __paging.limit 和当前 mode 对应的 __paging.offset 或 __paging.page。
         保存前仍须通过一次默认单页只读调用验证。查询按实际输入计算并填充分页值，后续页由调用方请求。
         总数提取定义位于各状态的 result_total。
+        未声明的分页字段会被忽略。
       type: object
-      additionalProperties: false
       required: [mode, default_limit, max_limit]
       properties:
         mode:
@@ -1362,7 +1377,10 @@ components:
           type: [string, "null"]
           enum: [read, "", null]
         api_definition:
-          description: API 创建时必填且非 null；更新时省略或 null 保留，显式对象完整替换并为全部变量提供明文字符串 value；其他 category 拒绝非 null 定义
+          description: |
+            API 创建时必填且非 null。更新时省略或 null 保留原定义，提交对象时完整替换。
+            写入时每个变量均须提供 value，普通变量接受非 null JSON 值，敏感变量须提交明文字符串。
+            其他 category 拒绝非 null 定义。
           anyOf:
             - allOf:
                 - $ref: "#/components/schemas/APIDefinition"
@@ -1370,9 +1388,6 @@ components:
                     variables:
                       additionalProperties:
                         required: [value]
-                        properties:
-                          value:
-                            type: string
             - type: "null"
         validation:
           description: 仅 category=api 的本次保存前只读验证使用。条件和分页不会随资源保存或返回。其他类别拒绝非 null 值。
@@ -1394,9 +1409,10 @@ components:
             旧 logic_definition 按未知字段忽略，不作为别名或回退值；仅提交旧字段仍缺少必填定义。
           $ref: "#/components/schemas/DerivedLogicalViewDefinition"
     DerivedLogicalViewDefinition:
-      description: derived 逻辑视图的单一源和固定过滤配置；不接受旧节点数组、distinct 或未知字段
+      description: |
+        derived 逻辑视图的单一源和固定过滤配置。定义须为对象，未声明的字段会被静默忽略。
+        创建和完整 PUT 更新时，历史字段 distinct 也遵循此规则，保存的定义会省略该字段。
       type: object
-      additionalProperties: false
       required:
         - source_resource_id
       properties:
