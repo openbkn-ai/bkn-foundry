@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -202,6 +205,36 @@ func TestFilteredCrossJoinTranslatesEachOperation(t *testing.T) {
 			if !strings.HasPrefix(got, prefix) || !strings.HasSuffix(got, suffix) ||
 				strings.TrimSuffix(strings.TrimPrefix(got, prefix), suffix) != tc.want {
 				t.Fatalf("got  %s\nwant %s%s%s", got, prefix, tc.want, suffix)
+			}
+		})
+	}
+}
+
+func TestFilteredCrossJoinPreservesStoredEmptyOperands(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		condition string
+		predicate string
+	}{
+		{"empty string", `{"field":"c_kind","operation":"!=","value_from":"const","value":""}`, "t0.`channel_type` <> ''"},
+		{"empty list", `{"field":"c_key","operation":"in","value_from":"const","value":[]}`, "1 = 0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			relation := filteredRelation(t, "probe_fcj", tc.condition, refunding)
+			stored, err := jsoncodec.Marshal(relation.MappingRules)
+			if err != nil {
+				t.Fatalf("marshal mapping rules: %v", err)
+			}
+			var rules interfaces.FilteredCrossJoinMapping
+			if err := common.UnmarshalStoredJSON(stored, &rules); err != nil {
+				t.Fatalf("read stored mapping rules: %v", err)
+			}
+			relation.MappingRules = &rules
+
+			schema := filteredSchema(t, relation)
+			sql := mustGenerateFiltered(t, schema, "MATCH (c:probe_channel)-[:probe_fcj]->(o:probe_order) RETURN count(*) AS n")
+			if want := "ON (" + tc.predicate + " AND "; !strings.Contains(sql, want) {
+				t.Fatalf("SQL = %s, want join predicate %s", sql, tc.predicate)
 			}
 		})
 	}
