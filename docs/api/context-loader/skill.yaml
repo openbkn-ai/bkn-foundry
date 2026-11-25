@@ -295,12 +295,12 @@ paths:
 
         `stdout` / `stderr` 各自超过 8000 字符会截断（`truncated=true`）。
 
-        必须提供有效的 `bkn_context`；缺失或传空时，执行前返回 400
-        `conversation_required`，附 `required_action: create_conversation`。
-        平台明确关闭证据采集时，`bkn_start_interaction` 不签发 ID，本接口可不带
-        `bkn_context` 执行，且不生成受管 Trace 记录。
-        Trace Core 基础设施故障时，本接口经只读探测确认后可不带上下文执行，
-        并标记本次调用未记录 Trace。
+        直接 REST 调用可省略 `bkn_context`，按当前调用者身份完成鉴权和业务权限校验后执行，
+        不要求建立 MCP 会话，也不创建受管 Trace 记录。此行为不改变外部 MCP 的会话要求。
+        显式提供非空 `bkn_context` 时，仍须通过会话、交互和操作校验；不完整、无效或无权限的
+        上下文会在执行前拒绝，不会退回无上下文执行。
+        平台明确关闭证据采集，或 Trace Core 基础设施故障且符合现有降级条件时，
+        沿用既有的执行与 Trace 可用性标记逻辑。
 
         **本端点由技能执行总闸控制**：`EXECUTE_SKILL_ENABLED=true` 时才注册这条
         路由，同名 MCP 工具也才出现在 `tools/list` 与 `GET /mcp/info`。默认关闭，
