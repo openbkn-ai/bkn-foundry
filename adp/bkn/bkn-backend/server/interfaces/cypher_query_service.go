@@ -73,7 +73,7 @@ type CypherQueryResult struct {
 	// ValueTypes and Execution are set when the query returns graph values:
 	// what each column holds, and how complete the answer is.
 	ValueTypes map[string]*CypherValueType `json:"value_types,omitempty"`
-	Execution  *CypherExecution            `json:"execution,omitempty"`
+	Execution  *CypherExecution            `json:"execution,omitzero"`
 	// PermissionImpacts is returned only on the internal HTTP face. It lets an
 	// agent explain which object-type access rules narrowed or refused a query.
 	PermissionImpacts []CypherPermissionImpact `json:"-"`
@@ -81,10 +81,10 @@ type CypherQueryResult struct {
 	// REST response keeps its existing shape.
 	TraceDescriptor json.RawMessage `json:"-"`
 	// Plan is set, instead of any rows, when the query asked to be explained.
-	Plan *CypherPlan `json:"plan,omitempty"`
+	Plan *CypherPlan `json:"plan,omitzero"`
 	// Limited says the query wrote no LIMIT and returned as many rows as the
 	// default allows, so more may match.
-	Limited bool `json:"limited,omitempty"`
+	Limited bool `json:"limited,omitzero"`
 }
 
 // CypherPermissionImpact identifies one object type whose row or property
@@ -92,7 +92,7 @@ type CypherQueryResult struct {
 type CypherPermissionImpact struct {
 	ObjectTypeID     string   `json:"object_type_id"`
 	Properties       []string `json:"properties,omitempty"`
-	RowFilterApplied bool     `json:"row_filter_applied,omitempty"`
+	RowFilterApplied bool     `json:"row_filter_applied,omitzero"`
 }
 
 //go:generate mockgen -source ../interfaces/cypher_query_service.go -destination ../interfaces/mock/mock_cypher_query_service.go

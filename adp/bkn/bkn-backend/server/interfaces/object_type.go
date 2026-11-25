@@ -99,7 +99,7 @@ type ObjectType struct {
 	Aliases []string `json:"aliases,omitempty" mapstructure:"aliases"`
 	// Lifecycle says whether the object type is still in use (BKN spec 3.0, §4.3); nil is active. It
 	// is not Status, which holds the index information.
-	Lifecycle *Lifecycle `json:"lifecycle,omitempty" mapstructure:"lifecycle"`
+	Lifecycle *Lifecycle `json:"lifecycle,omitzero" mapstructure:"lifecycle"`
 	// declared names the declaration fields the JSON carried, null included.
 	declared map[string]bool
 
@@ -108,11 +108,11 @@ type ObjectType struct {
 	Revision      string          `json:"revision,omitempty" mapstructure:"-"`
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 
-	Status *ObjectTypeStatus `json:"status,omitempty" mapstructure:"status"`
+	Status *ObjectTypeStatus `json:"status,omitzero" mapstructure:"status"`
 	// IndexStatus is assembled from the resource's current Vega local_status while responding. It
 	// deliberately is not persisted: a stored boolean becomes stale as soon as Vega starts or
 	// finishes rebuilding an index.
-	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty" mapstructure:"-"`
+	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitzero" mapstructure:"-"`
 
 	// RowCount is Vega's exact measurement, exposed only with query_data permission and no row filter.
 	RowCount     *int64 `json:"row_count" mapstructure:"-"`
@@ -131,7 +131,7 @@ type ObjectType struct {
 	// names and types, condition_operations) are missing rather than empty. It is set only by the
 	// detail and search responses, never persisted, and omitted whenever the resource was read or
 	// no longer exists: a deleted resource is a known answer, not an unknown one.
-	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty" mapstructure:"-"`
+	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitzero" mapstructure:"-"`
 
 	PropertyMap  map[string]string `json:"-"` // Map from property name to display name
 	IfNameModify bool              `json:"-"`
@@ -191,8 +191,8 @@ type DataProperty struct {
 	Type        string `json:"type" mapstructure:"type"`
 	Comment     string `json:"comment" mapstructure:"comment"`
 
-	MappedField *Field         `json:"mapped_field,omitempty" mapstructure:"mapped_field,omitempty"`
-	MaskRule    *maskrule.Rule `json:"mask_rule,omitempty" mapstructure:"mask_rule,omitempty"`
+	MappedField *Field         `json:"mapped_field,omitzero" mapstructure:"mapped_field,omitempty"`
+	MaskRule    *maskrule.Rule `json:"mask_rule,omitzero" mapstructure:"mask_rule,omitempty"`
 
 	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by string fields
 	// IndexFeatures is populated from the bound Vega resource schema while responding. It is not
@@ -212,8 +212,8 @@ type DataProperty struct {
 	// property without them reads and stores exactly as before.
 	Aliases     []string             `json:"aliases,omitempty" mapstructure:"aliases,omitempty"`
 	Semantic    string               `json:"semantic,omitempty" mapstructure:"semantic,omitempty"`
-	Required    bool                 `json:"required,omitempty" mapstructure:"required,omitempty"`
-	Constraints *PropertyConstraints `json:"constraints,omitempty" mapstructure:"constraints,omitempty"`
+	Required    bool                 `json:"required,omitzero" mapstructure:"required,omitempty"`
+	Constraints *PropertyConstraints `json:"constraints,omitzero" mapstructure:"constraints,omitempty"`
 
 	retiredIndexConfigProvided bool
 	// declared names the declaration fields the JSON carried, null included. An interactive update
@@ -237,11 +237,11 @@ var DeclarationFields = []string{DECLARATION_ALIASES, DECLARATION_SEMANTIC, DECL
 // empty field is not declared.
 type PropertyConstraints struct {
 	ValueType string       `json:"value_type,omitempty" mapstructure:"value_type,omitempty"`
-	Range     *ValueRange  `json:"range,omitempty" mapstructure:"range,omitempty"`
-	Length    *LengthRange `json:"length,omitempty" mapstructure:"length,omitempty"`
+	Range     *ValueRange  `json:"range,omitzero" mapstructure:"range,omitempty"`
+	Length    *LengthRange `json:"length,omitzero" mapstructure:"length,omitempty"`
 	Pattern   string       `json:"pattern,omitempty" mapstructure:"pattern,omitempty"`
 	Unit      string       `json:"unit,omitempty" mapstructure:"unit,omitempty"`
-	Unique    bool         `json:"unique,omitempty" mapstructure:"unique,omitempty"`
+	Unique    bool         `json:"unique,omitzero" mapstructure:"unique,omitempty"`
 	CRS       string       `json:"crs,omitempty" mapstructure:"crs,omitempty"`
 	Timezone  string       `json:"timezone,omitempty" mapstructure:"timezone,omitempty"`
 }
@@ -249,8 +249,8 @@ type PropertyConstraints struct {
 // ValueRange is a closed interval: numbers for a numeric property, ISO 8601 text for a date or time
 // property. Either bound may be absent.
 type ValueRange struct {
-	Min any `json:"min,omitempty" mapstructure:"min,omitempty"`
-	Max any `json:"max,omitempty" mapstructure:"max,omitempty"`
+	Min any `json:"min,omitzero" mapstructure:"min,omitempty"`
+	Max any `json:"max,omitzero" mapstructure:"max,omitempty"`
 }
 
 // LengthRange is a closed interval on the number of characters.
@@ -427,7 +427,7 @@ type LogicProperty struct {
 	Type        string `json:"type" mapstructure:"type"`
 	Comment     string `json:"comment" mapstructure:"comment"`
 	// Index        bool          `json:"index" mapstructure:"index"`
-	DataSource   *ResourceInfo `json:"data_source,omitempty" mapstructure:"data_source"`
+	DataSource   *ResourceInfo `json:"data_source,omitzero" mapstructure:"data_source"`
 	Parameters   []Parameter   `json:"parameters,omitempty" mapstructure:"parameters"`
 	AnalysisDims []Field       `json:"analysis_dimensions,omitempty"`
 }
@@ -436,7 +436,7 @@ type Field struct {
 	Name        string  `json:"name" mapstructure:"name"`                                     // Technical name
 	Type        string  `json:"type,omitempty" mapstructure:"type,omitempty"`                 // Field type
 	DisplayName string  `json:"display_name,omitempty" mapstructure:"display_name,omitempty"` // Display name
-	Comment     *string `json:"comment,omitempty"`                                            // Field comment from the view
+	Comment     *string `json:"comment,omitzero"`                                             // Field comment from the view
 }
 
 type Parameter struct {
@@ -445,11 +445,11 @@ type Parameter struct {
 	Source      string  `json:"source,omitempty" mapstructure:"source,omitempty"`       // Source type
 	Operation   string  `json:"operation,omitempty" mapstructure:"operation,omitempty"` // Operator for a logical-property parameter
 	ValueFrom   string  `json:"value_from,omitempty" mapstructure:"value_from,omitempty"`
-	Value       any     `json:"value,omitempty" mapstructure:"value,omitempty"`
+	Value       any     `json:"value,omitzero" mapstructure:"value,omitempty"`
 	IfSystemGen *bool   `json:"if_system_generate,omitempty" mapstructure:"if_system_generate,omitempty"`
-	Comment     *string `json:"comment,omitempty" mapstructure:"comment,omitempty"` // Parameter comment supplied by the metric read
-	Required    bool    `json:"required,omitempty" mapstructure:"required,omitempty"`
-	Default     any     `json:"default,omitempty" mapstructure:"default,omitempty"`
+	Comment     *string `json:"comment,omitzero" mapstructure:"comment,omitempty"` // Parameter comment supplied by the metric read
+	Required    bool    `json:"required,omitzero" mapstructure:"required,omitempty"`
+	Default     any     `json:"default,omitzero" mapstructure:"default,omitempty"`
 }
 
 type SimpleProperty struct {
@@ -470,8 +470,8 @@ type ObjectTypesQueryParams struct {
 // Object search list.
 type ObjectTypes struct {
 	Entries    []*ObjectType `json:"entries"`
-	TotalCount int64         `json:"total_count,omitempty"`
-	NextCursor *string       `json:"next_cursor,omitempty"`
+	TotalCount int64         `json:"total_count,omitzero"`
+	NextCursor *string       `json:"next_cursor,omitzero"`
 	OverallMs  int64         `json:"overall_ms"`
 }
 
@@ -481,9 +481,9 @@ type ObjectTypeSampleDataColumn struct {
 }
 
 type ObjectTypeSampleDataQueryParams struct {
-	Offset      int   `json:"offset,omitempty"`
-	Limit       int   `json:"limit,omitempty"`
-	NeedTotal   bool  `json:"need_total,omitempty"`
+	Offset      int   `json:"offset,omitzero"`
+	Limit       int   `json:"limit,omitzero"`
+	NeedTotal   bool  `json:"need_total,omitzero"`
 	SearchAfter []any `json:"search_after,omitempty"`
 }
 
@@ -491,7 +491,7 @@ type ObjectTypeSampleData struct {
 	Columns     []*ObjectTypeSampleDataColumn `json:"columns"`
 	Entries     []map[string]any              `json:"entries"`
 	Name        string                        `json:"name"`
-	TotalCount  int64                         `json:"total_count,omitempty"`
+	TotalCount  int64                         `json:"total_count,omitzero"`
 	SearchAfter []any                         `json:"search_after,omitempty"`
 }
 

@@ -113,7 +113,6 @@ func integrationService(t *testing.T) (*service, *sql.DB, *clock) {
 	db := integrationDB(t)
 	c := &clock{}
 	c.now.Store(1_000_000)
-	var next atomic.Int64
 	classes, _, _ := newTestClasses()
 	s := &service{
 		store:       newStore(db),
@@ -122,7 +121,6 @@ func integrationService(t *testing.T) (*service, *sql.DB, *clock) {
 		networks:    networksStub{"kn1": true, "kn2": true},
 		names:       namesStub{name: "Alice"},
 		now:         func() int64 { return c.now.Load() },
-		newID:       func() string { return fmt.Sprintf("ev-%06d", next.Add(1)) },
 	}
 	return s, db, c
 }

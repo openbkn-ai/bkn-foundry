@@ -33,6 +33,8 @@ func TestCreateScheduleWritesExecutionSubject(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("INSERT INTO t_action_schedule .*f_execution_subject.*f_execution_subject_type.*").
+		WithArgs("schedule-1", "schedule", "kn-1", interfaces.MAIN_BRANCH, "at-1", "* * * * *",
+			"[]", "{}", "", int64(0), "", "", int64(0), "", "", int64(0), "user-current", "user").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	access := &actionScheduleAccess{db: db}
 	err = access.CreateSchedule(context.Background(), nil, &interfaces.ActionSchedule{

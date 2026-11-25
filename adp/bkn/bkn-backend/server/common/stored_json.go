@@ -8,22 +8,14 @@ package common
 import (
 	"bytes"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
-// UnmarshalStoredJSON decodes a JSON column that is allowed to be empty.
-//
-// These columns are nullable in practice: rows written before a field existed, or by a path that
-// left it blank, hold "" rather than "null" or "[]". Handing "" to the decoder fails with
-// "the input json is empty", and the failure surfaces as an internal error on every read of the
-// definition that row belongs to — and since a knowledge network is read with its definitions,
-// the whole network becomes unopenable because one column is blank. An empty column means the
-// value was never set, which is what an untouched target already says.
-//
-// Malformed content is still an error: only emptiness is read as "never set".
+// UnmarshalStoredJSON treats blank legacy columns as unset. It decodes populated
+// columns with JSON v2 and preserves exact numbers in dynamic values.
 func UnmarshalStoredJSON(raw []byte, target any) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
-	return sonic.Unmarshal(raw, target)
+	return jsoncodec.Unmarshal(raw, target)
 }

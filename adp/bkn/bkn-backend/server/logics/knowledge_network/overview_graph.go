@@ -121,8 +121,8 @@ func (kns *knowledgeNetworkService) resolveOverviewRelationScope(ctx context.Con
 }
 
 func overviewSnapshot(knID, branch, scope string, updateTime int64, objectTotal, relationTotal int) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%s:%d:%d:%d", knID, branch, scope, updateTime,
-		objectTotal, relationTotal)))
+	digest := sha256.Sum256(fmt.Appendf(nil, "%s:%s:%s:%d:%d:%d", knID, branch, scope, updateTime,
+		objectTotal, relationTotal))
 	return base64.RawURLEncoding.EncodeToString(digest[:12])
 }
 

@@ -178,7 +178,7 @@ type CapabilityBoxSummary struct {
 	// BoxName is empty when the execution factory could not be reached.
 	BoxName string `json:"box_name,omitempty"`
 	// BoxMissing marks a box that no longer exists; every binding under it is missing too.
-	BoxMissing bool `json:"box_missing,omitempty"`
+	BoxMissing bool `json:"box_missing,omitzero"`
 	// TotalTools counts the enabled tools currently in the box.
 	TotalTools int `json:"total_tools"`
 	// MountedTools counts those already bound to this branch.

@@ -66,7 +66,6 @@ func newTestService(permissions *permissionsStub) *service {
 		networks:    networksStub{"kn1": true},
 		names:       namesStub{name: "Alice"},
 		now:         func() int64 { return 100 },
-		newID:       func() string { return "id" },
 	}
 }
 

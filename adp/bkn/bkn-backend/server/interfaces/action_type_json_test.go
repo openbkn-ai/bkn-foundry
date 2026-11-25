@@ -8,8 +8,11 @@ package interfaces
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // Regression for openbkn-ai/bkn-studio#219: ActionType trigger condition must
@@ -48,5 +51,22 @@ func TestActionTypeConditionJSONFieldName(t *testing.T) {
 	}
 	if decoded.Condition.Field != "status" || decoded.Condition.Operation != "eq" {
 		t.Fatalf("unexpected condition: %+v", decoded.Condition)
+	}
+}
+
+func TestActionParameterKeepsAnExplicitEmptyValueInJSONV2(t *testing.T) {
+	raw, err := jsoncodec.Marshal(Parameter{Name: "status", Type: "string", Value: ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]jsontext.Value
+	if err := jsoncodec.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["value"]) != `""` {
+		t.Errorf("value = %s, want an explicit empty string", fields["value"])
+	}
+	if _, ok := fields["required"]; ok {
+		t.Errorf("required must be omitted when false, got %s", fields["required"])
 	}
 }

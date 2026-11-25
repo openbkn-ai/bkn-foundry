@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -35,7 +36,6 @@ const (
 type op struct {
 	now   int64
 	actor interfaces.AccountInfo
-	newID func() string
 	// title words a rule event's title from its type and object names.
 	title func(typeName, objectName string) string
 }
@@ -214,7 +214,7 @@ func applyRuleCheck(
 			attributes = map[string]interfaces.KnEventAttribute{}
 		}
 		event := &interfaces.KnEvent{
-			ID:               o.newID(),
+			ID:               uuid.NewV7().String(),
 			EventType:        eventType.Code,
 			EventTypeName:    eventType.Name,
 			Title:            clip(o.title(eventType.Name, name), interfaces.KnEventTitleMax),
@@ -283,7 +283,7 @@ func reportEvent(
 		attributes = map[string]interfaces.KnEventAttribute{}
 	}
 	event := &interfaces.KnEvent{
-		ID:               o.newID(),
+		ID:               uuid.NewV7().String(),
 		EventType:        eventType.Code,
 		EventTypeName:    eventType.Name,
 		Title:            strings.TrimSpace(input.Title),

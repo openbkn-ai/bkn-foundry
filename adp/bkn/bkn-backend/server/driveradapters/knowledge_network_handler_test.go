@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -98,7 +98,7 @@ func TestKnowledgeNetworkProjectionReadRequiresGrantForClaimedNetwork(t *testing
 	var projection struct {
 		ObjectMetrics []interfaces.ObjectMetricRecordV1 `json:"object_metrics"`
 	}
-	if err := sonic.Unmarshal(response.Body.Bytes(), &projection); err != nil {
+	if err := jsoncodec.Unmarshal(response.Body.Bytes(), &projection); err != nil {
 		t.Fatal(err)
 	}
 	if len(projection.ObjectMetrics) != 2 || projection.ObjectMetrics[0].Definition.ID != "published" ||
@@ -207,7 +207,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		Convey("Success CreateKN \n", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -217,7 +217,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		})
 
 		Convey("Failed CreateKN ShouldBind Error\n", func() {
-			reqParamByte, _ := sonic.Marshal([]interfaces.KN{kn})
+			reqParamByte, _ := jsoncodec.Marshal([]interfaces.KN{kn})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -227,7 +227,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		})
 
 		Convey("Invalid binding policy\n", func() {
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url+"?binding_policy=copy", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -261,7 +261,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 					return "kn1", nil
 				})
 
-			reqParamByte, _ := sonic.Marshal(portableKN)
+			reqParamByte, _ := jsoncodec.Marshal(portableKN)
 			req := httptest.NewRequest(http.MethodPost, url+"?binding_policy=detach", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -271,7 +271,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		})
 
 		Convey("KN name is null\n", func() {
-			reqParamByte, _ := sonic.Marshal(interfaces.KN{})
+			reqParamByte, _ := jsoncodec.Marshal(interfaces.KN{})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -283,7 +283,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		Convey("Request without optional headers succeeds\n", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -303,7 +303,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", err)
 
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -349,7 +349,7 @@ func Test_KnowledgeNetworkRestHandler_UpdateKN(t *testing.T) {
 			kns.EXPECT().CheckKNExistByName(gomock.Any(), kn.KNName, gomock.Any()).Return("", false, nil)
 			kns.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -393,7 +393,7 @@ func Test_KnowledgeNetworkRestHandler_UpdateKN(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -640,7 +640,7 @@ func Test_KnowledgeNetworkRestHandler_GetRelationTypePaths(t *testing.T) {
 			}, nil)
 			kns.EXPECT().GetRelationTypePaths(gomock.Any(), gomock.Any()).Return([]interfaces.RelationTypePath{}, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
@@ -664,7 +664,7 @@ func Test_KnowledgeNetworkRestHandler_GetRelationTypePaths(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().GetKNByID(gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(nil, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
@@ -706,7 +706,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKNByIn(t *testing.T) {
 				},
 				Branch: "main",
 			}
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -732,7 +732,7 @@ func Test_KnowledgeNetworkRestHandler_UpdateKNByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByName(gomock.Any(), "kn1", gomock.Any()).Return("", false, nil)
 			kns.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(interfaces.KN{KNID: knID, KNName: "kn1", Branch: interfaces.MAIN_BRANCH})
+			reqParamByte, _ := jsoncodec.Marshal(interfaces.KN{KNID: knID, KNName: "kn1", Branch: interfaces.MAIN_BRANCH})
 			req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/"+knID, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -879,7 +879,7 @@ func Test_KnowledgeNetworkRestHandler_GetRelationTypePathsByIn(t *testing.T) {
 			}, nil)
 			kns.EXPECT().GetRelationTypePaths(gomock.Any(), gomock.Any()).Return([]interfaces.RelationTypePath{}, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/relation-type-paths", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
@@ -916,7 +916,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN_extraCases(t *testing.T) {
 		kn := interfaces.KN{KNName: "kn1", Branch: "main"}
 
 		Convey("Failed when validate_dependency has invalid value\n", func() {
-			reqParamByte, _ := sonic.Marshal(kn)
+			reqParamByte, _ := jsoncodec.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url+"?validate_dependency=notabool", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -926,7 +926,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN_extraCases(t *testing.T) {
 
 		Convey("Failed when ModuleType is set to non-KN value\n", func() {
 			knWithBadType := interfaces.KN{KNName: "kn1", Branch: "main", ModuleType: "object_type"}
-			reqParamByte, _ := sonic.Marshal(knWithBadType)
+			reqParamByte, _ := jsoncodec.Marshal(knWithBadType)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()

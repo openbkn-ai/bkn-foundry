@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 )
@@ -43,7 +43,7 @@ func NewInCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*ViewFiel
 }
 
 func (cond *InCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error) {
-	res, err := sonic.Marshal(cond.mValue)
+	res, err := jsoncodec.Marshal(cond.mValue)
 	if err != nil {
 		return "", fmt.Errorf("condition [in] json marshal right value failed, %s", err.Error())
 	}
@@ -59,7 +59,7 @@ func (cond *InCond) Convert(ctx context.Context, vectorizer func(ctx context.Con
 }
 
 func (cond *InCond) Convert2SQL(ctx context.Context) (string, error) {
-	_, err := sonic.Marshal(cond.mValue)
+	_, err := jsoncodec.Marshal(cond.mValue)
 	if err != nil {
 		return "", fmt.Errorf("condition [in] json marshal right value failed, %s", err.Error())
 	}

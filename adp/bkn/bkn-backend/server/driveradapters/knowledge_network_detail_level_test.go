@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -160,7 +160,7 @@ func Test_GetKN_ExportedSummaryKeepsTheSkeletonAndDropsTheDetail(t *testing.T) {
 // asked for, so an assertion can be made about that concept rather than about the whole body.
 func findObjectByName(body, name string) map[string]any {
 	var decoded any
-	if err := sonic.Unmarshal([]byte(body), &decoded); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(body), &decoded); err != nil {
 		return nil
 	}
 	var found map[string]any

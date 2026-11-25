@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
@@ -65,7 +65,7 @@ func Test_userMgmtAccess_GetAccountNames(t *testing.T) {
 					{"id": "app1", "name": "App One"},
 				},
 			}
-			respData, _ := sonic.Marshal(response)
+			respData, _ := jsoncodec.Marshal(response)
 
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), httpUrl, gomock.Any(), gomock.Any()).

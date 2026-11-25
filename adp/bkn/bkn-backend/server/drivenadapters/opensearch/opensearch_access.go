@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -57,7 +57,7 @@ func (o *openSearchAccess) PutIndexTemplate(ctx context.Context, indexTemplateNa
 	span.SetAttributes(attr.Key("index_template_name").String(indexTemplateName))
 
 	// Encode body as JSON bytes.
-	bodyBytes, err := sonic.Marshal(body)
+	bodyBytes, err := jsoncodec.Marshal(body)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal index template body failed")
 		return fmt.Errorf("failed to marshal index template body: %w", err)
@@ -102,7 +102,7 @@ func (o *openSearchAccess) CreateIndex(ctx context.Context, indexName string, bo
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
 	// Encode body as JSON bytes.
-	bodyBytes, err := sonic.Marshal(body)
+	bodyBytes, err := jsoncodec.Marshal(body)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal index body failed")
 		return fmt.Errorf("failed to marshal index body: %w", err)
@@ -235,7 +235,7 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 		attr.Key("doc_id").String(docID))
 
 	// Encode data as JSON.
-	jsonData, err := sonic.Marshal(data)
+	jsonData, err := jsoncodec.Marshal(data)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal data failed")
 		return fmt.Errorf("failed to marshal data: %w", err)
@@ -306,7 +306,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		}
 
 		// Write the metadata line.
-		metaJSON, err := sonic.Marshal(meta)
+		metaJSON, err := jsoncodec.Marshal(meta)
 		if err != nil {
 			span.SetStatus(codes.Error, "Marshal bulk metadata failed")
 			return fmt.Errorf("failed to marshal bulk metadata: %w", err)
@@ -315,7 +315,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		buf.WriteByte('\n')
 
 		// Write the data line.
-		dataJSON, err := sonic.Marshal(data)
+		dataJSON, err := jsoncodec.Marshal(data)
 		if err != nil {
 			span.SetStatus(codes.Error, "Marshal bulk data failed")
 			return fmt.Errorf("failed to marshal bulk data: %w", err)
@@ -355,7 +355,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 		Items  json.RawMessage `json:"items"`
 	}
 
-	if err := sonic.Unmarshal(resBody, &resp); err != nil {
+	if err := jsoncodec.Unmarshal(resBody, &resp); err != nil {
 		span.SetStatus(codes.Error, "Unmarshal response body failed")
 		return fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
@@ -392,7 +392,7 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
 	// Encode the query as JSON.
-	queryJSON, err := sonic.Marshal(query)
+	queryJSON, err := jsoncodec.Marshal(query)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal query failed")
 		return nil, fmt.Errorf("failed to marshal query: %w", err)
@@ -526,7 +526,7 @@ func (o *openSearchAccess) BulkDeleteData(ctx context.Context, indexName string,
 		}
 
 		// Write the operation metadata line.
-		actionBytes, err := sonic.Marshal(action)
+		actionBytes, err := jsoncodec.Marshal(action)
 		if err != nil {
 			span.SetStatus(codes.Error, "Marshal delete action failed")
 			return fmt.Errorf("failed to marshal delete action: %w", err)
@@ -566,7 +566,7 @@ func (o *openSearchAccess) Count(ctx context.Context, indexName string, query an
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
 	// Encode the query as JSON.
-	queryJSON, err := sonic.Marshal(query)
+	queryJSON, err := jsoncodec.Marshal(query)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal query failed")
 		return nil, fmt.Errorf("failed to marshal query: %w", err)
@@ -649,7 +649,7 @@ func (o *openSearchAccess) GetIndexStats(ctx context.Context, indexName string) 
 		} `json:"_all"`
 	}
 
-	err = sonic.Unmarshal(resBytes, &resp)
+	err = jsoncodec.Unmarshal(resBytes, &resp)
 	if err != nil {
 		span.SetStatus(codes.Error, "Unmarshal GetIndexStats response failed")
 		return nil, fmt.Errorf("failed to unmarshal GetIndexStats response: %w", err)
@@ -698,7 +698,7 @@ func (o *openSearchAccess) DeleteByQuery(ctx context.Context, indexName string, 
 	span.SetAttributes(attr.Key("index_name").String(indexName))
 
 	// Encode the query as JSON.
-	queryJSON, err := sonic.Marshal(query)
+	queryJSON, err := jsoncodec.Marshal(query)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal query failed")
 		return fmt.Errorf("failed to marshal query: %w", err)

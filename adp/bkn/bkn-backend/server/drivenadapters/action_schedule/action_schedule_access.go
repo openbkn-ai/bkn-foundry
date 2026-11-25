@@ -13,8 +13,8 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -58,14 +58,14 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	instanceIdentitiesStr, err := sonic.MarshalString(schedule.InstanceIdentities)
+	instanceIdentitiesStr, err := jsoncodec.MarshalString(schedule.InstanceIdentities)
 	if err != nil {
 		logger.Errorf("Failed to marshal _instance_identities: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Marshal _instance_identities failed")
 		return err
 	}
 
-	dynamicParamsStr, err := sonic.MarshalString(schedule.DynamicParams)
+	dynamicParamsStr, err := jsoncodec.MarshalString(schedule.DynamicParams)
 	if err != nil {
 		logger.Errorf("Failed to marshal dynamic_params: %s", common.SafeErrorSummary(err))
 		span.SetStatus(codes.Error, "Marshal dynamic_params failed")
@@ -154,7 +154,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 		builder = builder.Set("f_cron_expression", schedule.CronExpression)
 	}
 	if schedule.InstanceIdentities != nil {
-		instanceIdentitiesStr, err := sonic.MarshalString(schedule.InstanceIdentities)
+		instanceIdentitiesStr, err := jsoncodec.MarshalString(schedule.InstanceIdentities)
 		if err != nil {
 			logger.Errorf("Failed to marshal _instance_identities: %s", common.SafeErrorSummary(err))
 			span.SetStatus(codes.Error, "Marshal _instance_identities failed")
@@ -163,7 +163,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 		builder = builder.Set("f_instance_identities", instanceIdentitiesStr)
 	}
 	if schedule.DynamicParams != nil {
-		dynamicParamsStr, err := sonic.MarshalString(schedule.DynamicParams)
+		dynamicParamsStr, err := jsoncodec.MarshalString(schedule.DynamicParams)
 		if err != nil {
 			logger.Errorf("Failed to marshal dynamic_params: %s", common.SafeErrorSummary(err))
 			span.SetStatus(codes.Error, "Marshal dynamic_params failed")
@@ -657,14 +657,14 @@ func (a *actionScheduleAccess) scanScheduleValue(scanner scheduleScanner) (*inte
 	}
 
 	if instanceIdentitiesStr != "" {
-		if err := sonic.UnmarshalString(instanceIdentitiesStr, &schedule.InstanceIdentities); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(instanceIdentitiesStr), &schedule.InstanceIdentities); err != nil {
 			logger.Warnf("Failed to unmarshal _instance_identities for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty slice to avoid nil pointer issues
 			schedule.InstanceIdentities = []map[string]any{}
 		}
 	}
 	if dynamicParamsStr != "" {
-		if err := sonic.UnmarshalString(dynamicParamsStr, &schedule.DynamicParams); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(dynamicParamsStr), &schedule.DynamicParams); err != nil {
 			logger.Warnf("Failed to unmarshal dynamic_params for schedule %s: %s", schedule.ID, common.SafeErrorSummary(err))
 			// Initialize to empty map to avoid nil pointer issues
 			schedule.DynamicParams = map[string]any{}

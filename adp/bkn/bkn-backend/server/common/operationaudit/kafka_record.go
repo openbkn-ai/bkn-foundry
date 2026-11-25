@@ -6,6 +6,7 @@
 package operationaudit
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,14 +15,16 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 const kafkaAuditSourceID = "bkn-backend"
+
+var auditEventNamespaceURL = uuid.MustParse("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
 
 // InvalidAuditFieldError identifies a dropped field without exposing its value.
 type InvalidAuditFieldError struct {
@@ -122,7 +125,7 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 	}
 	record := map[string]any{
 		"schema_version": auditpublisher.SchemaVersion,
-		"event_id":       uuid.NewSHA1(uuid.NameSpaceURL, []byte(entry.EventID)).String(),
+		"event_id":       kafkaAuditEventID(entry.EventID),
 		"source_id":      kafkaAuditSourceID,
 		"category":       "audit.admin",
 		"event_name":     "backend.operation.observed",
@@ -164,6 +167,15 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid Kafka Audit record: %w", err)
 	}
 	return value, nil
+}
+
+// kafkaAuditEventID preserves the UUIDv5 mapping used to deduplicate audit events.
+func kafkaAuditEventID(eventID string) string {
+	sum := sha1.Sum(append(auditEventNamespaceURL[:], eventID...))
+	id := uuid.UUID(sum[:16])
+	id[6] = (id[6] & 0x0f) | 0x50 // Version 5.
+	id[8] = (id[8] & 0x3f) | 0x80 // RFC 9562 variant.
+	return id.String()
 }
 
 func boundedAuditReference(value string, limit int) string {

@@ -15,11 +15,11 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -220,13 +220,13 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 	tagsStr := libCommon.TagSlice2TagString(objectType.Tags)
 
 	// 2.0 Serialize the data source.
-	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	dataSourceBytes, err := jsoncodec.Marshal(objectType.DataSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal DataSource, err", err)
 		return err
 	}
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
+	dataPropertiesBytes, err := jsoncodec.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal DataProperties, err", err)
 		return err
@@ -242,13 +242,13 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 	// 2.2 Serialize logical properties.
-	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	logicPropertiesBytes, err := jsoncodec.Marshal(objectType.LogicProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal LogicProperties, err", err)
 		return err
 	}
 	// 2.3 Serialize the primary key array.
-	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	primaryKeysBytes, err := jsoncodec.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal PrimaryKeys, err", err)
 		return err
@@ -400,11 +400,11 @@ func storedDataProperties(properties []*interfaces.DataProperty) []*interfaces.D
 }
 
 func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
-	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	dataSourceBytes, err := jsoncodec.Marshal(objectType.DataSource)
 	if err != nil {
 		return nil, err
 	}
-	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
+	dataPropertiesBytes, err := jsoncodec.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		return nil, err
 	}
@@ -416,11 +416,11 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	logicPropertiesBytes, err := jsoncodec.Marshal(objectType.LogicProperties)
 	if err != nil {
 		return nil, err
 	}
-	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	primaryKeysBytes, err := jsoncodec.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -1271,13 +1271,13 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(objectType.Tags)
 	// 2.0 Serialize the data source.
-	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	dataSourceBytes, err := jsoncodec.Marshal(objectType.DataSource)
 	if err != nil {
 		logger.Errorf("Failed to marshal DataSource, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
+	dataPropertiesBytes, err := jsoncodec.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err
@@ -1293,13 +1293,13 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		return err
 	}
 	// 2.2 Serialize logical properties.
-	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	logicPropertiesBytes, err := jsoncodec.Marshal(objectType.LogicProperties)
 	if err != nil {
 		logger.Errorf("Failed to marshal LogicProperties, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 	// 2.3 Serialize the primary key array.
-	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	primaryKeysBytes, err := jsoncodec.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		logger.Errorf("Failed to marshal PrimaryKeys, err: %v", common.SafeErrorSummary(err))
 		return err
@@ -1464,11 +1464,11 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 }
 
 func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
-	dataSourceBytes, err := sonic.Marshal(objectType.DataSource)
+	dataSourceBytes, err := jsoncodec.Marshal(objectType.DataSource)
 	if err != nil {
 		return nil, err
 	}
-	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
+	dataPropertiesBytes, err := jsoncodec.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		return nil, err
 	}
@@ -1480,11 +1480,11 @@ func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
+	logicPropertiesBytes, err := jsoncodec.Marshal(objectType.LogicProperties)
 	if err != nil {
 		return nil, err
 	}
-	primaryKeysBytes, err := sonic.Marshal(objectType.PrimaryKeys)
+	primaryKeysBytes, err := jsoncodec.Marshal(objectType.PrimaryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -1506,7 +1506,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 	)
 
 	// 2.1 Serialize data properties.
-	dataPropertiesBytes, err := sonic.Marshal(storedDataProperties(objectType.DataProperties))
+	dataPropertiesBytes, err := jsoncodec.Marshal(storedDataProperties(objectType.DataProperties))
 	if err != nil {
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err

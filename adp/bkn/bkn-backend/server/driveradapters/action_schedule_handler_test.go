@@ -13,11 +13,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -76,7 +76,7 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("kn1", true, nil)
 			ass.EXPECT().CreateSchedule(gomock.Any(), gomock.Any()).Return("sched1", nil)
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -88,7 +88,7 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 		Convey("Failed when KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, nil)
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -104,7 +104,7 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -132,7 +132,7 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -182,7 +182,7 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(existingSchedule, nil)
 			ass.EXPECT().UpdateSchedule(gomock.Any(), "sched1", gomock.Any()).Return(nil)
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -198,7 +198,7 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_NotFound},
 			})
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -212,7 +212,7 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 				ID: "sched1", KNID: "other-kn", Branch: interfaces.MAIN_BRANCH,
 			}, nil)
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -229,7 +229,7 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -271,7 +271,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatus(t *testing.T) {
 			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(existingSchedule, nil)
 			ass.EXPECT().UpdateScheduleStatus(gomock.Any(), "sched1", interfaces.ScheduleStatusActive).Return(nil)
 
-			body, _ := sonic.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
+			body, _ := jsoncodec.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -285,7 +285,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatus(t *testing.T) {
 				ID: "sched1", KNID: "other-kn", Branch: interfaces.MAIN_BRANCH,
 			}, nil)
 
-			body, _ := sonic.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
+			body, _ := jsoncodec.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -302,7 +302,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatus(t *testing.T) {
 				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
-			body, _ := sonic.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
+			body, _ := jsoncodec.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -562,7 +562,7 @@ func Test_ActionScheduleRestHandler_CreateActionScheduleByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
 			ass.EXPECT().CreateSchedule(gomock.Any(), gomock.Any()).Return("sched1", nil)
 
-			body, _ := sonic.Marshal(validReq)
+			body, _ := jsoncodec.Marshal(validReq)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-schedules", bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -590,7 +590,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleByIn(t *testing.T) {
 			}, nil)
 			ass.EXPECT().UpdateSchedule(gomock.Any(), schedID, gomock.Any()).Return(nil)
 
-			body, _ := sonic.Marshal(interfaces.ActionScheduleUpdateRequest{Name: "updated", CronExpression: "0 0 * * *"})
+			body, _ := jsoncodec.Marshal(interfaces.ActionScheduleUpdateRequest{Name: "updated", CronExpression: "0 0 * * *"})
 			req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-schedules/"+schedID, bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -618,7 +618,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatusByIn(t *testing.T)
 			}, nil)
 			ass.EXPECT().UpdateScheduleStatus(gomock.Any(), schedID, interfaces.ScheduleStatusActive).Return(nil)
 
-			body, _ := sonic.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
+			body, _ := jsoncodec.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
 			req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-schedules/"+schedID+"/status", bytes.NewReader(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")

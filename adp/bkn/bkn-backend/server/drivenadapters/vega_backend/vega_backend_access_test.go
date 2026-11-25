@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -337,7 +337,7 @@ func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, json.Number("18446744073709551615"), nested["uint64_max"])
 
-	wire, err := sonic.Marshal(response)
+	wire, err := jsoncodec.Marshal(response)
 	require.NoError(t, err)
 	for _, literal := range expected {
 		assert.Contains(t, string(wire), literal)

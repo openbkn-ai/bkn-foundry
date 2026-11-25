@@ -11,9 +11,9 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -308,7 +308,7 @@ func (vta *valueTypeAccess) queryIn(tx *sql.Tx, sqlStr string, vals []any) ([]*i
 }
 
 func marshalDefinition(definition interfaces.ValueTypeDefinition) (string, error) {
-	b, err := sonic.Marshal(definition)
+	b, err := jsoncodec.Marshal(definition)
 	if err != nil {
 		return "", err
 	}

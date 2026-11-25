@@ -8,7 +8,7 @@ package relation_type
 import (
 	"context"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -66,7 +66,7 @@ func declarationValues(relationType *interfaces.RelationType) ([]any, error) {
 	}
 	var constraints any
 	if !relationType.Constraints.IsEmpty() {
-		b, err := sonic.Marshal(relationType.Constraints)
+		b, err := jsoncodec.Marshal(relationType.Constraints)
 		if err != nil {
 			return nil, err
 		}

@@ -25,14 +25,14 @@ type ActionSchedule struct {
 	InstanceIdentities []map[string]any `json:"_instance_identities,omitempty"`
 	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
 	Status             string           `json:"status"`
-	LastRunTime        int64            `json:"last_run_time,omitempty"`
-	NextRunTime        int64            `json:"next_run_time,omitempty"`
+	LastRunTime        int64            `json:"last_run_time,omitzero"`
+	NextRunTime        int64            `json:"next_run_time,omitzero"`
 	LockHolder         string           `json:"lock_holder,omitempty"`
-	LockTime           int64            `json:"lock_time,omitempty"`
+	LockTime           int64            `json:"lock_time,omitzero"`
 	Creator            AccountInfo      `json:"creator,omitempty"`
-	CreateTime         int64            `json:"create_time,omitempty"`
+	CreateTime         int64            `json:"create_time,omitzero"`
 	Updater            AccountInfo      `json:"updater,omitempty"`
-	UpdateTime         int64            `json:"update_time,omitempty"`
+	UpdateTime         int64            `json:"update_time,omitzero"`
 	ExecutionSubject   AccountInfo      `json:"execution_subject,omitempty"`
 }
 

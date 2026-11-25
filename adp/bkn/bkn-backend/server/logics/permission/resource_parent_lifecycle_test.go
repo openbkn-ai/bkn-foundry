@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"uuid"
 
-	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -36,8 +36,8 @@ func TestPrepareKNChildResourceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated ID %q is not a UUID: %v", id, err)
 	}
-	if generatedID.Version() != 7 {
-		t.Fatalf("generated UUID version = %d, want 7", generatedID.Version())
+	if version := generatedID[6] >> 4; version != 7 {
+		t.Fatalf("generated UUID version = %d, want 7", version)
 	}
 	if _, err := PrepareKNChildResourceID(context.Background(), "bad/id"); err == nil {
 		t.Fatal("ID containing a slash must be rejected")
