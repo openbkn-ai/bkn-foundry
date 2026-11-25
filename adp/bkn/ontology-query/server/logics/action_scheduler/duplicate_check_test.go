@@ -8,7 +8,9 @@ package action_scheduler
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -16,6 +18,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
@@ -38,6 +41,38 @@ func TestDuplicateFingerprintPreservesHistoricalDigest(t *testing.T) {
 	const want = "46e998cb3d091a160f2aea9f7ae2bf7c9f05f655e83a8980072b0da5350c49a1"
 	if got != want {
 		t.Fatalf("computeDuplicateFingerprint() = %q, want %q", got, want)
+	}
+}
+
+func TestDuplicateFingerprintNormalizesRelationCondition(t *testing.T) {
+	instances := []interfaces.ObjectSystemInfo{{InstanceIdentity: map[string]any{"id": "one"}}}
+	objectInput := map[string]any{"id": "one"}
+	operation := &interfaces.ActionOperationConfig{
+		Type: "relation", RelationTypeID: "membership", RelationOperation: "create", AnchorRole: "source",
+		OtherObjectCondition: &cond.CondCfg{Name: "status", Operation: "==", Value: "open"},
+	}
+	// This is one of the byte sequences emitted before condition keys were sorted.
+	const legacyInput = `{"id":"one"}
+dynamic_params:null
+action_context:[{"type":"relation","relation_type_id":"membership","relation_operation":"create","anchor_role":"source","other_object_condition":{"field":"status","operation":"==","value":"open"}},{"id":"one"}]`
+	legacyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(legacyInput)))
+	for range 64 {
+		hash, err := computeDuplicateFingerprint(instances, nil, operation, objectInput)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hash != legacyHash {
+			t.Fatalf("fingerprint = %s, want %s", hash, legacyHash)
+		}
+	}
+
+	operation.OtherObjectCondition.Value = "closed"
+	changed, err := computeDuplicateFingerprint(instances, nil, operation, objectInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == legacyHash {
+		t.Fatal("changing the relation condition must change the fingerprint")
 	}
 }
 

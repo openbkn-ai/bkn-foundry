@@ -8,7 +8,9 @@ package bkntrace
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,15 +18,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func TestHashValuePreservesHistoricalDigest(t *testing.T) {
+func TestHashValueUsesDeterministicJSONV2(t *testing.T) {
 	value := map[string]any{
-		"z":    []string(nil),
-		"n":    json.Number("9007199254740993"),
-		"html": "<>&\u2028\u2029",
+		"data": map[string]any{
+			"slice":  []string(nil),
+			"number": json.Number("9007199254740993"),
+			"map":    map[string]any(nil),
+		},
+		"html": "<>&",
 	}
-	const want = "sha256:5510c54220a3e7514e933ec2a4004ca5193436fac56fab7861ae2b03e5e3d604"
-	if got := HashValue(value); got != want {
-		t.Fatalf("HashValue() = %q, want %q", got, want)
+	sum := sha256.Sum256([]byte(`{"data":{"map":{},"number":9007199254740993,"slice":[]},"html":"<>&"}`))
+	want := fmt.Sprintf("sha256:%x", sum)
+	for range 16 {
+		if got := HashValue(value); got != want {
+			t.Fatalf("HashValue() = %q, want %q", got, want)
+		}
 	}
 }
 

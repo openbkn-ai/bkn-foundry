@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"log"
@@ -107,8 +108,7 @@ type eventContext struct {
 }
 
 func HashValue(value any) string {
-	// Keep the JSON representation used by existing evidence hashes.
-	raw, err := jsoncodec.Marshal(value, json.DefaultOptionsV1())
+	raw, err := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}

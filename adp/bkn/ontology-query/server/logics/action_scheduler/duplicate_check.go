@@ -83,7 +83,8 @@ func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynami
 	}
 	parts = append(parts, "dynamic_params:"+string(paramsJSON))
 	if len(executionContext) > 0 {
-		encoded, err := jsoncodec.Marshal(executionContext, duplicateFingerprintOptions)
+		// Relation conditions emit raw JSON through MarshalJSON. Sort those keys before hashing.
+		encoded, err := jsoncodec.Marshal(executionContext, duplicateFingerprintOptions, jsontext.ReorderRawObjects(true))
 		if err != nil {
 			return "", fmt.Errorf("marshal action context: %w", err)
 		}
