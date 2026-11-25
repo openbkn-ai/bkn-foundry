@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // KnOperationType Business knowledge network operator
@@ -78,7 +80,7 @@ type DataProperty struct {
 	// bkn-backend. A property without declarations carries none of them.
 	Aliases     []string             `json:"aliases,omitempty"`
 	Semantic    string               `json:"semantic,omitempty"`
-	Required    bool                 `json:"required,omitempty"` // Absent means false; bkn-backend omits false
+	Required    bool                 `json:"required,omitzero"` // Absent means false; bkn-backend omits false
 	Constraints *PropertyConstraints `json:"constraints,omitempty"`
 }
 
@@ -90,7 +92,7 @@ type PropertyConstraints struct {
 	Length    *LengthRange `json:"length,omitempty"`
 	Pattern   string       `json:"pattern,omitempty"`
 	Unit      string       `json:"unit,omitempty"`
-	Unique    bool         `json:"unique,omitempty"`
+	Unique    bool         `json:"unique,omitzero"`
 	CRS       string       `json:"crs,omitempty"`
 	Timezone  string       `json:"timezone,omitempty"`
 }
@@ -123,7 +125,7 @@ type PropertyParameter struct {
 	Type             string `json:"type"`
 	ValueFrom        string `json:"value_from"` // "input", "property", "const"
 	Value            any    `json:"value,omitempty"`
-	IfSystemGenerate bool   `json:"if_system_generate,omitempty"`
+	IfSystemGenerate bool   `json:"if_system_generate,omitzero"`
 	Comment          string `json:"comment,omitempty"`
 }
 
@@ -134,7 +136,7 @@ type ObjectType struct {
 	Name            string              `json:"name"`                  // Object name
 	Tags            []string            `json:"tags,omitempty"`        // Tags
 	Comment         string              `json:"comment,omitempty"`     // Comment
-	Score           float64             `json:"_score,omitempty"`      // Score
+	Score           float64             `json:"_score,omitzero"`       // Score
 	DataSource      *ResourceInfo       `json:"data_source"`
 	DataProperties  []*DataProperty     `json:"data_properties,omitempty"`  // Data properties
 	LogicProperties []*LogicPropertyDef `json:"logic_properties,omitempty"` // Logic properties
@@ -145,7 +147,7 @@ type ObjectType struct {
 	// DataSourceMetadataUnavailable is bkn-backend reporting that it could not read the bound
 	// resource for this response, so condition_operations are missing rather than empty: what the
 	// object type can be searched by is unknown, not "nothing".
-	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty"`
+	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitzero"`
 	// Lifecycle says whether the object type is still in use (BKN spec 3.0 §4.3); nil is active.
 	// It reaches every answer that carries the object type, so one looked up by id says what
 	// replaces it.
@@ -158,12 +160,12 @@ type ObjectType struct {
 	RelatedMetrics []*RelatedMetric `json:"related_metrics,omitempty"`
 	// RelatedMetricCount is the same information one number wide, for the get_kn_detail
 	// summary: enough to decide whether drilling into this object type is worth it.
-	RelatedMetricCount int `json:"related_metric_count,omitempty"`
+	RelatedMetricCount int `json:"related_metric_count,omitzero"`
 
 	// DataPropertyCount and LogicPropertyCount stand in for the property lists when a
 	// get_kn_detail answer was too large to carry them (see ReduceToOutline).
-	DataPropertyCount  int `json:"data_property_count,omitempty"`
-	LogicPropertyCount int `json:"logic_property_count,omitempty"`
+	DataPropertyCount  int `json:"data_property_count,omitzero"`
+	LogicPropertyCount int `json:"logic_property_count,omitzero"`
 }
 
 // RelatedMetric is one published object-metric version advertised by get_object_types.
@@ -192,7 +194,7 @@ type RelationType struct {
 	Name       string   `json:"name"`                  // Relation type name
 	Tags       []string `json:"tags,omitempty"`        // Tags
 	Comment    string   `json:"comment,omitempty"`     // Comment
-	Score      float64  `json:"_score,omitempty"`      // Score
+	Score      float64  `json:"_score,omitzero"`       // Score
 
 	SourceObjectTypeID string `json:"source_object_type_id"`        // Source object type ID
 	TargetObjectTypeID string `json:"target_object_type_id"`        // Target object type ID
@@ -278,7 +280,7 @@ type ActionType struct {
 	Name       string   `json:"name"`                  // Action type name
 	Tags       []string `json:"tags,omitempty"`        // Tags
 	Comment    string   `json:"comment,omitempty"`     // Comment
-	Score      float64  `json:"_score,omitempty"`      // Score
+	Score      float64  `json:"_score,omitzero"`       // Score
 
 	ObjectTypeID string `json:"object_type_id"` // Object type ID bound to action type
 	// Lifecycle says whether the action type is still in use (BKN spec 3.0 §4.3); nil is active.
@@ -347,39 +349,39 @@ type QueryConceptsReq struct {
 	NeedTotal     bool            `json:"need_total"` // Whether total count is needed, default false
 	// ExcludeDeprecated asks bkn-backend to leave deprecated concepts out. A bkn-backend before
 	// the field ignores it and returns them.
-	ExcludeDeprecated bool `json:"exclude_deprecated,omitempty"`
+	ExcludeDeprecated bool `json:"exclude_deprecated,omitzero"`
 }
 
 // Concepts Retrieved concepts list
 type Concepts struct {
 	Entries     []any `json:"entries"`
-	TotalCount  int64 `json:"total_count,omitempty"`
+	TotalCount  int64 `json:"total_count,omitzero"`
 	SearchAfter []any `json:"search_after,omitempty"`
 	OverallMs   int64 `json:"overall_ms"`
 }
 
 // ObjectTypeConcepts Object type concepts list
 type ObjectTypeConcepts struct {
-	Entries    []*ObjectType `json:"entries"`               // Object type data
-	TotalCount int64         `json:"total_count,omitempty"` // Total count
+	Entries    []*ObjectType `json:"entries"`              // Object type data
+	TotalCount int64         `json:"total_count,omitzero"` // Total count
 }
 
 // RelationTypeConcepts Relation type concepts list
 type RelationTypeConcepts struct {
-	Entries    []*RelationType `json:"entries"`               // Relation type data
-	TotalCount int64           `json:"total_count,omitempty"` // Total count
+	Entries    []*RelationType `json:"entries"`              // Relation type data
+	TotalCount int64           `json:"total_count,omitzero"` // Total count
 }
 
 // ActionTypeConcepts Action type concepts list
 type ActionTypeConcepts struct {
-	Entries    []*ActionType `json:"entries"`               // Action type data
-	TotalCount int64         `json:"total_count,omitempty"` // Total count
+	Entries    []*ActionType `json:"entries"`              // Action type data
+	TotalCount int64         `json:"total_count,omitzero"` // Total count
 }
 
 // MetricType Metric type structure definition
 type MetricType struct {
 	ID                 string `json:"id"`                            // Metric ID
-	Version            int    `json:"version,omitempty"`             // Published object-metric version
+	Version            int    `json:"version,omitzero"`              // Published object-metric version
 	Name               string `json:"name"`                          // Metric name
 	Comment            string `json:"comment,omitempty"`             // Metric comment
 	UnitType           string `json:"unit_type,omitempty"`           // Unit type
@@ -394,8 +396,8 @@ type MetricType struct {
 
 // MetricTypeConcepts Metric type concepts list
 type MetricTypeConcepts struct {
-	Entries    []*MetricType `json:"entries"`               // Metric type data
-	TotalCount int64         `json:"total_count,omitempty"` // Total count
+	Entries    []*MetricType `json:"entries"`              // Metric type data
+	TotalCount int64         `json:"total_count,omitzero"` // Total count
 }
 
 // KnowledgeNetworkDetail Knowledge network detail with full schema
@@ -420,14 +422,28 @@ type KnowledgeNetworkDetail struct {
 
 	// The three counts appear only on the navigation shell -- see ReduceToNavigationShell.
 	// On every other answer the arrays are the count, so repeating it would be noise.
-	ObjectTypeCount   int `json:"object_type_count,omitempty"`
-	RelationTypeCount int `json:"relation_type_count,omitempty"`
-	ActionTypeCount   int `json:"action_type_count,omitempty"`
+	ObjectTypeCount   int `json:"object_type_count,omitzero"`
+	RelationTypeCount int `json:"relation_type_count,omitzero"`
+	ActionTypeCount   int `json:"action_type_count,omitzero"`
 	// Notice appears whenever the answer carries less than the level asked for: on the
 	// navigation shell, and on an outline (see FitWithin).
 	Notice string `json:"notice,omitempty"`
 
 	navigationShell bool
+}
+
+// MarshalJSON marks concept lists omitted by the navigation shell as null.
+func (d KnowledgeNetworkDetail) MarshalJSON() ([]byte, error) {
+	type detail KnowledgeNetworkDetail
+	if !d.navigationShell {
+		return jsoncodec.Marshal(detail(d))
+	}
+	return jsoncodec.Marshal(struct {
+		detail
+		ObjectTypes   *[]*ObjectType   `json:"object_types"`
+		RelationTypes *[]*RelationType `json:"relation_types"`
+		ActionTypes   *[]*ActionType   `json:"action_types"`
+	}{detail: detail(d)})
 }
 
 // MountedCapabilityCounts is how many capabilities of each kind a network has mounted.
@@ -676,7 +692,7 @@ type ObjectTypesResp struct {
 	// The two below appear only when the caller listed instead of naming ids.
 	// TotalCount is how many object types the caller may see in this network, so a
 	// page can be read as "20 of 1000" rather than "20, and who knows".
-	TotalCount int64 `json:"total_count,omitempty"`
+	TotalCount int64 `json:"total_count,omitzero"`
 	// NextOffset is the offset that continues the walk, absent on the last page.
 	// The caller should not compute it: what it means is this service's business,
 	// and a caller that derives it will be wrong the day the walk changes.
@@ -758,7 +774,7 @@ type RelationTypesResp struct {
 
 	// The three below appear only when the caller listed instead of naming ids, and
 	// mean what they mean on ObjectTypesResp.
-	TotalCount int64  `json:"total_count,omitempty"`
+	TotalCount int64  `json:"total_count,omitzero"`
 	NextOffset *int   `json:"next_offset,omitempty"`
 	Notice     string `json:"notice,omitempty"`
 }
@@ -850,8 +866,8 @@ func (d *KnowledgeNetworkDetail) FilterRelationTypes(ids []string) (matched []*R
 // ListKnReq lists the query parameters of the knowledge network.
 type ListKnReq struct {
 	NamePattern string `json:"name_pattern,omitempty"` // Fuzzy-filter by name.
-	Limit       int    `json:"limit,omitempty"`        // Number of single pages, default 20.
-	Offset      int    `json:"offset,omitempty"`       // Offset, used to turn pages.
+	Limit       int    `json:"limit,omitzero"`         // Number of single pages, default 20.
+	Offset      int    `json:"offset,omitzero"`        // Offset, used to turn pages.
 	Sort        string `json:"sort,omitempty"`         // Sortfield, default update_time.
 	Direction   string `json:"direction,omitempty"`    // Asc / desc, default desc.
 }
@@ -885,10 +901,10 @@ type CypherQueryReq struct {
 	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
 	// Explain asks for the query's plan instead of its rows: the query is
 	// compiled and authorized as it would be to run, and nothing is read.
-	Explain bool `json:"explain,omitempty"`
+	Explain bool `json:"explain,omitzero"`
 	// TimeoutSec asks bkn-backend for a statement timeout shorter than its
 	// configured one, in seconds; zero leaves the configured one.
-	TimeoutSec int `json:"timeout_sec,omitempty"`
+	TimeoutSec int `json:"timeout_sec,omitzero"`
 }
 
 // CypherQueryColumn is one output column of a Cypher query.
@@ -913,7 +929,7 @@ type CypherQueryResp struct {
 	Plan json.RawMessage `json:"plan,omitempty"`
 	// Limited says the query wrote no LIMIT and stopped at the default
 	// number of rows, so more may match.
-	Limited            bool                     `json:"limited,omitempty"`
+	Limited            bool                     `json:"limited,omitzero"`
 	TraceDescriptor    json.RawMessage          `json:"-"`
 	PermissionImpacts  []ObjectPermissionImpact `json:"-"`
 	PermissionGuidance []*PermissionGuidance    `json:"permission_guidance,omitempty"`
@@ -924,7 +940,7 @@ type CypherQueryResp struct {
 type ObjectPermissionImpact struct {
 	ObjectTypeID     string   `json:"object_type_id"`
 	Properties       []string `json:"properties,omitempty"`
-	RowFilterApplied bool     `json:"row_filter_applied,omitempty"`
+	RowFilterApplied bool     `json:"row_filter_applied,omitzero"`
 }
 
 type BknBackendAccess interface {
@@ -1020,7 +1036,7 @@ type ValueType struct {
 type ValueTypeEnum struct {
 	Value      string `json:"value"`
 	Display    string `json:"display"`
-	Deprecated bool   `json:"deprecated,omitempty"`
+	Deprecated bool   `json:"deprecated,omitzero"`
 }
 
 // CapabilityRef is one capability a knowledge network branch has bound. Only the reference

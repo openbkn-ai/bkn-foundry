@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -88,7 +88,7 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 			Status      string `json:"status"`
 		} `json:"data"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillListResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -194,7 +194,7 @@ func (o *operatorIntegrationClient) skillContentFromResponse(ctx context.Context
 		Files   []interfaces.SkillFileSummary `json:"files"`
 		Runtime *interfaces.SkillRuntime      `json:"runtime"`
 	}
-	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err := jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillContentResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -270,7 +270,7 @@ func (o *operatorIntegrationClient) skillFileFromResponse(ctx context.Context, r
 		MimeType string `json:"mime_type"`
 		FileType string `json:"file_type"`
 	}
-	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err := jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillFileReadResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -323,7 +323,7 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	}
 
 	resp := &interfaces.ExecuteSkillResponse{}
-	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillExecutionResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -437,7 +437,7 @@ func (o *operatorIntegrationClient) GetSkillNamesByIDs(ctx context.Context,
 			Name string `json:"name"`
 		} `json:"entries"`
 	}
-	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillNamesByIDs] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillNameLookupInvalid", map[string]any{})
 		if renderErr != nil {

@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -24,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -119,12 +120,9 @@ type eventContext struct {
 	businessRefs      []BusinessRef
 }
 
-// HashValue is ConfigStd, not the default sonic config, and the difference is not cosmetic: the
-// default config neither sorts map keys nor escapes HTML, so hashing a map returns a different
-// digest on every call - Go randomises map iteration order. ConfigStd reproduces encoding/json
-// byte for byte, which is what every peer that recomputes one of these digests still uses.
+// HashValue reports a stable digest of business values, including maps.
 func HashValue(value any) string {
-	raw, err := sonic.ConfigStd.Marshal(value)
+	raw, err := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}
@@ -578,7 +576,7 @@ func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int,
 	truncationReason := ""
 	if descriptorMap, ok := descriptorPayload.(map[string]any); ok {
 		limitSource, _ := descriptorMap["limit_source"].(string)
-		effectiveLimit, hasLimit := descriptorMap["effective_limit"].(float64)
+		effectiveLimit, hasLimit := floatValue(descriptorMap["effective_limit"])
 		if limitSource == "default" && hasLimit && effectiveLimit > 0 && rowCount >= int(effectiveLimit) {
 			truncated = true
 			truncationReason = "default_limit_reached"
@@ -643,7 +641,7 @@ func descriptorValue(raw json.RawMessage) any {
 		return nil
 	}
 	var value map[string]any
-	if sonic.ConfigStd.Unmarshal(raw, &value) != nil ||
+	if jsoncodec.Unmarshal(raw, &value) != nil ||
 		stringValue(value["version"]) != "semantic-query-descriptor/v1" ||
 		stringValue(value["producer_profile"]) == "" {
 		return nil
@@ -953,7 +951,7 @@ func coreHTTPError(resp *http.Response) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_ = sonic.Unmarshal(body, &payload)
+	_ = jsoncodec.Unmarshal(body, &payload)
 	if payload.Error.Code != "" || payload.Error.Message != "" {
 		payload.Code = payload.Error.Code
 		payload.Message = payload.Error.Message
@@ -1005,14 +1003,8 @@ type trace30OperationEdge struct {
 }
 
 func trace30EvidenceEvent(traceBlock map[string]any, event Event, derivedRefs []BusinessRef) (trace30Event, error) {
-	// agent-observability admits an event only if payload_hash equals the canonical hash of the
-	// envelope it receives (ledgervo.CanonicalPayloadHash), so the digest is taken over that same
-	// canonical form rather than over these bytes. Hashing the bytes as marshalled held only while
-	// every value in the envelope already came out the way encoding/json writes it: default sonic
-	// left map keys unsorted and every event was rejected (#1092), and ConfigStd still writes struct
-	// fields in declaration order, so the schema snapshot, whose definition is a struct, was
-	// rejected on every call (#1711). ConfigStd stays for sorted, stable output.
-	envelope, err := sonic.ConfigStd.Marshal(event)
+	// The receiver compares payload_hash against its canonical form of the envelope.
+	envelope, err := jsoncodec.Marshal(event)
 	if err != nil {
 		return trace30Event{}, err
 	}
@@ -1055,8 +1047,8 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, derivedRefs []
 
 // canonicalPayloadHash reproduces agent-observability's ledgervo.CanonicalPayloadHash, the value
 // the ledger compares payload_hash against: decode into generic JSON, re-encode with
-// encoding/json, sha256. Keep it on encoding/json rather than sonic - escaping and float
-// formatting have to match the receiver byte for byte. The shared test vector in both modules
+// encoding/json, sha256. Escaping and float formatting have to match the receiver byte for byte.
+// The shared test vector in both modules
 // fails if either side changes the algorithm.
 func canonicalPayloadHash(envelope []byte) string {
 	var decoded any
@@ -1221,7 +1213,7 @@ func intValue(value any, fallback int) int {
 		return int(typed)
 	case json.Number:
 		// Downstream bodies are decoded with UseNumber so that wide integers keep
-		// their digits; see drivenadapters.precisionJSON.
+		// their digits; see comm-go/jsoncodec.
 		if parsed, err := typed.Int64(); err == nil {
 			return int(parsed)
 		}
@@ -1506,12 +1498,12 @@ func asMap(value any) (map[string]any, bool) {
 	if itemMap, ok := value.(map[string]any); ok {
 		return itemMap, true
 	}
-	raw, err := sonic.ConfigStd.Marshal(value)
+	raw, err := jsoncodec.Marshal(value)
 	if err != nil {
 		return nil, false
 	}
 	var itemMap map[string]any
-	if err := common.UnmarshalPreciseJSON(raw, &itemMap); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &itemMap); err != nil {
 		return nil, false
 	}
 	return itemMap, true

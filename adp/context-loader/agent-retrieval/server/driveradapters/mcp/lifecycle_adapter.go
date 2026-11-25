@@ -12,14 +12,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"maps"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -146,7 +147,7 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 // payload. The original terminal value is hashed for correlation, while the
 // stored value carries only status and a non-sensitive error classification.
 func terminalPayloadForTool(toolName string, payload any, failed bool) ([]byte, error) {
-	raw, err := sonic.Marshal(payload)
+	raw, err := jsoncodec.Marshal(payload)
 	if err != nil || toolName != toolKeyExecuteTool {
 		return raw, err
 	}
@@ -160,7 +161,7 @@ func terminalPayloadForTool(toolName string, payload any, failed bool) ([]byte, 
 			summary["stage"] = failure.Stage
 		}
 	}
-	return sonic.Marshal(summary)
+	return jsoncodec.Marshal(summary)
 }
 
 func toolResultErrorMessage(result *mcpsdk.CallToolResult) string {
@@ -197,7 +198,7 @@ func normalizedBusinessInputForTool(toolName, knowledgeNetworkID string, input m
 				normalized[key] = value
 			}
 		}
-		raw, _ := sonic.ConfigStd.Marshal(normalized)
+		raw, _ := jsoncodec.Marshal(normalized, jsonv2.Deterministic(true))
 		return raw
 	}
 
@@ -207,7 +208,7 @@ func normalizedBusinessInputForTool(toolName, knowledgeNetworkID string, input m
 			normalized[key] = value
 		}
 	}
-	raw, _ := sonic.ConfigStd.Marshal(normalized)
+	raw, _ := jsoncodec.Marshal(normalized, jsonv2.Deterministic(true))
 	return raw
 }
 
@@ -527,11 +528,11 @@ func ensureLifecycleIdempotency(
 			stableArgs[key] = value
 		}
 	}
-	raw, _ := sonic.ConfigStd.Marshal(struct {
+	raw, _ := jsoncodec.Marshal(struct {
 		Name      string
 		RequestID string
 		Args      map[string]any
-	}{name, requestID, stableArgs})
+	}{name, requestID, stableArgs}, jsonv2.Deterministic(true))
 	args["idempotency_key"] = "mcp:" + strings.TrimPrefix(hashBytes(raw), "sha256:")[:32]
 }
 
@@ -563,7 +564,7 @@ func traceCoreError(apiErr bkntrace.APIError) lifecycleError {
 }
 
 func lifecycleSuccessResult(target any) (*mcpsdk.CallToolResult, error) {
-	raw, err := sonic.Marshal(target)
+	raw, err := jsoncodec.Marshal(target)
 	if err != nil {
 		return nil, err
 	}

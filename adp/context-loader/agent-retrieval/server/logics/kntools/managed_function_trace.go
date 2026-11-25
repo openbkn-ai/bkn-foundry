@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,7 +18,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -92,7 +94,7 @@ func (m *managedFunctionGuard) Execute(
 		"function_version": normalizedFunctionVersion(input.Descriptor.Version),
 		"arguments":        redactFunctionPayload(input.Arguments),
 	}
-	rawInput, err := sonic.ConfigStd.Marshal(inputPayload)
+	rawInput, err := jsoncodec.Marshal(inputPayload, jsonv2.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("serialize managed function input: %w", err)
 	}
@@ -251,6 +253,9 @@ func managedFunctionResultCode(raw any) (int, bool) {
 		return int(value), true
 	case float64:
 		return int(value), true
+	case json.Number:
+		status, err := strconv.Atoi(value.String())
+		return status, err == nil
 	case string:
 		status, err := strconv.Atoi(strings.TrimSpace(value))
 		return status, err == nil
@@ -270,7 +275,7 @@ func managedFunctionCapabilityProfile(input ManagedFunctionTraceInput) []byte {
 		"failure_policy":        "preserve_execution_and_downgrade", "resolution": "matched",
 	}
 	// Result capture is additive; this receipt contract does not depend on capture.
-	raw, _ := sonic.ConfigStd.Marshal(profile)
+	raw, _ := jsoncodec.Marshal(profile)
 	return raw
 }
 

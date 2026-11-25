@@ -10,10 +10,9 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/toon-format/toon-go"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -51,7 +50,7 @@ func MarshalResponse(format ResponseFormat, body interface{}) (contentType strin
 	}
 	switch format {
 	case FormatJSON:
-		bodyBytes, err = sonic.Marshal(body)
+		bodyBytes, err = jsoncodec.Marshal(body)
 		if err != nil {
 			return "", nil, err
 		}
@@ -63,7 +62,7 @@ func MarshalResponse(format ResponseFormat, body interface{}) (contentType strin
 		}
 		return ContentTypeTOON, bodyBytes, nil
 	default: // fallback to JSON for unknown values
-		bodyBytes, err = sonic.Marshal(body)
+		bodyBytes, err = jsoncodec.Marshal(body)
 		if err != nil {
 			return "", nil, err
 		}
@@ -91,7 +90,7 @@ func marshalTOON(body interface{}) ([]byte, error) {
 		return toon.Marshal(safe, toon.WithLengthMarkers(true))
 	}
 	// struct → JSON → any → TOON (retain the field name of json tag)
-	jsonBytes, err := sonic.Marshal(body)
+	jsonBytes, err := jsoncodec.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func marshalTOON(body interface{}) ([]byte, error) {
 	// UseNumber, not the default configuration: the round-trip is the last place
 	// a wide integer can be rounded, and it would undo the precision the driven
 	// adapters went out of their way to keep. See openbkn-ai/bkn-studio#464.
-	if err := common.UnmarshalPreciseJSON(jsonBytes, &m); err != nil {
+	if err := jsoncodec.Unmarshal(jsonBytes, &m); err != nil {
 		return nil, err
 	}
 	// toon-go renders json.Number through float64, so anything past the IEEE 754

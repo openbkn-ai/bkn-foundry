@@ -17,9 +17,9 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -89,7 +89,7 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return nil, err
 		}
@@ -111,7 +111,7 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 		} `json:"entries"`
 		TotalCount int64 `json:"total_count"`
 	}{}
-	if err := sonic.Unmarshal(respBody, listed); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, listed); err != nil {
 		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks unmarshal response failed: %v\n", err)
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 		b.logger.Errorf("[BknBackendAccess] get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return err
 		}
@@ -264,7 +264,7 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
 			"BKN returned an incomplete protected response")
 	}
-	if err := sonic.Unmarshal(respBody, out); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, out); err != nil {
 		b.logger.Errorf("[BknBackendAccess] %s unmarshal failed: %v\n", operation, err)
 		return err
 	}
@@ -300,7 +300,7 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		// and that is the whole value of it to a caller writing a query, so it
 		// is carried through rather than flattened into a generic failure.
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal BaseError failed: %v\n", err)
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
@@ -331,7 +331,7 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		PermissionImpacts []interfaces.ObjectPermissionImpact `json:"permission_impacts"`
 	}
 	// Keep dynamic numbers exact before REST or TOON formats the query rows.
-	if err := unmarshalPrecise(respBody, &wire); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &wire); err != nil {
 		b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal response failed: %v\n", err)
 		return nil, err
 	}
@@ -367,7 +367,7 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 		b.logger.Errorf("[BknBackendAccess] SearchObjectTypes， get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return objectTypes, err
 		}
@@ -381,7 +381,7 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 	}
 
 	// Handle the returned result.
-	if err := sonic.Unmarshal(respBody, objectTypes); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, objectTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess] SearchObjectTypes unmarshal ObjectTypes failed: %v\n", err)
 		return nil, err
 	}
@@ -493,7 +493,7 @@ func (b *bknBackendAccess) GetObjectTypeDetailBranch(ctx context.Context, knID, 
 		b.logger.Errorf("[BknBackendAccess] GetObjectTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyObjectTypes, err
 		}
@@ -510,7 +510,7 @@ func (b *bknBackendAccess) GetObjectTypeDetailBranch(ctx context.Context, knID, 
 	var response struct {
 		Entries []*interfaces.ObjectType `json:"entries"`
 	}
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetObjectTypeDetail unmalshal ObjectTypes failed: %v\n", err)
 		return emptyObjectTypes, err
 	}
@@ -541,7 +541,7 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 		b.logger.Errorf("[BknBackendAccess] SearchRelationTypes get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
@@ -556,7 +556,7 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 	}
 
 	// Handle the returned result.
-	if err := sonic.Unmarshal(respBody, releationTypes); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, releationTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]SearchRelationTypes unmalshal RelationTypes failed: %v\n", err)
 		return nil, err
 	}
@@ -626,7 +626,7 @@ func (b *bknBackendAccess) GetRelationTypeDetailBranch(ctx context.Context, knID
 		b.logger.Errorf("[BknBackendAccess] GetRelationTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyRelationTypes, err
 		}
@@ -643,7 +643,7 @@ func (b *bknBackendAccess) GetRelationTypeDetailBranch(ctx context.Context, knID
 	var response struct {
 		Entries []*interfaces.RelationType `json:"entries"`
 	}
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetRelationTypeDetail unmalshal releationTypes failed: %v\n", err)
 		return emptyRelationTypes, err
 	}
@@ -674,7 +674,7 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 		b.logger.Errorf("[BknBackendAccess] SearchActionTypes get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
@@ -689,7 +689,7 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 	}
 
 	// Handle the returned result.
-	if err := sonic.Unmarshal(respBody, actionTypes); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, actionTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]SearchActionTypes unmalshal actionTypes failed: %v\n", err)
 		return nil, err
 	}
@@ -864,7 +864,7 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 		b.logger.Errorf("[BknBackendAccess] GetActionTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyActionTypes, err
 		}
@@ -881,7 +881,7 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 	var response struct {
 		Entries []*interfaces.ActionType `json:"entries"`
 	}
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetActionTypeDetail unmalshal actionTypes failed: %v\n", err)
 		return emptyActionTypes, err
 	}
@@ -974,7 +974,7 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
 
 			var baseError httperrors.BaseError
-			if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+			if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 				return nil, infraErr.DefaultHTTPError(ctx, respCode,
 					fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
 			}
@@ -987,7 +987,7 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 		}
 
 		parsed := &metricsListResp{}
-		if err := sonic.Unmarshal(respBody, parsed); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, parsed); err != nil {
 			b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListMetricsByObjectTypes unmarshal failed: %v", err)
 			return nil, err
 		}
@@ -1114,7 +1114,7 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKNCapabilities get resp failed, [%s], %v", src, respBody)
 
 		var baseError httperrors.BaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
+		if err := jsoncodec.Unmarshal(respBody, &baseError); err != nil {
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
@@ -1130,7 +1130,7 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 		Entries    []*interfaces.CapabilityRef `json:"entries"`
 		TotalCount int                         `json:"total_count"`
 	}
-	if err := sonic.Unmarshal(respBody, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, &response); err != nil {
 		b.logger.Errorf("[BknBackendAccess] ListKNCapabilities unmarshal failed: %v\n", err)
 		return nil, err
 	}
@@ -1168,7 +1168,7 @@ func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		var baseError httperrors.BaseError
-		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
+		if decodeErr := jsoncodec.Unmarshal(body, &baseError); decodeErr != nil {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
@@ -1180,7 +1180,7 @@ func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
 	}
 
 	var mapping interfaces.KNProxyAccount
-	if len(body) == 0 || sonic.Unmarshal(body, &mapping) != nil ||
+	if len(body) == 0 || jsoncodec.Unmarshal(body, &mapping) != nil ||
 		mapping.KNID != binding.KNID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) || mapping.Version <= 0 ||
 		mapping.LifecycleStatus != "active" || mapping.SyncStatus != "ready" {

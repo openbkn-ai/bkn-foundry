@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Instance payloads are decoded with UseNumber (see drivenadapters.precisionJSON),
+// Instance payloads are decoded with UseNumber (see comm-go/jsoncodec),
 // so every number in them arrives as json.Number rather than float64.
 func TestScoreBucketReadsJSONNumber(t *testing.T) {
 	cases := []struct {

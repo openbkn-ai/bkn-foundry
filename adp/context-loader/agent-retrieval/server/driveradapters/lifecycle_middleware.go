@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,8 +20,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -48,7 +49,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		var input map[string]any
 		if len(bytes.TrimSpace(raw)) == 0 {
 			input = map[string]any{}
-		} else if err := common.UnmarshalPreciseJSON(raw, &input); err != nil {
+		} else if err := jsoncodec.Unmarshal(raw, &input); err != nil {
 			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
 				Code: "operation_required", Message: "business request body must be a JSON object",
 				RequiredAction: "ensure_operation",
@@ -86,7 +87,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			return
 		}
 		businessContext.OperationKey = operationKey
-		downstreamBody, _ := sonic.Marshal(input)
+		downstreamBody, _ := jsoncodec.Marshal(input)
 		c.Request.Body = io.NopCloser(bytes.NewReader(downstreamBody))
 		c.Request.ContentLength = int64(len(downstreamBody))
 
@@ -165,7 +166,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					c.Writer = originalWriter
-					panicPayload, _ := sonic.Marshal(map[string]any{
+					panicPayload, _ := jsoncodec.Marshal(map[string]any{
 						"code": "handler_panic", "message": fmt.Sprint(recovered), "stage": "handler",
 					})
 					_, _, _ = guard.Finish(
@@ -184,7 +185,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		if failed && stage != "" {
 			// Classify the recorded failure from the executing service, while
 			// preserving the original REST body and status for the caller.
-			payload, _ = sonic.Marshal(struct {
+			payload, _ = jsoncodec.Marshal(struct {
 				Code   string          `json:"code"`
 				Stage  string          `json:"stage"`
 				Result json.RawMessage `json:"result"`
@@ -209,7 +210,7 @@ func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
 	if len(trimmed) > 0 && json.Valid(trimmed) {
 		return append(json.RawMessage(nil), trimmed...)
 	}
-	encoded, _ := sonic.Marshal(map[string]any{
+	encoded, _ := jsoncodec.Marshal(map[string]any{
 		"status_code": status,
 		"body":        string(raw),
 	})
@@ -326,7 +327,7 @@ func managedHTTPOperationKey(
 }
 
 func hashHTTPOperationKey(scope string, businessContext bkntrace.BusinessContext, toolName, identity string) string {
-	payload, _ := sonic.Marshal(struct {
+	payload, _ := jsoncodec.Marshal(struct {
 		Scope          string
 		ConversationID string
 		InteractionID  string
@@ -366,11 +367,8 @@ func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.Busi
 			"causation_event_ids": causationIDs,
 		},
 	}
-	// ConfigStd, because value is a map and the default sonic config does not sort map keys: with Go
-	// randomising map iteration order this "normalized" hash came out different on every call, and
-	// so did the operation key built from it, so the same request retried looked like a new
-	// operation every time. Same root cause as #1098, one subsystem over.
-	raw, _ := sonic.ConfigStd.Marshal(value)
+	// Use a stable encoding when deriving the operation key from a map.
+	raw, _ := jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	return hashLifecyclePayload(raw)
 }
 
@@ -425,7 +423,7 @@ func writeLifecycleHTTPError(c *gin.Context, status int, value bkntrace.APIError
 func writeLifecycleHTTPResult(c *gin.Context, status int, value any) {
 	c.Header("Content-Type", "application/json")
 	c.Status(status)
-	_ = sonic.ConfigDefault.NewEncoder(c.Writer).Encode(value)
+	_ = jsonv2.MarshalWrite(c.Writer, value)
 	c.Abort()
 }
 
@@ -500,7 +498,7 @@ func writeTraceAvailabilityHeaders(c *gin.Context, ctx context.Context) {
 		c.Header("X-OpenBKN-Trace-Code", code)
 	}
 	if reasons := bkntrace.TracePartialReasons(ctx); len(reasons) > 0 {
-		raw, _ := sonic.Marshal(reasons)
+		raw, _ := jsoncodec.Marshal(reasons)
 		c.Header("X-OpenBKN-Trace-Partial-Reasons", string(raw))
 	}
 }

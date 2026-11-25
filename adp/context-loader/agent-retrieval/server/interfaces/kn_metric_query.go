@@ -32,7 +32,7 @@ type ObjectMetricOperand struct {
 	Source      string                   `json:"source"`
 	PropertyRef *ObjectMetricPropertyRef `json:"property_ref,omitempty"`
 	ValueType   string                   `json:"value_type,omitempty"`
-	Value       any                      `json:"value,omitempty"`
+	Value       any                      `json:"value,omitzero"`
 }
 
 // ObjectMetricCondition mirrors ontology-query's recursive Object Metric V1

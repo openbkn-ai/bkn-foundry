@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type managedResultPublisher struct{}
@@ -223,13 +224,15 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 
 func TestManagedFunctionGuardFinalizesExecutionFailures(t *testing.T) {
 	tests := []struct {
-		name      string
-		run       func(context.Context) (map[string]any, error)
-		wantError bool
+		name         string
+		run          func(context.Context) (map[string]any, error)
+		responseJSON string
+		wantError    bool
 	}{
-		{"returned error", func(context.Context) (map[string]any, error) { return nil, errors.New("runtime failed") }, true},
-		{"failed result", func(context.Context) (map[string]any, error) { return map[string]any{"status_code": 500}, nil }, false},
-		{"panic", func(context.Context) (map[string]any, error) { panic("must-not-persist") }, true},
+		{name: "returned error", run: func(context.Context) (map[string]any, error) { return nil, errors.New("runtime failed") }, wantError: true},
+		{name: "upstream status failure", responseJSON: `{"status_code":500}`},
+		{name: "upstream sandbox failure", responseJSON: `{"status_code":200,"body":{"exit_code":1}}`},
+		{name: "panic", run: func(context.Context) (map[string]any, error) { panic("must-not-persist") }, wantError: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -260,7 +263,15 @@ func TestManagedFunctionGuardFinalizesExecutionFailures(t *testing.T) {
 					t.Fatalf("panic escaped before recording the function failure: %v", v)
 				}
 			}()
-			_, err := guard.Execute(ctx, ManagedFunctionTraceInput{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "bom"}, test.run)
+			run := test.run
+			if test.responseJSON != "" {
+				var result map[string]any
+				if err := jsoncodec.Unmarshal([]byte(test.responseJSON), &result); err != nil {
+					t.Fatal(err)
+				}
+				run = func(context.Context) (map[string]any, error) { return result, nil }
+			}
+			_, err := guard.Execute(ctx, ManagedFunctionTraceInput{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "bom"}, run)
 			if (err != nil) != test.wantError {
 				t.Fatalf("error = %v", err)
 			}
@@ -376,9 +387,9 @@ func TestManagedFunctionResultFailedUsesExecutionStatusCode(t *testing.T) {
 
 func TestManagedFunctionFailurePayloadKeepsOnlySafeExecutionFacts(t *testing.T) {
 	payload := managedFunctionFailurePayload(map[string]any{
-		"status_code": float64(200),
+		"status_code": json.Number("200"),
 		"body": map[string]any{
-			"exit_code": float64(1), "stderr": "sensitive runtime detail",
+			"exit_code": json.Number("1"), "stderr": "sensitive runtime detail",
 		},
 	})
 	if payload["status_code"] != 200 || payload["exit_code"] != 1 || payload["code"] != "managed_function_failed" {

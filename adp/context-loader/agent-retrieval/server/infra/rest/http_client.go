@@ -17,8 +17,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
@@ -183,7 +183,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 	if len(respBody) == 0 {
 		return
 	}
-	err = sonic.Unmarshal(respBody, &respData)
+	err = jsoncodec.Unmarshal(respBody, &respData)
 	if err != nil {
 		c.logger.Error("Dependency response is not valid JSON")
 		respData = string(respBody)
@@ -204,13 +204,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 // same error type, but the body is handed back as raw JSON so the caller can
 // decode it itself.
 //
-// httpDo cannot be used for responses that carry business data. It unmarshals
-// into an interface{}, where sonic's default configuration turns every JSON
-// number into a float64 — anything past float64's 53-bit mantissa is silently
-// rounded, and 9223372036854775808 re-serializes as 9.223372036854776e+18.
-// Object instance properties are arbitrary business data (MySQL BIGINT /
-// BIGINT UNSIGNED columns, ID card numbers, snowflake IDs), so the rounding is
-// not hypothetical: see openbkn-ai/bkn-studio#464.
+// Callers that already know the response type can decode directly from these bytes.
 //
 // Non-2xx handling is deliberately identical to httpDo — callers such as
 // ontology_query.classifyQueryError match on the *infraErr.HTTPError it
@@ -306,7 +300,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 		if v, ok := reqParam.([]byte); ok {
 			reader = bytes.NewReader(v)
 		} else {
-			reqData, err := sonic.Marshal(reqParam)
+			reqData, err := jsoncodec.Marshal(reqParam)
 			if err != nil {
 				c.logger.Error(err.Error())
 				return nil, err

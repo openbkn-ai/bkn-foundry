@@ -130,6 +130,10 @@ paths:
         粒度由指标定义决定，不能通过本请求覆盖。`branch` 指定指标所在的知识网络
         分支，省略时只读取 `main`，不会回退到其他分支。
 
+        REST 请求顶层和 `query` 内未声明的业务字段会被忽略，`bkn_context` 遵循自身的校验规则。
+        已废弃的 `query.instance_identities` 和下钻 `parent_query` 中的同名字段也会被忽略，
+        取数范围按指标现有定义和受支持的过滤条件确定。
+
         响应保留对象指标 V1 的 `model`、`entries`、`status` 和 `warnings`。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
@@ -253,7 +257,6 @@ components:
   schemas:
     QueryMetricRequest:
       type: object
-      additionalProperties: false
       required:
         - kn_id
         - metric_id
@@ -277,17 +280,15 @@ components:
           description: 已发布且不可变的对象指标版本，取自 `related_metrics[].version`。
         query:
           type: object
-          additionalProperties: false
           properties:
             filter:
-              $ref: '../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/components/schemas/ObjectMetricCondition'
+              $ref: '#/components/schemas/ObjectMetricFilter'
             group_by:
               type: array
               items:
                 $ref: '#/components/schemas/ObjectMetricPropertyRef'
             having:
               type: object
-              additionalProperties: false
               required: [operator]
               properties:
                 operator:
@@ -300,7 +301,6 @@ components:
               type: array
               items:
                 type: object
-                additionalProperties: false
                 required: [field, direction]
                 properties:
                   field:
@@ -319,7 +319,6 @@ components:
               type: string
             time:
               type: object
-              additionalProperties: false
               required:
                 - start
                 - end
@@ -334,7 +333,6 @@ components:
                   description: Unix 毫秒。
             bucket_selection:
               type: object
-              additionalProperties: false
               required: [parent_query, bucket_key]
               description: 使用上一层完整 query 和服务端返回的 bucket_key 继续下钻。
               properties:
@@ -345,9 +343,89 @@ components:
           dependentRequired:
             cursor: [page_size]
 
+    ObjectMetricFilter:
+      description: >-
+        运行时筛选条件。属性引用必须来自已发布指标开放的 analysis_dimensions 或 time_dimensions，
+        比较双方的类型必须兼容。各层条件节点和操作数中未声明的字段会被忽略。
+      oneOf:
+        - $ref: '#/components/schemas/ObjectMetricFilterPredicate'
+        - $ref: '#/components/schemas/ObjectMetricFilterGroup'
+
+    ObjectMetricFilterPredicate:
+      type: object
+      required: [node_type, left, comparison_operator]
+      properties:
+        node_type: { const: predicate }
+        left:
+          $ref: '#/components/schemas/ObjectMetricFilterOperand'
+        comparison_operator:
+          type: string
+        right:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectMetricFilterOperand'
+      oneOf:
+        - required: [right]
+          properties:
+            comparison_operator:
+              enum: [eq, neq, gt, gte, lt, lte, contains, not_contains, starts_with, ends_with, before, before_or_equal, after, after_or_equal]
+            right: { minItems: 1, maxItems: 1 }
+        - required: [right]
+          properties:
+            comparison_operator: { enum: [in, not_in] }
+            right: { minItems: 1 }
+        - required: [right]
+          properties:
+            comparison_operator: { enum: [between, not_between] }
+            right: { minItems: 2, maxItems: 2, description: 按顺序提供闭区间下界和上界。 }
+        - properties:
+            comparison_operator: { enum: [is_empty, is_not_empty, is_null, is_not_null, is_true, is_false] }
+            right: { maxItems: 0 }
+
+    ObjectMetricFilterGroup:
+      type: object
+      required: [node_type, boolean_operator, children]
+      properties:
+        node_type: { const: group }
+        boolean_operator:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectMetricFilter'
+      oneOf:
+        - properties:
+            boolean_operator: { enum: [and, or] }
+            children: { minItems: 2 }
+        - properties:
+            boolean_operator: { const: not }
+            children: { minItems: 1, maxItems: 1 }
+
+    ObjectMetricFilterOperand:
+      type: object
+      required: [source]
+      oneOf:
+        - required: [property_ref]
+          properties:
+            source: { const: property }
+            property_ref:
+              $ref: '#/components/schemas/ObjectMetricPropertyRef'
+              properties:
+                object_type_id: { minLength: 1 }
+                property_name: { minLength: 1 }
+                relation_path_alias: { minLength: 1 }
+        - required: [value_type, value]
+          properties:
+            source: { const: literal }
+            value_type:
+              type: string
+              enum: [int64, decimal, boolean, string, date, datetime, duration]
+              description: date 使用 YYYY-MM-DD，datetime 使用 RFC 3339，duration 使用数值。
+            value:
+              description: 必须匹配 value_type。string 类型可显式传空字符串。
+
     ObjectMetricPropertyRef:
       type: object
-      additionalProperties: false
       required:
         - object_type_id
         - property_name

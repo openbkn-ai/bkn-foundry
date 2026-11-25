@@ -9,7 +9,7 @@ package interfaces
 import (
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -214,7 +214,7 @@ func TestConceptGroupDecode_KeepsSemantics(t *testing.T) {
 		}`
 
 		var detail KnowledgeNetworkDetail
-		convey.So(sonic.Unmarshal([]byte(payload), &detail), convey.ShouldBeNil)
+		convey.So(jsoncodec.Unmarshal([]byte(payload), &detail), convey.ShouldBeNil)
 		convey.So(detail.ConceptGroups, convey.ShouldHaveLength, 1)
 
 		g := detail.ConceptGroups[0]
@@ -243,7 +243,7 @@ const indirectRelationJSON = `{"id":"supplier_record","name":"合作记录","typ
 // relation answer as object type properties do: without aliases, semantic, required and constraints,
 // with the definition and mapping kept.
 func assertRelationPropertyDeclarationsOmitted(rel *RelationType) {
-	out, err := sonic.Marshal(rel)
+	out, err := jsoncodec.Marshal(rel)
 	convey.So(err, convey.ShouldBeNil)
 	var got struct {
 		MappingRules struct {
@@ -252,7 +252,7 @@ func assertRelationPropertyDeclarationsOmitted(rel *RelationType) {
 			Properties         []map[string]any `json:"properties"`
 		} `json:"mapping_rules"`
 	}
-	convey.So(sonic.Unmarshal(out, &got), convey.ShouldBeNil)
+	convey.So(jsoncodec.Unmarshal(out, &got), convey.ShouldBeNil)
 	convey.So(got.MappingRules.BackingDataSource["id"], convey.ShouldEqual, "res_suppliers")
 	convey.So(got.MappingRules.SourceMappingRules, convey.ShouldHaveLength, 1)
 	convey.So(got.MappingRules.Properties, convey.ShouldHaveLength, 1)
@@ -272,7 +272,7 @@ func assertRelationPropertyDeclarationsOmitted(rel *RelationType) {
 func TestOmitRelationDeclarations_RelationProperties(t *testing.T) {
 	convey.Convey("relation property declarations are omitted, the relation's kept exceptions stay", t, func() {
 		var rel RelationType
-		convey.So(sonic.UnmarshalString(indirectRelationJSON, &rel), convey.ShouldBeNil)
+		convey.So(jsoncodec.Unmarshal([]byte(indirectRelationJSON), &rel), convey.ShouldBeNil)
 		OmitRelationDeclarations([]*RelationType{&rel})
 
 		assertRelationPropertyDeclarationsOmitted(&rel)
@@ -288,8 +288,8 @@ func TestOmitRelationDeclarations_RelationProperties(t *testing.T) {
 		const direct = `{"id":"supplier_identity","type":"direct","mapping_rules":[
 			{"source_property":{"name":"supplier_id"},"target_property":{"name":"supplier_id"}}]}`
 		var rel, want RelationType
-		convey.So(sonic.UnmarshalString(direct, &rel), convey.ShouldBeNil)
-		convey.So(sonic.UnmarshalString(direct, &want), convey.ShouldBeNil)
+		convey.So(jsoncodec.Unmarshal([]byte(direct), &rel), convey.ShouldBeNil)
+		convey.So(jsoncodec.Unmarshal([]byte(direct), &want), convey.ShouldBeNil)
 		convey.So(func() { OmitRelationDeclarations([]*RelationType{&rel}) }, convey.ShouldNotPanic)
 		convey.So(rel.MappingRules, convey.ShouldResemble, want.MappingRules)
 	})
@@ -311,7 +311,7 @@ func TestOmitRelationDeclarations_RelationProperties(t *testing.T) {
 func TestSlim_Full_OmitsRelationPropertyDeclarations(t *testing.T) {
 	convey.Convey("full level omits relation property declarations", t, func() {
 		var rel RelationType
-		convey.So(sonic.UnmarshalString(indirectRelationJSON, &rel), convey.ShouldBeNil)
+		convey.So(jsoncodec.Unmarshal([]byte(indirectRelationJSON), &rel), convey.ShouldBeNil)
 		d := &KnowledgeNetworkDetail{ID: "kn-1", RelationTypes: []*RelationType{&rel}}
 		d.Slim(DetailLevelFull)
 		assertRelationPropertyDeclarationsOmitted(d.RelationTypes[0])

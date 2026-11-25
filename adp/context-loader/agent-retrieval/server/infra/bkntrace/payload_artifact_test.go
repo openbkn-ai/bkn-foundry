@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type payloadArtifactWriterStub struct {
@@ -54,7 +54,7 @@ func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		body, _ := io.ReadAll(r.Body)
-		if err := common.UnmarshalPreciseJSON(body, &artifact); err != nil {
+		if err := jsoncodec.Unmarshal(body, &artifact); err != nil {
 			t.Fatalf("decode artifact: %v", err)
 		}
 		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil

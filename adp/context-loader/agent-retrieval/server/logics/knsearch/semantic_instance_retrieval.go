@@ -1159,7 +1159,7 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 			node.Score = float64(v)
 		case json.Number:
 			// Instance bodies are decoded with UseNumber so wide integers survive;
-			// see drivenadapters.precisionJSON.
+			// see comm-go/jsoncodec.
 			if parsed, err := v.Float64(); err == nil {
 				node.Score = parsed
 			}

@@ -78,7 +78,7 @@ func (h *knQuerySubgraphHandler) QueryInstanceSubgraph(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
+	if err = common.BindJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
@@ -127,7 +127,7 @@ func (h *knQuerySubgraphHandler) ExploreSubgraph(c *gin.Context) {
 		return
 	}
 
-	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
+	if err = common.BindJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return

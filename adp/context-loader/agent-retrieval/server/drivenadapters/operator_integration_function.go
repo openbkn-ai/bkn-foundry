@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -136,7 +137,7 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	}
 
 	resp := &interfaces.ExecuteFunctionResponse{}
-	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
+	if err = jsoncodec.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Unmarshal failed, err: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionExecutionResponseInvalid", map[string]any{})
 		if renderErr != nil {

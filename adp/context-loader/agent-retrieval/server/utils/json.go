@@ -9,7 +9,7 @@ package utils
 import (
 	"log"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // JSONToObject converts a JSON string into an object of the specified type.
@@ -19,7 +19,7 @@ func JSONToObject[T any](jsonStr string) T {
 		return result
 	}
 
-	err := sonic.Unmarshal([]byte(jsonStr), &result)
+	err := jsoncodec.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
 		log.Printf("JSONToObject error: %v", err)
 		return result
@@ -34,7 +34,7 @@ func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 		return result, nil
 	}
 
-	err := sonic.Unmarshal([]byte(jsonStr), &result)
+	err := jsoncodec.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
 		return result, err
 	}
@@ -43,11 +43,11 @@ func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 
 // AnyToObject converts any object to the specified object.
 func AnyToObject(anyObj any, obj interface{}) error {
-	jsonBytes, err := sonic.Marshal(anyObj)
+	jsonBytes, err := jsoncodec.Marshal(anyObj)
 	if err != nil {
 		return err
 	}
-	err = sonic.Unmarshal(jsonBytes, obj)
+	err = jsoncodec.Unmarshal(jsonBytes, obj)
 	if err != nil {
 		return err
 	}

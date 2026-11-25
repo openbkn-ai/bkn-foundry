@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// Instance rows are decoded with UseNumber (see drivenadapters.precisionJSON), so
+// Instance rows are decoded with UseNumber (see comm-go/jsoncodec), so
 // _score arrives as json.Number; without a branch for it every node scored 0 and
 // the ranking collapsed.
 func TestConvertToKnSearchNodeReadsJSONNumberScore(t *testing.T) {

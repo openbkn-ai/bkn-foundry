@@ -10,9 +10,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 )
@@ -125,7 +125,7 @@ func isTraceAvailabilityDiagnostic(content mcp.Content) bool {
 		return false
 	}
 	var envelope map[string]any
-	if sonic.Unmarshal([]byte(strings.TrimPrefix(text.Text, traceAvailabilityDiagnosticPrefix)), &envelope) != nil {
+	if jsoncodec.Unmarshal([]byte(strings.TrimPrefix(text.Text, traceAvailabilityDiagnosticPrefix)), &envelope) != nil {
 		return false
 	}
 	trace, ok := envelope["bkn_trace"].(map[string]any)
