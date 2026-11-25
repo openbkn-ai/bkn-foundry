@@ -213,6 +213,7 @@ def test_the_instructions_list_published_metrics_with_their_dimensions():
     ) in text
     assert "- monthly v1 月销售额 — counts orders (订单); split by: region, product; time: order_date" in text
     assert "do not work the same figure out again with run_cypher" in text
+    assert "Call show_metric_participants only when the user asks which instances make up a figure" in text
     assert "each query_metric becomes a metric card" in text
     # The definitions read for the schema's properties carry the metrics: no call of their own.
     assert [c[0] for c in calls] == ["get_kn_detail", "get_object_types"]
@@ -242,6 +243,15 @@ def test_a_failed_metric_lookup_leaves_the_schema():
     run, _, _ = _run(detail=detail, types={"error": "bkn-backend unavailable"})
     text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
     assert "Published metrics" not in text and "- orders (订单)" in text and "key_id:integer" in text
+
+
+def test_metrics_of_object_types_past_the_bound_are_said_to_be_unlisted(monkeypatch):
+    monkeypatch.setattr(graph, "METRIC_TYPES", 1)
+    detail = {**DETAIL, "object_types": [{**t, "related_metric_count": 2} for t in DETAIL["object_types"]]}
+    run, _, _ = _run(detail=detail)
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- sales v2 销售额" in text
+    assert "(Metrics of 1 more object types are not listed, and query_metric cannot read them;" in text
 
 
 def test_past_sixty_metrics_only_names_are_listed():
@@ -387,12 +397,42 @@ def test_a_card_whose_metric_query_is_not_valid_is_listed_without_it():
     cards = [
         {"no": 1, "title": "月销售额", "kind": "metric", "metric": {"version": 1}},
         {"no": 2, "title": "销售额", "kind": "metric", "metric": {"metric_id": "sales", "version": 2, "drill": [{"cells": []}]}},
+        # Times no calendar reaches.
+        {
+            "no": 3, "title": "月销售额", "kind": "metric",
+            "metric": {
+                "metric_id": "monthly", "version": 1, "owner_object_type_id": "orders",
+                "drill": [{"cells": [10**17], "by": REGION}], "time_grain": "month",
+            },
+        },
+        {
+            "no": 4, "title": "销售额", "kind": "metric",
+            "metric": {"metric_id": "sales", "version": 2, "time": {"start": 0, "end": 10**17}},
+        },
     ]
     run, _, _ = _run(cards=cards, asked_from=7)
     text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
-    assert {"- #1 月销售额 (metric)", "- #2 销售额 (metric)"} <= set(text.splitlines())
+    assert {
+        "- #1 月销售额 (metric)", "- #2 销售额 (metric)", "- #3 月销售额 (metric)", "- #4 销售额 (metric)",
+    } <= set(text.splitlines())
     # A card the analysis does not have is not the one the question is asked from.
     assert "asks this question from" not in text
+
+
+def test_a_period_written_among_the_bucket_values_names_the_period():
+    run, tools, _ = _run()
+    out = _invoke(
+        tools["query_metric"], metric="monthly", group_by=["region"],
+        drill=[{"bucket": {"region": "华东", "period": "2026-03"}, "by": "product"}],
+    )
+    assert [(r["period"], r["product"]) for r in out["rows"]] == [("2026-03", "A"), ("2026-03", "B")]
+    out = _invoke(
+        tools["show_metric_participants"], metric="monthly", group_by=["region"],
+        bucket={"period": "2026-02", "region": "华南"},
+    )
+    # The order of that month and region, and the buyer the stand-in adds.
+    assert out["participants"] == 2 and out["planned_added"]["nodes"] == 1
+    assert [n["id"] for n in builtin_tools.get("graph_explorer").result(run)["nodes"]] == ["orders-5"]
 
 
 def test_a_period_is_needed_to_drill_a_metric_read_by_period():

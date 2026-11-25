@@ -2027,17 +2027,27 @@ async def _metric_instructions(run: builtin_tools.Run, network: dict) -> list[st
         return []
     names = {ot_id: t["name"] for ot_id, t in network["object_types"].items()}
     in_analysis = getattr(_canvas(run), "analysis_cards", None) is not None
+    unread = len(network.get("metric_types") or []) - METRIC_TYPES
     return [
         "",
         "Published metrics of this network (id, version, name, the object type it counts; unit; dimensions it"
         " can be split by; time dimension; description). They are the network's own definitions of these"
         " figures, not configure_analysis metric cards:",
         *gm.catalog(metrics, names),
+        *(
+            [
+                f"(Metrics of {unread} more object types are not listed, and query_metric cannot read them;"
+                " work their figures out with run_cypher.)"
+            ]
+            if unread > 0
+            else []
+        ),
         "",
         "For a count, amount, ratio, ranking or trend, first look for a metric above whose name and"
         " description fit the question. When one fits, read the figure with query_metric, split and drill"
-        " with it too, and list the instances behind a figure with show_metric_participants; do not work"
-        " the same figure out again with run_cypher. Use run_cypher only when no metric fits or the metric"
+        " with it too, and do not work the same figure out again with run_cypher. Call"
+        " show_metric_participants only when the user asks which instances make up a figure: the figures"
+        " and their chart need no instances. Use run_cypher only when no metric fits or the metric"
         " does not open the dimension needed, and say why in the answer (e.g. the metric Win rate does not"
         " open the dimension Opponent). When unsure a metric means what the user asked, say which metric you used."
         " This comes before the advice above on statistics with run_cypher and on charting figures.",

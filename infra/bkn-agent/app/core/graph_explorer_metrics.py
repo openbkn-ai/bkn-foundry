@@ -297,6 +297,9 @@ def _describe(metric: Metric, entry: dict, dims: list[dict], time_series: bool) 
 def _wanted(metric: Metric, dims: list[dict], picked: dict, bucket: dict, where: str) -> dict:
     wanted = dict(picked)
     for written, value in (bucket or {}).items():
+        if written == "period":
+            # Named as the rows name it; _period_of takes it.
+            continue
         ref = ref_for(metric, written)
         if not any(_key(ref) == _key(d) for d in dims):
             raise ToolException(
@@ -308,6 +311,14 @@ def _wanted(metric: Metric, dims: list[dict], picked: dict, bucket: dict, where:
     if missing:
         raise ToolException(f"{where}: say which {_labels(metric, missing)} the bucket is.")
     return wanted
+
+
+def _row_period(bucket: dict | None) -> str | None:
+    """A bucket's period written among its values, under the key the rows show it by."""
+    value = (bucket or {}).get("period")
+    if value is None:
+        return None
+    return shown(value) or None
 
 
 def _period_of(metric: Metric, written: str | None, picked: str | None, where: str) -> str:
@@ -395,7 +406,7 @@ async def read(
             )
         wanted = _wanted(metric, dims, picked, step.get("bucket") or {}, where)
         if time_series:
-            period_name = _period_of(metric, step.get("period"), period_name, where)
+            period_name = _period_of(metric, step.get("period") or _row_period(step.get("bucket")), period_name, where)
         entry = await _find(
             ask, query, answer, dims, wanted, period_name if time_series else None,
             lambda e, dims=dims: _describe(metric, e, dims, bool(time_series)),
@@ -510,6 +521,14 @@ def card_query(card: dict) -> dict | None:
     """What a metric card reads (as spec gives it, with the metric's grain when it is read
     by period) in query_metric's arguments, for a later question to go on from; None when
     the card's query does not hold together."""
+    try:
+        return _card_query(card)
+    except (ValueError, OverflowError, OSError):
+        # A time no calendar reaches: the page sent it, so the card goes without its query.
+        return None
+
+
+def _card_query(card: dict) -> dict | None:
     metric = Metric(id=card["metric_id"], version=card["version"], name="", owner=card.get("owner_object_type_id") or "")
     dims = [_ref(raw) for raw in card.get("group_by") or []]
     if not all(dims):
@@ -553,7 +572,9 @@ async def participants(
     metric, dims = reading.metric, reading.dims
     where = "bucket"
     wanted = _wanted(metric, dims, reading.picked, bucket, where)
-    name = _period_of(metric, period_name, reading.period, where) if reading.time_series else None
+    name = (
+        _period_of(metric, period_name or _row_period(bucket), reading.period, where) if reading.time_series else None
+    )
 
     async def ask(query: dict, cursor: str | None = None) -> dict:
         return await call(
