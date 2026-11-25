@@ -14,7 +14,6 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-sql-driver/mysql v1.10.2
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9
-	github.com/google/uuid v1.6.0
 	github.com/nsqio/go-nsq v1.1.0
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
@@ -55,6 +54,7 @@ require (
 	github.com/goccy/go-json v0.12.0 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.21.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.34.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.4 // indirect
