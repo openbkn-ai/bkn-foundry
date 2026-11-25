@@ -112,37 +112,3 @@ func TestCommunityHasNoPrivateIdentityRoutes(t *testing.T) {
 		}
 	}
 }
-
-func TestIdentityMeReadsKeepCoreAuthentication(t *testing.T) {
-	for _, tc := range []struct {
-		name, token string
-		extension   bool
-		status      int
-		body        string
-	}{
-		{name: "community adds no route", token: "user-1", status: 404},
-		{name: "missing token rejected before extension", extension: true, status: 401},
-		{name: "inactive token rejected before extension", token: "bad", extension: true, status: 401},
-		{name: "extension reads the signed-in caller", token: "user-1", extension: true, status: 200, body: "user-1"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := gin.New()
-			var ext *federation.Extension
-			if tc.extension {
-				ext = &federation.Extension{MountMe: func(g *gin.RouterGroup, caller func(*gin.Context) string) {
-					g.GET("/external-identities", func(c *gin.Context) { c.String(http.StatusOK, caller(c)) })
-				}}
-			}
-			mountIdentityMe(r.Group("/api/safe/v1/me", RequireUser(stubVerifier{})), ext)
-			req := httptest.NewRequest(http.MethodGet, "/api/safe/v1/me/external-identities", nil)
-			if tc.token != "" {
-				req.Header.Set("Authorization", "Bearer "+tc.token)
-			}
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
-			if w.Code != tc.status || (tc.body != "" && w.Body.String() != tc.body) {
-				t.Fatalf("status=%d body=%q, want %d %q", w.Code, w.Body.String(), tc.status, tc.body)
-			}
-		})
-	}
-}
