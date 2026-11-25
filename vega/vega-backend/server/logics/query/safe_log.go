@@ -7,6 +7,7 @@ package query
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
@@ -21,7 +22,7 @@ func SafeQuerySummary(query any) string {
 		queryBytes = []byte(value)
 	default:
 		queryType = "structured"
-		queryBytes, _ = jsoncodec.Marshal(value)
+		queryBytes, _ = jsoncodec.Marshal(value, jsonv2.Deterministic(true))
 	}
 	hash := sha256.Sum256(queryBytes)
 	return fmt.Sprintf("query_type=%s query_hash=%s query_length=%d", queryType, hex.EncodeToString(hash[:]), len(queryBytes))

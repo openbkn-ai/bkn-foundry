@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -280,7 +281,7 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 				feature.RefProperty = ""
 			}
 			if len(feature.Config) > 0 {
-				config, err := jsoncodec.Marshal(feature.Config, json.DefaultOptionsV1())
+				config, err := jsoncodec.Marshal(feature.Config)
 				if err != nil {
 					return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q feature %q: %w", field.Name, feature.Type, err)
 				}
@@ -322,8 +323,7 @@ func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (inte
 
 // IndexConfigFingerprint hashes a normalized contract with canonical JSON.
 func IndexConfigFingerprint(config interfaces.IndexConfigContract) (string, error) {
-	// Keep the encoding of existing index configuration fingerprints stable.
-	data, err := jsoncodec.Marshal(config, json.DefaultOptionsV1())
+	data, err := jsoncodec.Marshal(config, jsonv2.Deterministic(true), jsontext.ReorderRawObjects(true))
 	if err != nil {
 		return "", fmt.Errorf("fingerprint index config: %w", err)
 	}
@@ -373,7 +373,7 @@ func effectiveFeatureConfig(feature interfaces.PropertyFeature, defaultEmbedding
 	if len(config) == 0 {
 		return nil, nil
 	}
-	return jsoncodec.Marshal(config, json.DefaultOptionsV1())
+	return jsoncodec.Marshal(config, jsonv2.Deterministic(true))
 }
 
 func stringConfigValueForFingerprint(config map[string]any, key string) string {

@@ -7,7 +7,9 @@
 package resource
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +19,7 @@ import (
 )
 
 func TestIndexConfigFingerprint(t *testing.T) {
-	t.Run("preserves existing fingerprint bytes", func(t *testing.T) {
+	t.Run("uses JSON v2 for normalized contracts", func(t *testing.T) {
 		contract := interfaces.IndexConfigContract{
 			PrimaryKeyFields: []string{"id"},
 			Fields: []interfaces.IndexConfigFieldContract{{
@@ -31,7 +33,12 @@ func TestIndexConfigFingerprint(t *testing.T) {
 		}
 		fingerprint, err := IndexConfigFingerprint(contract)
 		require.NoError(t, err)
-		assert.Equal(t, "00e134627a275483f3ae89c106c611c6bc7fbf4b615108da89b82e3d73b6b2f3", fingerprint)
+		const encoded = `{"primary_key_fields":["id"],"incremental_fields":[],"fields":[{"name":"text","original_name":"","original_type":"","type":"string","features":[{"name":"","feature_type":"fulltext","ref_property":"","config":{"n":12.5000,"z":"<>&"}}]}]}`
+		assert.Equal(t, fmt.Sprintf("%x", sha256.Sum256([]byte(encoded))), fingerprint)
+		contract.Fields[0].Features[0].Config = json.RawMessage(`{"n":12.5000,"z":"<>&"}`)
+		reordered, err := IndexConfigFingerprint(contract)
+		require.NoError(t, err)
+		assert.Equal(t, fingerprint, reordered)
 	})
 	t.Run("corrupt source columns cannot produce a fingerprint from fallback declarations", func(t *testing.T) {
 		resource := &interfaces.Resource{SourceMetadata: map[string]any{"columns": "invalid metadata"}, SchemaDefinition: []*interfaces.Property{{Name: "amount", Type: interfaces.DataType_Decimal, OriginalType: "decimal(12,2)"}}}
@@ -186,6 +193,9 @@ func TestBuildTaskIndexConfigFingerprintMatchesResourceSnapshot(t *testing.T) {
 
 func TestBuildTaskIndexConfigFingerprintSupportsUpgradedSnapshot(t *testing.T) {
 	resource := fingerprintTestResource(false)
+	resource.SchemaDefinition[1].Features[1].Config["normalizer"] = map[string]any{
+		"type": "custom", "filters": []any{"<>&"},
+	}
 	encodedSchema, err := json.Marshal(resource.SchemaDefinition)
 	require.NoError(t, err)
 	var fields []interfaces.IndexConfigFieldContract
