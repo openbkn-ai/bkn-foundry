@@ -6,6 +6,9 @@
 package bkn
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -261,4 +264,76 @@ func TestDiffNetworkModels_IncludeUnchangedListsIdenticalDefinitions(t *testing.
 	// An identical entry is there to be listed, not read: it carries no field rows.
 	assert.Empty(t, with.Entries[0].Changes)
 	assert.Equal(t, 1, with.Summary.Unchanged, "the count does not change with the option")
+}
+
+// metricRecord is an archived object metric record as an export or a version snapshot carries it:
+// the definition wrapped in where and when it is stored.
+func metricRecord(description, branch, revision string, updateTime int64) json.RawMessage {
+	return json.RawMessage(fmt.Sprintf(`{
+		"definition": {"id": "m_net_paid", "version": 1, "code": "net_paid", "name": "实付净额",
+			"description": %q, "owner_object_type_id": "order", "metric_type": "atomic",
+			"lifecycle": {"status": "published"}},
+		"kn_id": "net-a", "branch": %q, "revision": %q,
+		"creator": {"id": "u1", "type": "user", "name": "alice"},
+		"updater": {"id": "u1", "type": "user", "name": "alice"},
+		"create_time": 1763000000000, "update_time": %d}`, description, branch, revision, updateTime))
+}
+
+// A version and the draft store the same metric under different branches, and a re-save stamps a
+// new revision and update time without touching the definition. None of that is a change to the
+// metric: comparing a version with its draft must not report every metric as modified.
+func TestDiffNetworkModels_MetricStorageMetadataIsNotAChange(t *testing.T) {
+	base := networkWith("net-a", "网")
+	base.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款后的实付金额", "v2", "rev-1", 1763000000000)}
+	target := networkWith("net-a", "网")
+	target.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款后的实付金额", "draft", "rev-2", 1763999999999)}
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+
+	assert.Empty(t, result.Entries)
+	assert.Equal(t, DiffSummary{Unchanged: 1}, result.Summary)
+}
+
+func TestDiffNetworkModels_MetricDefinitionChangeIgnoresStorageMetadata(t *testing.T) {
+	base := networkWith("net-a", "网")
+	base.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款后的实付金额", "v2", "rev-1", 1763000000000)}
+	target := networkWith("net-a", "网")
+	target.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款和运费后的实付金额", "draft", "rev-2", 1763999999999)}
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+
+	require.Len(t, result.Entries, 1)
+	entry := result.Entries[0]
+	assert.Equal(t, "object_metric_v1", entry.Type)
+	assert.Equal(t, "m_net_paid@1.json", entry.ID)
+	assert.Equal(t, DiffUpdate, entry.Action)
+	require.Len(t, entry.Changes, 1, "only the definition edit is a change; got %+v", entry.Changes)
+	description := changeByPath(t, entry.Changes, "definition.description")
+	assert.Equal(t, "扣除退款后的实付金额", description.Old)
+	assert.Equal(t, "扣除退款和运费后的实付金额", description.New)
+}
+
+// A metric present on one side only shows its definition, the way a created object type does, and
+// not the storage bookkeeping of the branch it came from.
+func TestDiffNetworkModels_CreatedMetricOmitsStorageMetadata(t *testing.T) {
+	base := networkWith("net-a", "网")
+	target := networkWith("net-a", "网")
+	target.ObjectMetrics = []json.RawMessage{metricRecord("扣除退款后的实付金额", "draft", "rev-2", 1763999999999)}
+
+	result := DiffNetworkModels(base, target, DiffOptions{})
+
+	require.Len(t, result.Entries, 1)
+	entry := result.Entries[0]
+	assert.Equal(t, DiffCreate, entry.Action)
+	require.NotEmpty(t, entry.Changes)
+	var rendered []string
+	for _, change := range entry.Changes {
+		rendered = append(rendered, change.Path+" "+change.New)
+	}
+	all := strings.Join(rendered, "\n")
+	assert.Contains(t, all, "扣除退款后的实付金额")
+	for _, field := range []string{"kn_id", "branch", "revision", "creator", "updater", "create_time", "update_time"} {
+		assert.NotContains(t, all, field+"=", "storage field %q leaked into a created metric", field)
+		assert.NotContains(t, all, field+" ", "storage field %q leaked into a created metric", field)
+	}
 }

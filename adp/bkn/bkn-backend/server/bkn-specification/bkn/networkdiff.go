@@ -360,13 +360,35 @@ func collectDefinitions(net *BknNetwork) []definitionRef {
 	}
 	for _, item := range net.ObjectMetrics {
 		id, version, name, _ := objectMetricArchiveMetadata(item)
-		var value any
-		if err := json.Unmarshal(item, &value); err != nil {
-			value = item
-		}
-		defs = append(defs, definitionRef{"object_metric_v1", objectMetricArchiveFileName(id, version), name, value})
+		defs = append(defs, definitionRef{"object_metric_v1", objectMetricArchiveFileName(id, version), name,
+			comparableObjectMetric(item)})
 	}
 	return defs
+}
+
+// objectMetricStorageFields are the keys of an archived metric record that say where and when the
+// record is stored, not what the metric is. A version and its draft hold the same metric under
+// different branches, and a re-save stamps a new revision and update time with the definition
+// untouched, so comparing these keys would report every metric as modified. Object types carry no
+// such fields; dropping them compares a metric by its content the same way.
+var objectMetricStorageFields = []string{
+	"kn_id", "branch", "revision", "creator", "updater", "create_time", "update_time",
+}
+
+// comparableObjectMetric is the part of an archived metric record that takes part in a diff.
+func comparableObjectMetric(item json.RawMessage) any {
+	var record map[string]any
+	if err := json.Unmarshal(item, &record); err != nil {
+		var value any
+		if err := json.Unmarshal(item, &value); err != nil {
+			return item
+		}
+		return value
+	}
+	for _, field := range objectMetricStorageFields {
+		delete(record, field)
+	}
+	return record
 }
 
 // describeDefinition renders a whole definition as one-sided changes, so a created or deleted
