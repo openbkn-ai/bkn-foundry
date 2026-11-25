@@ -36,9 +36,7 @@ func TestHaitaiRequestsJSON(t *testing.T) {
 					t.Errorf("decode: %v", err)
 				}
 				cipher := haitaiCipher{key: "00112233"}
-				// Decrypt serializes a two-key map twice; Sonic can emit different
-				// key orders. Keep its existing behavior outside this compatibility change.
-				if got, want := r.Header.Get("hmac"), cipher.hmacSha256(data); tc.name == "sign" && got != want {
+				if got, want := r.Header.Get("hmac"), cipher.hmacSha256(data); got != want {
 					t.Errorf("HMAC does not match the transmitted body: got %q, want %q", got, want)
 				}
 				for key, want := range tc.body {

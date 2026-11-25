@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
@@ -62,7 +62,10 @@ func (ci haitaiCipher) Decrypt(encryptedData string) (string, error) {
 		"data":    encryptedData,
 		"dataKey": ci.dataKey,
 	}
-	bodyBytes, _ := jsoncodec.Marshal(body)
+	bodyBytes, err := jsoncodec.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("encode Haitai decrypt request: %w", err)
+	}
 
 	httpUrl := fmt.Sprintf("%s/ded-service/api/decrypt", ci.host)
 
@@ -74,7 +77,7 @@ func (ci haitaiCipher) Decrypt(encryptedData string) (string, error) {
 		"version":       HAITAI_VERSION,
 	}
 
-	respCode, respData, err := rest.NewHTTPClient().Post(context.Background(), httpUrl, headers, body)
+	respCode, respData, err := rest.NewHTTPClient().Post(context.Background(), httpUrl, headers, bodyBytes)
 	if err != nil {
 		logger.Fatalf("get request method failed: %v", err)
 		return "", err
@@ -94,7 +97,10 @@ func (ci haitaiCipher) Signature(signContent string) (string, error) {
 	body := map[string]string{
 		"data": signContent,
 	}
-	bodyBytes, _ := jsoncodec.Marshal(body)
+	bodyBytes, err := jsoncodec.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("encode Haitai sign request: %w", err)
+	}
 
 	httpUrl := fmt.Sprintf("%s/ded-service/api/sign", ci.host)
 
@@ -106,7 +112,7 @@ func (ci haitaiCipher) Signature(signContent string) (string, error) {
 		"version":       HAITAI_VERSION,
 	}
 
-	respCode, respData, err := rest.NewHTTPClient().Post(context.Background(), httpUrl, headers, body)
+	respCode, respData, err := rest.NewHTTPClient().Post(context.Background(), httpUrl, headers, bodyBytes)
 	if err != nil {
 		logger.Fatalf("get request method failed: %v", err)
 		return "", err
