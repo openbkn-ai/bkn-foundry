@@ -44,9 +44,13 @@ type Runtime struct {
 // Extension is per App, installed between Boot and Run. BeforeLogin can add
 // choices or redirect; leaving it nil preserves core's local login. TokenHook
 // receives only bodies whose shared hook key core has already authenticated.
+// MountMe adds self-service reads under /api/safe/v1/me: core mounts them behind
+// the same token and session checks as GET /me, and caller returns the id of
+// the signed-in user.
 type Extension struct {
 	BeforeLogin func(*gin.Context) (LoginPage, error)
 	Mount       func(*gin.Engine)
+	MountMe     func(g *gin.RouterGroup, caller func(*gin.Context) string)
 	TokenHook   func(context.Context, []byte) (map[string]any, bool, error)
 }
 
