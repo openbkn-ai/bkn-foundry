@@ -336,6 +336,6 @@ def _regeneration_hint(e: Exception) -> str:
     if len(detail) > _HINT_DETAIL_CHARS:
         detail = detail[:_HINT_DETAIL_CHARS] + "..."
     return (
-        f"上一次回答不符合 schema（{detail}）。"
-        "请重新只输出一个严格符合 schema 的 JSON 对象。"
+        f"The previous answer did not match the schema ({detail}). "
+        "Output only one JSON object that strictly matches the schema."
     )
