@@ -100,6 +100,36 @@ func Test_knowledgeNetworkService_UpdateKN_RewritesOtherBranchDocuments(t *testi
 			KNID: "kn1", KNName: "renamed", Branch: interfaces.DRAFT_BRANCH,
 			CommonInfo: interfaces.CommonInfo{Tags: []string{"t"}, Comment: "c"},
 		}
+		// The request carries no creation info; the stored draft row does.
+		draftRow := row("draft", "old", "draft-raw")
+		draftRow.Creator = interfaces.AccountInfo{ID: "creator-draft", Type: "user"}
+		draftRow.CreateTime = 1700000000000
+		readDraft := kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.DRAFT_BRANCH).Return(draftRow, nil).AnyTimes()
+
+		// Editing only the basic information must not empty the requested branch's creator and
+		// create time in its concept document (#3433).
+		Convey("the requested branch's document keeps its stored creation info", func() {
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{"draft"}, nil)
+
+			So(service.UpdateKN(ctx, nil, kn, false), ShouldBeNil)
+
+			So(written, ShouldContainKey, docID("draft"))
+			doc := written[docID("draft")]
+			So(doc["name"], ShouldEqual, "renamed")
+			So(fmt.Sprint(doc["create_time"]), ShouldEqual, "1700000000000")
+			creator, err := json.Marshal(doc["creator"])
+			So(err, ShouldBeNil)
+			So(string(creator), ShouldContainSubstring, `"creator-draft"`)
+		})
+
+		Convey("a failed read of the stored row leaves the update standing", func() {
+			readDraft.Return(nil, errors.New("db down"))
+			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{"draft"}, nil)
+
+			So(service.UpdateKN(ctx, nil, kn, false), ShouldBeNil)
+
+			So(written, ShouldContainKey, docID("draft"))
+		})
 
 		Convey("main and every version get the new name with their own content", func() {
 			kna.EXPECT().ListKNBranches(gomock.Any(), "kn1").Return([]string{"draft", "main", "v1"}, nil)
