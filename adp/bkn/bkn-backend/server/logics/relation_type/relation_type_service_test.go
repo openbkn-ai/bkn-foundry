@@ -152,6 +152,52 @@ func Test_relationTypeService_GetRelationTypeIDsByKnID(t *testing.T) {
 	})
 }
 
+// GetAllRelationTypesByKnID reads one network branch whole and asks bkn-safe
+// nothing: the service is built without a permission service, so any check
+// would panic. The Cypher compiler applies query_data itself (#3410).
+func Test_relationTypeService_GetAllRelationTypesByKnID(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	service := &relationTypeService{appSetting: &common.AppSetting{}, rta: rta}
+
+	t.Run("whole set of the requested branch", func(t *testing.T) {
+		want := []*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1"}}}
+		rta.EXPECT().ListRelationTypes(gomock.Any(), interfaces.RelationTypesQueryParams{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+			KNID:                      "kn1",
+			Branch:                    "dev",
+		}).Return(want, nil)
+
+		got, err := service.GetAllRelationTypesByKnID(ctx, "kn1", "dev")
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("empty branch reads main", func(t *testing.T) {
+		rta.EXPECT().ListRelationTypes(gomock.Any(), interfaces.RelationTypesQueryParams{
+			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+			KNID:                      "kn1",
+			Branch:                    interfaces.MAIN_BRANCH,
+		}).Return([]*interfaces.RelationType{}, nil)
+
+		got, err := service.GetAllRelationTypesByKnID(ctx, "kn1", "")
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("storage error", func(t *testing.T) {
+		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
+
+		got, err := service.GetAllRelationTypesByKnID(ctx, "kn1", "main")
+		assert.Nil(t, got)
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, berrors.BknBackend_RelationType_InternalError, httpErr.ErrorCode)
+	})
+}
+
 func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 	Convey("Test GetRelationTypesByIDs\n", t, func() {
 		ctx := context.Background()

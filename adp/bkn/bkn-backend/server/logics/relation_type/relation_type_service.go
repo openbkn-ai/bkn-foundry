@@ -1380,6 +1380,32 @@ func (rts *relationTypeService) GetRelationTypeIDsByKnID(ctx context.Context, kn
 	return rtIDs, nil
 }
 
+// GetAllRelationTypesByKnID reads every relation type of one network branch, unfiltered.
+// Internal call without permission checks: the caller applies its own.
+func (rts *relationTypeService) GetAllRelationTypesByKnID(ctx context.Context, knID string, branch string) ([]*interfaces.RelationType, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("Get all relation types of knowledge network [%s]", knID))
+	defer span.End()
+
+	if branch == "" {
+		branch = interfaces.MAIN_BRANCH
+	}
+	relationTypes, err := rts.rta.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{
+		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
+		KNID:                      knID,
+		Branch:                    branch,
+	})
+	if err != nil {
+		logger.Errorf("GetAllRelationTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, fmt.Sprintf("Get all relation types by kn_id[%s] error: %v", knID, err))
+
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return relationTypes, nil
+}
+
 // Query in batches.
 func (rts *relationTypeService) GetTotalWithLargeRTIDs(ctx context.Context,
 	filterCondition map[string]any,
