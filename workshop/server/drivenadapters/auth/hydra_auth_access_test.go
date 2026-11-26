@@ -36,7 +36,9 @@ func safeWith(t *testing.T, owners map[string]map[string]any) *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
-		var body struct{ Token string }
+		var body struct {
+			Token string `json:"token"`
+		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		owner, ok := owners[body.Token]
 		if !ok {
@@ -57,7 +59,7 @@ func contextWith(authorization string) *gin.Context {
 
 func TestAPIKeyActsAsItsOwner(t *testing.T) {
 	safe := safeWith(t, map[string]map[string]any{
-		"bak_person": {"active": true, "sub": "u-1", "account_type": "user"},
+		"bak_person": {"active": true, "sub": "u-1", "account_type": "user", "subject_name": "Person"},
 		"bak_app":    {"active": true, "sub": "a-1", "account_type": "app"},
 	})
 	h := &stubHydra{}
