@@ -89,6 +89,8 @@ func TestHandlingsCarryTheClassesInputs(t *testing.T) {
 type fakeHandlingStore struct {
 	due     []handlingRow
 	settled []handlingRow
+	// settleErrs are the errors of the contexts the settles were written with.
+	settleErrs []error
 }
 
 func (f *fakeHandlingStore) alone(_ context.Context, _ string, fn func() error) (bool, error) {
@@ -99,8 +101,9 @@ func (f *fakeHandlingStore) dueHandlings(context.Context, int64, int) ([]handlin
 	return f.due, nil
 }
 
-func (f *fakeHandlingStore) settleHandling(_ context.Context, row handlingRow) error {
+func (f *fakeHandlingStore) settleHandling(ctx context.Context, row handlingRow) error {
 	f.settled = append(f.settled, row)
+	f.settleErrs = append(f.settleErrs, ctx.Err())
 	return nil
 }
 
@@ -108,12 +111,20 @@ type fakeHandlingAccess struct {
 	outcome interfaces.EventHandlingOutcome
 	asked   []interfaces.AccountInfo
 	inputs  []string
+	// during runs while a request is with ontology-query; requestErrs are the errors of the
+	// requests' contexts after it.
+	during      func()
+	requestErrs []error
 }
 
 func (f *fakeHandlingAccess) ExecuteForEvent(ctx context.Context, knID, actionTypeID string, identity, inputs json.RawMessage) interfaces.EventHandlingOutcome {
 	account, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	f.asked = append(f.asked, account)
 	f.inputs = append(f.inputs, string(inputs))
+	if f.during != nil {
+		f.during()
+	}
+	f.requestErrs = append(f.requestErrs, ctx.Err())
 	return f.outcome
 }
 
@@ -163,6 +174,37 @@ func TestTheHandlerSettlesEachTry(t *testing.T) {
 				t.Fatalf("settled %+v without a reason", got)
 			}
 		})
+	}
+}
+
+// A round that ends while ontology-query is asked does not cut the request short nor keeping how
+// it went: a handling left queued after its execution started would be executed again by the next
+// round. The round starts no other handling after it ends.
+func TestTheEndOfARoundDoesNotCutATryShort(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	row := handlingRow{eventID: "e1", knID: "kn1", actionTypeID: "notify_buyer",
+		target: json.RawMessage(`{"id":"PO-1"}`), subject: checker, status: interfaces.KnEventHandlingQueued}
+	next := row
+	next.eventID = "e2"
+	store := &fakeHandlingStore{due: []handlingRow{row, next}}
+	access := &fakeHandlingAccess{outcome: interfaces.EventHandlingOutcome{ExecutionID: "ex-1"}, during: cancel}
+	h := &handler{store: store, actions: access, now: time.Now}
+
+	h.round(ctx)
+
+	if len(access.asked) != 1 {
+		t.Fatalf("asked %d times, want only the handling in flight when the round ended", len(access.asked))
+	}
+	if access.requestErrs[0] != nil {
+		t.Fatalf("the request was cut short: %v", access.requestErrs[0])
+	}
+	if len(store.settled) != 1 || store.settled[0].status != interfaces.KnEventHandlingStarted ||
+		store.settled[0].executionID != "ex-1" {
+		t.Fatalf("settled %+v, want e1 started as ex-1", store.settled)
+	}
+	if store.settleErrs[0] != nil {
+		t.Fatalf("kept how the try went with an ended context: %v", store.settleErrs[0])
 	}
 }
 

@@ -23,8 +23,11 @@ const HandlingWorker = "kn-event-handling"
 const (
 	// handlePeriod is how often the worker looks for events to handle.
 	handlePeriod = 5 * time.Second
-	// handleRun bounds one round of the worker.
+	// handleRun bounds how long one round of the worker starts handlings; the one in flight when
+	// it ends still finishes.
 	handleRun = time.Minute
+	// handleSettle bounds keeping how a try went.
+	handleSettle = 10 * time.Second
 	// handleLock lets one replica handle events at a time.
 	handleLock = "bkn_kn_event_handling"
 	// handlePage is how many events a round handles at most.
@@ -228,14 +231,25 @@ func (h *handler) round(ctx context.Context) {
 			if ctx.Err() != nil {
 				return nil
 			}
-			if err := h.store.settleHandling(ctx, h.try(ctx, row)); err != nil {
-				logger.Errorf("knowledge-network events: keep the handling of event %s: %v", row.eventID, err)
-			}
+			h.handle(ctx, row)
 		}
 		return nil
 	})
 	if err != nil && ctx.Err() == nil {
 		logger.Errorf("knowledge-network events: handle events: %v", err)
+	}
+}
+
+// handle tries one handling and keeps how it went. Once asked, ontology-query may have started the
+// execution, so the end of the round cuts short neither the request, which the access bounds
+// itself, nor keeping its outcome: a handling left queued would be executed again.
+func (h *handler) handle(ctx context.Context, row handlingRow) {
+	ctx = context.WithoutCancel(ctx)
+	row = h.try(ctx, row)
+	settleCtx, cancel := context.WithTimeout(ctx, handleSettle)
+	defer cancel()
+	if err := h.store.settleHandling(settleCtx, row); err != nil {
+		logger.Errorf("knowledge-network events: keep the handling of event %s: %v", row.eventID, err)
 	}
 }
 
