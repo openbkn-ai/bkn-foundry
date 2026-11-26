@@ -82,6 +82,51 @@ func ObjectTypeDetailForBranch(ctx context.Context, bkn interfaces.BknBackendAcc
 	return reader.GetObjectTypeDetailBranch(ctx, knID, branch, ids, includeDetail)
 }
 
+// objectTypeDefinitionBatch bounds the ids of one by-id read; they travel in the URL path.
+const objectTypeDefinitionBatch = 50
+
+// WithObjectTypeDefinitions replaces the object types of a network detail with their full
+// definitions, read by id in batches and kept in the listing's order.
+//
+// bkn-backend lists a network's object types as summaries, without data properties, logic
+// properties or primary keys, so get_kn_detail answered with none and its outline counted
+// zero properties (#3412). The by-id read is the one get_object_types answers from, so both
+// tools now show the same definition; property authorization still runs on the result. An
+// object type the by-id read no longer returns keeps its summary.
+func WithObjectTypeDefinitions(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string,
+	listed []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
+	ids := make([]string, 0, len(listed))
+	for _, objectType := range listed {
+		if objectType != nil && objectType.ID != "" {
+			ids = append(ids, objectType.ID)
+		}
+	}
+	definitions := make(map[string]*interfaces.ObjectType, len(ids))
+	for start := 0; start < len(ids); start += objectTypeDefinitionBatch {
+		batch := ids[start:min(start+objectTypeDefinitionBatch, len(ids))]
+		read, err := ObjectTypeDetailForBranch(ctx, bkn, knID, branch, batch, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, objectType := range read {
+			if objectType != nil {
+				definitions[objectType.ID] = objectType
+			}
+		}
+	}
+	result := make([]*interfaces.ObjectType, 0, len(listed))
+	for _, objectType := range listed {
+		if objectType == nil {
+			continue
+		}
+		if definition, ok := definitions[objectType.ID]; ok {
+			objectType = definition
+		}
+		result = append(result, objectType)
+	}
+	return result, nil
+}
+
 // RelationTypesForBranch reads one page of a network's relation types, keeping those that
 // start or end at objectTypeIDs when it is given. Unlike the object type index there is no
 // main-only reader to fall back on: listing relation types is new on every branch.

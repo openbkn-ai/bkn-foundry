@@ -7,7 +7,9 @@ package knmetrics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -247,5 +249,83 @@ func TestDrillThroughMetric_EmptyParticipantsAreArray(t *testing.T) {
 		&interfaces.MetricDrillThroughReq{KnID: "kn1", MetricID: "m1", Version: 1, BucketKey: "selected"})
 	if err != nil || result.Participants == nil || len(result.Participants) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+// definitionBackend answers by-id object type reads from a fixed set and records each read's ids.
+type definitionBackend struct {
+	interfaces.BknBackendAccess
+	definitions map[string]*interfaces.ObjectType
+	reads       [][]string
+	err         error
+}
+
+func (b *definitionBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
+	b.reads = append(b.reads, append([]string(nil), ids...))
+	if b.err != nil {
+		return nil, b.err
+	}
+	var found []*interfaces.ObjectType
+	for _, id := range ids {
+		if definition, ok := b.definitions[id]; ok {
+			found = append(found, definition)
+		}
+	}
+	return found, nil
+}
+
+// The listing's summaries are replaced by the by-id definitions, in the listing's order and in
+// batches of 50 ids; one the by-id read no longer returns keeps its summary (#3412).
+func TestWithObjectTypeDefinitionsReadsDefinitionsInBatches(t *testing.T) {
+	backend := &definitionBackend{definitions: map[string]*interfaces.ObjectType{}}
+	var listed []*interfaces.ObjectType
+	for i := range 120 {
+		id := fmt.Sprintf("ot-%03d", i)
+		listed = append(listed, &interfaces.ObjectType{ID: id, Name: id})
+		if i != 7 {
+			backend.definitions[id] = &interfaces.ObjectType{ID: id, Name: id,
+				DataProperties: []*interfaces.DataProperty{{Name: "id", Type: "string"}}, PrimaryKeys: []string{"id"}}
+		}
+	}
+	listed = append(listed, nil)
+
+	got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", listed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sizes := []int{len(backend.reads[0]), len(backend.reads[1]), len(backend.reads[2])}; len(backend.reads) != 3 ||
+		!reflect.DeepEqual(sizes, []int{50, 50, 20}) {
+		t.Fatalf("reads = %d of sizes %v, want 50, 50, 20", len(backend.reads), sizes)
+	}
+	if len(got) != 120 {
+		t.Fatalf("got %d object types, want the 120 listed", len(got))
+	}
+	for i, objectType := range got {
+		if want := fmt.Sprintf("ot-%03d", i); objectType.ID != want {
+			t.Fatalf("entry %d = %s, want %s in the listing's order", i, objectType.ID, want)
+		}
+		if i == 7 {
+			if objectType != listed[7] {
+				t.Fatalf("an object type the by-id read did not return must keep its summary")
+			}
+			continue
+		}
+		if len(objectType.DataProperties) != 1 || len(objectType.PrimaryKeys) != 1 {
+			t.Fatalf("%s carries no definition: %+v", objectType.ID, objectType)
+		}
+	}
+}
+
+func TestWithObjectTypeDefinitionsFailsWhenTheReadFails(t *testing.T) {
+	backend := &definitionBackend{err: errors.New("bkn-backend down")}
+	got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main",
+		[]*interfaces.ObjectType{{ID: "ot-1"}})
+	if err == nil || got != nil {
+		t.Fatalf("got %v, %v; want the read's error", got, err)
+	}
+
+	got, err = WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", nil)
+	if err != nil || len(got) != 0 || len(backend.reads) != 1 {
+		t.Fatalf("an empty listing must read nothing: %v, %v, %d reads", got, err, len(backend.reads))
 	}
 }
