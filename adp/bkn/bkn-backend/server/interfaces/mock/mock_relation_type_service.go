@@ -101,6 +101,21 @@ func (mr *MockRelationTypeServiceMockRecorder) DeleteRelationTypesByKnID(ctx, tx
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRelationTypesByKnID", reflect.TypeOf((*MockRelationTypeService)(nil).DeleteRelationTypesByKnID), ctx, tx, knID, branch)
 }
 
+// GetAllRelationTypesByKnID mocks base method.
+func (m *MockRelationTypeService) GetAllRelationTypesByKnID(ctx context.Context, knID, branch string) ([]*interfaces.RelationType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllRelationTypesByKnID", ctx, knID, branch)
+	ret0, _ := ret[0].([]*interfaces.RelationType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAllRelationTypesByKnID indicates an expected call of GetAllRelationTypesByKnID.
+func (mr *MockRelationTypeServiceMockRecorder) GetAllRelationTypesByKnID(ctx, knID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllRelationTypesByKnID", reflect.TypeOf((*MockRelationTypeService)(nil).GetAllRelationTypesByKnID), ctx, knID, branch)
+}
+
 // GetRelationTypeIDsByKnID mocks base method.
 func (m *MockRelationTypeService) GetRelationTypeIDsByKnID(ctx context.Context, knID, branch string) ([]string, error) {
 	m.ctrl.T.Helper()

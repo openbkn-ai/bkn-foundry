@@ -12,9 +12,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
-// serviceSchemaSource reads modelling metadata through the ordinary object
-// type and relation type services, so the compiler sees exactly what the rest
-// of the service sees, including branch scoping.
+// serviceSchemaSource reads modelling metadata through the object type and
+// relation type services, scoped to one network branch and unfiltered by
+// permission: LoadSchema applies the query_data check itself.
 type serviceSchemaSource struct {
 	ots interfaces.ObjectTypeService
 	rts interfaces.RelationTypeService
@@ -38,15 +38,10 @@ func (s *serviceSchemaSource) AllObjectTypes(ctx context.Context, knID, branch s
 }
 
 func (s *serviceSchemaSource) AllRelationTypes(ctx context.Context, knID, branch string) ([]*interfaces.RelationType, error) {
-	// Limit -1 asks for the whole set; a Cypher pattern may name any relation
-	// type in the network, so paging here would only hide some of them.
-	relationTypes, _, err := s.rts.ListRelationTypes(ctx, interfaces.RelationTypesQueryParams{
-		PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
-		KNID:                      knID,
-		Branch:                    branch,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return relationTypes, nil
+	// Read the whole set unfiltered, as for object types. The public list keeps
+	// only relation types the caller may view_detail on, and LoadSchema then
+	// filters by query_data, so a caller holding query_data alone would find a
+	// relation type it may query missing and get "unknown relationship type"
+	// (#3410). The query_data filter in LoadSchema is the check that applies.
+	return s.rts.GetAllRelationTypesByKnID(ctx, knID, branch)
 }
