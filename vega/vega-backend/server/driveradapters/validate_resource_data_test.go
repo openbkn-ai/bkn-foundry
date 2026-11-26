@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -57,7 +57,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 	t.Run("ignores deprecated top-level pagination fields", func(t *testing.T) {
 		var params interfaces.ResourceDataQueryParams
-		require.NoError(t, common.UnmarshalJSON([]byte(`{"limit":10000,"offset":10}`), &params))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(`{"limit":10000,"offset":10}`), &params))
 
 		err := ValidateResourceDataQueryParams(ctx, &params, interfaces.ResourceCategoryTable)
 
@@ -96,7 +96,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 
 	t.Run("normalizes precise before interval for connectors", func(t *testing.T) {
 		var params interfaces.ResourceDataQueryParams
-		require.NoError(t, common.UnmarshalJSON([]byte(`{
+		require.NoError(t, jsoncodec.Unmarshal([]byte(`{
 			"filter_condition": {
 				"field": "created_at",
 				"operation": "before",
@@ -437,7 +437,7 @@ func TestValidateAggregateParams(t *testing.T) {
 				t.Run(operation+"/"+tc.name, func(t *testing.T) {
 					var params interfaces.ResourceDataQueryParams
 					payload := `{"having":{"field":"count(*)","operation":"` + operation + `","value":` + tc.value + `}}`
-					require.NoError(t, common.UnmarshalJSON([]byte(payload), &params))
+					require.NoError(t, jsoncodec.Unmarshal([]byte(payload), &params))
 					err := ValidateResourceDataQueryParams(ctx, &params, interfaces.ResourceCategoryTable)
 					if tc.valid {
 						require.NoError(t, err)

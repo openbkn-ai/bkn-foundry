@@ -6,9 +6,11 @@ package interfaces
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"strconv"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 const APIEffectRead = "read"
@@ -42,8 +44,8 @@ type HTTPResponseDefinition struct {
 	Description string         `json:"description" mapstructure:"description"`
 	Schema      any            `json:"schema" mapstructure:"schema"`
 	Headers     map[string]any `json:"headers,omitempty" mapstructure:"headers"`
-	ResultRows  *string        `json:"result_rows,omitempty" mapstructure:"result_rows"`
-	ResultTotal *string        `json:"result_total,omitempty" mapstructure:"result_total"`
+	ResultRows  *string        `json:"result_rows,omitzero" mapstructure:"result_rows"`
+	ResultTotal *string        `json:"result_total,omitzero" mapstructure:"result_total"`
 }
 
 // HTTPSuccessRule 保留原始状态码和条件树，由消费者执行语义校验及条件解析。
@@ -106,10 +108,8 @@ func decodeAPIFixedJSON(data []byte, result any) error {
 	if len(data) == 0 || data[0] != '{' {
 		return errors.New("API definition must be an object")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(result); err != nil {
+	decoder := jsontext.NewDecoder(bytes.NewReader(data))
+	if err := jsoncodec.UnmarshalDecode(decoder, result); err != nil {
 		// 解码器错误可能包含用户提交的敏感值，只返回固定说明。
 		return errors.New("invalid API definition field or value")
 	}

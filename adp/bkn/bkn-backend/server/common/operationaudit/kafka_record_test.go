@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -36,8 +35,9 @@ func TestBuildKafkaAuditRecordMapsRealManagementFact(t *testing.T) {
 	if err := json.Unmarshal(value, &record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := uuid.Parse(record["event_id"].(string)); err != nil {
-		t.Fatalf("event_id is not a UUID: %v", err)
+	const wantEventID = "06a08647-fc51-5a43-a3e3-cf4597f78bf9"
+	if record["event_id"] != wantEventID {
+		t.Fatalf("event_id = %v, want historical UUIDv5 %s", record["event_id"], wantEventID)
 	}
 	if record["source_id"] != "bkn-backend" || record["event_name"] != "backend.operation.observed" || record["outcome"] != "success" || record["http_status"] != float64(200) {
 		t.Fatalf("wrong Kafka Audit identity: %#v", record)

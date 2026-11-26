@@ -84,7 +84,7 @@ type ObjectMetricListV1 struct {
 // permission has been checked.
 type ObjectMetricReferenceV1 struct {
 	SourceID      string `json:"source_id"`
-	SourceVersion int    `json:"source_version,omitempty"`
+	SourceVersion int    `json:"source_version,omitzero"`
 	SourceName    string `json:"source_name,omitempty"`
 	SourceField   string `json:"source_field"`
 }
@@ -101,7 +101,7 @@ type ObjectMetricVersionDeletionStateV1 struct {
 type ObjectMetricDeletionBlockerV1 struct {
 	ResourceType string `json:"resource_type"`
 	ResourceID   string `json:"resource_id"`
-	Version      int    `json:"version,omitempty"`
+	Version      int    `json:"version,omitzero"`
 	Name         string `json:"name,omitempty"`
 	Field        string `json:"field"`
 }
@@ -146,7 +146,7 @@ type ObjectMetricOutputSchemaV1 struct {
 	Shape      string                       `json:"shape"`
 	Dimensions []ObjectMetricPropertyRef    `json:"dimensions"`
 	Value      ObjectMetricValueSemanticsV1 `json:"value"`
-	TimeKey    *ObjectMetricPropertyRef     `json:"time_key,omitempty"`
+	TimeKey    *ObjectMetricPropertyRef     `json:"time_key,omitzero"`
 }
 
 type ObjectMetricCapabilitiesV1 struct {
@@ -219,12 +219,12 @@ type ObjectMetricServiceV1 interface {
 
 type ObjectMetricSpecificationV1 struct {
 	Kind               string                            `json:"kind"`
-	Measure            *ObjectMetricMeasureV1            `json:"measure,omitempty"`
-	BaseMetric         *ObjectMetricRefV1                `json:"base_metric,omitempty"`
-	BusinessQualifiers *ObjectMetricBusinessQualifiersV1 `json:"business_qualifiers,omitempty"`
+	Measure            *ObjectMetricMeasureV1            `json:"measure,omitzero"`
+	BaseMetric         *ObjectMetricRefV1                `json:"base_metric,omitzero"`
+	BusinessQualifiers *ObjectMetricBusinessQualifiersV1 `json:"business_qualifiers,omitzero"`
 	Dependencies       []ObjectMetricDependencyV1        `json:"dependencies,omitempty"`
-	Expression         *ObjectMetricExpressionV1         `json:"expression,omitempty"`
-	Alignment          *ObjectMetricAlignmentV1          `json:"alignment,omitempty"`
+	Expression         *ObjectMetricExpressionV1         `json:"expression,omitzero"`
+	Alignment          *ObjectMetricAlignmentV1          `json:"alignment,omitzero"`
 	ZeroDivisionPolicy string                            `json:"zero_division_policy,omitempty"`
 	NullPolicy         string                            `json:"null_policy,omitempty"`
 }
@@ -262,11 +262,11 @@ func NormalizeObjectMetricRelationDirectionV1(direction string) (string, bool) {
 
 type ObjectMetricTimeWindowV1 struct {
 	Mode      string `json:"mode"`
-	Length    int    `json:"length,omitempty"`
+	Length    int    `json:"length,omitzero"`
 	Unit      string `json:"unit,omitempty"`
 	Period    string `json:"period,omitempty"`
-	StartAt   int64  `json:"start_at,omitempty"`
-	EndAt     int64  `json:"end_at,omitempty"`
+	StartAt   int64  `json:"start_at,omitzero"`
+	EndAt     int64  `json:"end_at,omitzero"`
 	Timezone  string `json:"timezone,omitempty"`
 	WeekStart string `json:"week_start,omitempty"`
 }
@@ -277,8 +277,8 @@ type ObjectMetricUnitSpecV1 struct {
 	Code          string                  `json:"code"`
 	DisplaySymbol string                  `json:"display_symbol,omitempty"`
 	ScaleFactor   float64                 `json:"scale_factor"`
-	Numerator     *ObjectMetricUnitSpecV1 `json:"numerator,omitempty"`
-	Denominator   *ObjectMetricUnitSpecV1 `json:"denominator,omitempty"`
+	Numerator     *ObjectMetricUnitSpecV1 `json:"numerator,omitzero"`
+	Denominator   *ObjectMetricUnitSpecV1 `json:"denominator,omitzero"`
 }
 
 type ObjectMetricValueSemanticsV1 struct {
@@ -287,7 +287,7 @@ type ObjectMetricValueSemanticsV1 struct {
 	Precision    *int                    `json:"precision,omitempty"`
 	Scale        *int                    `json:"scale,omitempty"`
 	RoundingMode string                  `json:"rounding_mode,omitempty"`
-	Unit         *ObjectMetricUnitSpecV1 `json:"unit,omitempty"`
+	Unit         *ObjectMetricUnitSpecV1 `json:"unit,omitzero"`
 	Minimum      *float64                `json:"minimum,omitempty"`
 	Maximum      *float64                `json:"maximum,omitempty"`
 }
@@ -323,44 +323,44 @@ type ObjectMetricLifecycleV1 struct {
 
 type ObjectMetricExpressionV1 struct {
 	NodeType        string                     `json:"node_type"`
-	PropertyRef     *ObjectMetricPropertyRef   `json:"property_ref,omitempty"`
+	PropertyRef     *ObjectMetricPropertyRef   `json:"property_ref,omitzero"`
 	DependencyAlias string                     `json:"dependency_alias,omitempty"`
-	Value           any                        `json:"value,omitempty"`
+	Value           any                        `json:"value,omitzero"`
 	ValueType       string                     `json:"value_type,omitempty"`
 	Function        string                     `json:"function,omitempty"`
 	Operator        string                     `json:"operator,omitempty"`
 	Arguments       []ObjectMetricExpressionV1 `json:"arguments,omitempty"`
-	Left            *ObjectMetricExpressionV1  `json:"left,omitempty"`
-	Right           *ObjectMetricExpressionV1  `json:"right,omitempty"`
+	Left            *ObjectMetricExpressionV1  `json:"left,omitzero"`
+	Right           *ObjectMetricExpressionV1  `json:"right,omitzero"`
 }
 
 type ObjectMetricOperandV1 struct {
 	Source      string                   `json:"source"`
-	PropertyRef *ObjectMetricPropertyRef `json:"property_ref,omitempty"`
+	PropertyRef *ObjectMetricPropertyRef `json:"property_ref,omitzero"`
 	ValueType   string                   `json:"value_type,omitempty"`
-	Value       any                      `json:"value,omitempty"`
+	Value       any                      `json:"value,omitzero"`
 }
 
 type ObjectMetricConditionV1 struct {
 	NodeType           string                    `json:"node_type"`
 	BooleanOperator    string                    `json:"boolean_operator,omitempty"`
 	Children           []ObjectMetricConditionV1 `json:"children,omitempty"`
-	Left               *ObjectMetricOperandV1    `json:"left,omitempty"`
+	Left               *ObjectMetricOperandV1    `json:"left,omitzero"`
 	ComparisonOperator string                    `json:"comparison_operator,omitempty"`
 	Right              []ObjectMetricOperandV1   `json:"right,omitempty"`
 }
 
 type ObjectMetricMeasureV1 struct {
 	AllowApproximate *bool                     `json:"allow_approximate,omitempty"`
-	Expression       *ObjectMetricExpressionV1 `json:"expression,omitempty"`
+	Expression       *ObjectMetricExpressionV1 `json:"expression,omitzero"`
 	Aggregation      string                    `json:"aggregation"`
 }
 
 type ObjectMetricBusinessQualifiersV1 struct {
-	Filters      *ObjectMetricConditionV1    `json:"filters,omitempty"`
-	RelationPath *ObjectMetricRelationPathV1 `json:"relation_path,omitempty"`
-	EventTime    *ObjectMetricPropertyRef    `json:"event_time,omitempty"`
-	TimeWindow   *ObjectMetricTimeWindowV1   `json:"time_window,omitempty"`
+	Filters      *ObjectMetricConditionV1    `json:"filters,omitzero"`
+	RelationPath *ObjectMetricRelationPathV1 `json:"relation_path,omitzero"`
+	EventTime    *ObjectMetricPropertyRef    `json:"event_time,omitzero"`
+	TimeWindow   *ObjectMetricTimeWindowV1   `json:"time_window,omitzero"`
 }
 
 type ObjectMetricRelationPathV1 struct {
@@ -368,7 +368,7 @@ type ObjectMetricRelationPathV1 struct {
 	Steps             []ObjectMetricRelationStepV1 `json:"steps"`
 	Purpose           string                       `json:"purpose"`
 	Quantifier        string                       `json:"quantifier,omitempty"`
-	RelatedFilters    *ObjectMetricConditionV1     `json:"related_filters,omitempty"`
+	RelatedFilters    *ObjectMetricConditionV1     `json:"related_filters,omitzero"`
 	CardinalityPolicy string                       `json:"cardinality_policy"`
 	CountComparison   string                       `json:"count_comparison,omitempty"`
 	CountThreshold    *int                         `json:"count_threshold,omitempty"`
@@ -380,9 +380,9 @@ type ObjectMetricObjectAlignmentV1 struct {
 }
 
 type ObjectMetricEvaluationContextV1 struct {
-	TimeShift     *ObjectMetricTimeShiftV1    `json:"time_shift,omitempty"`
+	TimeShift     *ObjectMetricTimeShiftV1    `json:"time_shift,omitzero"`
 	Window        string                      `json:"window"`
-	WindowSpec    *ObjectMetricTimeWindowV1   `json:"window_spec,omitempty"`
+	WindowSpec    *ObjectMetricTimeWindowV1   `json:"window_spec,omitzero"`
 	FilterContext ObjectMetricFilterContextV1 `json:"filter_context"`
 }
 
@@ -393,7 +393,7 @@ type ObjectMetricTimeShiftV1 struct {
 
 type ObjectMetricFilterContextV1 struct {
 	Mode      string                   `json:"mode"`
-	Dimension *ObjectMetricPropertyRef `json:"dimension,omitempty"`
+	Dimension *ObjectMetricPropertyRef `json:"dimension,omitzero"`
 }
 
 type ObjectMetricDependencyV1 struct {
@@ -411,7 +411,7 @@ type ObjectMetricAlignmentV1 struct {
 	ResultSetPolicy         string                    `json:"result_set_policy"`
 	PrimaryDependencyAlias  string                    `json:"primary_dependency_alias,omitempty"`
 	TimeAlignment           string                    `json:"time_alignment"`
-	TimeKey                 *ObjectMetricPropertyRef  `json:"time_key,omitempty"`
+	TimeKey                 *ObjectMetricPropertyRef  `json:"time_key,omitzero"`
 }
 
 // InferObjectMetricOutputShapeV1 derives response shape instead of accepting it as authored input.

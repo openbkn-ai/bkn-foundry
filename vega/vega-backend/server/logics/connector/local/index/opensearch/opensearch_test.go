@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +23,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
@@ -194,13 +194,11 @@ func assertDatasetDocumentPrecision(t *testing.T, document map[string]any, id st
 	}
 	assert.Equal(t, expected, document)
 
-	// 使用生产响应所用的 Sonic 编码器，验证序列化后仍保留数值和类型。
-	encoded, err := sonic.Marshal(document)
+	// 使用生产响应的编码器，验证序列化后仍保留数值和类型。
+	encoded, err := jsoncodec.Marshal(document)
 	require.NoError(t, err)
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
 	var roundTrip map[string]any
-	require.NoError(t, decoder.Decode(&roundTrip))
+	require.NoError(t, jsoncodec.Unmarshal(encoded, &roundTrip))
 	assert.Equal(t, expected, roundTrip)
 }
 
@@ -558,6 +556,37 @@ func TestDeleteDocumentsReturnsBulkItemFailure(t *testing.T) {
 type datasetTransport func(*http.Request) (*http.Response, error)
 
 func (f datasetTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestOpenSearchConnectorUpsertDocuments(t *testing.T) {
+	client, err := opensearch.NewClient(opensearch.Config{
+		Addresses: []string{"http://opensearch.test"},
+		Transport: datasetTransport(func(r *http.Request) (*http.Response, error) {
+			require.Equal(t, "/_bulk", r.URL.Path)
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			lines := strings.Split(string(body), "\n")
+			require.Len(t, lines, 3)
+			assert.JSONEq(t, `{"update":{"_index":"index-1","_id":"doc-1"}}`, lines[0])
+			assert.JSONEq(t, `{"doc":{"id":9007199254740993},"upsert":{"id":9007199254740993}}`, lines[1])
+			assert.Contains(t, lines[1], "9007199254740993")
+			assert.Empty(t, lines[2])
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"errors":false,"items":[{"update":{"_id":"doc-1","status":200}}]}`)),
+			}, nil
+		}),
+	})
+	require.NoError(t, err)
+
+	connector := &OpenSearchConnector{client: client}
+	ids, err := connector.UpsertDocuments(t.Context(), "index-1", []map[string]any{
+		{"id": "skipped"},
+		{"id": "doc-1", "document": map[string]any{"id": json.Number("9007199254740993")}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"doc-1"}, ids)
+}
 
 func TestOpenSearchConnectorDeleteDocumentsByQuery(t *testing.T) {
 	for _, tc := range []struct {

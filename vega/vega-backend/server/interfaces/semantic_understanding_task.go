@@ -334,8 +334,8 @@ type SemanticUnderstandingCatalogApplyDetail struct {
 
 type SemanticUnderstandingSkippedApplyDetail struct {
 	Reason              string  `json:"reason"`
-	Confidence          float64 `json:"confidence,omitempty"`
-	ConfidenceThreshold float64 `json:"confidence_threshold,omitempty"`
+	Confidence          float64 `json:"confidence,omitzero"`
+	ConfidenceThreshold float64 `json:"confidence_threshold,omitzero"`
 	ApplyMode           string  `json:"apply_mode,omitempty"`
 	Scope               string  `json:"scope,omitempty"`
 }

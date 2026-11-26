@@ -8,13 +8,14 @@ package mcp
 
 import (
 	"context"
+	jsonv2 "encoding/json/v2"
 	"log"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -938,11 +939,11 @@ func bindArguments(req mcp.CallToolRequest, target any) error {
 	if raw == nil {
 		return nil
 	}
-	data, err := sonic.Marshal(raw)
+	data, err := jsoncodec.Marshal(raw)
 	if err != nil {
 		return err
 	}
-	return sonic.Unmarshal(data, target)
+	return jsonv2.Unmarshal(data, target)
 }
 
 // bindPreciseArguments is reserved for tool inputs that carry dynamic business
@@ -952,11 +953,11 @@ func bindPreciseArguments(req mcp.CallToolRequest, target any) error {
 	if raw == nil {
 		return nil
 	}
-	data, err := sonic.Marshal(raw)
+	data, err := jsoncodec.Marshal(raw)
 	if err != nil {
 		return err
 	}
-	return common.UnmarshalPreciseJSON(data, target)
+	return jsoncodec.Unmarshal(data, target)
 }
 
 // handleQueryMetric handles query_metric tool calls: compute one modelled metric

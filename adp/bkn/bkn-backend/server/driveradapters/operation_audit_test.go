@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
@@ -162,34 +162,23 @@ func (s *recordingOperationAuditStore) Record(_ context.Context, entry operation
 	return nil
 }
 
-func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	uuid.SetRand(strings.NewReader(""))
-	defer uuid.SetRand(nil)
+func TestOperationAuditRequestIDReplacesInvalidIDWithUUIDV7(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set(headerBKNRequestID, strings.Repeat("x", 129))
 
-	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
-		name := ""
-		if visitor.ID != "" {
-			name = "Alice"
-		}
-		return operationAuditActor{ActorID: visitor.ID, ActorName: name, ActorType: string(visitor.Type), AuthMethod: "oauth"}
-	}}
-	engine := gin.New()
-	engine.Use(handler.OperationAudit())
-	engine.POST("/api/bkn-backend/v1/knowledge-networks", func(c *gin.Context) {
-		c.Status(http.StatusCreated)
-	})
-
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks", nil)
-	engine.ServeHTTP(response, request)
-
-	if response.Code != http.StatusCreated {
-		t.Fatalf("business response status = %d, want %d", response.Code, http.StatusCreated)
+	requestID := operationAuditRequestID(c)
+	rawID, hasPrefix := strings.CutPrefix(requestID, "req_")
+	id, err := uuid.Parse(rawID)
+	if !hasPrefix || err != nil || id[6]>>4 != 7 {
+		t.Fatalf("request ID = %q, want req_ followed by a UUIDv7", requestID)
 	}
-	if len(store.entries) != 0 {
-		t.Fatalf("audit entries = %d, want 0", len(store.entries))
+	if c.Request.Header.Get(headerBKNRequestID) != requestID || recorder.Header().Get(headerBKNRequestID) != requestID {
+		t.Fatal("generated request ID was not propagated to the request and response")
+	}
+	if got := operationAuditRequestID(c); got != requestID {
+		t.Fatalf("cached request ID = %q, want %q", got, requestID)
 	}
 }
 

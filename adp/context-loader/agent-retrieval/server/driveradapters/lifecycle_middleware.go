@@ -12,6 +12,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -48,30 +50,12 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		var input map[string]any
 		if len(bytes.TrimSpace(raw)) == 0 {
 			input = map[string]any{}
-		} else if err := common.UnmarshalPreciseJSON(raw, &input); err != nil {
+		} else if err := jsoncodec.Unmarshal(raw, &input); err != nil {
 			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
 				Code: "operation_required", Message: "business request body must be a JSON object",
 				RequiredAction: "ensure_operation",
 			})
 			return
-		}
-		// A caller cannot obtain lifecycle IDs when capture is disabled or Core
-		// is unavailable. Probe Core before refusing a contextless execution so
-		// the existing nonblocking business fallback remains usable during outages.
-		outageCode := ""
-		if !hasBusinessContext(input) && requiresManagedHTTPContext(c.Request) && !bkntrace.CaptureDisabled() {
-			outageCode = restTraceCoreOutage(c.Request.Context(), client)
-			if c.Request.Context().Err() != nil {
-				c.Abort()
-				return
-			}
-			if outageCode == "" {
-				writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
-					Code: "conversation_required", Message: "conversation_id is required",
-					RequiredAction: "create_conversation",
-				})
-				return
-			}
 		}
 		if !hasBusinessContext(input) {
 			// io.ReadAll above drained the body. The managed path rebuilds it after
@@ -82,11 +66,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			c.Request.ContentLength = int64(len(raw))
 			ctx, _ := bkntrace.EnsureTraceCorrelation(bkntrace.WithTraceAvailability(c.Request.Context()))
 			if !bkntrace.CaptureDisabled() {
-				code := "trace_context_absent"
-				if outageCode != "" {
-					code = outageCode
-				}
-				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), code)
+				bkntrace.MarkTraceUnavailable(ctx, "context", lifecycleHTTPToolName(c), "trace_context_absent")
 			}
 			c.Request = c.Request.WithContext(bkntrace.ClearManagedTraceContext(ctx))
 			writeTraceAvailabilityHeaders(c, ctx)
@@ -108,7 +88,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			return
 		}
 		businessContext.OperationKey = operationKey
-		downstreamBody, _ := sonic.Marshal(input)
+		downstreamBody, _ := jsoncodec.Marshal(input)
 		c.Request.Body = io.NopCloser(bytes.NewReader(downstreamBody))
 		c.Request.ContentLength = int64(len(downstreamBody))
 
@@ -187,7 +167,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					c.Writer = originalWriter
-					panicPayload, _ := sonic.Marshal(map[string]any{
+					panicPayload, _ := jsoncodec.Marshal(map[string]any{
 						"code": "handler_panic", "message": fmt.Sprint(recovered), "stage": "handler",
 					})
 					_, _, _ = guard.Finish(
@@ -206,7 +186,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		if failed && stage != "" {
 			// Classify the recorded failure from the executing service, while
 			// preserving the original REST body and status for the caller.
-			payload, _ = sonic.Marshal(struct {
+			payload, _ = jsoncodec.Marshal(struct {
 				Code   string          `json:"code"`
 				Stage  string          `json:"stage"`
 				Result json.RawMessage `json:"result"`
@@ -231,30 +211,11 @@ func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
 	if len(trimmed) > 0 && json.Valid(trimmed) {
 		return append(json.RawMessage(nil), trimmed...)
 	}
-	encoded, _ := sonic.Marshal(map[string]any{
+	encoded, _ := jsoncodec.Marshal(map[string]any{
 		"status_code": status,
 		"body":        string(raw),
 	})
 	return encoded
-}
-
-// restTraceCoreOutage makes no lifecycle mutation. A missing operation is an
-// expected healthy response; only a transport or Core infrastructure failure
-// permits a contextless execution to take the established unrecorded path.
-func restTraceCoreOutage(ctx context.Context, client *bkntrace.LifecycleClient) string {
-	if client == nil || !client.Enabled() {
-		return "feature_not_installed"
-	}
-	probeCtx, release := bkntrace.TraceIOContext(bkntrace.WithTraceAvailability(ctx), "pre")
-	apiErr, err := client.Call(probeCtx, http.MethodGet, "/operations/__rest_context_probe__", nil, nil)
-	release()
-	if !bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
-		return ""
-	}
-	if apiErr != nil {
-		return apiErr.Code
-	}
-	return lifecycleUnavailableError(client).Code
 }
 
 func isLifecycleBusinessRequest(request *http.Request) bool {
@@ -272,21 +233,10 @@ func isProxyToolCall(request *http.Request) bool {
 		strings.HasSuffix(request.URL.Path, "/call")
 }
 
-func requiresManagedHTTPContext(request *http.Request) bool {
-	if !strings.Contains(request.URL.Path, "/kn/") {
-		return false
-	}
-	switch path.Base(request.URL.Path) {
-	case "execute_action", "execute_skill":
-		return true
-	default:
-		return false
-	}
-}
-
 // hasBusinessContext reports whether this call has to go through the guard.
 //
-// Missing or empty bkn_context is eligible for ad-hoc reads and proxy calls.
+// Missing or empty bkn_context permits REST execution with the caller's
+// existing authorization and without a managed Trace operation.
 // Everything else goes to
 // parseHTTPBusinessContext to be judged, including the shapes that carry no id:
 // one id and not the other, a bkn_context that is not an object, and an object
@@ -378,7 +328,7 @@ func managedHTTPOperationKey(
 }
 
 func hashHTTPOperationKey(scope string, businessContext bkntrace.BusinessContext, toolName, identity string) string {
-	payload, _ := sonic.Marshal(struct {
+	payload, _ := jsoncodec.Marshal(struct {
 		Scope          string
 		ConversationID string
 		InteractionID  string
@@ -409,8 +359,12 @@ func lifecycleHTTPToolName(c *gin.Context) string {
 }
 
 func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.BusinessContext) string {
-	causationIDs := append([]string(nil), businessContext.CausationEventIDs...)
-	sort.Strings(causationIDs)
+	var causationIDs any
+	if len(businessContext.CausationEventIDs) > 0 {
+		ids := append([]string(nil), businessContext.CausationEventIDs...)
+		sort.Strings(ids)
+		causationIDs = ids
+	}
 	value := map[string]any{
 		"input": input,
 		"bkn_causality": map[string]any{
@@ -418,11 +372,8 @@ func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.Busi
 			"causation_event_ids": causationIDs,
 		},
 	}
-	// ConfigStd, because value is a map and the default sonic config does not sort map keys: with Go
-	// randomising map iteration order this "normalized" hash came out different on every call, and
-	// so did the operation key built from it, so the same request retried looked like a new
-	// operation every time. Same root cause as #1098, one subsystem over.
-	raw, _ := sonic.ConfigStd.Marshal(value)
+	// Persisted fallback keys include null for absent causation IDs and escaped HTML and JS characters.
+	raw, _ := jsoncodec.Marshal(value, jsonv2.Deterministic(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
 	return hashLifecyclePayload(raw)
 }
 
@@ -477,7 +428,7 @@ func writeLifecycleHTTPError(c *gin.Context, status int, value bkntrace.APIError
 func writeLifecycleHTTPResult(c *gin.Context, status int, value any) {
 	c.Header("Content-Type", "application/json")
 	c.Status(status)
-	_ = sonic.ConfigDefault.NewEncoder(c.Writer).Encode(value)
+	_ = jsonv2.MarshalWrite(c.Writer, value)
 	c.Abort()
 }
 
@@ -552,7 +503,7 @@ func writeTraceAvailabilityHeaders(c *gin.Context, ctx context.Context) {
 		c.Header("X-OpenBKN-Trace-Code", code)
 	}
 	if reasons := bkntrace.TracePartialReasons(ctx); len(reasons) > 0 {
-		raw, _ := sonic.Marshal(reasons)
+		raw, _ := jsoncodec.Marshal(reasons)
 		c.Header("X-OpenBKN-Trace-Partial-Reasons", string(raw))
 	}
 }

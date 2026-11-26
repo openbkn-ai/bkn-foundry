@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type NotInCond struct {
@@ -38,7 +38,7 @@ func NewNotInCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataP
 }
 
 func (cond *NotInCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	res, err := sonic.Marshal(cond.mValue)
+	res, err := jsoncodec.Marshal(cond.mValue)
 	if err != nil {
 		return "", fmt.Errorf("condition [not_in] json marshal right value failed, %s", err.Error())
 	}
@@ -61,7 +61,7 @@ func (cond *NotInCond) Convert(ctx context.Context, vectorizer func(ctx context.
 }
 
 func (cond *NotInCond) Convert2SQL(ctx context.Context) (string, error) {
-	_, err := sonic.Marshal(cond.mValue)
+	_, err := jsoncodec.Marshal(cond.mValue)
 	if err != nil {
 		return "", fmt.Errorf("condition [in] json marshal right value failed, %s", err.Error())
 	}

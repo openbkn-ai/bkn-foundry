@@ -82,7 +82,7 @@ type VegaResource struct {
 	Category         string                   `json:"category"`
 	Builtin          bool                     `json:"built_in"`
 	SchemaDefinition []*Property              `json:"schema_definition,omitempty"`
-	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitempty"`
+	IndexConfig      *VegaResourceIndexConfig `json:"index_config,omitzero"`
 	// LocalIndexName names the managed index behind the resource. An empty value means there is
 	// none: the dataset row exists but accepts no writes.
 	LocalIndexName string `json:"index_name,omitempty"`
@@ -121,14 +121,14 @@ type ResourcesListResponse struct {
 type DatasetQueryResponse struct {
 	Entries    []map[string]any          `json:"entries"`
 	TotalCount int64                     `json:"total_count"`
-	Paging     *ResourceDataPagingResult `json:"paging,omitempty"`
+	Paging     *ResourceDataPagingResult `json:"paging,omitzero"`
 }
 
 type ResourceDataPagingRequest struct {
 	Mode         string `json:"mode,omitempty"`
-	Offset       int    `json:"offset,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
-	KeepAliveSec int    `json:"keep_alive_sec,omitempty"`
+	Offset       int    `json:"offset,omitzero"`
+	Limit        int    `json:"limit,omitzero"`
+	KeepAliveSec int    `json:"keep_alive_sec,omitzero"`
 	Cursor       string `json:"cursor,omitempty"`
 }
 
@@ -140,8 +140,8 @@ type ResourceDataPagingResult struct {
 // ResourceDataQueryParams represents resource data query parameters.
 type ResourceDataQueryParams struct {
 	FilterCondition map[string]any            `json:"filter_condition,omitempty"`
-	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
-	NeedTotal       bool                      `json:"need_total,omitempty"`
+	Paging          ResourceDataPagingRequest `json:"paging"`
+	NeedTotal       bool                      `json:"need_total,omitzero"`
 	Sort            []*SortParams             `json:"sort,omitempty"`
 	OutputFields    []string                  `json:"output_fields,omitempty"`
 	// IgnoreLocalIndex reads a table resource from its data source even when

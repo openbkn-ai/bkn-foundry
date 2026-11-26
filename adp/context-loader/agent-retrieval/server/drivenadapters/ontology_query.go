@@ -9,6 +9,7 @@ package drivenadapters
 import (
 	"context"
 	"crypto/sha256"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,9 +18,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -135,7 +136,7 @@ func (o *ontologyQueryClient) GetObjectTypeSchemaBranch(ctx context.Context, knI
 	}
 
 	resp := &interfaces.ObjectTypeSchemaResp{}
-	if err := unmarshalPrecise(respBody, resp); err != nil {
+	if err := jsoncodec.Unmarshal(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetObjectTypeSchema] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
@@ -228,7 +229,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 		return
 	}
 	resp = &interfaces.QueryObjectInstancesResp{}
-	err = unmarshalPrecise(respBody, resp)
+	err = jsoncodec.Unmarshal(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryObjectInstances] invalid response: %v", err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -239,10 +240,10 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 }
 
 func ontologyQueryIdentity(target string, body any) string {
-	encoded, err := sonic.ConfigStd.Marshal(struct {
+	encoded, err := jsoncodec.Marshal(struct {
 		Target string `json:"target"`
 		Body   any    `json:"body"`
-	}{Target: target, Body: body})
+	}{Target: target, Body: body}, jsonv2.Deterministic(true))
 	if err != nil {
 		return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(target)))
 	}
@@ -322,7 +323,7 @@ func downstreamErrorDetails(err error) any {
 		Description  string `json:"description"`
 		ErrorDetails any    `json:"error_details"`
 	}
-	if dependency != nil && len(dependency.Body) > 0 && sonic.Unmarshal(dependency.Body, &envelope) == nil && envelope.ErrorCode != "" {
+	if dependency != nil && len(dependency.Body) > 0 && jsoncodec.Unmarshal(dependency.Body, &envelope) == nil && envelope.ErrorCode != "" {
 		details := envelope.Description
 		switch d := envelope.ErrorDetails.(type) {
 		case nil:
@@ -331,7 +332,7 @@ func downstreamErrorDetails(err error) any {
 				details = d
 			}
 		default:
-			if encoded, err := sonic.ConfigStd.Marshal(d); err == nil {
+			if encoded, err := jsoncodec.Marshal(d); err == nil {
 				details = string(encoded)
 			}
 		}
@@ -406,7 +407,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	}
 
 	resp = &interfaces.QueryLogicPropertiesResp{}
-	err = unmarshalPrecise(respBody, resp)
+	err = jsoncodec.Unmarshal(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("  └─ [ontology-query 响应] ❌ JSON 解析失败: %v", err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -450,7 +451,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	}
 
 	resp = &interfaces.QueryActionsResponse{}
-	err = unmarshalPrecise(respBody, resp)
+	err = jsoncodec.Unmarshal(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionQueryResponseInvalid", map[string]any{})
@@ -462,7 +463,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	}
 
 	// Log the response.
-	respJSON, _ := sonic.Marshal(resp)
+	respJSON, _ := jsoncodec.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Response: %s", string(respJSON))
 
 	return resp, nil
@@ -522,7 +523,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	}
 
 	resp = &interfaces.ExecuteActionsResponse{}
-	err = unmarshalPrecise(respBody, resp)
+	err = jsoncodec.Unmarshal(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionResponseInvalid", map[string]any{})
@@ -534,7 +535,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	}
 
 	// Log the response.
-	respJSON, _ := sonic.Marshal(resp)
+	respJSON, _ := jsoncodec.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Response: %s", string(respJSON))
 
 	return resp, nil
@@ -568,7 +569,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	}
 
 	result := map[string]any{}
-	if err = unmarshalPrecise(respBody, &result); err != nil {
+	if err = jsoncodec.Unmarshal(respBody, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionLookupResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -631,7 +632,7 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	}
 
 	result := map[string]any{}
-	if err = unmarshalPrecise(respBody, &result); err != nil {
+	if err = jsoncodec.Unmarshal(respBody, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionHistoryResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -686,7 +687,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	}
 
 	resp = &interfaces.ExploreSubgraphResp{}
-	if err = unmarshalPrecise(respBody, resp); err != nil {
+	if err = jsoncodec.Unmarshal(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] invalid response: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SubgraphQueryResponseInvalid", map[string]any{})
 		if renderErr != nil {
@@ -741,7 +742,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 
 	// Parse the response directly into any.
 	resp = &interfaces.QueryInstanceSubgraphResp{}
-	err = unmarshalPrecise(respBody, resp)
+	err = jsoncodec.Unmarshal(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] invalid response: %v", err)
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SubgraphQueryResponseInvalid", map[string]any{})
@@ -783,7 +784,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, branch,
 	}
 
 	resp = &interfaces.MetricQueryDownstreamResp{}
-	if err = unmarshalPrecise(respBody, resp); err != nil {
+	if err = jsoncodec.Unmarshal(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
@@ -816,7 +817,7 @@ func (o *ontologyQueryClient) DrillThroughMetricData(ctx context.Context, knID, 
 		return nil, classifyQueryError(ctx, err)
 	}
 	resp = &interfaces.MetricDrillThroughResp{}
-	if err = unmarshalPrecise(respBody, resp); err != nil {
+	if err = jsoncodec.Unmarshal(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#DrillThroughMetricData] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}

@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -100,11 +101,9 @@ func (r *capturedOperationAuditRecorder) Record(_ context.Context, entry operati
 	return nil
 }
 
-func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.T) {
+func TestOperationAuditGeneratesUUIDv7IDs(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
-	uuid.SetRand(strings.NewReader(""))
-	defer uuid.SetRand(nil)
 
 	recorder := &capturedOperationAuditRecorder{}
 	handler := newOperationAuditTestHandler(recorder)
@@ -117,11 +116,21 @@ func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.
 	})
 
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", strings.NewReader(`{"name":"audit-test"}`))
 	engine.ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusCreated, response.Code)
-	require.Empty(t, recorder.entries)
+	require.Len(t, recorder.entries, 1)
+	entry := recorder.entries[0]
+	assert.Equal(t, entry.RequestID, response.Header().Get(common.HeaderBKNRequestID))
+	requestID, hasPrefix := strings.CutPrefix(entry.RequestID, "req_")
+	require.True(t, hasPrefix)
+	for _, id := range []string{requestID, entry.EventID} {
+		parsed, err := uuid.Parse(id)
+		require.NoError(t, err)
+		assert.Equal(t, byte(7), parsed[6]>>4)
+	}
+	assert.NotEqual(t, requestID, entry.EventID)
 }
 
 func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {
@@ -235,7 +244,7 @@ func TestOperationAuditPreservesValidRequestIDRegardlessOfContent(t *testing.T) 
 	assert.Equal(t, requestID, alias)
 	assert.Equal(t, alias, operationAuditCorrelationID(requestID))
 	entry := operationaudit.Entry{
-		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
+		EventID: uuid.NewV7().String(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
 		RequestID: alias, SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
 		Action: "update", TargetType: "catalog", TargetID: "catalog-1", TargetName: "采购目录", Outcome: "success",
 	}
@@ -296,7 +305,7 @@ func TestOperationAuditTargetPreservesValidInputRegardlessOfContent(t *testing.T
 	assert.Equal(t, "bkn_abcdefghijklm", id)
 	assert.Equal(t, "Bearer abcdefghi", name)
 	entry := operationaudit.Entry{
-		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
+		EventID: uuid.NewV7().String(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
 		RequestID: "req-a", SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
 		Action: "update", TargetType: "catalog", TargetID: id, TargetName: name, Outcome: "success",
 	}

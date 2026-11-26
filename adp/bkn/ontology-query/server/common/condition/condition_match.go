@@ -9,9 +9,10 @@ package condition
 import (
 	"context"
 	"fmt"
-	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
 
 type MatchCond struct {
@@ -63,7 +64,7 @@ func (cond *MatchCond) Convert(ctx context.Context, vectorizer func(ctx context.
 		v = fmt.Sprintf("%q", vStr)
 	}
 
-	fields, err := sonic.Marshal(cond.mFilterFieldNames)
+	fields, err := jsoncodec.Marshal(cond.mFilterFieldNames)
 	if err != nil {
 		return "", fmt.Errorf("condition [match] marshal fields error: %s", err.Error())
 	}

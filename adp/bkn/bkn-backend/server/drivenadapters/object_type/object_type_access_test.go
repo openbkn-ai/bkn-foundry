@@ -16,8 +16,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -285,7 +285,7 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 				ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE,
 			}
 			// Use reflection to set a non-serializable field and test marshal errors.
-			// Sonic handles most cases, so this primarily ensures the code path is covered.
+			// Check that the encoder error is returned.
 			smock.ExpectBegin()
 			tx, _ := ota.db.Begin()
 			err := ota.CreateObjectType(testCtx, tx, invalidObjectType)
@@ -423,6 +423,19 @@ func Test_objectTypeAccess_CreateObjectType(t *testing.T) {
 			_ = err
 		})
 	})
+}
+
+func TestObjectTypeInsertValuesStoresEmptyCollections(t *testing.T) {
+	args, err := objectTypeInsertValues(&interfaces.ObjectType{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, field := range map[int]string{10: "data_properties", 14: "logic_properties", 15: "primary_keys"} {
+		value, ok := args[index].([]byte)
+		if !ok || string(value) != "[]" {
+			t.Errorf("stored %s = %q, want an empty JSON array", field, args[index])
+		}
+	}
 }
 
 func Test_objectTypeAccess_CreateObjectTypes(t *testing.T) {
@@ -585,10 +598,10 @@ func Test_objectTypeAccess_ListObjectTypes(t *testing.T) {
 			"FROM %s AS ot JOIN %s AS ots ON ot.f_id = ots.f_id AND ot.f_kn_id = ots.f_kn_id AND ot.f_branch = ots.f_branch "+
 			"WHERE ot.f_kn_id = ? AND ot.f_branch = ?", OT_TABLE_NAME, OT_STATUS_TABLE_NAME)
 
-		dataSourceBytes, _ := sonic.Marshal(testObjectType.DataSource)
-		dataPropertiesBytes, _ := sonic.Marshal(testObjectType.DataProperties)
-		logicPropertiesBytes, _ := sonic.Marshal(testObjectType.LogicProperties)
-		primaryKeysBytes, _ := sonic.Marshal(testObjectType.PrimaryKeys)
+		dataSourceBytes, _ := jsoncodec.Marshal(testObjectType.DataSource)
+		dataPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.DataProperties)
+		logicPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.LogicProperties)
+		primaryKeysBytes, _ := jsoncodec.Marshal(testObjectType.PrimaryKeys)
 
 		rows := sqlmock.NewRows([]string{
 			"ot.f_id", "ot.f_name", "ot.f_tags", "ot.f_comment", "ot.f_icon", "ot.f_color", "ot.f_bkn_raw_content",
@@ -945,10 +958,10 @@ func Test_objectTypeAccess_GetObjectTypeByID(t *testing.T) {
 		branch := "main"
 		otID := "ot1"
 
-		dataSourceBytes, _ := sonic.Marshal(testObjectType.DataSource)
-		dataPropertiesBytes, _ := sonic.Marshal(testObjectType.DataProperties)
-		logicPropertiesBytes, _ := sonic.Marshal(testObjectType.LogicProperties)
-		primaryKeysBytes, _ := sonic.Marshal(testObjectType.PrimaryKeys)
+		dataSourceBytes, _ := jsoncodec.Marshal(testObjectType.DataSource)
+		dataPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.DataProperties)
+		logicPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.LogicProperties)
+		primaryKeysBytes, _ := jsoncodec.Marshal(testObjectType.PrimaryKeys)
 
 		Convey("GetObjectTypeByID Success \n", func() {
 			rows := sqlmock.NewRows([]string{
@@ -1123,10 +1136,10 @@ func Test_objectTypeAccess_GetObjectTypesByIDs(t *testing.T) {
 		branch := "main"
 		otIDs := []string{"ot1", "ot2"}
 
-		dataSourceBytes, _ := sonic.Marshal(testObjectType.DataSource)
-		dataPropertiesBytes, _ := sonic.Marshal(testObjectType.DataProperties)
-		logicPropertiesBytes, _ := sonic.Marshal(testObjectType.LogicProperties)
-		primaryKeysBytes, _ := sonic.Marshal(testObjectType.PrimaryKeys)
+		dataSourceBytes, _ := jsoncodec.Marshal(testObjectType.DataSource)
+		dataPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.DataProperties)
+		logicPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.LogicProperties)
+		primaryKeysBytes, _ := jsoncodec.Marshal(testObjectType.PrimaryKeys)
 
 		Convey("GetObjectTypesByIDs Success \n", func() {
 			rows := sqlmock.NewRows([]string{
@@ -1822,10 +1835,10 @@ func Test_objectTypeAccess_GetAllObjectTypesByKnID(t *testing.T) {
 			"f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", OT_TABLE_NAME)
 
-		dataSourceBytes, _ := sonic.Marshal(testObjectType.DataSource)
-		dataPropertiesBytes, _ := sonic.Marshal(testObjectType.DataProperties)
-		logicPropertiesBytes, _ := sonic.Marshal(testObjectType.LogicProperties)
-		primaryKeysBytes, _ := sonic.Marshal(testObjectType.PrimaryKeys)
+		dataSourceBytes, _ := jsoncodec.Marshal(testObjectType.DataSource)
+		dataPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.DataProperties)
+		logicPropertiesBytes, _ := jsoncodec.Marshal(testObjectType.LogicProperties)
+		primaryKeysBytes, _ := jsoncodec.Marshal(testObjectType.PrimaryKeys)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",

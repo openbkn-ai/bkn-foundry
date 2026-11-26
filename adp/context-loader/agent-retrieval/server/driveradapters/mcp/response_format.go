@@ -7,12 +7,13 @@
 package mcp
 
 import (
+	"encoding/json"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
 // GetResponseFormatFromRequest parses response_format from the arguments of MCP CallToolRequest. If not passed, it defaults to toon.
@@ -21,19 +22,21 @@ func GetResponseFormatFromRequest(req mcp.CallToolRequest) (rest.ResponseFormat,
 	return rest.ParseResponseFormat(s)
 }
 
-// BuildMCPToolResult uniformly constructs the MCP Tool return result based on response_format (the text is JSON or TOON, and structuredContent is still the original object)
+// BuildMCPToolResult returns the original object with JSON or TOON fallback text.
 func BuildMCPToolResult(resp interface{}, format rest.ResponseFormat) (*mcp.CallToolResult, error) {
-	var textContent string
-	if format == rest.FormatTOON {
-		_, bodyBytes, err := rest.MarshalResponse(rest.FormatTOON, resp)
-		if err != nil {
-			return nil, err
-		}
-		textContent = string(bodyBytes)
-	} else {
-		textContent = utils.ObjectToJSON(resp)
+	text, err := marshalToolResultText(resp, format)
+	if err != nil {
+		return nil, err
 	}
-	return mcp.NewToolResultStructured(resp, textContent), nil
+	return mcp.NewToolResultStructured(resp, string(text)), nil
+}
+
+func marshalToolResultText(resp any, format rest.ResponseFormat) ([]byte, error) {
+	if format == rest.FormatTOON {
+		_, body, err := rest.MarshalResponse(rest.FormatTOON, resp)
+		return body, err
+	}
+	return jsoncodec.Marshal(resp)
 }
 
 // toolResultRunes is how many characters the larger of a tool result's two copies
@@ -41,15 +44,18 @@ func BuildMCPToolResult(resp interface{}, format rest.ResponseFormat) (*mcp.Call
 // BuildMCPToolResult puts beside it. A host may read either one, so a size bound on a
 // tool's answer has to hold for both.
 func toolResultRunes(resp interface{}, format rest.ResponseFormat) (int, error) {
-	n := utf8.RuneCountInString(utils.ObjectToJSON(resp))
-	if format == rest.FormatTOON {
-		_, toon, err := rest.MarshalResponse(rest.FormatTOON, resp)
-		if err != nil {
-			return 0, err
-		}
-		if t := utf8.RuneCount(toon); t > n {
-			n = t
-		}
+	text, err := marshalToolResultText(resp, format)
+	if err != nil {
+		return 0, err
 	}
-	return n, nil
+	textRunes := utf8.RuneCount(text)
+	if resp == nil {
+		return textRunes, nil
+	}
+	// The MCP SDK marshals structuredContent with encoding/json.
+	structured, err := json.Marshal(resp)
+	if err != nil {
+		return 0, err
+	}
+	return max(textRunes, utf8.RuneCount(structured)), nil
 }

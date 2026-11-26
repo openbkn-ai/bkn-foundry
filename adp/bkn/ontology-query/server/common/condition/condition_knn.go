@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type KnnCond struct {
@@ -65,7 +65,7 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 	if err != nil {
 		return "", fmt.Errorf("condition [knn]: vectorizer [%s] failed, error: %s", v, err.Error())
 	}
-	res, err := sonic.Marshal(vector[0].Vector)
+	res, err := jsoncodec.Marshal(vector[0].Vector)
 	if err != nil {
 		return "", fmt.Errorf("condition [in] json marshal right value failed, %s", err.Error())
 	}

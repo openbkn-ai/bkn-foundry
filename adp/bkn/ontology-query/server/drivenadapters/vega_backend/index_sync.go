@@ -12,6 +12,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 var _ interfaces.ActionIndexSyncBackend = (*vegaBackendAccess)(nil)
@@ -37,7 +38,7 @@ func (v *vegaBackendAccess) CreateKeyBuild(ctx context.Context, resourceID strin
 	var response struct {
 		ID string `json:"id"`
 	}
-	if err := common.UnmarshalJSON(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return "", err
 	}
 	if response.ID == "" {
@@ -62,7 +63,7 @@ func (v *vegaBackendAccess) GetKeyBuild(ctx context.Context, taskID string) (str
 		Status      string `json:"status"`
 		ExecuteType string `json:"execute_type"`
 	}
-	if err := common.UnmarshalJSON(body, &response); err != nil {
+	if err := jsoncodec.Unmarshal(body, &response); err != nil {
 		return "", err
 	}
 	if response.ExecuteType != "keys" {

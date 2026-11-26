@@ -9,6 +9,7 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"fmt"
 	"io"
 	"path"
@@ -16,10 +17,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -56,7 +56,7 @@ func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, 
 	// It is used to store the metadata information after parsing
 	var info map[string]any
 	// Decode the JSON data in the response body into the info variable
-	if err := common.DecodeJSON(resp.Body, &info); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &info); err != nil {
 		return nil, err
 	}
 
@@ -96,7 +96,7 @@ func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []stri
 		StoreSize    string `json:"store.size"`
 		CreationDate string `json:"creation.date"`
 	}
-	if err := common.DecodeJSON(resp.Body, &catIndices); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &catIndices); err != nil {
 		return nil, err
 	}
 
@@ -191,7 +191,7 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 			Properties map[string]Property `json:"properties"`
 		} `json:"mappings"`
 	}
-	err = common.UnmarshalJSON(bodyBytes, &dataMapping)
+	err = jsoncodec.Unmarshal(bodyBytes, &dataMapping)
 	if err != nil {
 		return fmt.Errorf("failed to parse mappings: %w", err)
 	}
@@ -259,7 +259,7 @@ type Property struct {
 // UnmarshalJSON custom deserialization method
 func (p *Property) UnmarshalJSON(data []byte) error {
 	var raw map[string]any
-	if err := common.UnmarshalJSON(data, &raw); err != nil {
+	if err := jsoncodec.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
@@ -283,9 +283,9 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 	if propsVal, ok := raw["properties"].(map[string]any); ok {
 		p.Properties = make(map[string]Property)
 		for propName, propValue := range propsVal {
-			propJSON, _ := sonic.Marshal(propValue)
+			propJSON, _ := jsoncodec.Marshal(propValue)
 			var prop Property
-			if err := common.UnmarshalJSON(propJSON, &prop); err == nil {
+			if err := jsoncodec.Unmarshal(propJSON, &prop); err == nil {
 				p.Properties[propName] = prop
 			}
 		}
@@ -293,9 +293,9 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 	if fieldsVal, ok := raw["fields"].(map[string]any); ok {
 		p.Fields = make(map[string]Property)
 		for fieldName, fieldValue := range fieldsVal {
-			fieldJSON, _ := sonic.Marshal(fieldValue)
+			fieldJSON, _ := jsoncodec.Marshal(fieldValue)
 			var field Property
-			if err := common.UnmarshalJSON(fieldJSON, &field); err == nil {
+			if err := jsoncodec.Unmarshal(fieldJSON, &field); err == nil {
 				p.Fields[fieldName] = field
 			}
 		}
@@ -402,7 +402,7 @@ func (c *OpenSearchConnector) fetchSettings(ctx context.Context, index *interfac
 	//	}
 	//}
 	//}
-	if err := common.DecodeJSON(resp.Body, &settingsResp); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(resp.Body), &settingsResp); err != nil {
 		return err
 	}
 	if idxData, ok := settingsResp[index.Name]; ok {
@@ -440,7 +440,7 @@ func (c *OpenSearchConnector) CountRows(ctx context.Context, index *interfaces.I
 		Count  *int64           `json:"count"`
 		Shards searchShardStats `json:"_shards"`
 	}
-	if err := common.DecodeJSON(response.Body, &result); err != nil {
+	if err := jsoncodec.UnmarshalDecode(jsontext.NewDecoder(response.Body), &result); err != nil {
 		return 0, fmt.Errorf("decode index count: %w", err)
 	}
 	if result.Count == nil || *result.Count < 0 {

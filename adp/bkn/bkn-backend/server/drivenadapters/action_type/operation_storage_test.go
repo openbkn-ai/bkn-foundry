@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	sq "github.com/Masterminds/squirrel"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
@@ -36,6 +38,9 @@ func TestOperationMetadataIsStoredForSingleAndBatchWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := string(fields.parameters); got != "[]" {
+		t.Fatalf("stored parameters = %s, want an empty array", got)
+	}
 	var restored interfaces.ActionOperationConfig
 	if err := json.Unmarshal(fields.operationConfig, &restored); err != nil {
 		t.Fatal(err)
@@ -58,7 +63,7 @@ func TestOperationMetadataIsStoredForSingleAndBatchWrites(t *testing.T) {
 
 func TestStoredActionNumbersDoNotRound(t *testing.T) {
 	var parameters []interfaces.Parameter
-	if err := unmarshalStoredActionJSON([]byte(`[{"name":"id","value":9223372036854775807}]`), &parameters); err != nil {
+	if err := common.UnmarshalStoredJSON([]byte(`[{"name":"id","value":9223372036854775807}]`), &parameters); err != nil {
 		t.Fatal(err)
 	}
 	if fmt.Sprint(parameters[0].Value) != "9223372036854775807" {

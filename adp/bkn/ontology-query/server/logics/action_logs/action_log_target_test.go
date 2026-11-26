@@ -77,11 +77,11 @@ func Test_QueryExecutions_FiltersByObjectTypeAndTarget(t *testing.T) {
 		osa.EXPECT().IndexExists(gomock.Any(), interfaces.ActionExecutionResultsIndex).Return(true, nil)
 		osa.EXPECT().SearchData(gomock.Any(), interfaces.ActionExecutionResultsIndex, gomock.Any()).Return(nil, nil)
 		list, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{
-			KNID: "kn_1", ObjectTypeID: "purchase_order", TargetKey: "PO-404",
+			KNID: "kn_1", ObjectTypeID: "purchase_order", TargetKey: "PO-404", NeedTotal: true,
 		})
 		So(err, ShouldBeNil)
 		So(list.Entries, ShouldBeEmpty)
-		So(list.TotalCount, ShouldEqual, 0)
+		So(*list.TotalCount, ShouldEqual, 0)
 	})
 
 	Convey("before any result was stored, no execution has a target", t, func() {

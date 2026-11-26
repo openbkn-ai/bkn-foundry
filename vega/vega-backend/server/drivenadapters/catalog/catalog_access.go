@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -25,6 +24,7 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -121,12 +121,12 @@ func scanCatalog(scanner catalogRowScanner) (*interfaces.Catalog, error) {
 	}
 	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if connectorConfigStr != "" {
-		if err := common.UnmarshalJSON([]byte(connectorConfigStr), &catalog.ConnectorCfg); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(connectorConfigStr), &catalog.ConnectorCfg); err != nil {
 			return nil, err
 		}
 	}
 	if metadataStr != "" {
-		if err := common.UnmarshalJSON([]byte(metadataStr), &catalog.Metadata); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(metadataStr), &catalog.Metadata); err != nil {
 			return nil, err
 		}
 	}
@@ -164,7 +164,7 @@ func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, 
 		var metadata struct {
 			Schemas []string `json:"schemas"`
 		}
-		if err := common.UnmarshalJSON([]byte(metadataStr), &metadata); err != nil {
+		if err := jsoncodec.Unmarshal([]byte(metadataStr), &metadata); err != nil {
 			return nil, err
 		}
 		if metadata.Schemas != nil {
@@ -223,7 +223,7 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 	tagsStr := libCommon.TagSlice2TagString(catalog.Tags)
 
 	// Serialize connector config
-	connectorConfigStr, err := sonic.MarshalString(catalog.ConnectorCfg)
+	connectorConfigStr, err := jsoncodec.MarshalString(catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to marshal connector config", err)
 		return err
@@ -681,7 +681,7 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 		Set("f_description", catalog.Description)
 	// 仅在本次更新并测试了连接配置时写入配置和健康结果，避免覆盖并发健康检查。
 	if updateConnection {
-		connectorConfigStr, err := sonic.MarshalString(catalog.ConnectorCfg)
+		connectorConfigStr, err := jsoncodec.MarshalString(catalog.ConnectorCfg)
 		if err != nil {
 			span.SetStatus(codes.Error, "Marshal connector config failed")
 			return 0, err
@@ -827,7 +827,7 @@ func (ca *catalogAccess) UpdateMetadata(ctx context.Context, id string, metadata
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog metadata")
 	defer span.End()
 
-	metadataStr, _ := sonic.MarshalString(metadata)
+	metadataStr, _ := jsoncodec.MarshalString(metadata)
 
 	sqlStr, vals, err := sq.Update(CATALOG_TABLE_NAME).
 		Set("f_metadata", metadataStr).

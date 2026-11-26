@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 	"github.com/shopspring/decimal"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
@@ -52,7 +52,7 @@ func validateSearchResponse(body []byte, rejectEarlyTermination bool) error {
 		TerminatedEarly bool             `json:"terminated_early"`
 		Shards          searchShardStats `json:"_shards"`
 	}
-	if err := sonic.Unmarshal(body, &execution); err != nil {
+	if err := jsoncodec.Unmarshal(body, &execution); err != nil {
 		return fmt.Errorf("decode search execution status: %w", err)
 	}
 	if execution.TimedOut != nil && *execution.TimedOut {
@@ -68,7 +68,7 @@ func validateSearchResponse(body []byte, rejectEarlyTermination bool) error {
 }
 
 func (c *OpenSearchConnector) searchDocuments(ctx context.Context, indexName string, query map[string]any, snapshot bool) ([]byte, error) {
-	queryJSON, err := sonic.Marshal(query)
+	queryJSON, err := jsoncodec.Marshal(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize query: %w", err)
 	}
@@ -163,7 +163,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resource 
 	}
 	// Parse the DSL to ensure it's valid JSON
 	var dslMap map[string]any
-	if err := common.UnmarshalJSON([]byte(dsl), &dslMap); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(dsl), &dslMap); err != nil {
 		return nil, fmt.Errorf("invalid DSL JSON: %w", err)
 	}
 
@@ -172,7 +172,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resource 
 		return nil, err
 	}
 	var result map[string]any
-	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
+	if err := jsoncodec.Unmarshal(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -268,7 +268,7 @@ func (c *OpenSearchConnector) executeRawQuery(ctx context.Context, indexName str
 		Aggregations map[string]any `json:"aggregations"`
 	}
 
-	if err := common.UnmarshalJSON(responseBody, &searchResp); err != nil {
+	if err := jsoncodec.Unmarshal(responseBody, &searchResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	var totalCount int64
@@ -553,7 +553,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		// Parsing response
 		var result map[string]any
-		if err := common.UnmarshalJSON(bodyBytes, &result); err != nil {
+		if err := jsoncodec.Unmarshal(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
 
@@ -712,7 +712,7 @@ func (c *OpenSearchConnector) executeDocumentQuery(ctx context.Context, indexNam
 		return nil, err
 	}
 	var result map[string]any
-	if err := common.UnmarshalJSON(responseBody, &result); err != nil {
+	if err := jsoncodec.Unmarshal(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 

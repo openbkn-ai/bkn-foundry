@@ -93,6 +93,8 @@ type ActionExecutionRequest struct {
 	// InstanceIdentityHash is a stable fingerprint of resolved Instances + dynamic_params
 	// (set by scheduler before duplicate check).
 	InstanceIdentityHash string `json:"-"`
+	// AlternateInstanceIdentityHash matches the other stored encoding of parameters without inputs.
+	AlternateInstanceIdentityHash string `json:"-"`
 	// Internal is set by the handler of the internal execute route. A record-event action is
 	// accepted only there, from its schedule.
 	Internal bool `json:"-"`
@@ -125,14 +127,14 @@ type ActionExecution struct {
 	TriggerType             string                  `json:"trigger_type"`             // "manual" | "scheduled" | "agent"
 	Status                  string                  `json:"status"`                   // "pending" | "running" | "completed" | "failed"
 	ExecutionMode           string                  `json:"execution_mode,omitempty"` // "once" | "per_instance", resolved from the action parameters
-	TargetCount             int                     `json:"target_count,omitempty"`   // matched instances; equals TotalCount under per_instance
+	TargetCount             int                     `json:"target_count,omitzero"`    // matched instances; equals TotalCount under per_instance
 	TotalCount              int                     `json:"total_count"`              // tool invocations planned for this execution
 	SuccessCount            int                     `json:"success_count"`
 	FailedCount             int                     `json:"failed_count"`
 	Results                 []ObjectExecutionResult `json:"results"`
-	ResultsTotal            int                     `json:"results_total,omitempty"`  // total count of results (for pagination)
-	ResultsOffset           int                     `json:"results_offset,omitempty"` // current offset of results
-	ResultsLimit            int                     `json:"results_limit,omitempty"`  // current limit of results
+	ResultsTotal            *int                    `json:"results_total,omitzero"`  // total count of results (for pagination)
+	ResultsOffset           *int                    `json:"results_offset,omitzero"` // current offset of results
+	ResultsLimit            *int                    `json:"results_limit,omitzero"`  // current limit of results
 	DynamicParams           map[string]any          `json:"dynamic_params,omitempty"`
 	GovernanceRequestID     string                  `json:"governance_request_id,omitempty"`
 	GovernancePermitID      string                  `json:"governance_permit_id,omitempty"`
@@ -140,12 +142,12 @@ type ActionExecution struct {
 	ExecutorID              string                  `json:"executor_id"`                         // user ID who triggered (deprecated, use Executor instead)
 	Executor                AccountInfo             `json:"executor"`                            // user info who triggered the execution
 	StartTime               int64                   `json:"start_time"`                          // execution start time (Unix milliseconds)
-	EndTime                 int64                   `json:"end_time,omitempty"`                  // execution end time (Unix milliseconds)
-	DurationMs              int64                   `json:"duration_ms,omitempty"`               // execution duration in milliseconds
+	EndTime                 int64                   `json:"end_time,omitzero"`                   // execution end time (Unix milliseconds)
+	DurationMs              *int64                  `json:"duration_ms,omitzero"`                // execution duration in milliseconds
 	ActionTypeSnapshot      map[string]any          `json:"action_type_snapshot,omitempty"`      // Action-type configuration snapshot captured at execution time, matching the manager response.
 	PermissionSnapshot      []PermissionRequirement `json:"permission_snapshot,omitempty"`       // Caller permission facts rechecked before every external call.
 	Proxy                   *AccountInfo            `json:"proxy_subject,omitempty"`             // Effective downstream principal resolved by the service.
-	ProxyVersion            int64                   `json:"proxy_version,omitempty"`             // BKN mapping version captured at submission.
+	ProxyVersion            int64                   `json:"proxy_version,omitzero"`              // BKN mapping version captured at submission.
 	ProxyModelVersion       string                  `json:"proxy_model_version,omitempty"`       // Published model version synchronized to the proxy.
 	ProxyPermissionSnapshot []PermissionRequirement `json:"proxy_permission_snapshot,omitempty"` // Downstream facts enforced by the final proxy PEP.
 	InstanceIdentityHash    string                  `json:"instance_identity_hash,omitempty"`    // fingerprint of instances + dynamic_params for duplicate detection
@@ -162,11 +164,11 @@ type ObjectExecutionResult struct {
 	Targets      []ObjectSystemInfo `json:"targets,omitempty"` // instances covered by this invocation (once mode only)
 	Status       string             `json:"status"`            // "pending" | "success" | "failed"
 	Parameters   map[string]any     `json:"parameters,omitempty"`
-	Result       any                `json:"result,omitempty"`
+	Result       any                `json:"result,omitzero"`
 	ErrorMessage string             `json:"error_message,omitempty"`
-	StartTime    int64              `json:"start_time,omitempty"`
-	EndTime      int64              `json:"end_time,omitempty"`
-	DurationMs   int64              `json:"duration_ms,omitempty"`
+	StartTime    int64              `json:"start_time,omitzero"`
+	EndTime      int64              `json:"end_time,omitzero"`
+	DurationMs   *int64             `json:"duration_ms,omitzero"`
 }
 
 // ExecutionProgress is the progress an execution has made so far. Results are stored
@@ -214,6 +216,8 @@ type ActionLogQuery struct {
 	// TargetKey keeps the executions one of whose targets has this identity key (see
 	// TargetIdentityKey). It needs ObjectTypeID.
 	TargetKey string `json:"target_key,omitempty" form:"target_key"`
+	// AlternateInstanceIdentityHash optionally matches a second fingerprint for internal duplicate detection.
+	AlternateInstanceIdentityHash string `json:"-" form:"-"`
 }
 
 // ActionLogDetailQuery represents query parameters for single execution log detail
@@ -250,7 +254,7 @@ type ActionExecutionResultList struct {
 // ActionExecutionList represents a list of action executions with pagination
 type ActionExecutionList struct {
 	Entries     []ActionExecution `json:"entries"`
-	TotalCount  int               `json:"total_count,omitempty"`
+	TotalCount  *int              `json:"total_count,omitzero"`
 	SearchAfter []any             `json:"search_after,omitempty"`
 }
 

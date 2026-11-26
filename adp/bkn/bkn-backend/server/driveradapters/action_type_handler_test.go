@@ -13,11 +13,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -83,7 +83,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -95,7 +95,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 		Convey("Failed CreateActionTypes ShouldBind Error\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 
-			reqParamByte, _ := sonic.Marshal([]interfaces.ActionType{*actionType})
+			reqParamByte, _ := jsoncodec.Marshal([]interfaces.ActionType{*actionType})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -112,7 +112,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 			}{
 				Entries: []*interfaces.ActionType{},
 			}
-			reqParamByte, _ := sonic.Marshal(emptyRequestData)
+			reqParamByte, _ := jsoncodec.Marshal(emptyRequestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -143,7 +143,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, expectedErr)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -164,7 +164,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, err)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil)
 
 			urlIn := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/action-types"
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -230,7 +230,7 @@ func Test_ActionTypeRestHandler_UpdateActionType(t *testing.T) {
 			ats.EXPECT().CheckActionTypeExistByName(gomock.Any(), knID, gomock.Any(), actionType.ATName).Return("", false, nil)
 			ats.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -253,7 +253,7 @@ func Test_ActionTypeRestHandler_UpdateActionType(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -266,7 +266,7 @@ func Test_ActionTypeRestHandler_UpdateActionType(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, gomock.Any(), atID).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -282,7 +282,7 @@ func Test_ActionTypeRestHandler_UpdateActionType(t *testing.T) {
 			ats.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			urlIn := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/action-types/" + atID
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -519,7 +519,7 @@ func Test_ActionTypeRestHandler_SearchActionTypes(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{}, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -544,7 +544,7 @@ func Test_ActionTypeRestHandler_SearchActionTypes(t *testing.T) {
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -566,7 +566,7 @@ func Test_ActionTypeRestHandler_SearchActionTypes(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{}, err)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -621,7 +621,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverride(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlEx, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -637,7 +637,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverride(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{}, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, urlEx, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -648,7 +648,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverride(t *testing.T) {
 		})
 
 		Convey("HandleActionTypeGetOverrideByEx - Failed with invalid override method\n", func() {
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlEx, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "PUT")
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -700,7 +700,7 @@ func Test_ActionTypeRestHandler_CreateActionTypesByIn(t *testing.T) {
 			}{
 				Entries: []*interfaces.ActionType{actionType},
 			}
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-types", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -736,7 +736,7 @@ func Test_ActionTypeRestHandler_UpdateActionTypeByIn(t *testing.T) {
 			ats.EXPECT().CheckActionTypeExistByName(gomock.Any(), knID, gomock.Any(), actionType.ATName).Return("", false, nil)
 			ats.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-types/"+atID, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -809,7 +809,7 @@ func Test_ActionTypeRestHandler_SearchActionTypesByIn(t *testing.T) {
 			ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{}, nil)
 
 			query := interfaces.ConceptsQuery{Limit: 10}
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/action-types", bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -850,7 +850,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverrideByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil)
 
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
@@ -867,7 +867,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverrideByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{}, nil)
 
-			reqParamByte, _ := sonic.Marshal(query)
+			reqParamByte, _ := jsoncodec.Marshal(query)
 			req := httptest.NewRequest(http.MethodPost, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -879,7 +879,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverrideByIn(t *testing.T) {
 		})
 
 		Convey("HandleActionTypeGetOverrideByIn - Failed with invalid override method\n", func() {
-			reqParamByte, _ := sonic.Marshal(requestData)
+			reqParamByte, _ := jsoncodec.Marshal(requestData)
 			req := httptest.NewRequest(http.MethodPost, urlIn, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "PUT")
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
@@ -934,7 +934,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -951,7 +951,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, gomock.Any(), atID).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -970,7 +970,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, gomock.Any(), atID).Return("old_action1", true, nil)
 
-			reqParamByte, _ := sonic.Marshal(atNoName)
+			reqParamByte, _ := jsoncodec.Marshal(atNoName)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -988,7 +988,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, gomock.Any(), atID).Return("old_name", true, nil)
 			ats.EXPECT().CheckActionTypeExistByName(gomock.Any(), knID, gomock.Any(), actionType.ATName).Return("", false, httpErr)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1001,7 +1001,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, gomock.Any(), atID).Return("old_name", true, nil)
 			ats.EXPECT().CheckActionTypeExistByName(gomock.Any(), knID, gomock.Any(), actionType.ATName).Return(atID, true, nil)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()
@@ -1020,7 +1020,7 @@ func Test_ActionTypeRestHandler_UpdateActionType_extraCases(t *testing.T) {
 			ats.EXPECT().CheckActionTypeExistByName(gomock.Any(), knID, gomock.Any(), actionType.ATName).Return("", false, nil)
 			ats.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httpErr)
 
-			reqParamByte, _ := sonic.Marshal(actionType)
+			reqParamByte, _ := jsoncodec.Marshal(actionType)
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			w := httptest.NewRecorder()

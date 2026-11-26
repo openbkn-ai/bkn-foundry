@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	opensearchConnector "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/index/opensearch"
@@ -338,7 +338,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		require.IsType(t, "", got[0]["payload"])
 		text := got[0]["payload"].(string)
 		var decoded any
-		require.NoError(t, common.UnmarshalJSON([]byte(text), &decoded))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(text), &decoded))
 		assert.Equal(t, map[string]any{"a": json.Number("9007199254740993"), "z": "<>&"}, decoded)
 		assert.Contains(t, text, "<>&")
 		assert.Equal(t, []map[string]any{{"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}, got[1:])

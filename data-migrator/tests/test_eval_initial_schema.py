@@ -25,6 +25,7 @@ AFTER_EVAL = [
 ]
 LATEST = AFTER_EVAL[-1]
 EVAL_TABLES = {
+    "t_bkn_eval_trial_request",
     "t_bkn_eval_suite",
     "t_bkn_eval_suite_version",
     "t_bkn_eval_case",

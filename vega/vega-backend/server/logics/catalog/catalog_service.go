@@ -17,8 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/mohae/deepcopy"
 	bkncrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -265,11 +265,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	now := time.Now().UnixMilli()
 	id := req.ID
 	if id == "" {
-		generatedID, err := uuid.NewV7()
-		if err != nil {
-			return "", fmt.Errorf("generate catalog UUIDv7: %w", err)
-		}
-		id = generatedID.String()
+		id = uuid.NewV7().String()
 	}
 	catalog := &interfaces.Catalog{
 		ID:            id,

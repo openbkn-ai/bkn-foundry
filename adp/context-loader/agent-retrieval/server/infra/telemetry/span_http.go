@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel"
@@ -104,7 +104,7 @@ func sanitizeHeadersForSpan(headers http.Header) string {
 		}
 		sanitized[key] = values
 	}
-	headerBytes, _ := sonic.Marshal(sanitized)
+	headerBytes, _ := jsoncodec.Marshal(sanitized)
 	return string(headerBytes)
 }
 
@@ -129,7 +129,7 @@ func requestBodyPolicyForSpan(contentLength int64) string {
 }
 
 func jsonCompact(value interface{}) string {
-	bytes, err := sonic.Marshal(value)
+	bytes, err := jsoncodec.Marshal(value)
 	if err != nil {
 		return `{"redacted":true}`
 	}

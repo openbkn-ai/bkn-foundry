@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -1167,14 +1167,14 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		}
 		interfaces.IndexLifecycleStatus(document.Document)
 		if parameters, exists := document.Document["parameters"]; exists {
-			encoded, err := sonic.Marshal(parameters)
+			encoded, err := jsoncodec.Marshal(parameters)
 			if err != nil {
 				return err
 			}
 			document.Document["parameters"] = string(encoded)
 		}
 		if condition, exists := document.Document["condition"]; exists && condition != nil {
-			encoded, err := sonic.Marshal(condition)
+			encoded, err := jsoncodec.Marshal(condition)
 			if err != nil {
 				return err
 			}
@@ -1313,6 +1313,8 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				atIDs = append(atIDs, atID)
 			}
 		}
+		// The groups' members are a scope as well: a knn picks its neighbours among them.
+		filterCondition = permission.ScopeKnnToIDs(filterCondition, atIDs)
 	}
 
 	// Decide whether to query the total based on NeedTotal.
@@ -1392,7 +1394,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			if condStr, exists := entry["condition"]; exists {
 				if condStrStr, ok := condStr.(string); ok && condStrStr != "" {
 					var condCfg interfaces.ActionCondCfg
-					if err := sonic.Unmarshal([]byte(condStrStr), &condCfg); err != nil {
+					if err := jsoncodec.Unmarshal([]byte(condStrStr), &condCfg); err != nil {
 						logger.Errorf("Failed to unmarshal action_type condition: %s", err.Error())
 						return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_InternalError_UnMarshalDataFailed).
@@ -1408,7 +1410,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			if paramsStr, exists := entry["parameters"]; exists {
 				if paramsStrStr, ok := paramsStr.(string); ok && paramsStrStr != "" {
 					var params []interfaces.Parameter
-					if err := (sonic.Config{UseNumber: true}).Froze().Unmarshal([]byte(paramsStrStr), &params); err != nil {
+					if err := jsoncodec.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 						logger.Errorf("Failed to unmarshal action_type parameters: %s", err.Error())
 						return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_InternalError_UnMarshalDataFailed).
@@ -1420,7 +1422,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 
 			if raw, ok := entry["operation_config"].(string); ok && raw != "" {
 				var config interfaces.ActionOperationConfig
-				if err := sonic.UnmarshalString(raw, &config); err != nil {
+				if err := jsoncodec.Unmarshal([]byte(raw), &config); err != nil {
 					return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails("invalid indexed operation_config")
 				}
 				entry["operation_config"] = &config

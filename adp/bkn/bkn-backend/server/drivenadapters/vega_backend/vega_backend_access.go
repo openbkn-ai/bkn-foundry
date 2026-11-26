@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -28,9 +28,8 @@ import (
 )
 
 var (
-	vbAccessOnce     sync.Once
-	vbAccess         interfaces.VegaBackendAccess
-	vegaResponseJSON = sonic.Config{UseNumber: true}.Froze()
+	vbAccessOnce sync.Once
+	vbAccess     interfaces.VegaBackendAccess
 )
 
 type vegaBackendAccess struct {
@@ -365,7 +364,7 @@ func (vba *vegaBackendAccess) GetResourceSchema(ctx context.Context, id, operati
 		Name             string                  `json:"name"`
 		SchemaDefinition *[]*interfaces.Property `json:"schema_definition"`
 	}
-	if err := vegaResponseJSON.Unmarshal(respData, &payload); err != nil || payload.ID != id ||
+	if err := jsoncodec.Unmarshal(respData, &payload); err != nil || payload.ID != id ||
 		payload.Name == "" || payload.SchemaDefinition == nil {
 		invalidErr := interfaces.NewDependencyError("vega", "get_resource_schema",
 			interfaces.DependencyInvalidResponse, respCode)
@@ -628,7 +627,7 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 
 	var response interfaces.DatasetQueryResponse
 	// Dynamic resource fields must keep their original JSON number representation.
-	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respData, &response); err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal QueryDatasetData response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal QueryDatasetData response failed")
 		return nil, fmt.Errorf("failed to unmarshal QueryDatasetData response: %v", err)
@@ -686,7 +685,7 @@ func (vba *vegaBackendAccess) QueryResourceDataAs(ctx context.Context, account i
 
 	var response interfaces.DatasetQueryResponse
 	// Dynamic resource fields must keep their original JSON number representation.
-	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respData, &response); err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal QueryResourceDataAs response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal resource data response failed")
 		return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyInvalidResponse, respCode)
@@ -862,7 +861,7 @@ func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, hea
 	var response interfaces.RawQueryResponse
 	// Result values keep their original JSON number representation: an id or a
 	// decimal amount must not be narrowed to float64 on the way through.
-	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
+	if err := jsoncodec.Unmarshal(respData, &response); err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal RawQuery response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal RawQuery response failed")
 		return nil, interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyInvalidResponse, respCode)

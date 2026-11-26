@@ -9,6 +9,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -17,10 +18,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
@@ -518,8 +519,8 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 		return "", 0, "", err
 	}
 
-	resultObject := map[string]sonic.NoCopyRawMessage{}
-	if err := common.UnmarshalJSON(result, &resultObject); err != nil {
+	resultObject := map[string]json.RawMessage{}
+	if err := jsoncodec.Unmarshal(result, &resultObject); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal agent task result failed: %w", err)
 	}
 
@@ -528,14 +529,14 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 	if !ok {
 		return "", 0, "", fmt.Errorf("agent task result missing confidence")
 	}
-	if err := common.UnmarshalJSON(confidenceRaw, &confidence); err != nil {
+	if err := jsoncodec.Unmarshal(confidenceRaw, &confidence); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal agent task confidence failed: %w", err)
 	}
 	if confidence < 0 || confidence > 1 {
 		return "", 0, "", fmt.Errorf("agent task confidence must be between 0 and 1")
 	}
 
-	detail := make(map[string]sonic.NoCopyRawMessage)
+	detail := make(map[string]json.RawMessage)
 	for _, key := range []string{
 		"resource",
 		"fields",
@@ -549,7 +550,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 			detail[key] = value
 		}
 	}
-	detailStr, err := sonic.MarshalString(detail)
+	detailStr, err := jsoncodec.MarshalString(detail)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("marshal confidence detail failed: %w", err)
 	}
@@ -564,7 +565,7 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 func reconcileResourceSemanticSampleWarnings(ctx context.Context,
 	resultJSON, confidenceDetailJSON, inputJSON string) (string, string, error) {
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if err := common.UnmarshalJSON([]byte(inputJSON), &input); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(inputJSON), &input); err != nil {
 		return resultJSON, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not alter completed results.
 	}
 	if input.SampleContext.Status != interfaces.SemanticUnderstandingSampleStatusAvailable &&
@@ -604,14 +605,14 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 	omissions []interfaces.SemanticUnderstandingSampleOmission,
 	fields []interfaces.SemanticUnderstandingResourceAgentInputProperty,
 	allFieldsOmittedByPolicy bool) (string, error) {
-	object := map[string]sonic.NoCopyRawMessage{}
-	if err := common.UnmarshalJSON([]byte(payload), &object); err != nil {
+	object := map[string]json.RawMessage{}
+	if err := jsoncodec.Unmarshal([]byte(payload), &object); err != nil {
 		return "", err
 	}
 
 	warnings := []string{}
 	if rawWarnings, ok := object["warnings"]; ok {
-		if err := common.UnmarshalJSON(rawWarnings, &warnings); err != nil {
+		if err := jsoncodec.Unmarshal(rawWarnings, &warnings); err != nil {
 			return "", fmt.Errorf("unmarshal warnings: %w", err)
 		}
 	}
@@ -624,15 +625,15 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 			filteredWarnings = append(filteredWarnings, reconciledWarning)
 		}
 	}
-	warningsJSON, err := sonic.Marshal(filteredWarnings)
+	warningsJSON, err := jsoncodec.Marshal(filteredWarnings)
 	if err != nil {
 		return "", fmt.Errorf("marshal warnings: %w", err)
 	}
 	object["warnings"] = warningsJSON
 
-	warningDetails := []sonic.NoCopyRawMessage{}
+	warningDetails := []json.RawMessage{}
 	if rawDetails, ok := object["warning_details"]; ok {
-		if err := common.UnmarshalJSON(rawDetails, &warningDetails); err != nil {
+		if err := jsoncodec.Unmarshal(rawDetails, &warningDetails); err != nil {
 			return "", fmt.Errorf("unmarshal warning details: %w", err)
 		}
 	}
@@ -651,29 +652,29 @@ func reconcileResourceSemanticSampleWarningPayload(ctx context.Context, payload 
 		if semanticUnderstandingWarningDetailExists(warningDetails, detail) {
 			continue
 		}
-		rawDetail, err := sonic.Marshal(detail)
+		rawDetail, err := jsoncodec.Marshal(detail)
 		if err != nil {
 			return "", fmt.Errorf("marshal warning detail: %w", err)
 		}
 		warningDetails = append(warningDetails, rawDetail)
 	}
-	warningDetailsJSON, err := sonic.Marshal(warningDetails)
+	warningDetailsJSON, err := jsoncodec.Marshal(warningDetails)
 	if err != nil {
 		return "", fmt.Errorf("marshal warning details: %w", err)
 	}
 	object["warning_details"] = warningDetailsJSON
 
-	result, err := sonic.MarshalString(object)
+	result, err := jsoncodec.MarshalString(object)
 	if err != nil {
 		return "", err
 	}
 	return result, nil
 }
 
-func semanticUnderstandingWarningDetailExists(rawDetails []sonic.NoCopyRawMessage, expected interfaces.SemanticUnderstandingWarningDetail) bool {
+func semanticUnderstandingWarningDetailExists(rawDetails []json.RawMessage, expected interfaces.SemanticUnderstandingWarningDetail) bool {
 	for _, rawDetail := range rawDetails {
 		var detail interfaces.SemanticUnderstandingWarningDetail
-		if err := common.UnmarshalJSON(rawDetail, &detail); err == nil &&
+		if err := jsoncodec.Unmarshal(rawDetail, &detail); err == nil &&
 			detail.Code == expected.Code && detail.Params == expected.Params {
 			return true
 		}
@@ -822,14 +823,14 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 		return resultJSON, confidence, confidenceDetailJSON, nil
 	}
 	var input interfaces.SemanticUnderstandingResourceAgentInput
-	if unmarshalErr := common.UnmarshalJSON([]byte(inputJSON), &input); unmarshalErr != nil {
+	if unmarshalErr := jsoncodec.Unmarshal([]byte(inputJSON), &input); unmarshalErr != nil {
 		// Input is an audit snapshot, not an agent response. A malformed legacy
 		// snapshot must not turn an otherwise successful agent task into failure.
 		return resultJSON, confidence, confidenceDetailJSON, nil //nolint:nilerr // Malformed legacy snapshots must not fail completed tasks.
 	}
 
 	var result interfaces.SemanticUnderstandingResourceResult
-	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return "", 0, "", fmt.Errorf("unmarshal resource semantic understanding result quality input failed: %w", err)
 	}
 
@@ -877,29 +878,29 @@ func assessResourceSemanticResultQuality(resultJSON, inputJSON, confidenceDetail
 }
 
 func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUnderstandingResourceQuality, warning string) (string, error) {
-	object := map[string]sonic.NoCopyRawMessage{}
-	if err := common.UnmarshalJSON([]byte(payload), &object); err != nil {
+	object := map[string]json.RawMessage{}
+	if err := jsoncodec.Unmarshal([]byte(payload), &object); err != nil {
 		return "", fmt.Errorf("unmarshal resource semantic understanding quality payload failed: %w", err)
 	}
 
 	warnings := []string{}
 	if rawWarnings, ok := object["warnings"]; ok {
-		if err := common.UnmarshalJSON(rawWarnings, &warnings); err != nil {
+		if err := jsoncodec.Unmarshal(rawWarnings, &warnings); err != nil {
 			return "", fmt.Errorf("unmarshal resource semantic understanding warnings failed: %w", err)
 		}
 	}
 	warnings = append(warnings, warning)
-	warningsJSON, err := sonic.Marshal(warnings)
+	warningsJSON, err := jsoncodec.Marshal(warnings)
 	if err != nil {
 		return "", fmt.Errorf("marshal resource semantic understanding warnings failed: %w", err)
 	}
-	qualityJSON, err := sonic.Marshal(quality)
+	qualityJSON, err := jsoncodec.Marshal(quality)
 	if err != nil {
 		return "", fmt.Errorf("marshal resource semantic understanding quality failed: %w", err)
 	}
 	object["warnings"] = warningsJSON
 	object["quality"] = qualityJSON
-	resultStr, err := sonic.MarshalString(object)
+	resultStr, err := jsoncodec.MarshalString(object)
 	if err != nil {
 		return "", fmt.Errorf("marshal resource semantic understanding quality payload failed: %w", err)
 	}
@@ -987,7 +988,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, tx
 }
 
 func skippedApplyResult(detail interfaces.SemanticUnderstandingSkippedApplyDetail) (*interfaces.SemanticUnderstandingApplyResult, error) {
-	detailStr, err := sonic.MarshalString(detail)
+	detailStr, err := jsoncodec.MarshalString(detail)
 	if err != nil {
 		return nil, fmt.Errorf("marshal semantic understanding skipped apply detail failed: %w", err)
 	}

@@ -108,7 +108,7 @@ type ObjectSubGraph struct {
 	RelationPaths     []RelationPath                  `json:"relation_paths"`
 	TotalCount        *int64                          `json:"total_count,omitempty"`
 	Cursor            string                          `json:"cursor,omitempty"`
-	CuurentPathNumber int                             `json:"current_path_number,omitempty"`
+	CuurentPathNumber *int                            `json:"current_path_number,omitzero"`
 	OverallMs         int64                           `json:"overall_ms"`
 }
 
@@ -118,9 +118,9 @@ type PathsEntries struct {
 }
 
 type ObjectSystemInfo struct {
-	InstanceID       any            `json:"_instance_id,omitempty"`
+	InstanceID       any            `json:"_instance_id,omitzero"`
 	InstanceIdentity map[string]any `json:"_instance_identity,omitempty"`
-	Display          any            `json:"_display,omitempty"`
+	Display          any            `json:"_display,omitzero"`
 }
 
 // Object information in an object subgraph.

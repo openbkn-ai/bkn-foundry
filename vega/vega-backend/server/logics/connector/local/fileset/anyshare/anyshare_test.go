@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -435,8 +435,8 @@ func TestAnyShareConnectorSearchFiles(t *testing.T) {
 			decodeAnyShareRequestJSON(t, r, &payload)
 			assert.Equal(t, "needle", payload["keyword"])
 			assert.Equal(t, []any{"doc-1/*"}, payload["range"])
-			assert.Equal(t, float64(10), payload["rows"])
-			assert.Equal(t, float64(2), payload["start"])
+			assert.Equal(t, json.Number("10"), payload["rows"])
+			assert.Equal(t, json.Number("2"), payload["start"])
 			assert.Equal(t, []any{"basename"}, payload["dimension"])
 			assert.Equal(t, "semantic", payload["model"])
 
@@ -618,7 +618,7 @@ func decodeAnyShareRequestJSON(t *testing.T, r *http.Request, out any) {
 
 	body, err := io.ReadAll(r.Body)
 	require.NoError(t, err)
-	require.NoError(t, sonic.Unmarshal(body, out))
+	require.NoError(t, jsoncodec.Unmarshal(body, out))
 }
 
 func TestAnyShareConnectorValidateFilterability(t *testing.T) {

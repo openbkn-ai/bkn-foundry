@@ -10,17 +10,18 @@ import (
 	"fmt"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // ObjectToJSON converts objects to JSON strings.
 func ObjectToJSON(obj interface{}) string {
-	jsonBytes, _ := jsoniter.Marshal(obj)
-	return string(jsonBytes)
+	text, _ := jsoncodec.MarshalString(obj)
+	return text
 }
 
 // ObjectToByte converts an object to a byte array.
 func ObjectToByte(obj interface{}) []byte {
-	jsonBytes, _ := jsoniter.Marshal(obj)
+	jsonBytes, _ := jsoncodec.Marshal(obj)
 	return jsonBytes
 }
 

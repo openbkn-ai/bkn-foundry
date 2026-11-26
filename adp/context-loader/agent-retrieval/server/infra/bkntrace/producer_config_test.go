@@ -1,6 +1,9 @@
 package bkntrace
 
-import "testing"
+import (
+	"testing"
+	"uuid"
+)
 
 func TestEvidencePublisherConfigDoesNotRequireStaticPolicyRevision(t *testing.T) {
 	t.Setenv("BKN_TRACE_KAFKA_BROKERS", "kafka.resource.svc.cluster.local:9092")
@@ -17,6 +20,10 @@ func TestEvidencePublisherConfigDoesNotRequireStaticPolicyRevision(t *testing.T)
 	}
 	if config.Publisher.CapturePolicyRevision != "" {
 		t.Fatalf("static revision unexpectedly required: %q", config.Publisher.CapturePolicyRevision)
+	}
+	bootID, err := uuid.Parse(config.Publisher.ProcessBootID)
+	if err != nil || bootID[6]>>4 != 7 {
+		t.Fatalf("process boot ID must be a UUIDv7: %q (parse error: %v)", config.Publisher.ProcessBootID, err)
 	}
 }
 

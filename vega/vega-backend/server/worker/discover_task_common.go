@@ -9,12 +9,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 )
@@ -37,12 +37,12 @@ func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string)
 	status := interfaces.DiscoverStatusUnchanged
 
 	// Convert the structure to a map to facilitate the calculation of the hash after serialization (sorted by key)
-	data, err := sonic.Marshal(resource.SourceMetadata)
+	data, err := jsoncodec.Marshal(resource.SourceMetadata)
 	if err != nil {
 		return ""
 	}
 	sourceMetadata := make(map[string]any)
-	err = common.UnmarshalJSON(data, &sourceMetadata)
+	err = jsoncodec.Unmarshal(data, &sourceMetadata)
 	if err != nil {
 		return ""
 	}
@@ -59,16 +59,17 @@ func sourceSnapshotHash(resource *interfaces.Resource) string {
 	if resource == nil {
 		return ""
 	}
-	metadata := resource.SourceMetadata
-	bytes, err := sonic.ConfigStd.Marshal(metadata)
+	metadata := any(resource.SourceMetadata)
+	if resource.SourceMetadata == nil {
+		// 库中读出的 null 会解码成 nil map，比较时保留它与空对象的区别。
+		metadata = nil
+	}
+	encoded, err := jsoncodec.Marshal(metadata, jsonv2.Deterministic(true))
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(bytes)
-	hashStr := hex.EncodeToString(sum[:])
-	//logger.Infof("SourceMetadata hash: %s, orig: %s", hashStr, bytes)
-
-	return hashStr
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
 
 func updateDiscoverResultForEnrichStatus(result *interfaces.DiscoverResult, status string) {

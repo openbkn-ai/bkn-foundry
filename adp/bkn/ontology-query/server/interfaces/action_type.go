@@ -33,11 +33,11 @@ type Actions struct {
 
 // Instantiated action parameters.
 type ActionParam struct {
-	InstanceID       any            `json:"_instance_id,omitempty"`       // Instance ID.
-	InstanceIdentity any            `json:"_instance_identity,omitempty"` // Unique instance identity.
-	Display          any            `json:"display,omitempty"`            // Display value.
-	Parameters       map[string]any `json:"parameters"`                   // Parameters populated with actual arguments.
-	DynamicParams    map[string]any `json:"dynamic_params"`               // Dynamic parameter map.
+	InstanceID       any            `json:"_instance_id,omitzero"`       // Instance ID.
+	InstanceIdentity any            `json:"_instance_identity,omitzero"` // Unique instance identity.
+	Display          any            `json:"display,omitzero"`            // Display value.
+	Parameters       map[string]any `json:"parameters"`                  // Parameters populated with actual arguments.
+	DynamicParams    map[string]any `json:"dynamic_params"`              // Dynamic parameter map.
 }
 
 // ExpectedOperation describes the operation semantics expected by the contract.
@@ -114,7 +114,7 @@ type ActionOperationConfig struct {
 // ActionEventTargets is the basis of a record-event action other than its condition.
 type ActionEventTargets struct {
 	Cypher   *ActionCypherTargets   `json:"cypher,omitempty"`
-	Function *ActionFunctionTargets `json:"function,omitempty"`
+	Function *ActionFunctionTargets `json:"function,omitzero"`
 	Metric   *ActionMetricTargets   `json:"metric,omitempty"`
 }
 

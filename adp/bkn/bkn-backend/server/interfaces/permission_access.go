@@ -178,7 +178,7 @@ func IsValidKNChildResourceID(id string) bool {
 // to be returned. When operation projection is enabled, bkn-safe returns the
 // complete effective operation set from its authorization catalog.
 type PermissionResourcesFilter struct {
-	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
+	Accessor   PermissionAccessor   `json:"accessor"`
 	Resources  []PermissionResource `json:"resources,omitempty"`
 	Operations []string             `json:"operation,omitempty"`
 	// IncludeOperations selects the independent operation-projection axis. False
@@ -249,7 +249,7 @@ type PropertyAccessDecision struct {
 // while it crosses the bkn-safe boundary.
 type RowFilterValue struct {
 	Type    string  `json:"type"`
-	String  *string `json:"string,omitempty"`
+	String  *string `json:"string,omitzero"`
 	Integer *int64  `json:"integer,omitempty"`
 	Boolean *bool   `json:"boolean,omitempty"`
 }

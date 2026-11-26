@@ -43,14 +43,14 @@ type TableColumnMeta struct {
 	Filterable *bool `json:"filterable,omitempty"`
 
 	Nullable          bool   `json:"nullable"`
-	DefaultValue      string `json:"default_value,omitempty"`      // Default value
-	CharMaxLen        int    `json:"char_max_len,omitempty"`       // Maximum character length
-	NumPrecision      int    `json:"num_precision,omitempty"`      // Numerical accuracy
-	NumScale          int    `json:"num_scale,omitempty"`          // Decimal place of numerical value
-	DatetimePrecision int    `json:"datetime_precision,omitempty"` // Date and time accuracy
-	Charset           string `json:"charset,omitempty"`            // Character set
-	Collation         string `json:"collation,omitempty"`          // Sorting rule
-	OrdinalPosition   int    `json:"ordinal_position"`             // Column position (starting from 1
+	DefaultValue      string `json:"default_value,omitempty"` // Default value
+	CharMaxLen        int    `json:"char_max_len"`            // Maximum character length
+	NumPrecision      int    `json:"num_precision"`           // Numerical accuracy
+	NumScale          int    `json:"num_scale"`               // Decimal place of numerical value
+	DatetimePrecision int    `json:"datetime_precision"`      // Date and time accuracy
+	Charset           string `json:"charset,omitempty"`       // Character set
+	Collation         string `json:"collation,omitempty"`     // Sorting rule
+	OrdinalPosition   int    `json:"ordinal_position"`        // Column position (starting from 1
 	CheckConstraint   string `json:"check_constraint,omitempty"`
 	ColumnKey         string `json:"column_key"` // Column key
 }

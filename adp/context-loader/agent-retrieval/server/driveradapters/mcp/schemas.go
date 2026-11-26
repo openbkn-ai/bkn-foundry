@@ -9,11 +9,12 @@ package mcp
 import (
 	"embed"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"sync"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 //go:embed schemas/*.json schemas/*.py schemas/locales/*/*.json schemas/locales/*/*.txt
@@ -76,7 +77,7 @@ var allToolMeta = sync.OnceValue(func() map[string]ToolMeta {
 		panic("cannot read tools_meta.json: " + err.Error())
 	}
 	var meta map[string]ToolMeta
-	if err := sonic.Unmarshal(data, &meta); err != nil {
+	if err := jsoncodec.Unmarshal(data, &meta); err != nil {
 		panic("invalid tools_meta.json: " + err.Error())
 	}
 	return meta
@@ -105,7 +106,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		panic("cannot read " + path + ": " + err.Error())
 	}
 	var wrapper toolSchemaFile
-	if err := sonic.Unmarshal(data, &wrapper); err != nil {
+	if err := jsoncodec.Unmarshal(data, &wrapper); err != nil {
 		panic("invalid " + path + ": " + err.Error())
 	}
 	if len(wrapper.InputSchema) == 0 {
@@ -170,8 +171,8 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 		"type": "object", "properties": properties, "required": required,
 		"additionalProperties": false,
 	}
-	input, _ := sonic.ConfigStd.Marshal(inputSchema)
-	output, _ := sonic.ConfigStd.Marshal(lifecycleOutputSchema(toolKey))
+	input, _ := jsoncodec.Marshal(inputSchema, jsonv2.Deterministic(true))
+	output, _ := jsoncodec.Marshal(lifecycleOutputSchema(toolKey), jsonv2.Deterministic(true))
 	return input, output, true
 }
 
@@ -431,7 +432,7 @@ func extraInputSchema(tool mcptool.ExtraTool) json.RawMessage {
 
 func offerBKNContext(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
-	if err := sonic.Unmarshal(input, &schema); err != nil {
+	if err := jsoncodec.Unmarshal(input, &schema); err != nil {
 		panic("invalid business tool input schema: " + err.Error())
 	}
 	properties, _ := schema["properties"].(map[string]any)
@@ -446,12 +447,12 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 	}
 	for _, value := range required {
 		if value == "bkn_context" {
-			raw, _ := sonic.ConfigStd.Marshal(schema)
+			raw, _ := jsoncodec.Marshal(schema, jsonv2.Deterministic(true))
 			return raw
 		}
 	}
 	schema["required"] = append(required, "bkn_context")
-	raw, err := sonic.ConfigStd.Marshal(schema)
+	raw, err := jsoncodec.Marshal(schema, jsonv2.Deterministic(true))
 	if err != nil {
 		panic("marshal business tool input schema: " + err.Error())
 	}

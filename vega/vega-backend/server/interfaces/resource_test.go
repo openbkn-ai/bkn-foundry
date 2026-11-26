@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func TestResourceLocalStateJSON(t *testing.T) {
@@ -68,14 +68,14 @@ func TestDerivedLogicalViewDefinitionJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode generic definition: %v", err)
 	}
-	if _, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err == nil {
-		t.Fatal("derived definition must reject unsupported fields")
+	if definition, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err != nil || definition == nil || definition.SourceResourceID != "source" {
+		t.Fatalf("expected derived definition to ignore distinct: definition=%+v, err=%v", definition, err)
 	}
-	if err := sonic.Unmarshal([]byte(`{"logical_view_definition":{"source_resource_id":"source","distinct":false}}`), &request); err != nil {
-		t.Fatalf("sonic decode generic definition: %v", err)
+	if err := jsoncodec.Unmarshal([]byte(`{"logical_view_definition":{"source_resource_id":"source","distinct":false}}`), &request); err != nil {
+		t.Fatalf("decode generic definition: %v", err)
 	}
-	if _, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err == nil {
-		t.Fatal("derived conversion must reject unsupported fields from sonic")
+	if definition, err := DecodeDerivedLogicalViewDefinition(request.LogicalViewDefinition); err != nil || definition == nil || definition.SourceResourceID != "source" {
+		t.Fatalf("expected derived conversion to ignore distinct: definition=%+v, err=%v", definition, err)
 	}
 	if _, err := DecodeDerivedLogicalViewDefinition([]any{map[string]any{"type": "resource"}}); err == nil {
 		t.Fatal("derived conversion must reject composite arrays")
@@ -84,9 +84,10 @@ func TestDerivedLogicalViewDefinitionJSON(t *testing.T) {
 		map[string]any{},
 		map[string]any{"source_resource_id": ""},
 		map[string]any{"source_resource_id": "  "},
+		map[string]any{"source_resource_id": false, "distinct": false},
 	} {
 		if _, err := DecodeDerivedLogicalViewDefinition(raw); err == nil {
-			t.Fatalf("derived conversion must reject missing source_resource_id: %#v", raw)
+			t.Fatalf("derived conversion must reject missing or invalid source_resource_id: %#v", raw)
 		}
 	}
 	err = json.Unmarshal([]byte(`{"category":"logical_view","logical_view_definition":{"source_resource_id":"source"}}`), &request)
@@ -154,7 +155,14 @@ func TestPropertyFilterableJSON(t *testing.T) {
 			name      string
 			marshal   func(any) ([]byte, error)
 			unmarshal func([]byte, any) error
-		}{{"json", json.Marshal, json.Unmarshal}, {"sonic", sonic.Marshal, sonic.Unmarshal}} {
+		}{
+			{"json", json.Marshal, json.Unmarshal},
+			{
+				"jsonv2",
+				func(v any) ([]byte, error) { return jsoncodec.Marshal(v) },
+				func(data []byte, v any) error { return jsoncodec.Unmarshal(data, v) },
+			},
+		} {
 			t.Run(codec.name+literal, func(t *testing.T) {
 				var property Property
 				if err := codec.unmarshal([]byte(literal), &property); err != nil {

@@ -15,10 +15,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAppSettingJSONExcludesDependencySettings(t *testing.T) {
+	vp := viper.New()
+	vp.Set("depServices", map[string]map[string]any{
+		rdsServiceName: {"password": "secret"},
+	})
+	vp.Set("catalogHealthCheck.timeout", "45s")
+	var setting AppSetting
+	require.NoError(t, vp.Unmarshal(&setting))
+	assert.Equal(t, "secret", setting.DepServices[rdsServiceName]["password"])
+
+	encoded, err := jsoncodec.MarshalString(&setting, json.FormatDurationAsNano(true))
+	require.NoError(t, err)
+	assert.Contains(t, encoded, `"Timeout":45000000000`)
+	assert.NotContains(t, encoded, `"DepServices"`)
+	assert.NotContains(t, encoded, "secret")
+}
 
 func TestCatalogHealthCheckConfig(t *testing.T) {
 	t.Run("unmarshals worker, timeout and schedule settings", func(t *testing.T) {

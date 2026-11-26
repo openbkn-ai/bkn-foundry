@@ -15,8 +15,8 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -276,11 +276,11 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ata, smock := MockNewActionTypeAccess(appSetting)
 
-		conditionBytes, _ := sonic.Marshal((*interfaces.ActionCondCfg)(nil))
-		affectBytes, _ := sonic.Marshal((*interfaces.ActionAffect)(nil))
-		actionSourceBytes, _ := sonic.Marshal(interfaces.ActionSource{})
-		parametersBytes, _ := sonic.Marshal([]interfaces.Parameter{})
-		scheduleBytes, _ := sonic.Marshal(interfaces.Schedule{})
+		conditionBytes, _ := jsoncodec.Marshal((*interfaces.ActionCondCfg)(nil))
+		affectBytes, _ := jsoncodec.Marshal((*interfaces.ActionAffect)(nil))
+		actionSourceBytes, _ := jsoncodec.Marshal(interfaces.ActionSource{})
+		parametersBytes, _ := jsoncodec.Marshal([]interfaces.Parameter{})
+		scheduleBytes, _ := jsoncodec.Marshal(interfaces.Schedule{})
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
@@ -603,14 +603,14 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 func Test_ActionTypeAccess_ListActionTypeSummariesPreservesPublicSchema(t *testing.T) {
 	Convey("test ListActionTypeSummaries preserves public fields\n", t, func() {
 		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
-		conditionBytes, _ := sonic.Marshal(&interfaces.ActionCondCfg{})
-		affectBytes, _ := sonic.Marshal(&interfaces.ActionAffect{})
-		actionSourceBytes, _ := sonic.Marshal(interfaces.ActionSource{
+		conditionBytes, _ := jsoncodec.Marshal(&interfaces.ActionCondCfg{})
+		affectBytes, _ := jsoncodec.Marshal(&interfaces.ActionAffect{})
+		actionSourceBytes, _ := jsoncodec.Marshal(interfaces.ActionSource{
 			Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box1", ToolID: "tool1",
 		})
-		parametersBytes, _ := sonic.Marshal([]interfaces.Parameter{})
-		scheduleBytes, _ := sonic.Marshal(interfaces.Schedule{Type: "cron", Expression: "0 0 * * *"})
-		impactContractsBytes, _ := sonic.Marshal([]interfaces.ImpactContractItem{})
+		parametersBytes, _ := jsoncodec.Marshal([]interfaces.Parameter{})
+		scheduleBytes, _ := jsoncodec.Marshal(interfaces.Schedule{Type: "cron", Expression: "0 0 * * *"})
+		impactContractsBytes, _ := jsoncodec.Marshal([]interfaces.ImpactContractItem{})
 
 		query := interfaces.ActionTypesQueryParams{
 			KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
@@ -715,11 +715,11 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 			"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?,?)", AT_TABLE_NAME)
 
-		conditionBytes, _ := sonic.Marshal((*interfaces.ActionCondCfg)(nil))
-		affectBytes, _ := sonic.Marshal((*interfaces.ActionAffect)(nil))
-		actionSourceBytes, _ := sonic.Marshal(interfaces.ActionSource{})
-		parametersBytes, _ := sonic.Marshal([]interfaces.Parameter{})
-		scheduleBytes, _ := sonic.Marshal(interfaces.Schedule{})
+		conditionBytes, _ := jsoncodec.Marshal((*interfaces.ActionCondCfg)(nil))
+		affectBytes, _ := jsoncodec.Marshal((*interfaces.ActionAffect)(nil))
+		actionSourceBytes, _ := jsoncodec.Marshal(interfaces.ActionSource{})
+		parametersBytes, _ := jsoncodec.Marshal([]interfaces.Parameter{})
+		scheduleBytes, _ := jsoncodec.Marshal(interfaces.Schedule{})
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
@@ -1274,11 +1274,11 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 			"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", AT_TABLE_NAME)
 
-		conditionBytes, _ := sonic.Marshal((*interfaces.ActionCondCfg)(nil))
-		affectBytes, _ := sonic.Marshal((*interfaces.ActionAffect)(nil))
-		actionSourceBytes, _ := sonic.Marshal(interfaces.ActionSource{})
-		parametersBytes, _ := sonic.Marshal([]interfaces.Parameter{})
-		scheduleBytes, _ := sonic.Marshal(interfaces.Schedule{})
+		conditionBytes, _ := jsoncodec.Marshal((*interfaces.ActionCondCfg)(nil))
+		affectBytes, _ := jsoncodec.Marshal((*interfaces.ActionAffect)(nil))
+		actionSourceBytes, _ := jsoncodec.Marshal(interfaces.ActionSource{})
+		parametersBytes, _ := jsoncodec.Marshal([]interfaces.Parameter{})
+		scheduleBytes, _ := jsoncodec.Marshal(interfaces.Schedule{})
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",

@@ -14,14 +14,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 func skippedApplyResult(detail interfaces.SemanticUnderstandingSkippedApplyDetail) (*interfaces.SemanticUnderstandingApplyResult, error) {
-	detailStr, err := sonic.MarshalString(detail)
+	detailStr, err := jsoncodec.MarshalString(detail)
 	if err != nil {
 		return nil, fmt.Errorf("marshal semantic understanding skipped apply detail failed: %w", err)
 	}
@@ -39,7 +37,7 @@ func ApplyResourceSemanticResult(ctx context.Context, tx *sql.Tx, rs interfaces.
 	}
 
 	var result interfaces.SemanticUnderstandingResourceResult
-	if err := common.UnmarshalJSON([]byte(resultJSON), &result); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(resultJSON), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal resource semantic understanding result failed: %w", err)
 	}
 	if err := validateConfidence(result.Resource.Confidence, "resource.confidence"); err != nil {
@@ -149,7 +147,7 @@ func ApplyResourceSemanticResult(ctx context.Context, tx *sql.Tx, rs interfaces.
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
 		if len(skippedFields) > 0 {
-			detailStr, err := sonic.MarshalString(
+			detailStr, err := jsoncodec.MarshalString(
 				interfaces.SemanticUnderstandingResourceApplyDetail{
 					SkippedFields: skippedFields,
 					FieldDetails:  fieldDetails,
@@ -177,7 +175,7 @@ func ApplyResourceSemanticResult(ctx context.Context, tx *sql.Tx, rs interfaces.
 		return nil, err
 	}
 
-	detailStr, err := sonic.MarshalString(interfaces.SemanticUnderstandingResourceApplyDetail{
+	detailStr, err := jsoncodec.MarshalString(interfaces.SemanticUnderstandingResourceApplyDetail{
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
 		UpdatedFields:   updatedFields,

@@ -28,7 +28,7 @@ type RelationTypeWithKeyField struct {
 	TargetObjectTypeID string `json:"target_object_type_id" mapstructure:"target_object_type_id"`
 
 	Type         string `json:"type" mapstructure:"type"`
-	MappingRules any    `json:"mapping_rules,omitempty" mapstructure:"mapping_rules"` // Mapping representation selected by type; direct uses []Mapping
+	MappingRules any    `json:"mapping_rules,omitzero" mapstructure:"mapping_rules"` // Mapping representation selected by type; direct uses []Mapping
 }
 
 // knowledge_network
@@ -105,8 +105,8 @@ type RelationTypesQueryParams struct {
 // Relation type search list.
 type RelationTypes struct {
 	Entries    []*RelationType `json:"entries"`
-	TotalCount int64           `json:"total_count,omitempty"`
-	NextCursor *string         `json:"next_cursor,omitempty"`
+	TotalCount int64           `json:"total_count,omitzero"`
+	NextCursor *string         `json:"next_cursor,omitzero"`
 	OverallMs  int64           `json:"overall_ms"`
 }
 

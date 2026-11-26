@@ -8,6 +8,7 @@ package mcp
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"log"
@@ -16,8 +17,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 const defaultMCPLocale = "zh-CN"
@@ -164,10 +165,10 @@ func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
 	bundle.instructions = bundle.PTCResource("instructions.txt")
 	bundle.compactInstructions = bundle.PTCResource(compactInstructionsResource)
 	bundle.ptcInstructions = bundle.PTCResource("ptc_instructions.txt")
-	if err := sonic.Unmarshal([]byte(bundle.PTCResource("tools_meta.json")), &bundle.toolMeta); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(bundle.PTCResource("tools_meta.json")), &bundle.toolMeta); err != nil {
 		panic(err)
 	}
-	if err := sonic.Unmarshal([]byte(bundle.PTCResource("schema_descriptions.json")), &bundle.schemaDescriptions); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(bundle.PTCResource("schema_descriptions.json")), &bundle.schemaDescriptions); err != nil {
 		panic(err)
 	}
 	return bundle
@@ -238,7 +239,7 @@ func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
 	// Hints are advisory. An unreadable file costs the model a hint; it must not
 	// cost the caller their request.
 	var hints map[string][]string
-	if err := sonic.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
 		log.Printf("WARN: cannot parse PTC hints for %s, continuing without them: %v", b.locale, err)
 		return nil
 	}
@@ -364,7 +365,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 		return input, output
 	}
 	var schema any
-	if err := sonic.Unmarshal(wrapped, &schema); err != nil {
+	if err := jsoncodec.Unmarshal(wrapped, &schema); err != nil {
 		log.Printf("WARN: MCP overlay for %s: base schema is not valid JSON, serving baseline: %v", toolKey, err)
 		return input, output
 	}
@@ -378,7 +379,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 	}
 	// Localized schemas are still MCP tool declarations. Keep their byte-stable
 	// representation aligned with the unlocalized embedded declaration.
-	rawInput, err := sonic.ConfigStd.Marshal(root["input_schema"])
+	rawInput, err := jsoncodec.Marshal(root["input_schema"], jsonv2.Deterministic(true))
 	if err != nil {
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized input schema, serving baseline: %v", toolKey, err)
 		return input, output
@@ -388,7 +389,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 	if len(output) == 0 {
 		return rawInput, output
 	}
-	rawOutput, err := sonic.ConfigStd.Marshal(root["output_schema"])
+	rawOutput, err := jsoncodec.Marshal(root["output_schema"], jsonv2.Deterministic(true))
 	if err != nil {
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized output schema, serving baseline: %v", toolKey, err)
 		return input, output
@@ -397,7 +398,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 }
 
 func marshalToolSchema(input, output json.RawMessage) ([]byte, error) {
-	return sonic.ConfigStd.Marshal(toolSchemaFile{
+	return jsoncodec.Marshal(toolSchemaFile{
 		InputSchema:  input,
 		OutputSchema: output,
 	})

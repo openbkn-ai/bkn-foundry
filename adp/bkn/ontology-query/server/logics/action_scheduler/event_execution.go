@@ -14,7 +14,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
+	"uuid"
+
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -94,12 +95,13 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 		return nil, err
 	}
 
-	instanceHash, err := computeDuplicateFingerprint(nil, nil, actionType.OperationConfig, actionType.RuleVersion)
+	fingerprints, err := computeDuplicateFingerprints(nil, nil, actionType.OperationConfig, actionType.RuleVersion)
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
-	req.InstanceIdentityHash = instanceHash
+	req.InstanceIdentityHash = fingerprints.primary
+	req.AlternateInstanceIdentityHash = ""
 	if s.duplicateCheckHook != nil {
 		proceed, dupErr := s.duplicateCheckHook(ctx, req)
 		if dupErr != nil {
@@ -116,11 +118,7 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 		}
 	}
 
-	generatedExecutionID, err := uuid.NewV7()
-	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
-			WithErrorDetails(fmt.Sprintf("failed to generate execution UUIDv7: %v", err))
-	}
+	generatedExecutionID := uuid.NewV7()
 	now := time.Now().UnixMilli()
 	execution := &interfaces.ActionExecution{
 		ID:                   generatedExecutionID.String(),
@@ -140,7 +138,7 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 		StartTime:            now,
 		ActionTypeSnapshot:   actionTypeSnapshot,
 		PermissionSnapshot:   requirements,
-		InstanceIdentityHash: instanceHash,
+		InstanceIdentityHash: fingerprints.primary,
 	}
 	if err := s.logsService.CreateExecution(ctx, execution); err != nil {
 		logger.Errorf("Failed to create execution record: %v", err)
@@ -183,7 +181,7 @@ func (s *actionSchedulerService) executeEventAsync(execution *interfaces.ActionE
 	}
 	finish := func(status string, targets int) {
 		result.EndTime = time.Now().UnixMilli()
-		result.DurationMs = result.EndTime - result.StartTime
+		result.DurationMs = new(result.EndTime - result.StartTime)
 		success, failed := 0, 0
 		switch status {
 		case interfaces.ExecutionStatusCompleted:

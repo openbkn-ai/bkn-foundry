@@ -7,18 +7,16 @@
 package action_type
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -217,35 +215,35 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 	tagsStr := libCommon.TagSlice2TagString(actionType.Tags)
 
 	// 2.0 Serialize condition.
-	conditionBytes, err := sonic.Marshal(actionType.Condition)
+	conditionBytes, err := jsoncodec.Marshal(actionType.Condition)
 	if err != nil {
 		logger.Errorf("Failed to marshal Condition, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
 	// 2.1 Serialize affect.
-	affectBytes, err := sonic.Marshal(actionType.Affect)
+	affectBytes, err := jsoncodec.Marshal(actionType.Affect)
 	if err != nil {
 		logger.Errorf("Failed to marshal Affect, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
 	// 2.2 Serialize action_source.
-	actionSourceBytes, err := sonic.Marshal(actionType.ActionSource)
+	actionSourceBytes, err := jsoncodec.Marshal(actionType.ActionSource)
 	if err != nil {
 		logger.Errorf("Failed to marshal ActionSource, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
 	// 2.3 Serialize parameters.
-	parameterBytes, err := sonic.Marshal(actionType.Parameters)
+	parameterBytes, err := jsoncodec.Marshal(actionType.Parameters)
 	if err != nil {
 		logger.Errorf("Failed to marshal Parameters, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
 
 	// 2.4 Serialize schedule.
-	scheduleBytes, err := sonic.Marshal(actionType.Schedule)
+	scheduleBytes, err := jsoncodec.Marshal(actionType.Schedule)
 	if err != nil {
 		logger.Errorf("Failed to marshal Schedule, err: %v", common.SafeErrorSummary(err))
 		return err
@@ -431,19 +429,19 @@ type serializedActionTypeFields struct {
 func serializeActionTypeFields(actionType *interfaces.ActionType) (serializedActionTypeFields, error) {
 	var result serializedActionTypeFields
 	var err error
-	if result.condition, err = sonic.Marshal(actionType.Condition); err != nil {
+	if result.condition, err = jsoncodec.Marshal(actionType.Condition); err != nil {
 		return result, err
 	}
-	if result.affect, err = sonic.Marshal(actionType.Affect); err != nil {
+	if result.affect, err = jsoncodec.Marshal(actionType.Affect); err != nil {
 		return result, err
 	}
-	if result.actionSource, err = sonic.Marshal(actionType.ActionSource); err != nil {
+	if result.actionSource, err = jsoncodec.Marshal(actionType.ActionSource); err != nil {
 		return result, err
 	}
-	if result.parameters, err = sonic.Marshal(actionType.Parameters); err != nil {
+	if result.parameters, err = jsoncodec.Marshal(actionType.Parameters); err != nil {
 		return result, err
 	}
-	if result.schedule, err = sonic.Marshal(actionType.Schedule); err != nil {
+	if result.schedule, err = jsoncodec.Marshal(actionType.Schedule); err != nil {
 		return result, err
 	}
 	if result.impactContracts, err = marshalImpactContractsJSON(actionType); err != nil {
@@ -595,7 +593,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = unmarshalStoredActionJSON(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -613,7 +611,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = unmarshalStoredActionJSON(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -626,7 +624,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 		}
 		actionType.Aliases = common.DecodeStoredAliases(ctx, aliasesRaw)
 		actionType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
-		if err := unmarshalStoredActionJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
+		if err := common.UnmarshalStoredJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
 			return nil, err
 		}
 		if err = unmarshalImpactContractsJSON(impactContractsRaw, &actionType); err != nil {
@@ -752,7 +750,7 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 			return nil, err
 		}
 		item.Tags = libCommon.TagString2TagSlice(tags)
-		if err := unmarshalStoredActionJSON(conditionBytes, &item.Condition); err != nil {
+		if err := common.UnmarshalStoredJSON(conditionBytes, &item.Condition); err != nil {
 			return nil, err
 		}
 		if err := common.UnmarshalStoredJSON(affectBytes, &item.Affect); err != nil {
@@ -761,7 +759,7 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 		if err := common.UnmarshalStoredJSON(actionSourceBytes, &item.ActionSource); err != nil {
 			return nil, err
 		}
-		if err := unmarshalStoredActionJSON(parametersBytes, &item.Parameters); err != nil {
+		if err := common.UnmarshalStoredJSON(parametersBytes, &item.Parameters); err != nil {
 			return nil, err
 		}
 		if err := common.UnmarshalStoredJSON(scheduleBytes, &item.Schedule); err != nil {
@@ -769,7 +767,7 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 		}
 		item.Aliases = common.DecodeStoredAliases(ctx, aliasesRaw)
 		item.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
-		if err := unmarshalStoredActionJSON(operationConfigRaw, &(item).OperationConfig); err != nil {
+		if err := common.UnmarshalStoredJSON(operationConfigRaw, &(item).OperationConfig); err != nil {
 			return nil, err
 		}
 		if err := unmarshalImpactContractsJSON(impactContractsRaw, item); err != nil {
@@ -936,7 +934,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = unmarshalStoredActionJSON(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -954,7 +952,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 			return []*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = unmarshalStoredActionJSON(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return []*interfaces.ActionType{}, err
@@ -967,7 +965,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 		}
 		actionType.Aliases = common.DecodeStoredAliases(ctx, aliasesRaw)
 		actionType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
-		if err := unmarshalStoredActionJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
+		if err := common.UnmarshalStoredJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
 			return nil, err
 		}
 		if err = unmarshalImpactContractsJSON(impactContractsRaw, &actionType); err != nil {
@@ -994,35 +992,35 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 	// Convert tags to a string.
 	tagsStr := libCommon.TagSlice2TagString(actionType.Tags)
 	// 2.0 Serialize condition.
-	conditionBytes, err := sonic.Marshal(actionType.Condition)
+	conditionBytes, err := jsoncodec.Marshal(actionType.Condition)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Condition, err", err)
 		return err
 	}
 
 	// 2.1 Serialize affect.
-	affectBytes, err := sonic.Marshal(actionType.Affect)
+	affectBytes, err := jsoncodec.Marshal(actionType.Affect)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Affect, err", err)
 		return err
 	}
 
 	// 2.2 Serialize action_source.
-	actionSourceBytes, err := sonic.Marshal(actionType.ActionSource)
+	actionSourceBytes, err := jsoncodec.Marshal(actionType.ActionSource)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal ActionSource, err", err)
 		return err
 	}
 
 	// 2.3 Serialize parameters.
-	parameterBytes, err := sonic.Marshal(actionType.Parameters)
+	parameterBytes, err := jsoncodec.Marshal(actionType.Parameters)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Parameters, err", err)
 		return err
 	}
 
 	// 2.4 Serialize schedule.
-	scheduleBytes, err := sonic.Marshal(actionType.Schedule)
+	scheduleBytes, err := jsoncodec.Marshal(actionType.Schedule)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to marshal Schedule, err", err)
 		return err
@@ -1513,7 +1511,7 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 		actionType.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		// 2.0 Deserialize condition.
-		err = unmarshalStoredActionJSON(conditionBytes, &actionType.Condition)
+		err = common.UnmarshalStoredJSON(conditionBytes, &actionType.Condition)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Condition after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
@@ -1531,7 +1529,7 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 			return map[string]*interfaces.ActionType{}, err
 		}
 		// 2.3 Deserialize parameters.
-		err = unmarshalStoredActionJSON(parametersBytes, &actionType.Parameters)
+		err = common.UnmarshalStoredJSON(parametersBytes, &actionType.Parameters)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal Parameters after getting action type, err", err)
 			return map[string]*interfaces.ActionType{}, err
@@ -1544,7 +1542,7 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 		}
 		actionType.Aliases = common.DecodeStoredAliases(ctx, aliasesRaw)
 		actionType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, lifecycleStatusBytes, deprecationBytes))
-		if err := unmarshalStoredActionJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
+		if err := common.UnmarshalStoredJSON(operationConfigRaw, &(&actionType).OperationConfig); err != nil {
 			return nil, err
 		}
 		if err = unmarshalImpactContractsJSON(impactContractsRaw, &actionType); err != nil {
@@ -1563,7 +1561,7 @@ func marshalImpactContractsJSON(actionType *interfaces.ActionType) ([]byte, erro
 	if len(actionType.ImpactContracts) == 0 {
 		return nil, nil
 	}
-	return sonic.Marshal(actionType.ImpactContracts)
+	return jsoncodec.Marshal(actionType.ImpactContracts)
 }
 
 func unmarshalImpactContractsJSON(raw []byte, actionType *interfaces.ActionType) error {
@@ -1571,7 +1569,7 @@ func unmarshalImpactContractsJSON(raw []byte, actionType *interfaces.ActionType)
 		actionType.ImpactContracts = nil
 		return nil
 	}
-	return sonic.Unmarshal(raw, &actionType.ImpactContracts)
+	return jsoncodec.Unmarshal(raw, &actionType.ImpactContracts)
 }
 
 // ListAliasedActionTypes lists the ID, name and aliases of every action type of the branch that has
@@ -1645,15 +1643,5 @@ func marshalOperationConfig(config *interfaces.ActionOperationConfig) ([]byte, e
 	if config == nil {
 		return nil, nil
 	}
-	return sonic.Marshal(config)
-}
-
-// Preserve action literals without changing numeric decoding in other model types.
-func unmarshalStoredActionJSON(raw []byte, target any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	return decoder.Decode(target)
+	return jsoncodec.Marshal(config)
 }

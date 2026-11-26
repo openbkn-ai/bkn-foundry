@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -20,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -63,7 +63,7 @@ type proxyReadAuditRecorder interface {
 type proxyReadAuditLogger struct{}
 
 func (proxyReadAuditLogger) RecordProxyRead(_ context.Context, event proxyReadAuditEvent) {
-	encoded, err := sonic.MarshalString(event)
+	encoded, err := jsoncodec.MarshalString(event)
 	if err != nil {
 		logger.Errorf("marshal proxy read audit failed: %v", err)
 		return

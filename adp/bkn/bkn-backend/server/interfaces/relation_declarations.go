@@ -51,8 +51,8 @@ type RelationDeclarations struct {
 	ReverseName  string               `json:"reverse_name,omitempty" mapstructure:"reverse_name"`
 	Aliases      []string             `json:"aliases,omitempty" mapstructure:"aliases"`
 	Cardinality  string               `json:"cardinality,omitempty" mapstructure:"cardinality"`
-	Constraints  *RelationConstraints `json:"constraints,omitempty" mapstructure:"constraints"`
-	Lifecycle    *Lifecycle           `json:"lifecycle,omitempty" mapstructure:"lifecycle"`
+	Constraints  *RelationConstraints `json:"constraints,omitzero" mapstructure:"constraints"`
+	Lifecycle    *Lifecycle           `json:"lifecycle,omitzero" mapstructure:"lifecycle"`
 	Importance   string               `json:"importance,omitempty" mapstructure:"importance"`
 	FallbackFor  string               `json:"fallback_for,omitempty" mapstructure:"fallback_for"`
 	Verification string               `json:"verification,omitempty" mapstructure:"verification"`

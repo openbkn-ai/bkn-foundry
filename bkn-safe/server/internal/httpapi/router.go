@@ -350,6 +350,7 @@ func New(deps Deps) *gin.Engine {
 		meReads := r.Group("/api/safe/v1/me", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier), requireActiveSession(deps.DB))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
 		registerMeAuthorizationRegistry(meReads, deps.Enforcer.Registry())
+		mountIdentityMe(meReads, deps.IdentityProvider)
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each

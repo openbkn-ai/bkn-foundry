@@ -10,8 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -160,14 +160,10 @@ func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *
 		}
 		return
 	}
-	runID, err := uuid.NewV7()
-	if err != nil {
-		logger.Errorf("Generate discover schedule run ID failed: %v", err)
-		return
-	}
+	runID := uuid.NewV7().String()
 
 	rowsAffected, err := dsw.dsa.ClaimRun(ctx, schedule.ID, schedule.UpdateTime,
-		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID.String())
+		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID)
 	if err != nil {
 		logger.Errorf("Claim discover schedule failed: schedule_id=%s, error=%v", schedule.ID, err)
 		return
@@ -188,7 +184,7 @@ func (dsw *DiscoverScheduleWorker) runScheduleAt(ctx context.Context, schedule *
 				Status: interfaces.ScheduleStatusFailed, Message: message}
 		}
 	}
-	if _, err := dsw.dsa.CompleteRun(ctx, schedule.ID, runID.String(), result); err != nil {
+	if _, err := dsw.dsa.CompleteRun(ctx, schedule.ID, runID, result); err != nil {
 		logger.Errorf("Save discover schedule result failed: schedule_id=%s, error=%v", schedule.ID, err)
 	}
 }

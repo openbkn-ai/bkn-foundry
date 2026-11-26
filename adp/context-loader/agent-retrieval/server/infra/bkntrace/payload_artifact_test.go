@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 type payloadArtifactWriterStub struct {
@@ -45,6 +45,83 @@ func TestLargePayloadUsesReferencedArtifactInsteadOfOmission(t *testing.T) {
 	}
 }
 
+func TestPayloadEscapedByCoreUsesReferencedArtifact(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		body   string
+		number string
+	}{
+		{name: "HTML and wide integer", body: strings.Repeat("<", 180000), number: "9007199254740993"},
+		{name: "HTML and decimal", body: strings.Repeat("<>&", 60000), number: "12.50"},
+		{name: "line separators and decimal", body: strings.Repeat("\u2028\u2029", 90000), number: "12.50"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := &payloadArtifactWriterStub{}
+			raw := json.RawMessage(`{"body":"` + tc.body + `","id":` + tc.number + `}`)
+			payload, ref, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
+			if err != nil || payload.Mode != "referenced" || ref == "" || payload.ByteLength <= maxInlinePayloadBytes {
+				t.Fatalf("payload mode = %q, size = %d, ref = %q, err = %v", payload.Mode, payload.ByteLength, ref, err)
+			}
+			if !bytes.Equal(writer.raw, raw) {
+				t.Fatalf("artifact encoding changed the input bytes: got %d bytes, want %d", len(writer.raw), len(raw))
+			}
+
+			decoder := json.NewDecoder(bytes.NewReader(writer.raw))
+			decoder.UseNumber()
+			var content any
+			if err := decoder.Decode(&content); err != nil {
+				t.Fatal(err)
+			}
+			var canonical bytes.Buffer
+			encoder := json.NewEncoder(&canonical)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(content); err != nil {
+				t.Fatal(err)
+			}
+			escaped, err := json.Marshal(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonicalLength := canonical.Len() - 1 // Encoder.Encode appends a newline.
+			if payload.ByteLength != canonicalLength && payload.ByteLength != len(escaped) {
+				t.Fatalf("reference size = %d, Core accepts %d or %d", payload.ByteLength, canonicalLength, len(escaped))
+			}
+		})
+	}
+}
+
+func TestPayloadNumberExpandedByCoreIsOmitted(t *testing.T) {
+	writer := &payloadArtifactWriterStub{}
+	raw := json.RawMessage(`{"body":"` + strings.Repeat("x", maxInlinePayloadBytes-32) + `","id":1e20}`)
+	payload, ref, err := boundedJSONPayloadWithWriter(t.Context(), writer, raw)
+	if err != nil || payload.Mode != "omitted" || payload.OmittedReason != "payload_too_large" || payload.ByteLength <= maxInlinePayloadBytes {
+		t.Fatalf("payload mode = %q, reason = %q, size = %d, err = %v", payload.Mode, payload.OmittedReason, payload.ByteLength, err)
+	}
+	if ref != "" || payload.Ref != "" || writer.raw != nil {
+		t.Fatalf("unexpected artifact: ref = %q, payload.ref = %q, size = %d", ref, payload.Ref, len(writer.raw))
+	}
+}
+
+func TestCoreInlinePayloadLengthMatchesCoreEncoding(t *testing.T) {
+	for _, raw := range []string{
+		`{"a":"<b>&","b":"\u2028\u2029","c":[true,null,{"<key>":"value"}]}`,
+		`{"numbers":[9007199254740993,-0,1e20,1e21,1e-6,1e-7,1.7976931348623157e308]}`,
+	} {
+		// Trace Core sizes its inline payload with encoding/json's v1 semantics.
+		var coreValue any
+		if err := json.Unmarshal([]byte(raw), &coreValue); err != nil {
+			t.Fatal(err)
+		}
+		coreJSON, err := json.Marshal(coreValue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := coreInlinePayloadLength([]byte(raw)); err != nil || got != len(coreJSON) {
+			t.Errorf("Core length for %s = %d, %v, want %d", raw, got, err, len(coreJSON))
+		}
+	}
+}
+
 func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 	var artifact map[string]any
 	previous := artifactHTTPClient
@@ -54,7 +131,7 @@ func TestPayloadArtifactHashMatchesPostedPreciseContent(t *testing.T) {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		body, _ := io.ReadAll(r.Body)
-		if err := common.UnmarshalPreciseJSON(body, &artifact); err != nil {
+		if err := jsoncodec.Unmarshal(body, &artifact); err != nil {
 			t.Fatalf("decode artifact: %v", err)
 		}
 		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -178,13 +178,9 @@ func (chcw *CatalogHealthCheckWorker) runScheduleAt(ctx context.Context, schedul
 		}
 		return
 	}
-	runID, err := uuid.NewV7()
-	if err != nil {
-		logger.Errorf("Generate catalog health check run ID failed: %v", err)
-		return
-	}
+	runID := uuid.NewV7().String()
 	rowsAffected, err := chcw.chcsa.ClaimRun(ctx, catalogID, schedule.UpdateTime,
-		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID.String())
+		schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(), runID)
 	if err != nil {
 		logger.Errorf("Claim catalog health check schedule failed: catalog_id=%s, error=%v", catalogID, err)
 		return
@@ -214,7 +210,7 @@ func (chcw *CatalogHealthCheckWorker) runScheduleAt(ctx context.Context, schedul
 		}
 		result = interfaces.ScheduleRunResult{Status: status, Message: message}
 	}
-	if _, err := chcw.chcsa.CompleteRun(ctx, catalogID, runID.String(), result); err != nil {
+	if _, err := chcw.chcsa.CompleteRun(ctx, catalogID, runID, result); err != nil {
 		logger.Errorf("Save catalog health check result failed: catalog_id=%s, error=%v", catalogID, err)
 	}
 }

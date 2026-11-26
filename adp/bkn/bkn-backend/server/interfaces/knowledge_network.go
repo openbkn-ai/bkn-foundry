@@ -131,7 +131,7 @@ type KN struct {
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
 	// Versioning is true in a create request for a network versioned from the start, and the
 	// version state in a read of a versioned network.
-	Versioning *KNVersioningField `json:"versioning,omitempty" mapstructure:"-"`
+	Versioning *KNVersioningField `json:"versioning,omitzero" mapstructure:"-"`
 
 	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`
@@ -154,7 +154,7 @@ type KN struct {
 	IfNameModify bool `json:"-"`
 
 	// Statistics.
-	Statistics *Statistics `json:"statistics,omitempty"`
+	Statistics *Statistics `json:"statistics,omitzero"`
 	// Operation permissions.
 	Operations []string `json:"operations,omitempty"`
 	// NavigationOnly marks a shell exposed through a visible child resource.
@@ -191,11 +191,11 @@ type OverviewGraphNode struct {
 	Name          string                      `json:"name"`
 	Icon          string                      `json:"icon,omitempty"`
 	Color         string                      `json:"color,omitempty"`
-	IndexStatus   *ObjectTypeIndexStatus      `json:"index_status,omitempty"`
-	Degree        int                         `json:"degree,omitempty"`
+	IndexStatus   *ObjectTypeIndexStatus      `json:"index_status,omitzero"`
+	Degree        int                         `json:"degree,omitzero"`
 	ConceptGroups []OverviewGraphConceptGroup `json:"concept_groups,omitempty"`
 	// Lifecycle is left out while the object type is active.
-	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	Lifecycle *Lifecycle `json:"lifecycle,omitzero"`
 }
 
 type OverviewGraphEdge struct {
@@ -205,7 +205,7 @@ type OverviewGraphEdge struct {
 	TargetID    string `json:"target_id"`
 	MappingMode string `json:"mapping_mode"`
 	// Lifecycle is left out while the relation type is active.
-	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	Lifecycle *Lifecycle `json:"lifecycle,omitzero"`
 }
 
 type OverviewGraph struct {
@@ -365,7 +365,7 @@ type ConceptsQuery struct {
 	// ExcludeDeprecated leaves deprecated object types, relation types and action types out, as
 	// concept recall does; a query by ID still returns them. A backend before it ignores the field
 	// and returns them, so a newer caller degrades to no filtering instead of failing.
-	ExcludeDeprecated bool `json:"exclude_deprecated,omitempty"`
+	ExcludeDeprecated bool `json:"exclude_deprecated,omitzero"`
 	// Pagination information.
 	NeedTotal bool          `json:"need_total"`
 	Limit     int           `json:"limit"`

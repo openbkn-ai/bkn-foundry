@@ -14,12 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
@@ -28,7 +27,7 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 	t.Run("keeps dynamic attributes and nested fields", func(t *testing.T) {
 		var prop Property
 
-		err := common.UnmarshalJSON([]byte(`{
+		err := jsoncodec.Unmarshal([]byte(`{
 			"type": "text",
 			"index": false,
 			"analyzer": "ik_max_word",
@@ -55,10 +54,10 @@ func TestPropertyUnmarshalJSON(t *testing.T) {
 		assert.Equal(t, "ik_max_word", out["title"].Attributes["analyzer"])
 		require.NotNil(t, out["title"].Filterable)
 		assert.False(t, *out["title"].Filterable, "父字段不能借助 keyword 子字段开放过滤")
-		encoded, err := sonic.Marshal(out["title"])
+		encoded, err := jsoncodec.Marshal(out["title"])
 		require.NoError(t, err)
 		var metadata map[string]any
-		require.NoError(t, sonic.Unmarshal(encoded, &metadata))
+		require.NoError(t, jsoncodec.Unmarshal(encoded, &metadata))
 		assert.NotContains(t, metadata, "analyzer")
 		assert.NotContains(t, metadata, "searchable")
 		attributes, ok := metadata["attributes"].(map[string]any)
@@ -406,7 +405,7 @@ func TestFetchMappingsResolvesAliasTypes(t *testing.T) {
 			assert.Equal(t, "alias", field.Type)
 			assert.Equal(t, want, field.ResolvedType)
 			assert.Contains(t, field.Attributes, "path")
-			encoded, err := sonic.Marshal(field)
+			encoded, err := jsoncodec.Marshal(field)
 			require.NoError(t, err)
 			assert.NotContains(t, string(encoded), "ResolvedType")
 		})

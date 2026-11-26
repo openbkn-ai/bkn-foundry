@@ -2,7 +2,12 @@
 
 package interfaces
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+)
 
 func networkWith(objectTypes, relationTypes, actionTypes int) *KnowledgeNetworkDetail {
 	d := &KnowledgeNetworkDetail{
@@ -60,6 +65,32 @@ func TestReduceToNavigationShellKeepsTheWayIn(t *testing.T) {
 	if d.ID != "kn-001" {
 		t.Fatalf("the network's own record must survive, got %q", d.ID)
 	}
+}
+
+func TestKnowledgeNetworkDetailJSONLists(t *testing.T) {
+	detail := &KnowledgeNetworkDetail{ID: "kn-001"}
+	check := func(want string) {
+		t.Helper()
+		encoded, err := jsoncodec.Marshal(detail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range []string{"object_types", "relation_types", "action_types"} {
+			if got := string(fields[field]); got != want {
+				t.Errorf("%s = %s, want %s", field, got, want)
+			}
+		}
+		if got := string(fields["concept_groups"]); got != "[]" {
+			t.Errorf("concept_groups = %s, want []", got)
+		}
+	}
+	check("[]")
+	detail.ReduceToNavigationShell()
+	check("null")
 }
 
 // Slim runs after the shell on the oversized path, so it has to tolerate the

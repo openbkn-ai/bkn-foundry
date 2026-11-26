@@ -19,10 +19,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/dlclark/regexp2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
@@ -617,7 +617,7 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.ObjectQueryBaseOnObjectType) (map[string]any, error) {
 
 	var dslMap map[string]any
-	err := common.UnmarshalJSON([]byte(queryStr), &dslMap)
+	err := jsoncodec.Unmarshal([]byte(queryStr), &dslMap)
 	if err != nil {
 		return map[string]any{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
@@ -1391,12 +1391,12 @@ func CondCfgToFilterMap(c *cond.CondCfg) map[string]any {
 	if c == nil {
 		return nil
 	}
-	raw, err := sonic.Marshal(c)
+	raw, err := jsoncodec.Marshal(c)
 	if err != nil {
 		return nil
 	}
 	var m map[string]any
-	if err := common.UnmarshalJSON(raw, &m); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &m); err != nil {
 		return nil
 	}
 	return m

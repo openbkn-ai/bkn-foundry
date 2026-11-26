@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -162,5 +164,58 @@ func TestQueryMetricData_ForwardsFinalResultOperationsAndPage(t *testing.T) {
 	})
 	if err != nil || result.EmptyReason != "filtered_out" || result.TotalCount != 7 || result.NextCursor != "next" {
 		t.Fatalf("metric result metadata was lost: %#v, %v", result, err)
+	}
+}
+
+func TestQueryMetricData_PreservesExplicitEmptyStrings(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Filter struct {
+				Left  map[string]json.RawMessage   `json:"left"`
+				Right []map[string]json.RawMessage `json:"right"`
+			} `json:"filter"`
+			Having map[string]json.RawMessage `json:"having"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode forwarded metric request: %v", err)
+		} else {
+			if len(request.Filter.Right) != 1 || string(request.Filter.Right[0]["value"]) != `""` {
+				t.Errorf("forwarded right operands = %s, want an explicit empty string literal", request.Filter.Right)
+			}
+			if _, present := request.Filter.Left["value"]; present {
+				t.Errorf("property operand unexpectedly carries a literal: %s", request.Filter.Left["value"])
+			}
+			if string(request.Having["value"]) != `""` {
+				t.Errorf("forwarded having = %s, want an explicit empty string", request.Having)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"entries":[{"value":"","status":"ok"}],"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	client := &ontologyQueryClient{
+		baseURL:    server.URL,
+		httpClient: rest.NewHTTPClientWithRawClient(server.Client()),
+	}
+	query := &interfaces.ObjectMetricQuery{
+		Filter: &interfaces.ObjectMetricCondition{
+			NodeType:           "predicate",
+			ComparisonOperator: "eq",
+			Left: &interfaces.ObjectMetricOperand{
+				Source:      "property",
+				PropertyRef: &interfaces.ObjectMetricPropertyRef{ObjectTypeID: "order", PropertyName: "region"},
+			},
+			Right: []interfaces.ObjectMetricOperand{{Source: "literal", ValueType: "string", Value: ""}},
+		},
+		Having: &interfaces.ObjectMetricHaving{Operator: "eq", Value: ""},
+	}
+	response, err := client.QueryMetricData(t.Context(), "kn-1", "main", "metric-1", 1, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, body, err := rest.MarshalResponse(rest.FormatJSON, response)
+	if err != nil || !strings.Contains(string(body), `"value":""`) {
+		t.Fatalf("metric result = %s, %v, want an explicit empty string value", body, err)
 	}
 }

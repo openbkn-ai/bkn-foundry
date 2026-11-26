@@ -7,10 +7,9 @@
 package interfaces
 
 import (
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 )
 
@@ -37,7 +36,7 @@ func (s *SearchAfterArray) UnmarshalJSON(data []byte) error {
 
 	// Cursor values can be uint64 business identifiers, so retain their original
 	// number literals rather than narrowing them to int64 or float64.
-	if err := common.UnmarshalJSON(data, &result); err != nil {
+	if err := jsoncodec.Unmarshal(data, &result); err != nil {
 		logger.Errorf("Unmarshal Search After failed, %s", err)
 		return err
 	}
@@ -48,7 +47,7 @@ func (s *SearchAfterArray) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON emits the preserved values without precision loss.
 func (s SearchAfterArray) MarshalJSON() ([]byte, error) {
-	return sonic.Marshal([]any(s))
+	return jsoncodec.Marshal([]any(s))
 }
 
 type SearchAfterParams struct {

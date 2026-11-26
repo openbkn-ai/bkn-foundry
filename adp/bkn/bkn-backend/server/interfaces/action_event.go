@@ -38,7 +38,7 @@ const (
 // of a Cypher query, a function, or a metric anomaly.
 type ActionEventTargets struct {
 	Cypher   *ActionCypherTargets   `json:"cypher,omitempty" mapstructure:"cypher"`
-	Function *ActionFunctionTargets `json:"function,omitempty" mapstructure:"function"`
+	Function *ActionFunctionTargets `json:"function,omitzero" mapstructure:"function"`
 	Metric   *ActionMetricTargets   `json:"metric,omitempty" mapstructure:"metric"`
 }
 
@@ -78,7 +78,7 @@ type ActionEventTrial struct {
 	Hits             []map[string]any `json:"hits"`
 	HitCount         int              `json:"hit_count"`
 	Limited          bool             `json:"limited"`
-	RowFilterApplied *bool            `json:"row_filter_applied,omitempty"`
+	RowFilterApplied *bool            `json:"row_filter_applied,omitzero"`
 }
 
 var metricOperators = map[string]bool{"<": true, "<=": true, ">": true, ">=": true, "==": true, "!=": true}

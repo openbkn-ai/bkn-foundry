@@ -8,7 +8,7 @@ package common
 import (
 	"context"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // EncodeAliases is the f_aliases value of a definition: NULL without aliases, the way every row
@@ -17,7 +17,7 @@ func EncodeAliases(aliases []string) (any, error) {
 	if len(aliases) == 0 {
 		return nil, nil
 	}
-	b, err := sonic.Marshal(aliases)
+	b, err := jsoncodec.Marshal(aliases)
 	if err != nil {
 		return nil, err
 	}

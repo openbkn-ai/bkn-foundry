@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/tidwall/sjson"
@@ -241,14 +242,14 @@ func buildActionFromInstanceData(instanceData map[string]any,
 	}
 
 	params := map[string]any{}
-	err = common.UnmarshalJSON([]byte(paramsJson), &params)
+	err = jsoncodec.Unmarshal([]byte(paramsJson), &params)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s paramtersJson to map, %s",
 			actionType.ATName, err.Error())
 	}
 
 	dynamicParams := map[string]any{}
-	err = common.UnmarshalJSON([]byte(dynamicParamsJson), &dynamicParams)
+	err = jsoncodec.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s dynamicParamsJson to map, %s",
 			actionType.ATName, err.Error())

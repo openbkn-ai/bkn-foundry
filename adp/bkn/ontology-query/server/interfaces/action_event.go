@@ -89,7 +89,7 @@ type CypherValueType struct {
 // CypherPermissionImpact names an object type whose access rules narrowed a query.
 type CypherPermissionImpact struct {
 	ObjectTypeID     string `json:"object_type_id"`
-	RowFilterApplied bool   `json:"row_filter_applied,omitempty"`
+	RowFilterApplied bool   `json:"row_filter_applied,omitzero"`
 }
 
 // CypherQueryResult is the answer of bkn-backend's internal Cypher query. Numbers stay
@@ -99,7 +99,7 @@ type CypherQueryResult struct {
 	Entries           []map[string]any            `json:"entries"`
 	ValueTypes        map[string]*CypherValueType `json:"value_types,omitempty"`
 	PermissionImpacts []CypherPermissionImpact    `json:"permission_impacts,omitempty"`
-	Limited           bool                        `json:"limited,omitempty"`
+	Limited           bool                        `json:"limited,omitzero"`
 }
 
 // CypherKindObject is the value kind of a node.
@@ -128,7 +128,7 @@ type EventTrialResult struct {
 	Hits             []EventHit `json:"hits"`
 	HitCount         int        `json:"hit_count"`
 	Limited          bool       `json:"limited"`
-	RowFilterApplied *bool      `json:"row_filter_applied,omitempty"`
+	RowFilterApplied *bool      `json:"row_filter_applied,omitzero"`
 }
 
 // ActionTrialService tries an action type definition without saving or executing it.

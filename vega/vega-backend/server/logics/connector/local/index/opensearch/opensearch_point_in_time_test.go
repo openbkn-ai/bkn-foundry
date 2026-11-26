@@ -6,6 +6,7 @@ package opensearch
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -51,9 +53,7 @@ func TestOpenSearchIndexReadSession(t *testing.T) {
 					searchNumber := searches.Add(1)
 					assert.Equal(t, "false", r.URL.Query().Get("allow_partial_search_results"))
 					var body map[string]any
-					decoder := json.NewDecoder(r.Body)
-					decoder.UseNumber()
-					if !assert.NoError(t, decoder.Decode(&body)) {
+					if !assert.NoError(t, jsoncodec.UnmarshalDecode(jsontext.NewDecoder(r.Body), &body)) {
 						w.WriteHeader(http.StatusBadRequest)
 						return
 					}

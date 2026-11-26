@@ -4,6 +4,7 @@ package vega_backend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -128,5 +129,21 @@ func TestNewDatasetDocumentKeepsMapPayloadAndID(t *testing.T) {
 	}
 	if _, exists := document.Document["Hidden"]; exists {
 		t.Fatalf("non-persisted field leaked into index: %#v", document.Document)
+	}
+}
+
+func TestNewDatasetDocumentPreservesExactJSONNumbers(t *testing.T) {
+	input := json.RawMessage(`{"_id":"old","object":{"sequence":9007199254740993},"values":[1.234567890123456789]}`)
+	document, err := NewDatasetDocument("doc-1", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(document.Document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"_id":"doc-1","object":{"sequence":9007199254740993},"values":[1.234567890123456789]}`
+	if string(encoded) != want {
+		t.Fatalf("indexed document = %s, want %s", encoded, want)
 	}
 }

@@ -58,7 +58,7 @@ type DiscoverResult struct {
 	UpdatedCount   int                       `json:"updated_count"`
 	RestoredCount  int                       `json:"restored_count"`
 	FailedCount    int                       `json:"failed_count"`
-	SkippedCount   int                       `json:"skipped_count,omitempty"`
+	SkippedCount   int                       `json:"skipped_count"`
 	Message        string                    `json:"message"`
 }
 
@@ -123,7 +123,7 @@ type DiscoverTaskResultSummary struct {
 	UpdatedCount   int    `json:"updated_count"`
 	RestoredCount  int    `json:"restored_count"`
 	FailedCount    int    `json:"failed_count"`
-	SkippedCount   int    `json:"skipped_count,omitempty"`
+	SkippedCount   int    `json:"skipped_count"`
 }
 
 // DiscoverTaskQueryParams holds discover task list query parameters.

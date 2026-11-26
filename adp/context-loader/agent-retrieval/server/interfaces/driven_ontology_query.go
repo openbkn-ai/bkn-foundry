@@ -131,7 +131,7 @@ type QueryObjectInstancesResp struct {
 	Cursor string `json:"cursor,omitempty" toon:"cursor,omitempty"`
 	// RowFilterApplied is ontology-query's report that the caller's row filter
 	// narrowed this query. It is consumed into PermissionGuidance and not echoed.
-	RowFilterApplied bool `json:"row_filter_applied,omitempty" toon:"row_filter_applied,omitempty"`
+	RowFilterApplied bool `json:"row_filter_applied,omitzero" toon:"row_filter_applied,omitempty"`
 }
 
 // TOONValue keeps permission guidance first in the text representation shown

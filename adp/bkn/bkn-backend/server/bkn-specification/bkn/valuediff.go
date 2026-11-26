@@ -335,6 +335,27 @@ func expandOneSided(path string, present reflect.Value, kind DiffAction, out *[]
 		return
 	}
 
+	// A definition read from JSON, such as an object metric, is a map rather than a struct. It is
+	// expanded key by key, in the order a two-sided comparison reports it.
+	if present.Kind() == reflect.Map {
+		byKey := make(map[string]reflect.Value, present.Len())
+		keys := make([]string, 0, present.Len())
+		for _, k := range present.MapKeys() {
+			key := fmt.Sprint(k.Interface())
+			byKey[key] = present.MapIndex(k)
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			child := unwrap(byKey[key])
+			if !child.IsValid() || renderValue(child) == "" {
+				continue
+			}
+			expandOneSided(joinPath(path, key), child, kind, out)
+		}
+		return
+	}
+
 	if present.Kind() != reflect.Struct {
 		appendOneSided(out, path, kind, renderValue(present))
 		return

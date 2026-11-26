@@ -6,7 +6,9 @@ package knowledge_network
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -132,7 +134,9 @@ func Test_knowledgeNetworkService_UpdateKN_RewritesOtherBranchDocuments(t *testi
 			for i, branch := range []string{"main", "v1", "v2"} {
 				So(writes[docID(branch)], ShouldEqual, 1)
 				So(written[docID(branch)]["name"], ShouldEqual, "renamed")
-				So(written[docID(branch)]["_vector"], ShouldResemble, []any{float64(i + 1)})
+				vector, err := json.Marshal(written[docID(branch)]["_vector"])
+				So(err, ShouldBeNil)
+				So(string(vector), ShouldEqual, fmt.Sprintf("[%d]", i+1))
 			}
 			So(writes[docID("draft")], ShouldEqual, 1)
 		})

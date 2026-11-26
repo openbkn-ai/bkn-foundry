@@ -6,9 +6,9 @@ package knevent
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"testing"
+	"uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -16,11 +16,9 @@ import (
 const hour = int64(3600 * 1000)
 
 func testOp(now int64) op {
-	next := 0
 	return op{
 		now:   now,
 		actor: interfaces.AccountInfo{ID: "u1", Type: "user", Name: "Alice"},
-		newID: func() string { next++; return fmt.Sprintf("new-%d", next) },
 		title: func(typeName, objectName string) string { return typeName + "：" + objectName },
 	}
 }
@@ -173,6 +171,10 @@ func TestReportEvent(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			event, merged, changes := reportEvent(test.eventType, test.input, test.open, testOp(20*hour))
+			id, err := uuid.Parse(event.ID)
+			if err != nil || id[6]>>4 != 7 {
+				t.Fatalf("reported event ID = %q, want UUIDv7", event.ID)
+			}
 			if event.Status != test.wantStatus || event.MergedInto != test.wantMerged {
 				t.Fatalf("status %s merged %q, want %s %q", event.Status, event.MergedInto, test.wantStatus, test.wantMerged)
 			}

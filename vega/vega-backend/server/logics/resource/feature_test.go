@@ -9,14 +9,14 @@ package resource
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -365,10 +365,22 @@ func TestMutableFeaturesEqualWithServerManagedDimension(t *testing.T) {
 }
 
 func TestValidateMutableSchemaUpdateNumericRepresentations(t *testing.T) {
+	t.Run("empty stored attributes match omitted attributes", func(t *testing.T) {
+		var current, requested []*interfaces.Property
+		require.NoError(t, jsoncodec.Unmarshal([]byte(`[{"name":"id","type":"integer","features":[],"attributes":{}}]`), &current))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(`[{"name":"id","type":"integer"}]`), &requested))
+
+		changed, err := validateMutableSchemaUpdate(t.Context(), current, requested, false)
+		require.NoError(t, err)
+		assert.False(t, changed)
+		assert.NotNil(t, current[0].Attributes)
+		assert.Nil(t, requested[0].Attributes)
+	})
+
 	const schema = `[{"name":"title","type":"text","attributes":{"limit":256},"features":[{"name":"raw","feature_type":"keyword","config":{"ignore_above":256}}]}]`
 	var current, requested []*interfaces.Property
-	require.NoError(t, sonic.Unmarshal([]byte(schema), &current))
-	require.NoError(t, common.DecodeJSON(strings.NewReader(schema), &requested))
+	require.NoError(t, jsoncodec.Unmarshal([]byte(schema), &current))
+	require.NoError(t, jsoncodec.UnmarshalDecode(jsontext.NewDecoder(strings.NewReader(schema)), &requested))
 
 	t.Run("unchanged numeric values do not reject an ordinary edit or rebuild the index", func(t *testing.T) {
 		changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, false)

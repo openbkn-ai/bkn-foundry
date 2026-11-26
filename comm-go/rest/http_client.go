@@ -20,13 +20,14 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/internal/jsoncodec"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 //go:generate mockgen -package mock -source ./http_client.go -destination ./mock/mock_http_client.go
 
 // HTTPClient defines the HTTP client service interface.
+// In decoded responses, JSON numbers are returned as encoding/json.Number.
 type HTTPClient interface {
 	Get(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error)
 	GetNoUnmarshal(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error)

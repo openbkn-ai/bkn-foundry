@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/kafkasender"
 )
@@ -70,7 +70,7 @@ func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	}
 	return evidencePublisherConfig{Publisher: evidencepublisher.Config{
 		ProducerID: get("BKN_TRACE_PRODUCER_ID"), BaseStreamID: get("BKN_TRACE_PRODUCER_STREAM_ID"),
-		WorkloadIdentity: get("BKN_TRACE_WORKLOAD_IDENTITY"), ProcessBootID: uuid.NewString(),
+		WorkloadIdentity: get("BKN_TRACE_WORKLOAD_IDENTITY"), ProcessBootID: uuid.NewV7().String(),
 		QueueMaxRecords: queueMaxRecords,
 		QueueMaxBytes:   queueMaxBytes, MaxRecordBytes: maxRecordBytes, MaxAttempts: maxAttempts,
 		RetryBackoff: time.Duration(retryBackoffMS) * time.Millisecond,

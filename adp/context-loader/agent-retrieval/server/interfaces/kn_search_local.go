@@ -216,7 +216,7 @@ type KnSearchDataProperty struct {
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"`
 	// Indexed says this property supports the operators its object type publishes as
 	// index_operations. It stands in for repeating that list on every indexed property.
-	Indexed bool `json:"indexed,omitempty"`
+	Indexed bool `json:"indexed,omitzero"`
 	// Filterable is only ever false: the property can be returned but its data source
 	// refuses a condition on it, so no comparison operator applies. Absent means the
 	// property filters as its type suggests. See OnlyUnfilterable.
@@ -226,7 +226,7 @@ type KnSearchDataProperty struct {
 	// from the property's constraints.
 	Aliases  []string `json:"aliases,omitempty"`
 	Semantic string   `json:"semantic,omitempty"`
-	Required bool     `json:"required,omitempty"`
+	Required bool     `json:"required,omitzero"`
 	Unit     string   `json:"unit,omitempty"`
 	CRS      string   `json:"crs,omitempty"`
 	Timezone string   `json:"timezone,omitempty"`
@@ -236,8 +236,8 @@ type KnSearchDataProperty struct {
 	// EnumMatchCount says how many items enum_query matched when Enum lists only the first of them.
 	ValueType      string              `json:"value_type,omitempty"`
 	Enum           []*KnSearchEnumItem `json:"enum,omitempty"`
-	EnumCount      int                 `json:"enum_count,omitempty"`
-	EnumMatchCount int                 `json:"enum_match_count,omitempty"`
+	EnumCount      int                 `json:"enum_count,omitzero"`
+	EnumMatchCount int                 `json:"enum_match_count,omitzero"`
 }
 
 // OnlyUnfilterable keeps a filterable switch only when it is off. A property that can be
@@ -256,7 +256,7 @@ func OnlyUnfilterable(filterable *bool) *bool {
 type KnSearchEnumItem struct {
 	Value      string `json:"value"`
 	Display    string `json:"display"`
-	Deprecated bool   `json:"deprecated,omitempty"`
+	Deprecated bool   `json:"deprecated,omitzero"`
 }
 
 // KnSearchLogicProperty logic property (local response shape)
@@ -327,7 +327,7 @@ type KnSearchNode struct {
 	// Rank is the 1-based position of this row in the returned list, and it is the only field a caller
 	// should order by. Which score decided that position depends on the request (fusion, or the reranker
 	// when one ran), so re-sorting by any single score field can silently produce a different order.
-	Rank int `json:"rank,omitempty"`
+	Rank int `json:"rank,omitzero"`
 	// Score is the fused rank score: sum over channels of weight/(k+rank+1), normalized by 2(k+1) so
 	// that "first place in one channel" is 1.0 and "first place in both" is 2.0. It expresses agreement
 	// between channels, not absolute relevance — a channel's top row scores 1.0 even when the whole
@@ -350,18 +350,18 @@ type KnSearchNode struct {
 	// BM25Score is the full-text channel's raw OpenSearch _score. Unbounded, and it shifts with corpus
 	// size, document length and query length, so it is evidence for reading a result, never a threshold
 	// to compare across queries or knowledge networks.
-	BM25Score float64 `json:"bm25_score,omitempty"`
+	BM25Score *float64 `json:"bm25_score,omitempty"`
 	// KnnScore is the vector channel's similarity, 0~1 under a fixed embedding model. This is the one
 	// raw score that is roughly comparable across queries.
-	KnnScore float64 `json:"knn_score,omitempty"`
+	KnnScore *float64 `json:"knn_score,omitempty"`
 	// RerankerScore is the cross-encoder's relevance judgement, 0~1. Present only when a reranker ran and
 	// scored this row; rows past the rerank window keep their fusion order and carry no such score.
 	// Its presence is also the only way to tell a real rerank from a silent degrade to fusion order.
-	RerankerScore float64 `json:"reranker_score,omitempty"`
+	RerankerScore *float64 `json:"reranker_score,omitempty"`
 	// HeuristicScore is the local fallback score (0/0.3/0.5/0.85 tiers) used when no channel returned an
 	// index _score, so ranks are meaningless. Present only on that path; it does not share a scale with
 	// RRFScore.
-	HeuristicScore float64 `json:"heuristic_score,omitempty"`
+	HeuristicScore *float64 `json:"heuristic_score,omitempty"`
 }
 
 // ==================== Internal Structures ====================

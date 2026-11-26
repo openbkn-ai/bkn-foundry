@@ -10,10 +10,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
-
-	"github.com/bytedance/sonic"
 )
 
 type MultiMatchCond struct {
@@ -90,7 +90,7 @@ func (cond *MultiMatchCond) Convert(ctx context.Context, vectorizer func(ctx con
 		v = fmt.Sprintf("%q", vStr)
 	}
 
-	fields, err := sonic.Marshal(cond.mFilterFieldNames)
+	fields, err := jsoncodec.Marshal(cond.mFilterFieldNames)
 	if err != nil {
 		return "", validationError(ctx, "MultiMatchFieldsMarshalFailed", nil)
 	}

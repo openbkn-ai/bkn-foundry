@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -46,7 +46,7 @@ func TestBknAgentAccessRun(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		access, mockHTTPClient := setup(t)
-		respBody, err := sonic.Marshal(&interfaces.BknAgentRunResponse{TaskID: "agent-task-1"})
+		respBody, err := jsoncodec.Marshal(&interfaces.BknAgentRunResponse{TaskID: "agent-task-1"})
 		require.NoError(t, err)
 
 		mockHTTPClient.EXPECT().

@@ -22,6 +22,10 @@ type RelationTypeService interface {
 	DeleteRelationTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, rtIDs []string) error
 
 	GetRelationTypeIDsByKnID(ctx context.Context, knID string, branch string) ([]string, error)
+	// GetAllRelationTypesByKnID reads every relation type of one network branch without any
+	// permission filtering. It is for internal callers that apply their own checks, as the
+	// Cypher compiler does with query_data; never return its result to a caller as it is.
+	GetAllRelationTypesByKnID(ctx context.Context, knID string, branch string) ([]*RelationType, error)
 	DeleteRelationTypesByKnID(ctx context.Context, tx *sql.Tx, knID string, branch string) error
 
 	SearchRelationTypes(ctx context.Context, query *ConceptsQuery) (RelationTypes, error)

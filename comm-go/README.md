@@ -6,23 +6,27 @@ openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，modul
 开发、构建和测试需要 Go 1.27.4 或更新版本。CI 从本模块的 `go.mod` 读取 Go
 版本；消费者升级到本模块的新版本时，也需要使用 Go 1.27.4 或更新版本。
 
-## Garble 兼容构建
+## JSON 编解码与 Garble 构建
 
-默认构建中，`httperrors`、`rest`、`hydra`、`audit` 和 `crypto` 继续使用 Sonic。
-指定 `garble_compat` 构建标签时，这些包的 JSON 编解码改用 Go 标准库，避免这些路径引入
-`sonic/loader`。兼容实现关闭 HTML 字符转义，以保持常见 HTTP JSON 输出行为；
-它与 Sonic 的所有边界行为和性能不保证完全一致。
+`httperrors`、`rest`、`hydra`、`audit` 和 `crypto` 在普通和 Garble 构建中统一使用
+`github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec`。该包基于 Go 标准库
+`encoding/json/v2`，将解码进空 `any` 的数字保留为 `encoding/json.Number`。
+`rest.HTTPClient` 返回的动态 JSON 数字也使用该类型。解码默认拒绝重复的对象键和无效的
+UTF-8，结构体字段名区分大小写。`UnmarshalDecode` 每次从 `jsontext.Decoder` 读取一个值。
+
+编码时，nil slice 和 map 分别输出 `[]` 和 `{}`。`omitempty` 根据编码后的 JSON 值判断，
+因此 `false` 和 `0` 会保留。需要省略 Go 零值的字段可用 `omitzero`。
+`rest.ReplyError` 遇到旧版可编码的错误详情时会兼容重试，保留原 HTTP 状态码和业务错误码。
 
 例如，在已引用包含该变更的 comm-go 版本的 bkn-safe EE 模块中：
 
 ```bash
-CGO_ENABLED=0 garble build -trimpath -tags 'garble_compat,noasm' \
+CGO_ENABLED=0 garble build -trimpath -tags 'noasm' \
   -ldflags '-s -w' -o bkn-safe-ee ./cmd/bkn-safe-ee
 ```
 
-`noasm` 用于避免部分依赖的汇编实现引入 `sonic/loader`。其他依赖仍可能
-直接引入 Sonic；应对具体服务使用相同构建标签检查 `go list -deps`，并验证
-其 JSON 行为、性能和混淆后的实际运行。
+模块清单仍记录 Gin 的 Sonic 间接依赖，显式设置 `sonic` 构建标签时 Gin 会启用它。
+其他依赖也可能引入 Sonic，可用服务实际使用的构建标签运行 `go list -deps` 检查。
 
 ## 本地联调
 

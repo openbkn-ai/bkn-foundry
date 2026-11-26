@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Downstream bodies are decoded with UseNumber (see drivenadapters.precisionJSON),
+// Downstream bodies are decoded with UseNumber (see comm-go/jsoncodec),
 // so schema defaults reach pyLiteral as json.Number. Falling through to %v on a
 // float64 used to emit 9.223372036854776e+18 into generated Python.
 func TestPyLiteralKeepsJSONNumberDigits(t *testing.T) {

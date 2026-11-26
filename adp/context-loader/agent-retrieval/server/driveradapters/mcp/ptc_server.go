@@ -11,14 +11,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"maps"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -64,7 +65,7 @@ const (
 
 func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription string) json.RawMessage {
 	var schema map[string]any
-	if err := sonic.Unmarshal(raw, &schema); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &schema); err != nil {
 		return raw
 	}
 	properties, ok := schema["properties"].(map[string]any)
@@ -83,7 +84,7 @@ func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription strin
 	// Managed context remains optional when the lifecycle tool could not record the turn.
 	// This schema is advertised to MCP clients and therefore must have the
 	// same stable wire representation as the embedded tool declarations.
-	encoded, err := sonic.ConfigStd.Marshal(schema)
+	encoded, err := jsoncodec.Marshal(schema, jsonv2.Deterministic(true))
 	if err != nil {
 		return raw
 	}
@@ -299,7 +300,7 @@ func ptcBusinessContextArg(req mcp.CallToolRequest) map[string]any {
 	var decoded struct {
 		BusinessContext map[string]any `json:"bkn_context"`
 	}
-	if err := common.UnmarshalPreciseJSON(raw, &decoded); err != nil || decoded.BusinessContext == nil {
+	if err := jsoncodec.Unmarshal(raw, &decoded); err != nil || decoded.BusinessContext == nil {
 		return map[string]any{}
 	}
 	return decoded.BusinessContext

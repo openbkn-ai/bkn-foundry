@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
@@ -30,10 +31,7 @@ func TestBKNTraceRequestContextReadsBusinessCausalityHeaders(t *testing.T) {
 		c.Request.Header.Set(key, value)
 	}
 
-	got, err := bknTraceRequestContext(c, hydra.Visitor{})
-	if err != nil {
-		t.Fatalf("bknTraceRequestContext() error = %v", err)
-	}
+	got := bknTraceRequestContext(c, hydra.Visitor{})
 	if got.ConversationID != "conv_context_loader_001" || !got.SessionScopePresent || got.InteractionID != "int_backend_001" || got.OperationID != "op_backend_001" || !got.OperationScopePresent ||
 		got.ParentOperationID != "op_context_loader_001" || got.CausationEventID != "evt_upstream_001" ||
 		got.ClaimID != "claim_upstream_001" || got.Attempt != 1 {
@@ -47,10 +45,7 @@ func TestBKNTraceRequestContextUsesVerifiedOAuthOwner(t *testing.T) {
 	c.Request.Header.Set("x-account-id", "spoofed-user")
 	c.Request.Header.Set("x-bkn-delegation-id", "spoofed-delegation")
 	visitor := hydra.Visitor{ID: "real-user", ClientID: "openbkn-sdk", Type: hydra.VisitorType_User}
-	got, err := bknTraceRequestContext(c, visitor)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := bknTraceRequestContext(c, visitor)
 	if got.ApplicationPrincipalID != "openbkn-sdk" || got.EffectiveSubjectID != "real-user" || got.EffectiveSubjectType != "user" || got.DelegationID != "" {
 		t.Fatalf("owner = %+v, want verified OAuth visitor without caller-supplied delegation", got)
 	}
@@ -63,12 +58,13 @@ func TestBKNTraceRequestContextCreatesReplayEnvelopeForDirectStudioRequest(t *te
 	c.Request.Header.Set("x-account-id", "acct_demo")
 	c.Request.Header.Set("x-account-type", "user")
 
-	got, err := bknTraceRequestContext(c, hydra.Visitor{})
-	if err != nil {
-		t.Fatalf("bknTraceRequestContext() error = %v", err)
-	}
-	if got.RequestID == "" || !strings.HasPrefix(got.InteractionID, "int_") || !strings.HasPrefix(got.OperationID, "op_") {
-		t.Fatalf("direct request replay envelope not generated: %#v", got)
+	got := bknTraceRequestContext(c, hydra.Visitor{})
+	for prefix, value := range map[string]string{"req_": got.RequestID, "int_": got.InteractionID, "op_": got.OperationID} {
+		rawID, hasPrefix := strings.CutPrefix(value, prefix)
+		id, err := uuid.Parse(rawID)
+		if !hasPrefix || err != nil || id[6]>>4 != 7 {
+			t.Errorf("replay ID = %q, want %s followed by a UUIDv7", value, prefix)
+		}
 	}
 	if got.ConversationID != "" || got.SessionScopePresent || got.OperationScopePresent {
 		t.Fatalf("direct request must not fabricate session scope: %#v", got)
@@ -108,10 +104,7 @@ func TestBKNTraceRequestContextBoundsAttempt(t *testing.T) {
 			c.Request.Header.Set("x-account-type", "user")
 			c.Request.Header.Set(headerBKNAttempt, tt.header)
 
-			got, err := bknTraceRequestContext(c, hydra.Visitor{})
-			if err != nil {
-				t.Fatalf("bknTraceRequestContext() error = %v", err)
-			}
+			got := bknTraceRequestContext(c, hydra.Visitor{})
 			if got.Attempt != tt.want {
 				t.Fatalf("attempt = %d, want %d", got.Attempt, tt.want)
 			}

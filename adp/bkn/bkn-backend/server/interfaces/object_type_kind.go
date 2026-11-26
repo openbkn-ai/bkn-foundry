@@ -23,7 +23,7 @@ type ObjectTypeEvent struct {
 	// Severity is the default severity of the class's events.
 	Severity string `json:"severity,omitempty" mapstructure:"severity"`
 	// MergeHours is the window in which a report about the same object is a duplicate.
-	MergeHours float64 `json:"merge_hours,omitempty" mapstructure:"merge_hours"`
+	MergeHours float64 `json:"merge_hours,omitzero" mapstructure:"merge_hours"`
 	// HandlingNote says what to do about an event of the class.
 	HandlingNote string `json:"handling_note,omitempty" mapstructure:"handling_note"`
 	// HandlingAction is the action type that handles an event of the class, if any.

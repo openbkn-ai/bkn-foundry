@@ -5,7 +5,7 @@
 package object_type
 
 import (
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -17,7 +17,7 @@ import (
 func encodeKinds(objectType *interfaces.ObjectType) (string, any, error) {
 	kinds := ""
 	if len(objectType.Kinds) > 0 {
-		encoded, err := sonic.Marshal(objectType.Kinds)
+		encoded, err := jsoncodec.Marshal(objectType.Kinds)
 		if err != nil {
 			return "", nil, err
 		}
@@ -25,7 +25,7 @@ func encodeKinds(objectType *interfaces.ObjectType) (string, any, error) {
 	}
 	var event any
 	if objectType.Event != nil {
-		encoded, err := sonic.Marshal(objectType.Event)
+		encoded, err := jsoncodec.Marshal(objectType.Event)
 		if err != nil {
 			return "", nil, err
 		}

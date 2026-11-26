@@ -28,6 +28,17 @@ func showLoginWithIdentityProvider(c *gin.Context, h *auth.HydraAdmin, extension
 	showLogin(c, h)
 }
 
+// mountIdentityMe lets the extension add GETs to core's authenticated /me read
+// group, so they keep the token and session checks of GET /me. Writes are not
+// offered: they belong on the raw-verifier, audited /me group.
+func mountIdentityMe(g *gin.RouterGroup, extension *federation.Extension) {
+	if extension == nil || extension.MountMe == nil {
+		return
+	}
+	extension.MountMe(func(path string, handler gin.HandlerFunc) { g.GET(path, handler) },
+		func(c *gin.Context) string { return c.GetString(ctxAccessorID) })
+}
+
 // The shared Chart configures this authenticated hook for both images. A
 // community build leaves token sessions untouched; EE can supply enrichment.
 // Never expose this route through Ingress, and never accept an empty key.

@@ -14,14 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -223,14 +222,14 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 				taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 				taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.SemanticUnderstandingTask) error {
 					var input interfaces.SemanticUnderstandingResourceAgentInput
-					require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+					require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 					assert.Equal(t, tc.expected, input.Options.Language)
 					assert.Equal(t, "order_id", input.Resource.SchemaDefinition[0].Name)
 					return nil
 				})
 			}
 			var req interfaces.CreateSemanticUnderstandingTaskRequest
-			require.NoError(t, sonic.Unmarshal(fmt.Appendf(nil, `{"language":%q,"apply_mode":"dry_run"}`, tc.language), &req))
+			require.NoError(t, jsoncodec.Unmarshal(fmt.Appendf(nil, `{"language":%q,"apply_mode":"dry_run"}`, tc.language), &req))
 			got, err := service.CreateResourceTask(ctx, "resource-1", &req)
 			if tc.expected == "" {
 				var httpErr *httperrors.HTTPError
@@ -365,7 +364,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 
 				var input interfaces.SemanticUnderstandingResourceAgentInput
-				require.NoError(t, common.UnmarshalJSON([]byte(task.Input), &input))
+				require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 				require.Len(t, input.Resource.SchemaDefinition, 1)
 				assert.Equal(t, resource.SchemaDefinition[0].Attributes, input.Resource.SchemaDefinition[0].Attributes)
 				assert.Equal(t, []map[string]any{{"order_id": "o-1"}}, input.SampleRows)
@@ -398,7 +397,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.Equal(t, []map[string]any{{"order_id": "o-1"}, {"order_id": "o-2"}}, input.SampleRows)
 		assert.Equal(t, inputHash, task.InputHash)
 	})
@@ -444,7 +443,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		require.Len(t, input.SampleRows, 1)
 		assert.Equal(t, "o-1", input.SampleRows[0]["order_id"])
 		assert.NotContains(t, input.SampleRows[0], "attachment_blob")
@@ -499,7 +498,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.Equal(t, []map[string]any{{"order_id": "o-1", "status": "pending"}}, input.SampleRows)
 	})
 
@@ -522,7 +521,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy, input.SampleContext.Status)
 		require.Len(t, input.SampleContext.OmittedFields, 3)
@@ -544,15 +543,15 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
-		var payload map[string]sonic.NoCopyRawMessage
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &payload))
+		var payload map[string]json.RawMessage
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &payload))
 		require.Contains(t, payload, "sample_rows")
 		var sampleRows []map[string]any
-		require.NoError(t, sonic.Unmarshal(payload["sample_rows"], &sampleRows))
+		require.NoError(t, jsoncodec.Unmarshal(payload["sample_rows"], &sampleRows))
 		assert.NotNil(t, sampleRows)
 		assert.Empty(t, sampleRows)
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusNoRows, input.SampleContext.Status)
 		assert.Empty(t, input.SampleContext.OmittedFields)
 	})
@@ -574,7 +573,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.NotNil(t, input.SampleRows)
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusNoRows, input.SampleContext.Status)
@@ -606,7 +605,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		service := &semanticUnderstandingTaskService{rds: resourceDataService}
 		require.NoError(t, service.attachUnmaskedSampleRows(context.Background(), resource, task))
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &input))
 		assert.NotNil(t, input.SampleRows)
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusPayloadLimited, input.SampleContext.Status)
@@ -622,7 +621,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(got.Input), &input))
 		assert.Empty(t, input.SampleRows)
 		assert.Equal(t, expectedStatus, input.SampleContext.Status)
 	}
@@ -761,14 +760,14 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		firstTask, err := service.CreateResourceTask(context.Background(), resource.ID, req)
 		require.NoError(t, err)
 		var firstInput interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(firstTask.Input), &firstInput))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(firstTask.Input), &firstInput))
 		assert.Empty(t, firstInput.SampleRows)
 
 		secondTask, err := service.CreateResourceTask(context.Background(), resource.ID, req)
 		require.NoError(t, err)
 		assert.Same(t, firstTask, secondTask)
 		var secondInput interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(secondTask.Input), &secondInput))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(secondTask.Input), &secondInput))
 		assert.Empty(t, secondInput.SampleRows)
 	})
 }
@@ -867,7 +866,7 @@ func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 		assert.True(t, truncated)
 		assert.NotEmpty(t, limited)
 		assert.Less(t, len(limited), len(rows))
-		payload, err := sonic.ConfigStd.Marshal(limited)
+		payload, err := jsoncodec.Marshal(limited, json.DefaultOptionsV1())
 		require.NoError(t, err)
 		assert.LessOrEqual(t, len(payload), interfaces.MaxSemanticUnderstandingSamplePayloadBytes)
 	})
@@ -1269,7 +1268,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{ApplyMode: "dry_run"})
 		require.NoError(t, err)
 		var snapshot interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, common.UnmarshalJSON([]byte(task.Input), &snapshot))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(task.Input), &snapshot))
 		require.Len(t, snapshot.Resource.SchemaDefinition, 1)
 		assert.Equal(t, json.Number("9007199254740993"), snapshot.Resource.SchemaDefinition[0].Attributes["limit"])
 		assert.Equal(t, map[string]any{"nullable": true}, snapshot.Resource.SchemaDefinition[0].Attributes["nested"])
@@ -1284,7 +1283,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 				got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, req)
 				require.NoError(t, err)
 				var input interfaces.SemanticUnderstandingResourceAgentInput
-				require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+				require.NoError(t, jsoncodec.Unmarshal([]byte(got.Input), &input))
 				assert.Equal(t, language, input.Options.Language)
 				assert.Equal(t, mode, input.Options.ApplyMode)
 				assert.Equal(t, resource.ID, input.Resource.ID)
@@ -1304,7 +1303,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), sampleSemanticResource(), nil)
 		require.NoError(t, err)
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(got.Input), &input))
 		assert.Equal(t, "en-US", input.Options.Language)
 	})
 
@@ -1320,7 +1319,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		assert.NotEmpty(t, got.Input)
 		assert.NotEmpty(t, got.InputHash)
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(got.Input), &input))
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusNotRequested, input.SampleContext.Status)
 		assert.Empty(t, input.SampleContext.OmittedFields)
 	})
@@ -1334,7 +1333,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, got)
 		var input interfaces.SemanticUnderstandingResourceAgentInput
-		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		require.NoError(t, jsoncodec.Unmarshal([]byte(got.Input), &input))
 		assert.Equal(t, interfaces.SemanticUnderstandingSampleStatusUnavailable, input.SampleContext.Status)
 	})
 

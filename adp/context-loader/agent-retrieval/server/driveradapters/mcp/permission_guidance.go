@@ -8,9 +8,9 @@ package mcp
 import (
 	"errors"
 
-	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -43,11 +43,11 @@ func toolErrorWithPermissionGuidanceValue(err error, guidance any) *mcp.CallTool
 		return mcp.NewToolResultError(err.Error())
 	}
 	envelope := map[string]any{}
-	if sonic.UnmarshalString(httpErr.Error(), &envelope) != nil {
+	if jsoncodec.Unmarshal([]byte(httpErr.Error()), &envelope) != nil {
 		return mcp.NewToolResultError(err.Error())
 	}
 	envelope[permissionGuidanceKey] = guidance
-	text, marshalErr := sonic.ConfigStd.MarshalToString(envelope)
+	text, marshalErr := jsoncodec.MarshalString(envelope)
 	if marshalErr != nil {
 		return mcp.NewToolResultError(err.Error())
 	}
@@ -67,12 +67,12 @@ func cypherPermissionImpactsFromError(err error) []interfaces.ObjectPermissionIm
 	if !ok {
 		return nil
 	}
-	encoded, marshalErr := sonic.ConfigStd.Marshal(raw)
+	encoded, marshalErr := jsoncodec.Marshal(raw)
 	if marshalErr != nil {
 		return nil
 	}
 	var impacts []interfaces.ObjectPermissionImpact
-	if sonic.Unmarshal(encoded, &impacts) != nil {
+	if jsoncodec.Unmarshal(encoded, &impacts) != nil {
 		return nil
 	}
 	return impacts

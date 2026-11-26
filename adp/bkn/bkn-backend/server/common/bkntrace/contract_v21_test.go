@@ -121,6 +121,31 @@ func TestSchemaRefsAreKnowledgeNetworkQualifiedAndNeverGuessed(t *testing.T) {
 	}
 }
 
+func TestObjectTypeSummaryTreatsNilAndEmptyCollectionsEqually(t *testing.T) {
+	unset := interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customer"},
+		KNID:                   "kn_demo",
+	}
+	empty := unset
+	empty.DataProperties = []*interfaces.DataProperty{}
+	empty.LogicProperties = []*interfaces.LogicProperty{}
+	empty.PrimaryKeys = []string{}
+
+	unsetRefs := ObjectTypeRefs([]*interfaces.ObjectType{&unset})
+	emptyRefs := ObjectTypeRefs([]*interfaces.ObjectType{&empty})
+	if len(unsetRefs) != 1 || len(emptyRefs) != 1 {
+		t.Fatalf("got %d refs for nil and %d for empty, want one object ref each", len(unsetRefs), len(emptyRefs))
+	}
+	if HashValue(unsetRefs[0].Summary) != HashValue(emptyRefs[0].Summary) {
+		t.Fatalf("empty collections changed the summary: nil = %v, empty = %v", unsetRefs[0].Summary, emptyRefs[0].Summary)
+	}
+	for _, key := range []string{"property_count", "data_property_count", "logic_property_count", "primary_key_count"} {
+		if _, present := emptyRefs[0].Summary[key]; present {
+			t.Errorf("empty collection still emitted %q", key)
+		}
+	}
+}
+
 func assertPayloadKeys(t *testing.T, event Event, allowed ...string) {
 	t.Helper()
 	payload := event["payload"].(map[string]any)

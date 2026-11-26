@@ -120,23 +120,51 @@ func FilterKNChildIDs(ctx context.Context, ps interfaces.PermissionService,
 
 // RestrictDatasetFilterToIDs combines a concept-search condition with the
 // authorized business candidate IDs so the dataset owns total and cursor
-// pagination over the already-authorized result set.
+// pagination over the already-authorized result set. Each knn in the condition
+// also gets the IDs as its own filter, so it picks its neighbours among them.
 func RestrictDatasetFilterToIDs(filterCondition map[string]any, childIDs []string) map[string]any {
-	idCondition := map[string]any{
-		"field":      "id",
-		"operation":  "in",
-		"value":      childIDs,
-		"value_from": "const",
-	}
+	idCondition := idsCondition(childIDs)
 	if filterCondition == nil {
 		return idCondition
 	}
+	ScopeKnnToIDs(filterCondition, childIDs)
 	return map[string]any{
 		"operation": "and",
 		"sub_conditions": []map[string]any{
 			filterCondition,
 			idCondition,
 		},
+	}
+}
+
+// ScopeKnnToIDs adds "id in childIDs" to the filter of every knn in a
+// converted dataset condition, at any depth, and returns the condition.
+//
+// A knn picks its k neighbours before the conditions around it apply. A scope
+// that only surrounds it, such as the IDs the caller may see or the members of
+// the requested concept groups, would let concepts outside it take every
+// neighbour and leave nothing (#3404).
+func ScopeKnnToIDs(filterCondition map[string]any, childIDs []string) map[string]any {
+	if filterCondition == nil {
+		return nil
+	}
+	subConditions, _ := filterCondition["sub_conditions"].([]map[string]any)
+	if filterCondition["operation"] == "knn_vector" {
+		filterCondition["sub_conditions"] = append(subConditions, idsCondition(childIDs))
+		return filterCondition
+	}
+	for _, sub := range subConditions {
+		ScopeKnnToIDs(sub, childIDs)
+	}
+	return filterCondition
+}
+
+func idsCondition(childIDs []string) map[string]any {
+	return map[string]any{
+		"field":      "id",
+		"operation":  "in",
+		"value":      childIDs,
+		"value_from": "const",
 	}
 }
 

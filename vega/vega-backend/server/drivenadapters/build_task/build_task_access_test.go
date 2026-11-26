@@ -15,10 +15,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -163,6 +163,20 @@ func TestBuildTaskAccessGetByIDs(t *testing.T) {
 }
 
 func TestBuildTaskAccessCreate(t *testing.T) {
+	t.Run("writes empty arrays for nil index config slices", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		task := sampleBuildTask()
+		task.IndexConfig = &interfaces.BuildTaskIndexConfig{}
+		args := buildTaskInsertArgs(task)
+		args[8] = `{"primary_key_fields":[],"incremental_fields":[],"fields":[]}`
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_build_task")).
+			WithArgs(args...).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		require.NoError(t, access.Create(t.Context(), task))
+	})
+
 	t.Run("creates build task", func(t *testing.T) {
 		db, mock, access := newBuildTaskAccessMock(t)
 		defer func() { _ = db.Close() }()
@@ -711,7 +725,7 @@ func TestBuildTaskAccessList(t *testing.T) {
 		assert.Equal(t, int64(2), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, task.ID, got[0].ID)
-		payload, err := sonic.MarshalString(got[0])
+		payload, err := jsoncodec.MarshalString(got[0])
 		require.NoError(t, err)
 		assert.NotContains(t, payload, "failure_detail")
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -995,7 +1009,7 @@ func buildTaskInsertArgs(task *interfaces.BuildTask) []driver.Value {
 }
 
 func mustMarshalJSON(v any) string {
-	bs, err := sonic.Marshal(v)
+	bs, err := json.Marshal(v)
 	if err != nil {
 		panic(err)
 	}

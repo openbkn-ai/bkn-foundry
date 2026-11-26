@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -1872,7 +1872,7 @@ func TestCondCfgToFilterMap(t *testing.T) {
 			t.Fatal(err)
 		}
 		var actual map[string]any
-		if err := common.UnmarshalJSON(encoded, &actual); err != nil {
+		if err := jsoncodec.Unmarshal(encoded, &actual); err != nil {
 			t.Fatal(err)
 		}
 		leaves := actual["sub_conditions"].([]any)

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -276,13 +276,14 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 				logics.ActionExecutionMaxObjects))
 	}
 
-	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
+	fingerprints, err := computeDuplicateFingerprints(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
 	if err != nil {
 		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
-	req.InstanceIdentityHash = instanceHash
+	req.InstanceIdentityHash = fingerprints.primary
+	req.AlternateInstanceIdentityHash = fingerprints.alternate
 
 	// Duplicate check hook (default: reject in-flight same kn + action type + instance set + dynamic_params)
 	if s.duplicateCheckHook != nil {
@@ -322,13 +323,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	}
 	span.SetAttributes(attr.Key("execution_mode").String(executionMode))
 
-	// Generate execution ID
-	generatedExecutionID, err := uuid.NewV7()
-	if err != nil {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
-			WithErrorDetails(fmt.Sprintf("failed to generate execution UUIDv7: %v", err))
-	}
-	executionID := generatedExecutionID.String()
+	executionID := uuid.NewV7().String()
 	actionProxy.ExecutionID = executionID
 	var proxySubject *interfaces.AccountInfo
 	if !callerIdentity {
@@ -374,7 +369,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ProxyVersion:            actionProxy.ProxyVersion,
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
-		InstanceIdentityHash:    instanceHash,
+		InstanceIdentityHash:    fingerprints.primary,
 		// Correlation labels only; a scheduled execution has none (the handler clears them).
 		ConversationID: req.ConversationID,
 		InteractionID:  req.InteractionID,
@@ -552,7 +547,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				ErrorMessage:     fmt.Sprintf("Failed to build parameters: %v", err),
 				StartTime:        startTime,
 				EndTime:          endTime,
-				DurationMs:       endTime - startTime,
+				DurationMs:       new(endTime - startTime),
 			})
 			failedCount++
 			continue
@@ -571,7 +566,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				ErrorMessage:     execErr.Error(),
 				StartTime:        startTime,
 				EndTime:          endTime,
-				DurationMs:       endTime - startTime,
+				DurationMs:       new(endTime - startTime),
 			})
 			failedCount++
 		} else {
@@ -582,7 +577,7 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 				Result:           result,
 				StartTime:        startTime,
 				EndTime:          endTime,
-				DurationMs:       endTime - startTime,
+				DurationMs:       new(endTime - startTime),
 			})
 			successCount++
 		}
@@ -738,7 +733,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 		result.ErrorMessage = "execution cancelled"
 		endTime := time.Now().UnixMilli()
 		result.EndTime = endTime
-		result.DurationMs = endTime - startTime
+		result.DurationMs = new(endTime - startTime)
 		s.finishOnce(ctx, execution, result, interfaces.ExecutionStatusCancelled, 0, 0, endTime)
 		return interfaces.ExecutionStatusCancelled
 	}
@@ -767,7 +762,7 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 
 	endTime := time.Now().UnixMilli()
 	result.EndTime = endTime
-	result.DurationMs = endTime - startTime
+	result.DurationMs = new(endTime - startTime)
 
 	finalStatus := interfaces.ExecutionStatusCompleted
 	if failedCount > 0 {

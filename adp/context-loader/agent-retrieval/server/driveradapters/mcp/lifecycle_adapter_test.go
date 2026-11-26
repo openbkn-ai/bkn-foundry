@@ -34,6 +34,33 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
+func TestLifecycleIdempotencyReplaysHistoricalKeys(t *testing.T) {
+	ctx := common.SetTraceContextToCtx(t.Context(), common.TraceContext{RequestID: "req_12345678"})
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{
+			name: toolKeyStartInteraction,
+			args: map[string]any{"conversation_mode": "continue", "conversation_id": "conv_example", "question": "<b> & rest", "agent_name": "agent"},
+			want: "mcp:3ac437f0d69f79b9773cfc5857969653",
+		},
+		{
+			name: toolKeyFinishInteraction,
+			args: map[string]any{"interaction_id": "int_example", "outcome": "completed", "answer": "<b> & rest"},
+			want: "mcp:c18b01e116fbc9f21274c62bda02ab6c",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ensureLifecycleIdempotency(ctx, tc.name, tc.args, hostLifecycleHints{})
+			if got := tc.args["idempotency_key"]; got != tc.want {
+				t.Fatalf("idempotency key = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLifecycleSuccessTextContainsStructuredIdentifiers(t *testing.T) {
 	target := &bkntrace.Conversation{
 		ConversationID:          "conv-real-1",

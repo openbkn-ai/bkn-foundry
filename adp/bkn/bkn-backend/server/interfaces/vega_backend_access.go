@@ -31,9 +31,9 @@ type RawQueryColumn struct {
 type RawQueryRequest struct {
 	Query           string                    `json:"query"`
 	QueryFormat     string                    `json:"query_format"`
-	Paging          ResourceDataPagingRequest `json:"paging,omitempty"`
-	QueryTimeoutSec int                       `json:"query_timeout_sec,omitempty"`
-	NeedTotal       bool                      `json:"need_total,omitempty"`
+	Paging          ResourceDataPagingRequest `json:"paging"`
+	QueryTimeoutSec int                       `json:"query_timeout_sec,omitzero"`
+	NeedTotal       bool                      `json:"need_total,omitzero"`
 }
 
 // RawQueryResponse carries the projected columns alongside the rows so a
@@ -42,7 +42,7 @@ type RawQueryResponse struct {
 	Columns    []RawQueryColumn          `json:"columns"`
 	Entries    []map[string]any          `json:"entries"`
 	TotalCount int64                     `json:"total_count"`
-	Paging     *ResourceDataPagingResult `json:"paging,omitempty"`
+	Paging     *ResourceDataPagingResult `json:"paging,omitzero"`
 }
 
 // VegaBackendAccess defines the interface for accessing vega-backend service

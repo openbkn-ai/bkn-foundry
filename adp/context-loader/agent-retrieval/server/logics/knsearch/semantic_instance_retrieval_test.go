@@ -249,7 +249,7 @@ func TestConvertToKnSearchNode(t *testing.T) {
 		"_score":            0.95,
 	}
 
-	node := svc.convertToKnSearchNode(objType, data)
+	node, _ := svc.convertToKnSearchNode(objType, data)
 
 	if node.ObjectTypeID != "ot1" {
 		t.Error("ObjectTypeID mismatch")

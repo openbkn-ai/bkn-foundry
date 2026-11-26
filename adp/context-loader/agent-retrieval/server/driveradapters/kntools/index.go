@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -69,7 +70,7 @@ func (h *knToolsHandler) SearchCapabilities(c *gin.Context) {
 func (h *knToolsHandler) ExecuteTool(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsTools.ExecuteToolReq{}
-	if err := c.ShouldBindJSON(req); err != nil {
+	if err := common.BindJSON(c.Request.Body, req); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}

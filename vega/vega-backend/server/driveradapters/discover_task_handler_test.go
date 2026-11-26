@@ -111,7 +111,9 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 				assert.Equal(t, 10, params.Limit)
 				assert.Equal(t, interfaces.DiscoverTaskSortStartTime, params.Sort)
 				assert.Equal(t, "ASC", params.Direction)
-				return []*interfaces.DiscoverTaskSummary{}, int64(0), nil
+				return []*interfaces.DiscoverTaskSummary{{
+					ID: "task-1", Status: interfaces.DiscoverTaskStatusCompleted, Result: &interfaces.DiscoverTaskResultSummary{},
+				}}, int64(1), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?catalog_id=cat-1&resource_id=res-1&schedule_id=sch-1&status=completed&status=failed&strategy=full_sync&trigger_type=scheduled&offset=5&limit=10&sort=start_time&direction=asc", nil)
@@ -120,6 +122,7 @@ func Test_DiscoverTaskRestHandler_ListDiscoverTasks(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), `"skipped_count":0`)
 	})
 }
 
@@ -145,7 +148,10 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 	t.Run("gets discover task by id", func(t *testing.T) {
 		engine, dts := setup(t)
 		dts.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.DiscoverTask{ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusRunning}, nil)
+			Return(&interfaces.DiscoverTask{
+				ID: "task-1", CatalogID: "catalog-1", Status: interfaces.DiscoverTaskStatusCompleted,
+				Result: &interfaces.DiscoverResult{},
+			}, nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/task-1", nil)
 		w := httptest.NewRecorder()
@@ -154,7 +160,8 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"task-1"`)
-		assert.Contains(t, w.Body.String(), `"status":"running"`)
+		assert.Contains(t, w.Body.String(), `"status":"completed"`)
+		assert.Contains(t, w.Body.String(), `"skipped_count":0`)
 	})
 
 	t.Run("returns not found for nil task", func(t *testing.T) {

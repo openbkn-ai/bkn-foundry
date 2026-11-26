@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -109,11 +109,7 @@ func (s *actionScheduleService) CreateSchedule(ctx context.Context, schedule *in
 	schedule.ExecutionSubject = accountFromContext(ctx)
 
 	// Generate ID and set defaults
-	scheduleID, err := uuid.NewV7()
-	if err != nil {
-		return "", fmt.Errorf("generate action schedule UUIDv7: %w", err)
-	}
-	schedule.ID = scheduleID.String()
+	schedule.ID = uuid.NewV7().String()
 	now := time.Now().UnixMilli()
 	schedule.CreateTime = now
 	schedule.UpdateTime = now
