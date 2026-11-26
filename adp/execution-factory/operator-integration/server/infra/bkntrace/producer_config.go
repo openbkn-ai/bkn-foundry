@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/kafkasender"
 )
@@ -71,12 +71,21 @@ func loadEvidencePublisherConfig() (evidencePublisherConfig, error) {
 	if err != nil {
 		return evidencePublisherConfig{}, err
 	}
-	return evidencePublisherConfig{Publisher: evidencepublisher.Config{
-		ProducerID: producerID, BaseStreamID: streamID, WorkloadIdentity: identity,
-		ProcessBootID:   uuid.NewString(),
-		QueueMaxRecords: queueRecords, QueueMaxBytes: queueBytes, MaxRecordBytes: maxRecord,
-		MaxAttempts: maxAttempts, RetryBackoff: time.Duration(backoff) * time.Millisecond,
-	}, Brokers: brokers, Username: username, Password: password}, nil
+	return evidencePublisherConfig{
+		Publisher: evidencepublisher.Config{
+			ProducerID:       producerID,
+			BaseStreamID:     streamID,
+			WorkloadIdentity: identity,
+			ProcessBootID:    uuid.NewV7().String(),
+			QueueMaxRecords:  queueRecords,
+			QueueMaxBytes:    queueBytes,
+			MaxRecordBytes:   maxRecord,
+			MaxAttempts:      maxAttempts,
+			RetryBackoff:     time.Duration(backoff) * time.Millisecond,
+		}, Brokers: brokers,
+		Username: username,
+		Password: password,
+	}, nil
 }
 
 func boundedEnv(name string, fallback, min, max int) (int, error) {

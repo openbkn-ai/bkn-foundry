@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -48,10 +48,7 @@ func NewFunctionMetadataDB() model.IFunctionMetadataDB {
 // InsertFuncMetadata inserts function metadata.
 func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx, metadata *model.FunctionMetadataDB) (version string, err error) {
 	if metadata.Version == "" {
-		id, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		id := uuid.NewV7()
 		metadata.Version = id.String()
 	}
 	version = metadata.Version
@@ -219,10 +216,7 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 	values := [][]interface{}{}
 	for _, metadata := range metadatas {
 		if metadata.Version == "" {
-			id, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return nil, generateErr
-			}
+			id := uuid.NewV7()
 			metadata.Version = id.String()
 		}
 		versions = append(versions, metadata.Version)

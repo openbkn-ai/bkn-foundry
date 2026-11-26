@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -15,9 +16,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/pkg/errors"
+	"golang.org/x/text/encoding/ianaindex"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -509,21 +512,15 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time, ob
 	headers := make(map[string]any)
 	for key, values := range resp.Header {
 		if len(values) > 0 {
-			headers[key] = values[0]
+			headers[key] = strings.ToValidUTF8(values[0], "\uFFFD")
 		}
 	}
 
 	// Try to parse JSON response.
 	var responseBody interface{}
 	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "application/json") {
-		if err := utils.UnmarshalPreciseJSON(body, &responseBody); err != nil {
-			// If parsing fails, use the original response body.
-			responseBody = string(body)
-		}
-	} else {
-		// Non-JSON response, use string.
-		responseBody = string(body)
+	if !strings.Contains(contentType, "application/json") || utils.UnmarshalPreciseJSON(body, &responseBody) != nil {
+		responseBody = proxyResponseText(body, contentType)
 	}
 
 	return &interfaces.HTTPResponse{
@@ -533,6 +530,19 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time, ob
 		Duration:           time.Since(startTime).Milliseconds(),
 		RequestObservation: observation,
 	}, nil
+}
+
+func proxyResponseText(body []byte, contentType string) string {
+	_, params, _ := mime.ParseMediaType(contentType)
+	if label := params["charset"]; label != "" && !strings.EqualFold(label, "utf-8") {
+		if encoding, err := ianaindex.MIME.Encoding(label); err == nil && encoding != nil {
+			if decoded, err := encoding.NewDecoder().Bytes(body); err == nil {
+				return string(decoded)
+			}
+		}
+	}
+	// The proxy response carries text inside JSON, which requires valid UTF-8.
+	return strings.ToValidUTF8(string(body), "\uFFFD")
 }
 
 // buildRequestObservation describes the request actually sent to the upstream.
@@ -558,12 +568,16 @@ func buildRequestObservation(original, final *http.Request) *interfaces.RequestO
 	if keys := observed.URL.Query(); len(keys) > 0 {
 		observation.QueryKeys = make([]string, 0, len(keys))
 		for key := range keys {
+			if !utf8.ValidString(key) {
+				// Keep non-UTF-8 query names in a JSON-safe form without losing their bytes.
+				key = url.QueryEscape(key)
+			}
 			observation.QueryKeys = append(observation.QueryKeys, key)
 		}
 		sort.Strings(observation.QueryKeys)
 	}
 	if contentType := observed.Header.Get("Content-Type"); contentType != "" {
-		observation.ContentType = contentType
+		observation.ContentType = strings.ToValidUTF8(contentType, "\uFFFD")
 	}
 	if observed.ContentLength > 0 {
 		observation.ContentLength = observed.ContentLength

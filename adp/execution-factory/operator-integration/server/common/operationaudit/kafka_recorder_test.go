@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -21,10 +21,7 @@ func (capture *auditPublisherCapture) TryPublish(value []byte) auditpublisher.Di
 
 func validKafkaAuditEntry(t *testing.T) Entry {
 	t.Helper()
-	id, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	id := uuid.NewV7()
 	return Entry{
 		EventID: id.String(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Operator",
 		ActorType: "user", AuthMethod: "oauth", RequestID: "req-1", Method: "POST",

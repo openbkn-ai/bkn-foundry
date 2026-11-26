@@ -8,8 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -195,10 +195,7 @@ func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, meta
 			return
 		}
 		if apiMetadata.Version == "" {
-			id, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return "", generateErr
-			}
+			id := uuid.NewV7()
 			apiMetadata.Version = id.String()
 		}
 		version, err = m.APIMetadataDB.InsertAPIMetadata(ctx, tx, apiMetadata)
@@ -213,10 +210,7 @@ func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, meta
 			return
 		}
 		if funcMetadata.Version == "" {
-			id, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return "", generateErr
-			}
+			id := uuid.NewV7()
 			funcMetadata.Version = id.String()
 		}
 		funcMetadata.Path = interfaces.SetAOIFuncExecPath(funcMetadata.Version)
@@ -256,10 +250,7 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 				return
 			}
 			if apiMetadata.Version == "" {
-				id, generateErr := uuid.NewV7()
-				if generateErr != nil {
-					return nil, generateErr
-				}
+				id := uuid.NewV7()
 				apiMetadata.Version = id.String()
 			}
 			apiMetadatas = append(apiMetadatas, apiMetadata)
@@ -270,10 +261,7 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 				return
 			}
 			if funcMetadata.Version == "" {
-				id, generateErr := uuid.NewV7()
-				if generateErr != nil {
-					return nil, generateErr
-				}
+				id := uuid.NewV7()
 				funcMetadata.Version = id.String()
 			}
 			funcMetadata.Path = interfaces.SetAOIFuncExecPath(funcMetadata.Version)

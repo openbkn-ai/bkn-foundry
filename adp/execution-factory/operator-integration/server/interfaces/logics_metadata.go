@@ -97,7 +97,7 @@ type Parameter struct {
 	Description string              `json:"description"`
 	Required    bool                `json:"required"`
 	Schema      *openapi3.SchemaRef `json:"schema,omitempty"`
-	Example     any                 `json:"example,omitempty"`
+	Example     any                 `json:"example,omitzero"`
 	Examples    openapi3.Examples   `json:"examples,omitempty"`
 	Content     openapi3.Content    `json:"content,omitempty"`
 }
@@ -174,9 +174,9 @@ type ParameterDef struct {
 	Type ParameterType `json:"type,omitempty" validate:"omitempty,oneof=string number boolean array object"` // Parameter type.
 
 	// Simple type of constraint fields.
-	Default any   `json:"default,omitempty"` // Default value.
-	Enum    []any `json:"enum,omitempty"`    // enum value (optional)
-	Example any   `json:"example,omitempty"` // Example value.
+	Default any   `json:"default,omitzero"` // Default value.
+	Enum    []any `json:"enum,omitempty"`   // enum value (optional)
+	Example any   `json:"example,omitzero"` // Example value.
 
 	// Nested definitions of complex types.
 	// Usage scenarios:

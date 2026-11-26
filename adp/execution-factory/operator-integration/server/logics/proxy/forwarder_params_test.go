@@ -8,15 +8,19 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -48,6 +52,94 @@ func TestForwarderPreservesLargeJSONIntegers(t *testing.T) {
 	value := parsed.Body.(map[string]any)["payload"].(map[string]any)["large_integer"]
 	if value != json.Number("9007199254740993") {
 		t.Fatalf("result large_integer = %#v (%T)", value, value)
+	}
+}
+
+func TestSynchronousProxyReturnsValidUTF8ForUpstreamText(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        string
+		want        string
+	}{
+		{name: "declared charset", contentType: `text/plain; charset="ISO-8859-1"`, body: "caf\xe9", want: "café"},
+		{name: "UTF-8", contentType: "text/plain; charset=UTF-8", body: "café", want: "café"},
+		{name: "unknown charset", contentType: "text/plain; charset=unregistered", body: "caf\xe9", want: "caf\uFFFD"},
+		{name: "invalid JSON fallback", contentType: "application/json", body: "invalid: \xff", want: "invalid: \uFFFD"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{tc.contentType}},
+				Body:       io.NopCloser(strings.NewReader(tc.body)),
+			}
+			parsed, err := newTestForwarder().processResponse(upstream, time.Now(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx := common.SetExecutionModeToCtx(t.Context(), interfaces.ExecutionModeSync)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+			rest.ReplyWithExecutionMode(c, parsed, nil)
+
+			var response struct {
+				StatusCode int               `json:"status_code"`
+				Headers    map[string]string `json:"headers"`
+				Body       string            `json:"body"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || recorder.Code != http.StatusOK ||
+				response.StatusCode != http.StatusOK || response.Body != tc.want || response.Headers["Content-Type"] != tc.contentType {
+				t.Fatalf("proxy response = %d %s, want decoded body %q, err = %v", recorder.Code, recorder.Body.String(), tc.want, err)
+			}
+		})
+	}
+}
+
+func TestSynchronousProxyReturnsValidUTF8ForTransportMetadata(t *testing.T) {
+	const originalContentType = "text/plain; name=\"caf\xe9\""
+	const originalQuery = "%E9=1&caf%C3%A9=2&name=3"
+	request := httptest.NewRequest(http.MethodPost, "/?"+originalQuery, nil)
+	request.Header.Set("Content-Type", originalContentType)
+	observation := buildRequestObservation(request, nil)
+	upstream := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":   {"text/plain; charset=iso-8859-1"},
+			"X-Display-Name": {"caf\xe9"},
+			"X-Valid-Name":   {"café"},
+		},
+		Body: io.NopCloser(strings.NewReader("caf\xe9")),
+	}
+	parsed, err := newTestForwarder().processResponse(upstream, time.Now(), observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	ctx := common.SetExecutionModeToCtx(t.Context(), interfaces.ExecutionModeSync)
+	c.Request = request.WithContext(ctx)
+	rest.ReplyWithExecutionMode(c, parsed, nil)
+
+	var response struct {
+		StatusCode         int                           `json:"status_code"`
+		Headers            map[string]string             `json:"headers"`
+		Body               string                        `json:"body"`
+		RequestObservation interfaces.RequestObservation `json:"request_observation"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || recorder.Code != http.StatusOK ||
+		response.StatusCode != http.StatusOK || response.Body != "café" {
+		t.Fatalf("proxy response = %d %s, err = %v", recorder.Code, recorder.Body.String(), err)
+	}
+	if response.Headers["X-Display-Name"] != "caf\uFFFD" || response.Headers["X-Valid-Name"] != "café" {
+		t.Fatalf("unexpected response headers: %v", response.Headers)
+	}
+	if got := response.RequestObservation; got.ContentType != "text/plain; name=\"caf\uFFFD\"" ||
+		!slices.Equal(got.QueryKeys, []string{"%E9", "café", "name"}) {
+		t.Fatalf("unexpected request observation: %+v", got)
+	}
+	if request.URL.RawQuery != originalQuery || request.Header.Get("Content-Type") != originalContentType {
+		t.Fatal("building the observation changed the upstream request")
 	}
 }
 
