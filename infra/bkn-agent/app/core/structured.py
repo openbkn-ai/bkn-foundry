@@ -260,8 +260,8 @@ async def _fallback_extract(model, messages: list, schema: dict, system_prompt: 
     # system_prompt may contain skill sections, and the body load_skills injects
     # always says to call read_skill_file when needed. Extraction uses a bare
     # model with no tools bound, so a model that follows that instruction answers
-    # in natural language instead of JSON and burns the single retry; if it does
-    # so twice the whole task fails.
+    # in natural language instead of JSON and burns an attempt; if it does so on
+    # every attempt the whole task fails.
     # An instruction about how to answer, so it follows the system-prompt
     # boundary rather than the tool-description one; see the note in
     # core/skills.py and #826 ("Agent / LLM output language").
@@ -313,10 +313,12 @@ async def _fallback_extract(model, messages: list, schema: dict, system_prompt: 
                     base = base + [("user", _SHORTER)]
             else:
                 # Regenerate from the original conversation with a short hint.
-                # Feeding the whole invalid answer back for repair rarely fixed
-                # it (1 of 5 on DeepSeek), while a fresh answer is valid about
-                # 72% of the time; str(e) would also repeat a schema excerpt.
-                # A shorter-answer note from an earlier truncation is kept.
+                # Repairing the invalid answer either fixes it or gets stuck:
+                # jsonschema names only the first violation, and an answer with
+                # another one fails again on every repair. A fresh answer has
+                # the model's usual odds each time. str(e) would also repeat a
+                # schema excerpt. A shorter-answer note from an earlier
+                # truncation is kept.
                 msgs = base + [("user", _regeneration_hint(e))]
     raise StructuredOutputError(
         "structured output failed: not supported natively and the prompt "
