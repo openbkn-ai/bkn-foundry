@@ -107,9 +107,12 @@ func TestAuthorizeObjectMetricExecutionRequiresDependencyClosure(t *testing.T) {
 	permissions := omock.NewMockPermissionService(ctrl)
 	service := &queryAuthorizationService{models: models, permissions: permissions}
 
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+	metricModelContext := gomock.Cond(func(ctx context.Context) bool {
+		return interfaces.UsesMetricExecutionModelAccess(ctx, "kn-a", "main")
+	})
+	models.EXPECT().GetObjectType(metricModelContext, "kn-a", "main", "orders").Return(
 		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "customers").Return(
+	models.EXPECT().GetObjectType(metricModelContext, "kn-a", "main", "customers").Return(
 		publishedObjectType("kn-a", "customers", "customers-resource"), true, nil)
 	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 		{Type: "metric", ID: "kn-a/composite-sales"},

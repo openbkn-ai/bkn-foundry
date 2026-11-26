@@ -48,6 +48,10 @@ func NewOntologyManagerAccess(appSetting *common.AppSetting) interfaces.Ontology
 	return omAccess
 }
 
+func (oma *ontologyManagerAccess) WithMetricExecutionModelAccess(ctx context.Context, knID string) context.Context {
+	return interfaces.WithMetricExecutionModelAccess(ctx, knID)
+}
+
 // Get object type information.
 func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string, branch string, otID string) (interfaces.ObjectType, bool, error) {
 
@@ -77,6 +81,9 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+	if interfaces.UsesMetricExecutionModelAccess(ctx, knID, branch) {
+		headers["X-Bkn-Model-Purpose"] = "metric-execution"
 	}
 	// Add a request handler to httpClient that supports context parameters.
 	respCode, result, err = oma.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
@@ -401,6 +408,9 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}
+	if interfaces.UsesMetricExecutionModelAccess(ctx, knID, branch) {
+		headers["X-Bkn-Model-Purpose"] = "metric-execution"
 	}
 	// Add a request handler to httpClient that supports context parameters.
 	respCode, result, err = oma.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)

@@ -20,6 +20,18 @@ const knChildResourceFilterChunkSizeEnv = "KN_CHILD_RESOURCE_FILTER_CHUNK_SIZE"
 
 type knImportPermissionPrecheckedKey struct{}
 type dependencyValidationPermissionPrecheckedKey struct{}
+type metricExecutionModelReadKey struct{}
+
+// WithMetricExecutionModelRead selects query_data authorization for internal metric model reads.
+func WithMetricExecutionModelRead(ctx context.Context) context.Context {
+	return context.WithValue(ctx, metricExecutionModelReadKey{}, true)
+}
+
+// IsMetricExecutionModelRead reports whether the internal handler selected metric model access.
+func IsMetricExecutionModelRead(ctx context.Context) bool {
+	selected, _ := ctx.Value(metricExecutionModelReadKey{}).(bool)
+	return selected
+}
 
 // WithKNImportPermissionPrechecked marks child creates invoked by an already
 // authorized whole-KN create or overwrite operation.

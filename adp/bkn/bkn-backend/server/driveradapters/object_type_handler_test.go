@@ -27,6 +27,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func MockNewObjectTypeRestHandler(appSetting *common.AppSetting,
@@ -927,6 +928,24 @@ func Test_ObjectTypeRestHandler_GetObjectTypesByIn(t *testing.T) {
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
+
+		Convey("Internal metric reads select query authorization for the original caller", func() {
+			account := interfaces.AccountInfo{ID: "user1", Type: "user"}
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
+			ots.EXPECT().GetObjectTypesByIDs(gomock.Cond(func(ctx context.Context) bool {
+				return permission.IsMetricExecutionModelRead(ctx) && ctx.Value(interfaces.ACCOUNT_INFO_KEY) == account
+			}), nil, knID, interfaces.MAIN_BRANCH, []string{"ot1"}).Return([]*interfaces.ObjectType{}, nil)
+
+			req := httptest.NewRequest(http.MethodGet,
+				"/api/bkn-backend/in/v1/knowledge-networks/"+knID+"/object-types/ot1?branch=main", nil)
+			req.Header.Set("X-Bkn-Model-Purpose", "metric-execution")
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, account.ID)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, account.Type)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
 	})
 }
 
@@ -946,12 +965,15 @@ func Test_ObjectTypeRestHandler_GetObjectTypesFiltersExternalProperties(t *testi
 		}}
 
 		kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
-		ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), nil, knID, interfaces.MAIN_BRANCH, []string{"ot1"}).Return(objectTypes, nil)
+		ots.EXPECT().GetObjectTypesByIDs(gomock.Cond(func(ctx context.Context) bool {
+			return !permission.IsMetricExecutionModelRead(ctx)
+		}), nil, knID, interfaces.MAIN_BRANCH, []string{"ot1"}).Return(objectTypes, nil)
 		ots.EXPECT().FilterObjectTypesForRead(gomock.Any(), knID, objectTypes).Return(filteredObjectTypes, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/knowledge-networks/kn1/object-types/ot1", nil)
+		c.Request.Header.Set("X-Bkn-Model-Purpose", "metric-execution")
 		c.Params = gin.Params{{Key: "kn_id", Value: knID}, {Key: "ot_ids", Value: "ot1"}}
 
 		handler.GetObjectTypes(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User}, true)

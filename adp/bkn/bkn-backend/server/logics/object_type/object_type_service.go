@@ -876,6 +876,13 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, otIDs); err != nil {
 		return nil, err
 	}
+	metricExecution := permission.IsMetricExecutionModelRead(ctx)
+	if metricExecution {
+		if err := permission.CheckKNChildBatchPermission(ctx, ots.ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			knID, otIDs, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+			return nil, err
+		}
+	}
 	var err error
 
 	// 0. Begin the transaction.
@@ -928,16 +935,21 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
 	}
-	if len(otIDs) == 1 {
+	switch {
+	case metricExecution:
+		// The query_data check above authorizes the internal model read.
+	case len(otIDs) == 1:
 		operations, err := permission.GetKNChildOperations(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
 		if err != nil {
 			return nil, err
 		}
 		objectTypes[0].Operations = operations
-	} else if err = permission.CheckKNChildBatchPermission(ctx, ots.ps,
-		interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
-		return nil, err
+	default:
+		if err = permission.CheckKNChildBatchPermission(ctx, ots.ps,
+			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			return nil, err
+		}
 	}
 
 	// Get object type groups.
