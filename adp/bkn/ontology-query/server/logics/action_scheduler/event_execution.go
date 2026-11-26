@@ -95,12 +95,13 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 		return nil, err
 	}
 
-	instanceHash, err := computeDuplicateFingerprint(nil, nil, actionType.OperationConfig, actionType.RuleVersion)
+	fingerprints, err := computeDuplicateFingerprints(nil, nil, actionType.OperationConfig, actionType.RuleVersion)
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
-	req.InstanceIdentityHash = instanceHash
+	req.InstanceIdentityHash = fingerprints.primary
+	req.AlternateInstanceIdentityHash = ""
 	if s.duplicateCheckHook != nil {
 		proceed, dupErr := s.duplicateCheckHook(ctx, req)
 		if dupErr != nil {
@@ -137,7 +138,7 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 		StartTime:            now,
 		ActionTypeSnapshot:   actionTypeSnapshot,
 		PermissionSnapshot:   requirements,
-		InstanceIdentityHash: instanceHash,
+		InstanceIdentityHash: fingerprints.primary,
 	}
 	if err := s.logsService.CreateExecution(ctx, execution); err != nil {
 		logger.Errorf("Failed to create execution record: %v", err)

@@ -115,11 +115,11 @@ func TestActionRelationResolvesDirectedPairAndReferences(t *testing.T) {
 		t.Fatalf("expected %v, got %v", map[string]any{"order_id": "O1", "supplier_id": "S1"}, params)
 	}
 	other := []interfaces.ObjectSystemInfo{{InstanceIdentity: map[string]any{"source": req.RelationTarget.SourceIdentity, "target": map[string]any{"supplier_id": "S2"}}}}
-	firstHash, err := computeDuplicateFingerprint(instances, req.DynamicParams, action.OperationConfig)
+	firstHash, err := computeDuplicateFingerprints(instances, req.DynamicParams, action.OperationConfig)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	secondHash, err := computeDuplicateFingerprint(other, req.DynamicParams, action.OperationConfig)
+	secondHash, err := computeDuplicateFingerprints(other, req.DynamicParams, action.OperationConfig)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

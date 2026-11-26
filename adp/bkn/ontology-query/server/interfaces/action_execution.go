@@ -78,6 +78,8 @@ type ActionExecutionRequest struct {
 	// InstanceIdentityHash is a stable fingerprint of resolved Instances + dynamic_params
 	// (set by scheduler before duplicate check).
 	InstanceIdentityHash string `json:"-"`
+	// AlternateInstanceIdentityHash matches the other stored encoding of parameters without inputs.
+	AlternateInstanceIdentityHash string `json:"-"`
 	// Internal is set by the handler of the internal execute route. A record-event action is
 	// accepted only there, from its schedule.
 	Internal bool `json:"-"`
@@ -199,6 +201,8 @@ type ActionLogQuery struct {
 	// TargetKey keeps the executions one of whose targets has this identity key (see
 	// TargetIdentityKey). It needs ObjectTypeID.
 	TargetKey string `json:"target_key,omitempty" form:"target_key"`
+	// AlternateInstanceIdentityHash optionally matches a second fingerprint for internal duplicate detection.
+	AlternateInstanceIdentityHash string `json:"-" form:"-"`
 }
 
 // ActionLogDetailQuery represents query parameters for single execution log detail
