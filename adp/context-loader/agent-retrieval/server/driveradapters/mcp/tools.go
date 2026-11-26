@@ -642,7 +642,7 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			if detailLevel != interfaces.DetailLevelFull {
 				d = objectpermission.WithUnrestrictedPermissionsOmitted(d)
 			}
-			return toolResultRunes(d, format)
+			return managedToolResultRunes(ctx, d, format, "network", knID, nil)
 		}); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -791,7 +791,9 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 					return renderDetailNotice(ctx, "agentRetrieval.Detail.ObjectTypePageCharsCut",
 						map[string]any{"Arg1": interfaces.MaxObjectTypePageChars, "Arg2": kept})
 				},
-				func(r *interfaces.ObjectTypesResp) (int, error) { return toolResultRunes(r, format) },
+				func(r *interfaces.ObjectTypesResp) (int, error) {
+					return managedToolResultRunes(ctx, r, format, "object", knID, schemaObjectTypeIDs(r.ObjectTypes))
+				},
 			); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -879,7 +881,9 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 					return renderDetailNotice(ctx, "agentRetrieval.Detail.RelationTypePageCharsCut",
 						map[string]any{"Arg1": interfaces.MaxRelationTypePageChars, "Arg2": kept})
 				},
-				func(r *interfaces.RelationTypesResp) (int, error) { return toolResultRunes(r, format) },
+				func(r *interfaces.RelationTypesResp) (int, error) {
+					return managedToolResultRunes(ctx, r, format, "relation", knID, schemaRelationTypeIDs(r.RelationTypes))
+				},
 			); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
