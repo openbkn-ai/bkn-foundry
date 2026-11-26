@@ -155,10 +155,18 @@ func objectTypeDefinitionsOneByOne(ctx context.Context, bkn interfaces.BknBacken
 	return definitions, nil
 }
 
-// objectTypeNotFound reports a by-id read bkn-backend refused because an id is gone.
+// objectTypeNotFoundCode is the error bkn-backend answers a by-id read with when an id is gone.
+const objectTypeNotFoundCode = "BknBackend.ObjectType.ObjectTypeNotFound"
+
+// objectTypeNotFound reports a by-id read bkn-backend refused because an id is gone. A 404 for
+// any other reason, such as a network deleted meanwhile, is a failure and must stay one.
 func objectTypeNotFound(err error) bool {
 	var httpErr *httperrors.HTTPError
-	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusNotFound {
+		return false
+	}
+	cause, ok := httpErr.ErrorDetails.(httperrors.BaseError)
+	return ok && cause.ErrorCode == objectTypeNotFoundCode
 }
 
 // RelationTypesForBranch reads one page of a network's relation types, keeping those that

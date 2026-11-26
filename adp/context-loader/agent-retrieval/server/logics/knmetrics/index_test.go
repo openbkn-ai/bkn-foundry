@@ -14,6 +14,7 @@ import (
 
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 type stubBknBackend struct {
@@ -272,11 +273,17 @@ func (b *definitionBackend) GetObjectTypeDetail(ctx context.Context, _ string, i
 	for _, id := range ids {
 		definition, ok := b.definitions[id]
 		if !ok {
-			return nil, infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "object type not found")
+			return nil, objectTypeGone(ctx)
 		}
 		found = append(found, definition)
 	}
 	return found, nil
+}
+
+// objectTypeGone is the error the bkn-backend client returns for a by-id read naming a missing id.
+func objectTypeGone(ctx context.Context) error {
+	return infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonExternalServerError,
+		httperrors.BaseError{ErrorCode: "BknBackend.ObjectType.ObjectTypeNotFound"})
 }
 
 func definitionsFor(listed []*interfaces.ObjectType, missing ...string) map[string]*interfaces.ObjectType {
@@ -381,6 +388,27 @@ func TestWithObjectTypeDefinitionsFailsWhenAOneIDReadFails(t *testing.T) {
 		err: errors.New("bkn-backend down"), failSingleRead: "ot-002"}
 	if got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", listed); err == nil || got != nil {
 		t.Fatalf("got %v, %v; want the one-id read's error", got, err)
+	}
+}
+
+// A 404 that does not say an object type is gone, such as the network deleted after the listing
+// or a route bkn-backend does not have, still fails the detail and is not read again id by id.
+func TestWithObjectTypeDefinitionsFailsOnAnyOther404(t *testing.T) {
+	ctx := context.Background()
+	for name, notFound := range map[string]error{
+		"network gone": infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonExternalServerError,
+			httperrors.BaseError{ErrorCode: "BknBackend.KnowledgeNetwork.NotFound"}),
+		"no route": infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "request not found"),
+	} {
+		listed := listedSummaries(3)
+		backend := &definitionBackend{definitions: definitionsFor(listed), err: notFound}
+		got, err := WithObjectTypeDefinitions(ctx, backend, "kn-1", "main", listed)
+		if err == nil || got != nil {
+			t.Fatalf("%s: got %v, %v; want the 404", name, got, err)
+		}
+		if len(backend.reads) != 1 {
+			t.Fatalf("%s: %d reads, want the one batch read and no id-by-id retry", name, len(backend.reads))
+		}
 	}
 }
 
