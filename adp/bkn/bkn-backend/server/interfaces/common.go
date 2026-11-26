@@ -27,6 +27,8 @@ const (
 	HTTP_HEADER_ACCOUNT_ID      = "x-account-id"
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
 	HTTP_HEADER_BKN_CALLER_ID   = "x-bkn-caller-id"
+	// HTTP_HEADER_EXECUTION_ID is the action execution a cluster caller works for.
+	HTTP_HEADER_EXECUTION_ID = "x-bkn-execution-id"
 
 	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using a raw string directly.
 

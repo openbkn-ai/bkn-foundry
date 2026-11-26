@@ -53,8 +53,18 @@ func ValidateDefinition(action *interfaces.ActionType) error {
 				return fmt.Errorf("tool operations cannot bind object properties")
 			}
 		}
+	case interfaces.ActionOperationEvent:
+		if !EventActionsLicensed() {
+			return fmt.Errorf("unsupported action operation %q", cfg.Type)
+		}
+		if err := validateEventDefinition(action); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported action operation %q", cfg.Type)
+	}
+	if cfg.Type != interfaces.ActionOperationEvent && (cfg.EventClass != "" || cfg.Targets != nil) {
+		return fmt.Errorf("event_class and targets require a record-event operation")
 	}
 	if cfg.Type != "relation" && (cfg.RelationTypeID != "" || cfg.RelationOperation != "" || cfg.AnchorRole != "" || cfg.OtherObjectCondition != nil) {
 		return fmt.Errorf("relation fields require a relation operation")
@@ -69,6 +79,12 @@ func (s *Resolver) Resolve(ctx context.Context, action *interfaces.ActionType, r
 		return nil, nil, actionTargetError(ctx, err.Error())
 	}
 	switch action.OperationConfig.Type {
+	case interfaces.ActionOperationEvent:
+		// A record-event action selects its targets itself, when it checks (Selector).
+		if req.RelationTarget != nil || len(req.ObjectInput) != 0 || len(req.InstanceIdentities) != 0 {
+			return nil, nil, actionTargetError(ctx, "a record-event action selects its targets at each check and accepts none")
+		}
+		return nil, nil, nil
 	case "tool":
 		if req.RelationTarget != nil || len(req.ObjectInput) != 0 {
 			return nil, nil, actionTargetError(ctx, "tool execution does not accept object_input or relation targets")

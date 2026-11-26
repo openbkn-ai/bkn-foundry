@@ -9,6 +9,7 @@ import (
 	"database/sql"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 func (r *restHandler) publishKNChildMutation(ctx context.Context, changes *interfaces.KN, mergeMode string,
@@ -117,7 +118,15 @@ func (r *restHandler) createActionTypes(ctx context.Context, knID, branch string
 		ids, err = r.ats.CreateActionTypes(mutationCtx, tx, entries, mode, strictMode)
 		return err
 	})
+	actionTypesSaved(ctx, knID, branch, err)
 	return ids, err
+}
+
+// actionTypesSaved tells the operation categories of action types that main changed.
+func actionTypesSaved(ctx context.Context, knID, branch string, err error) {
+	if err == nil && branch == interfaces.MAIN_BRANCH {
+		logics.MainChanged(ctx, knID)
+	}
 }
 
 func (r *restHandler) updateActionType(ctx context.Context, actionType *interfaces.ActionType,
@@ -125,17 +134,20 @@ func (r *restHandler) updateActionType(ctx context.Context, actionType *interfac
 	changes := &interfaces.KN{
 		KNID: actionType.KNID, Branch: actionType.Branch, ActionTypes: []*interfaces.ActionType{actionType},
 	}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
+	err := r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.ats.UpdateActionType(mutationCtx, tx, actionType, strictMode)
 	})
+	actionTypesSaved(ctx, actionType.KNID, actionType.Branch, err)
+	return err
 }
 
-func (r *restHandler) deleteActionTypes(ctx context.Context, knID, branch string, ids []string) error {
+func (r *restHandler) deleteActionTypes(ctx context.Context, knID, branch string, ids []string) (err error) {
 	entries := make([]*interfaces.ActionType, 0, len(ids))
 	for _, id := range ids {
 		entries = append(entries, &interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: id}})
 	}
 	changes := &interfaces.KN{KNID: knID, Branch: branch, ActionTypes: entries}
+	defer func() { actionTypesSaved(ctx, knID, branch, err) }()
 	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
 		return r.ats.DeleteActionTypesByIDs(mutationCtx, tx, knID, branch, ids)
 	})

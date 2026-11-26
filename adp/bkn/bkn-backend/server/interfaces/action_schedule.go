@@ -14,6 +14,11 @@ const (
 	ScheduleStatusInactive = "inactive"
 )
 
+// ActionScheduleSourceActionType marks a schedule the platform keeps for a record-event action
+// type of the running version: its expression, name and execution subject follow the action type,
+// and it cannot be changed through the schedule API. A user's schedule has no source.
+const ActionScheduleSourceActionType = "action_type"
+
 // ActionSchedule represents a scheduled action configuration
 type ActionSchedule struct {
 	ID                 string           `json:"id"`
@@ -34,6 +39,12 @@ type ActionSchedule struct {
 	Updater            AccountInfo      `json:"updater,omitempty"`
 	UpdateTime         int64            `json:"update_time,omitzero"`
 	ExecutionSubject   AccountInfo      `json:"execution_subject,omitempty"`
+	Source             string           `json:"source,omitempty"`
+}
+
+// PlatformKept reports whether the platform keeps the schedule for an action type.
+func (s *ActionSchedule) PlatformKept() bool {
+	return s != nil && s.Source == ActionScheduleSourceActionType
 }
 
 // ActionScheduleCreateRequest represents the request to create a schedule
@@ -67,6 +78,8 @@ type ActionScheduleQueryParams struct {
 	NamePattern  string
 	ActionTypeID string
 	Status       string
+	// Source keeps the schedules of the source; "" lists every schedule.
+	Source string
 }
 
 // ActionScheduleLockInfo represents lock acquisition info

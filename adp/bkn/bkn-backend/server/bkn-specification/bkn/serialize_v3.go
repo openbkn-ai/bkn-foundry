@@ -19,6 +19,13 @@ import (
 // (SPECIFICATION.md §1.3, §14.2).
 type serializeOptions struct {
 	v3 bool
+	// eventClasses is set for a 2.1 or 3.0 package, which carries event classes (§6.9).
+	eventClasses bool
+}
+
+// serializeOptionsFor are the options a network declaring bkn_spec is written under.
+func serializeOptionsFor(spec string) serializeOptions {
+	return serializeOptions{v3: spec == BknSpecV3, eventClasses: spec == BknSpecV21 || spec == BknSpecV3}
 }
 
 // description returns a description as written into the file: under 3.0 a line that would read as
@@ -34,6 +41,8 @@ func (o serializeOptions) description(desc string) string {
 type frontmatterField struct {
 	key   string
 	value *yaml.Node
+	// legacy marks a list field the 2.x writer writes too, after tags; it drops the others.
+	legacy bool
 }
 
 func scalarField(key, value string) frontmatterField {
@@ -93,6 +102,16 @@ func writeDefinitionFrontmatter(sb *strings.Builder, opts serializeOptions, typ,
 	_, _ = fmt.Fprintf(sb, "id: %s\n", id)
 	_, _ = fmt.Fprintf(sb, "name: %s\n", name)
 	_, _ = fmt.Fprintf(sb, "tags: [%s]\n", strings.Join(tags, ", "))
+	for _, field := range extra {
+		if !field.legacy || field.value == nil {
+			continue
+		}
+		items := make([]string, 0, len(field.value.Content))
+		for _, item := range field.value.Content {
+			items = append(items, item.Value)
+		}
+		_, _ = fmt.Fprintf(sb, "%s: [%s]\n", field.key, strings.Join(items, ", "))
+	}
 	_, _ = fmt.Fprintf(sb, "---\n\n")
 }
 
@@ -317,7 +336,7 @@ func boundNode(v any) *yaml.Node {
 // SerializeValueType writes a value type file. Value types exist only in 3.0.
 func SerializeValueType(vt *BknValueType) string {
 	var sb strings.Builder
-	opts := serializeOptions{v3: true}
+	opts := serializeOptionsFor(BknSpecV3)
 	writeDefinitionFrontmatter(&sb, opts, kindValueType, vt.ID, vt.Name, vt.Tags)
 	_, _ = fmt.Fprintf(&sb, "## ValueType: %s\n\n", vt.Name)
 	if vt.Description != "" {

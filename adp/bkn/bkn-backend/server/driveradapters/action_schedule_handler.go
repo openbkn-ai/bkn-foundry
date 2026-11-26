@@ -503,6 +503,41 @@ func (r *restHandler) GetActionScheduleByEx(c *gin.Context) {
 	r.GetActionSchedule(c, visitor)
 }
 
+// RunActionScheduleByIn runs an action schedule now (internal)
+func (r *restHandler) RunActionScheduleByIn(c *gin.Context) {
+	r.RunActionSchedule(c, visitor.GenerateVisitor(c))
+}
+
+// RunActionScheduleByEx runs an action schedule now (external)
+func (r *restHandler) RunActionScheduleByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.RunActionSchedule(c, visitor)
+}
+
+// RunActionSchedule runs a schedule once now, without changing when it runs next.
+func (r *restHandler) RunActionSchedule(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	knID := c.Param("kn_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	scheduleID := c.Param("schedule_id")
+	executionID, err := r.ass.RunSchedule(ctx, knID, branch, scheduleID)
+	if err != nil {
+		httpErr := err.(*httperrors.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, map[string]any{"execution_id": executionID})
+}
+
 // GetActionSchedule gets a single action schedule (shared logic)
 func (r *restHandler) GetActionSchedule(c *gin.Context, visitor hydra.Visitor) {
 	ctx, span := oteltrace.StartServerSpan(c)

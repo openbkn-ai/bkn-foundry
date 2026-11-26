@@ -62,6 +62,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/knevent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	logicschedule "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_schedule"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/worker"
@@ -487,6 +488,7 @@ func Boot(_ Options) *Application {
 		proxySyncWorker: worker.NewProxySyncWorker(appSetting, proxyOutboxAccess, logics.MPA,
 			permission_service.NewPermissionService(appSetting)),
 	}
+	logicschedule.SetScheduleExecutor(server.scheduleWorker)
 	if publisherRuntime != nil {
 		server.evidenceRuntime = publisherRuntime.Runtime
 		server.evidenceProducer = publisherRuntime.Producer

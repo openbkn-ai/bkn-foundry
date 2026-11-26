@@ -167,6 +167,14 @@ func keepUndeclared(update *interfaces.ObjectType, stored *interfaces.ObjectType
 	if !update.DeclaresLifecycle() {
 		update.Lifecycle = stored.Lifecycle
 	}
+	// A client that knows nothing of kinds, such as an older object type editor, leaves them out:
+	// the stored kinds and their configuration stay.
+	if update.Kinds == nil {
+		update.Kinds = stored.Kinds
+	}
+	if update.Event == nil {
+		update.Event = stored.Event
+	}
 	storedByName := make(map[string]*interfaces.DataProperty, len(stored.DataProperties))
 	for _, p := range stored.DataProperties {
 		if p != nil {

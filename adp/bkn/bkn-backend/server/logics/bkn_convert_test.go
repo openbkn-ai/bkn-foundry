@@ -653,3 +653,29 @@ func Test_ConvertDeclarationsRoundTrip(t *testing.T) {
 		So(ToBKNObjectType(&interfaces.ObjectType{}).Lifecycle, ShouldBeNil)
 	})
 }
+
+// An event class's kind and configuration go both ways between the file and the platform.
+func TestEventClassConvertsBothWays(t *testing.T) {
+	bknClass := &bknsdk.BknObjectType{
+		BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{ID: "late_order", Name: "订单超期", Kinds: []string{"event"}},
+		Event:                    &bknsdk.ObjectTypeEvent{Source: "rule", Subject: "order", Severity: "high", MergeHours: 1.5, HandlingNote: "联系供应商"},
+	}
+	class := ToADPObjectType("kn-1", interfaces.MAIN_BRANCH, bknClass)
+	want := interfaces.ObjectTypeEvent{Source: "rule", Subject: "order", Severity: "high", MergeHours: 1.5, HandlingNote: "联系供应商"}
+	if !class.HasKind(interfaces.ObjectTypeKindEvent) || class.Event == nil || *class.Event != want {
+		t.Fatalf("platform class kinds %v event %+v", class.Kinds, class.Event)
+	}
+	back := ToBKNObjectType(class)
+	if len(back.Kinds) != 1 || back.Kinds[0] != "event" || back.Event == nil || *back.Event != *bknClass.Event {
+		t.Fatalf("file class kinds %v event %+v", back.Kinds, back.Event)
+	}
+	// Neither side shares the other's lists.
+	class.Kinds[0] = "changed"
+	if bknClass.Kinds[0] != "event" {
+		t.Fatal("the platform class shares its kinds with the file's")
+	}
+	plain := ToADPObjectType("kn-1", interfaces.MAIN_BRANCH, &bknsdk.BknObjectType{})
+	if plain.Kinds != nil || plain.Event != nil {
+		t.Fatalf("a plain object type has kinds %v event %+v", plain.Kinds, plain.Event)
+	}
+}

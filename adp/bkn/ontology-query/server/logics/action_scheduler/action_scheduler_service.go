@@ -32,6 +32,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
+	queryauthorization "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/query_authorization"
 )
 
 var (
@@ -52,6 +53,10 @@ type actionSchedulerService struct {
 	managedActions        managedActionScopes
 	governanceGate        interfaces.ActionGovernanceGate
 	governanceConfigError error
+	// queries and eventRules serve record-event actions: reading what their rules read, and
+	// handing their checks to the event ledger.
+	queries    interfaces.QueryAuthorizationService
+	eventRules interfaces.EventRuleAccess
 
 	duplicateCheckHook interfaces.DuplicateCheckHook
 }
@@ -88,6 +93,8 @@ func newActionSchedulerService(appSetting *common.AppSetting, gate interfaces.Ac
 		governanceConfigError: scopeErr,
 	}
 	svc.permissions = permission.NewPermissionService(appSetting)
+	svc.queries = queryauthorization.NewQueryAuthorizationService(appSetting)
+	svc.eventRules = logics.ERA
 	svc.functionTrace = newManagedFunctionTraceFromEnv()
 	// Default duplicate strategy: reject same kn + action type + instance set + dynamic_params while in-flight within the window.
 	svc.duplicateCheckHook = svc.defaultDuplicateCheck
@@ -121,6 +128,9 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 	}
 	if err := validateActionOperation(&actionType); err != nil {
 		return actionTargetError(ctx, err.Error())
+	}
+	if actionType.OperationConfig.Type == interfaces.ActionOperationEvent {
+		return s.checkEventExecution(ctx, req, &actionType)
 	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
@@ -185,6 +195,10 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 
 	if err := validateActionOperation(&actionType); err != nil {
 		return nil, actionTargetError(ctx, err.Error())
+	}
+	if actionType.OperationConfig.Type == interfaces.ActionOperationEvent {
+		// Selected at each check, as the schedule's execution subject: no proxy, no governance.
+		return s.executeEventAction(ctx, req, &actionType, actionTypeSnapshot)
 	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
@@ -636,9 +650,11 @@ func (s *actionSchedulerService) failManagedFunctionExecution(ctx context.Contex
 }
 
 // resolveExecutionMode runs object and relation operations for each explicit target.
-// Independent tool calls have one execution context and one invocation.
+// Independent tool calls have one execution context and one invocation, and a record-event
+// action hands all its targets to the ledger in one rule check.
 func resolveExecutionMode(actionType *interfaces.ActionType) string {
-	if actionType.OperationConfig != nil && actionType.OperationConfig.Type != "tool" {
+	if actionType.OperationConfig != nil && actionType.OperationConfig.Type != "tool" &&
+		actionType.OperationConfig.Type != interfaces.ActionOperationEvent {
 		return interfaces.ExecutionModePerInstance
 	}
 	return interfaces.ExecutionModeOnce

@@ -131,6 +131,21 @@ func (mr *MockActionScheduleServiceMockRecorder) ListSchedules(ctx, queryParams 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchedules", reflect.TypeOf((*MockActionScheduleService)(nil).ListSchedules), ctx, queryParams)
 }
 
+// RunSchedule mocks base method.
+func (m *MockActionScheduleService) RunSchedule(ctx context.Context, knID, branch, scheduleID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunSchedule", ctx, knID, branch, scheduleID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunSchedule indicates an expected call of RunSchedule.
+func (mr *MockActionScheduleServiceMockRecorder) RunSchedule(ctx, knID, branch, scheduleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunSchedule", reflect.TypeOf((*MockActionScheduleService)(nil).RunSchedule), ctx, knID, branch, scheduleID)
+}
+
 // UpdateSchedule mocks base method.
 func (m *MockActionScheduleService) UpdateSchedule(ctx context.Context, scheduleID string, req *interfaces.ActionScheduleUpdateRequest) error {
 	m.ctrl.T.Helper()

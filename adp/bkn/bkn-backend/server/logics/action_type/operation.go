@@ -13,6 +13,7 @@ import (
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
@@ -22,6 +23,17 @@ func (ats *actionTypeService) checkOperation(ctx context.Context, tx *sql.Tx, at
 	}
 	if err := interfaces.ValidateActionOperation(at); err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
+	}
+	at.Trial = nil
+	if !interfaces.IsEventAction(at) {
+		// What the platform keeps for a record-event action type only.
+		at.ExecutionSubject, at.RuleVersion = nil, ""
+	}
+	if interfaces.IsEventAction(at) {
+		if err := ats.checkEventObject(ctx, tx, at, batch); err != nil {
+			return err
+		}
+		return prepareModuleOperation(ctx, tx, at, batch)
 	}
 	if !strict && at.OperationConfig.Type != interfaces.ActionOperationRelation {
 		return nil
@@ -244,4 +256,58 @@ func checkConditionSchema(cfg *interfaces.ActionCondCfg, object *interfaces.Obje
 		}
 	}
 	return nil
+}
+
+// checkEventObject checks a recognition action against its bound object type: it exists, and the
+// condition reads its properties.
+func (ats *actionTypeService) checkEventObject(ctx context.Context, tx *sql.Tx, at *interfaces.ActionType, batch *interfaces.BatchIDIndex) error {
+	var object *interfaces.ObjectType
+	if batch != nil {
+		object = batch.ObjectTypes[at.ObjectTypeID]
+	}
+	if object == nil {
+		found, err := ats.ots.GetObjectTypeByID(ctx, tx, at.KNID, at.Branch, at.ObjectTypeID)
+		if err != nil {
+			if httpErr, ok := err.(*httperrors.HTTPError); ok && httpErr.HTTPCode != http.StatusNotFound {
+				return httpErr
+			}
+		}
+		object = found
+	}
+	if object == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("object type %q does not exist", at.ObjectTypeID))
+	}
+	if err := checkConditionSchema(at.Condition, object, nil); err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(err.Error())
+	}
+	return nil
+}
+
+// checkOneRecognitionEach refuses two record-event action types of one event class saved together.
+func checkOneRecognitionEach(ctx context.Context, actionTypes []*interfaces.ActionType) error {
+	seen := map[string]string{}
+	for _, at := range actionTypes {
+		class := interfaces.EventClassOf(at)
+		if class == "" {
+			continue
+		}
+		if other, ok := seen[class]; ok {
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ActionType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("event class %s has one record-event action type, not both %q and %q", class, other, at.ATID))
+		}
+		seen[class] = at.ATID
+	}
+	return nil
+}
+
+// prepareModuleOperation hands an action type of a module's operation category to the module. A
+// category that is not assembled or not licensed is refused as an unknown one.
+func prepareModuleOperation(ctx context.Context, tx *sql.Tx, at *interfaces.ActionType, batch *interfaces.BatchIDIndex) error {
+	operation := logics.ActionTypeOperationNamed(at.OperationConfig.Type)
+	if operation == nil || !operation.Available() {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("unsupported operation_config.type %q", at.OperationConfig.Type))
+	}
+	return operation.Prepare(ctx, tx, at, batch)
 }

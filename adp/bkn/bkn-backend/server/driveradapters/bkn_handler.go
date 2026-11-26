@@ -482,11 +482,11 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	}
 	spec := strings.TrimSpace(c.Query("bkn_spec"))
 	switch spec {
-	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3:
+	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_21, interfaces.BKN_EXPORT_SPEC_3:
 	default:
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec).
-			WithErrorDetails(fmt.Sprintf("bkn_spec must be %s or %s, or left out, got %q",
-				interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3, spec))
+			WithErrorDetails(fmt.Sprintf("bkn_spec must be %s, %s or %s, or left out, got %q",
+				interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_21, interfaces.BKN_EXPORT_SPEC_3, spec))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

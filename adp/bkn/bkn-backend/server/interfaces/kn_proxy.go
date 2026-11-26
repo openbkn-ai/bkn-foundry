@@ -176,6 +176,10 @@ type ProxyGrantSourceSpec struct {
 	KNID         string `json:"kn_id"`
 	BindingType  string `json:"binding_type"`
 	BindingID    string `json:"binding_id"`
+	// PlatformKept marks a source whose resource the platform keeps for a kind of object type,
+	// such as an event class's dataset. The delegator holds no permission of their own on it,
+	// so the built-in administrator grants it. It is neither sent to bkn-safe nor stored.
+	PlatformKept bool `json:"-"`
 }
 
 type ProxyGrantCheckResult struct {
@@ -378,6 +382,9 @@ type ManagedProxyAccess interface {
 	Restore(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Disable(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
 	Archive(ctx context.Context, proxyAccountID string) (*ManagedProxyAccount, error)
+	// Grant grants one source to the proxy with grantorID as its delegator; a source the proxy
+	// already holds through a delegator who still has the operation is left as it is.
+	Grant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) error
 	CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source ProxyGrantSourceSpec) (ProxyGrantCheckResult, error)
 	CheckGrants(ctx context.Context, proxyAccountID, grantorID string, sources []ProxyGrantSourceSpec) (ProxyGrantBatchCheckResult, error)
 	CheckGrantDelta(ctx context.Context, proxyAccountID, grantorID string,

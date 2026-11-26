@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 type proxyModelBinding struct {
@@ -72,6 +73,30 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 		projectedRelationTypes = append(projectedRelationTypes, conceptGroup.RelationTypes...)
 		projectedActionTypes = append(projectedActionTypes, conceptGroup.ActionTypes...)
 	}
+	// A kind writes the relation types it keeps for an object type in the transaction that saves
+	// the object type, so a candidate holds them as they were, or not at all: project them as the
+	// kind writes them, and the preflight covers them before the write. The resources a kind
+	// keeps are granted by the platform, under whichever binding reaches them.
+	projectedRelationAt := make(map[string]int, len(projectedRelationTypes))
+	for i, relationType := range projectedRelationTypes {
+		if relationType != nil {
+			projectedRelationAt[relationType.RTID] = i
+		}
+	}
+	platformResources := map[string]bool{}
+	for _, objectType := range projectedObjectTypes {
+		if logics.KeepsResource(objectType) {
+			platformResources[strings.TrimSpace(objectType.DataSource.ID)] = true
+		}
+		for _, relationType := range logics.OwnedRelationTypes(objectType) {
+			if i, ok := projectedRelationAt[relationType.RTID]; ok {
+				projectedRelationTypes[i] = relationType
+				continue
+			}
+			projectedRelationAt[relationType.RTID] = len(projectedRelationTypes)
+			projectedRelationTypes = append(projectedRelationTypes, relationType)
+		}
+	}
 
 	objectResources := make(map[string]string, len(projectedObjectTypes))
 	objectTypes := make(map[string]struct{}, len(projectedObjectTypes))
@@ -105,6 +130,7 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 			KNID:         kn.KNID,
 			BindingType:  bindingType,
 			BindingID:    bindingID,
+			PlatformKept: resourceType == "resource" && platformResources[resourceID],
 		}
 		key := strings.Join([]string{resourceType, resourceID, operation, sourceID}, "\x00")
 		if _, ok := seen[key]; !ok {

@@ -250,6 +250,24 @@ type managedProxyAccessStub struct {
 	reconcileResult  interfaces.ProxyGrantReconcileResult
 	syncErr          error
 	events           *[]string
+	grants           []interfaces.ProxyGrantSourceSpec // what Grant was asked for, by grantor in grantors
+	grantors         []string
+	grantErr         error
+	grantedBy        map[string]string // delegator bkn-safe resolves a granted source to
+}
+
+func (s *managedProxyAccessStub) Grant(_ context.Context, _, grantorID string,
+	source interfaces.ProxyGrantSourceSpec) error {
+	s.grants = append(s.grants, source)
+	s.grantors = append(s.grantors, grantorID)
+	if s.grantErr != nil {
+		return s.grantErr
+	}
+	if s.grantedBy == nil {
+		s.grantedBy = map[string]string{}
+	}
+	s.grantedBy[proxySourceResolutionKey(source)] = grantorID
+	return nil
 }
 
 func (s *managedProxyAccessStub) Create(_ context.Context, knID, name string) (*interfaces.ManagedProxyAccount, bool, error) {
@@ -459,6 +477,12 @@ func (s *managedProxyAccessStub) CheckGrants(_ context.Context, _, grantorID str
 	s.checked = append(s.checked, sources...)
 	result := interfaces.ProxyGrantBatchCheckResult{DeniedSources: []interfaces.ProxyGrantSourceSpec{}}
 	for _, source := range sources {
+		if grantor := s.grantedBy[proxySourceResolutionKey(source)]; grantor != "" {
+			result.ResolvedSources = append(result.ResolvedSources, interfaces.ProxyGrantResolvedSource{
+				ProxyGrantSourceSpec: source, GrantedBy: grantor,
+			})
+			continue
+		}
 		if !s.allowed || s.deniedResources[source.ResourceID] {
 			result.DeniedSources = append(result.DeniedSources, source)
 		} else if !s.omitResolved {

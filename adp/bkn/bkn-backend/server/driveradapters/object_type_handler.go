@@ -783,6 +783,15 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			return
 		}
 
+		// A relation type a kind keeps for an object type being deleted goes with it.
+		relationTypes, err = r.withoutKindRelations(ctx, knID, branch, otIDs, relationTypes)
+		if err != nil {
+			httpErr := err.(*httperrors.HTTPError)
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
+
 		// Return an error when a relation type references the object type.
 		if len(relationTypes) > 0 {
 			// Collect names of referencing relation types.

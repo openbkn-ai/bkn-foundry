@@ -41,6 +41,7 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 			return err
 		}
 		kns.refreshConceptIndex(ctx, oldMain, candidate)
+		logics.MainChanged(ctx, knID)
 		return nil
 	}
 
@@ -107,6 +108,7 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 	}
 	committed = true
 	kns.refreshConceptIndex(ctx, oldMain, candidate)
+	logics.MainChanged(ctx, knID)
 	if staged {
 		if tracksOrphans {
 			// The event carries them now; the owner of the tracker must not remove them first.
@@ -277,6 +279,10 @@ func conceptDocumentIDs(kn *interfaces.KN, withNetwork bool) map[string]struct{}
 	}
 	for _, item := range kn.ObjectTypes {
 		add(interfaces.MODULE_TYPE_OBJECT_TYPE, item.OTID)
+		// The relation types the kinds keep, which a package does not carry.
+		for _, id := range logics.OwnedRelationTypeIDs(item) {
+			add(interfaces.MODULE_TYPE_RELATION_TYPE, id)
+		}
 	}
 	for _, item := range kn.RelationTypes {
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, item.RTID)
@@ -331,6 +337,10 @@ func pruneReplacedDefinitions(ctx context.Context, tx *sql.Tx, kn *interfaces.KN
 	add := func(kind, id string) { keep[kind] = append(keep[kind], id) }
 	for _, item := range kn.ObjectTypes {
 		add(interfaces.MODULE_TYPE_OBJECT_TYPE, item.OTID)
+		// A package does not carry the relation types the kinds keep: the import made them.
+		for _, id := range logics.OwnedRelationTypeIDs(item) {
+			add(interfaces.MODULE_TYPE_RELATION_TYPE, id)
+		}
 	}
 	for _, item := range kn.RelationTypes {
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, item.RTID)

@@ -114,6 +114,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByEx)
+		// Try an action type definition without saving or executing it.
+		apiV1.POST("/knowledge-networks/:kn_id/action-trial", r.verifyJsonContentType(), r.TrialActionByEx)
 
 	}
 
@@ -143,6 +145,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByIn)
+		apiInV1.POST("/knowledge-networks/:kn_id/action-trial", r.verifyJsonContentType(), r.TrialActionByIn)
 
 	}
 

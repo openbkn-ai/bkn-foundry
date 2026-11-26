@@ -622,6 +622,18 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 		obj.DisplayKey = dk
 		obj.IncrementalKey = ik
 	}
+	if opts.eventClasses() {
+		// 3.0 has read the frontmatter as written already; 2.1 reads it here.
+		fm := header.raw
+		if !opts.v3() {
+			if fm, err = parseRawFrontmatter(text); err != nil {
+				return nil, err
+			}
+		}
+		if err := parseObjectTypeKinds(obj, fm, sections); err != nil {
+			return nil, err
+		}
+	}
 	if opts.v3() {
 		if err := parseObjectTypeDeclarationsV3(obj, sections, explicitFalse); err != nil {
 			return nil, err
@@ -842,6 +854,9 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 			return nil, specErrorf("Operation Config requires operation_config")
 		}
 		act.OperationConfig = payload.OperationConfig
+		if err := checkActionOperationSpec(act, opts); err != nil {
+			return nil, err
+		}
 	}
 	if s, ok := sections["Bound Object"]; ok {
 		bo, at := parseBoundObject(s)
@@ -878,6 +893,10 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	}
 	if s, ok := sections["Schedule"]; ok {
 		act.Schedule = parseSchedule(s)
+		// The Timezone column comes with 2.1: 2.0 reads the schedule as it always did.
+		if act.Schedule != nil && !opts.eventClasses() {
+			act.Schedule.Timezone = ""
+		}
 	}
 	if act.OperationConfig != nil {
 		for index := range act.Parameters {
@@ -1104,6 +1123,7 @@ func parseSchedule(sectionText string) *Schedule {
 	return &Schedule{
 		Type:       r["Type"],
 		Expression: r["Expression"],
+		Timezone:   r["Timezone"],
 	}
 }
 

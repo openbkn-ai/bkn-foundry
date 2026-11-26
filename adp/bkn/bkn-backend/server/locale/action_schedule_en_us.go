@@ -13,6 +13,7 @@ var actionScheduleEnUS = i18n.I18nMessages{
 		"BknBackend.ActionSchedule.InvalidCronExpression":             "Invalid cron expression. Please check if the cron expression format is correct.",
 		"BknBackend.ActionSchedule.InvalidStatus":                     "Invalid status value. Please check if the status value is correct.",
 		"BknBackend.ActionSchedule.ActionTypeNotFound":                "Action type not found. Please check if the action type ID is correct.",
+		"BknBackend.ActionSchedule.PlatformKept":                      "The platform keeps this action schedule for a record-event action type: it cannot be changed, disabled or deleted. Change the check schedule on the action type.",
 		"BknBackend.ActionSchedule.NotFound":                          "Action schedule not found. Please check if the action schedule ID is correct.",
 		"BknBackend.ActionSchedule.InternalError":                     "Internal error. Please try again. If the error occurs again, please submit a ticket or contact technical support.",
 		"BknBackend.ActionSchedule.CreateFailed":                      "Failed to create action schedule. Please try again. If the error occurs again, please submit a ticket or contact technical support.",

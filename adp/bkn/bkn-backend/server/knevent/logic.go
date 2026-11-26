@@ -38,18 +38,21 @@ type op struct {
 	actor interfaces.AccountInfo
 	// title words a rule event's title from its type and object names.
 	title func(typeName, objectName string) string
+	// executionID is the action execution the write is made for, or "".
+	executionID string
 }
 
 func (o op) by(action, from, to, note string) interfaces.KnEventTransition {
 	return interfaces.KnEventTransition{
 		Action: action, FromStatus: from, ToStatus: to,
 		Actor: o.actor.ID, ActorType: o.actor.Type, ActorName: o.actor.Name,
-		Note: note, Time: o.now,
+		Note: note, Time: o.now, ExecutionID: o.executionID,
 	}
 }
 
-func byRule(action, from, to string, at int64) interfaces.KnEventTransition {
-	return interfaces.KnEventTransition{Action: action, FromStatus: from, ToStatus: to, ActorType: actorRule, Time: at}
+func (o op) byRule(action, from, to string, at int64) interfaces.KnEventTransition {
+	return interfaces.KnEventTransition{Action: action, FromStatus: from, ToStatus: to, ActorType: actorRule, Time: at,
+		ExecutionID: o.executionID}
 }
 
 // change is one entry to append to the change feed for an event, whose state
@@ -127,13 +130,13 @@ func lastDecided(previous *interfaces.KnEventRuleCheck) int64 {
 	return previous.LastOK
 }
 
-// applyRuleCheck records one check of a rule event type. mine holds the
-// type's events whose abnormal period is open, oldest first. Hits open events
+// applyRuleCheck records one check of a rule event class. mine holds the
+// class's events whose abnormal period is open, oldest first. Hits open events
 // for objects without one; open periods the check covered but did not hit are
 // over. A check that could not decide changes no event's state. Every event
 // the check touched gets one change, a pure refresh being "checked".
 func applyRuleCheck(
-	eventType interfaces.KnEventType,
+	class eventClass,
 	previous *interfaces.KnEventRuleCheck,
 	mine []*interfaces.KnEvent,
 	input interfaces.KnEventRuleCheckInput,
@@ -150,12 +153,16 @@ func applyRuleCheck(
 			event.LastCheckedAt = at
 			event.CheckStatus = interfaces.KnEventCheckUnknown
 			touch(event, at)
-			changes = append(changes, change{event: event, transition: byRule(interfaces.KnEventChecked, event.Status, event.Status, at)})
+			changes = append(changes, change{event: event, transition: o.byRule(interfaces.KnEventChecked, event.Status, event.Status, at)})
 		}
-		return changes, interfaces.KnEventRuleCheck{
-			EventType: eventType.Code, Status: interfaces.KnEventCheckUnknown, RuleVersion: version,
+		check := interfaces.KnEventRuleCheck{
+			EventType: class.id, Status: interfaces.KnEventCheckUnknown, RuleVersion: version,
 			Message: input.Message, LastOK: lastOK, CheckedBy: o.actor.ID, Time: at,
 		}
+		if previous != nil {
+			check.LastOKRuleVersion = previous.LastOKRuleVersion
+		}
+		return changes, check
 	}
 
 	hits := make(map[string]interfaces.KnEventRuleHit, len(input.Hits))
@@ -172,9 +179,10 @@ func applyRuleCheck(
 		}
 	}
 	seen := make(map[string]bool, len(mine)+len(hits))
-	// The first check that decides, after a rule is set up, finds what has long
-	// been wrong: a backlog. Checks that could not decide before it do not count.
-	first := lastOK == 0
+	// The first check that decides, after a rule is set up or changed, finds
+	// what has long been wrong: a backlog. Checks that could not decide before
+	// it do not count.
+	first := lastOK == 0 || previous.LastOKRuleVersion != version
 	for _, event := range mine {
 		key := event.ObjectKey
 		seen[key] = true
@@ -188,7 +196,7 @@ func applyRuleCheck(
 		if hit, found := hits[key]; found {
 			event.RuleVersion = version
 			mergeAttributes(event, hit.Attributes)
-			changes = append(changes, change{event: event, transition: byRule(interfaces.KnEventChecked, event.Status, event.Status, at)})
+			changes = append(changes, change{event: event, transition: o.byRule(interfaces.KnEventChecked, event.Status, event.Status, at)})
 			continue
 		}
 		from := event.Status
@@ -198,7 +206,7 @@ func applyRuleCheck(
 		if updated {
 			action = actionRecoveredAfterUpdate
 		}
-		changes = append(changes, change{event: event, transition: byRule(action, from, event.Status, at)})
+		changes = append(changes, change{event: event, transition: o.byRule(action, from, event.Status, at)})
 	}
 	for _, hit := range input.Hits {
 		if seen[hit.Key] {
@@ -215,14 +223,14 @@ func applyRuleCheck(
 		}
 		event := &interfaces.KnEvent{
 			ID:               uuid.NewV7().String(),
-			EventType:        eventType.Code,
-			EventTypeName:    eventType.Name,
-			Title:            clip(o.title(eventType.Name, name), interfaces.KnEventTitleMax),
+			EventType:        class.id,
+			EventTypeName:    class.name,
+			Title:            clip(o.title(class.name, name), interfaces.KnEventTitleMax),
 			Status:           interfaces.KnEventVerified,
-			Severity:         eventType.Severity,
+			Severity:         class.severity,
 			Source:           interfaces.KnEventSourceRule,
 			RuleVersion:      version,
-			ObjectType:       eventType.Subject,
+			ObjectType:       class.subject,
 			ObjectKey:        hit.Key,
 			ObjectName:       name,
 			ObjectAttributes: attributes,
@@ -231,6 +239,7 @@ func applyRuleCheck(
 			FirstDetectedAt:  at,
 			LastCheckedAt:    at,
 			CheckStatus:      interfaces.KnEventCheckOK,
+			Detail:           hit.Detail,
 			Backlog:          first,
 			VerifiedByType:   actorRule,
 			VerifiedAt:       at,
@@ -238,19 +247,19 @@ func applyRuleCheck(
 			CreateTime:       at,
 			UpdateTime:       at,
 		}
-		changes = append(changes, change{event: event, transition: byRule(actionDetected, "", event.Status, at)})
+		changes = append(changes, change{event: event, transition: o.byRule(actionDetected, "", event.Status, at)})
 	}
 	return changes, interfaces.KnEventRuleCheck{
-		EventType: eventType.Code, Status: interfaces.KnEventCheckOK, RuleVersion: version,
-		Hits: len(hits), LastOK: at, CheckedBy: o.actor.ID, Time: at,
+		EventType: class.id, Status: interfaces.KnEventCheckOK, RuleVersion: version,
+		Hits: len(hits), LastOK: at, LastOKRuleVersion: version, CheckedBy: o.actor.ID, Time: at,
 	}
 }
 
-// reportEvent records an event a person reports. open holds the type's open
+// reportEvent records an event a person reports. open holds the class's open
 // events about the same object, oldest first. It returns the new event, the
 // one it repeats when it is a duplicate, and the changes to append.
 func reportEvent(
-	eventType interfaces.KnEventType,
+	class eventClass,
 	input interfaces.KnEventReportInput,
 	open []*interfaces.KnEvent,
 	o op,
@@ -261,9 +270,9 @@ func reportEvent(
 		occurred = at
 	}
 	var merged *interfaces.KnEvent
-	if window := int64(eventType.MergeHours * 3600 * 1000); window > 0 && input.ObjectKey != "" {
+	if window := int64(class.mergeHours * 3600 * 1000); window > 0 && input.ObjectKey != "" {
 		for _, event := range open {
-			if event.EventType == eventType.Code && event.ObjectKey == input.ObjectKey && isOpen(event) &&
+			if event.EventType == class.id && event.ObjectKey == input.ObjectKey && isOpen(event) &&
 				abs(event.OccurredAt-occurred) <= window {
 				merged = event
 				break
@@ -284,11 +293,11 @@ func reportEvent(
 	}
 	event := &interfaces.KnEvent{
 		ID:               uuid.NewV7().String(),
-		EventType:        eventType.Code,
-		EventTypeName:    eventType.Name,
+		EventType:        class.id,
+		EventTypeName:    class.name,
 		Title:            strings.TrimSpace(input.Title),
 		Status:           status,
-		Severity:         eventType.Severity,
+		Severity:         class.severity,
 		Source:           interfaces.KnEventSourceReport,
 		ObjectKey:        input.ObjectKey,
 		ObjectName:       name,
@@ -303,7 +312,7 @@ func reportEvent(
 		UpdateTime:       at,
 	}
 	if input.ObjectKey != "" {
-		event.ObjectType = eventType.Subject
+		event.ObjectType = class.subject
 	}
 	changes := []change{{event: event, transition: o.by(actionReported, "", status, "")}}
 	if merged != nil {

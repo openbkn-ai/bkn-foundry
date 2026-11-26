@@ -132,6 +132,10 @@ type BknObjectTypeFrontmatter struct {
 
 	// Lifecycle is the 3.0 lifecycle (SPECIFICATION.md §4.3); nil is active.
 	Lifecycle *Lifecycle `yaml:"lifecycle,omitempty"`
+
+	// Kinds lists the platform behaviours of the object type, each configured by the section of
+	// the same name (3.0, SPECIFICATION.md §6.9); empty for a plain object type.
+	Kinds []string `yaml:"kinds,omitempty"`
 }
 
 // Lifecycle says whether a definition is still in use (SPECIFICATION.md §4.3). A definition without
@@ -155,6 +159,9 @@ type BknObjectType struct {
 	DataSource      *ResourceInfo
 	DataProperties  []*DataProperty
 	LogicProperties []*LogicProperty
+
+	// Event is the ### Event section of an event class, whose kinds list event (3.0, §6.9).
+	Event *ObjectTypeEvent
 
 	// Keys section
 	PrimaryKeys    []string
@@ -420,6 +427,8 @@ type ImpactContractItem struct {
 type Schedule struct {
 	Type       string // FIX_RATE, CRON, etc.
 	Expression string
+	// Timezone is the IANA zone the schedule runs in (2.1): a recognition action needs it.
+	Timezone string
 }
 
 // ActionSource represents action source.
@@ -514,4 +523,8 @@ type ActionOperationConfig struct {
 	RelationOperation    string         `yaml:"relation_operation,omitempty"`
 	AnchorRole           string         `yaml:"anchor_role,omitempty"`
 	OtherObjectCondition *ActionCondCfg `yaml:"other_object_condition,omitempty"`
+	// EventClass and Targets belong to a recognition action, operation type event (2.1,
+	// recognition_action.go).
+	EventClass string              `yaml:"event_class,omitempty"`
+	Targets    *ActionEventTargets `yaml:"targets,omitempty"`
 }

@@ -52,7 +52,9 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 				WithErrorDetails(errDetails)
 		}
 
-		// Validate required object type fields, lengths, and enum values.
+		// Validate required object type fields, lengths, and enum values. The kinds need the
+		// network to fill what they keep.
+		objectTypes[i].KNID = knID
 		err := ValidateObjectType(ctx, objectTypes[i], strictMode)
 		if err != nil {
 			return err
@@ -75,6 +77,11 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 func ValidateObjectType(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	// Validate basic information: ID, name, and tags.
 	if err := validateObjectTypeBasicInfo(ctx, objectType); err != nil {
+		return err
+	}
+	// The kinds fill the definitions they keep first: an event class may leave out its data
+	// source, properties and keys. The service checks the kinds again against what is stored.
+	if err := completeObjectTypeKinds(ctx, objectType); err != nil {
 		return err
 	}
 

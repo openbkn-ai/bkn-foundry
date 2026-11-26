@@ -34,9 +34,13 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 	now := time.Now()
 	mfs := NewMemoryFileSystem()
 
-	// Only a network that declares bkn_spec 3.0 is written under 3.0; every other network is written
-	// exactly as before.
-	opts := serializeOptions{v3: doc.BknSpec == BknSpecV3}
+	// Only a network that declares bkn_spec 3.0 is written under 3.0, and only one that declares 2.1
+	// or 3.0 carries event classes; every other network is written exactly as before.
+	opts := serializeOptionsFor(doc.BknSpec)
+	// A 2.0 package has no recognition actions, as it has no event classes: they are left out.
+	if !opts.eventClasses {
+		doc = withoutRecognitionActions(doc)
+	}
 
 	// Write network.bkn
 	rootContent := serializeBknNetwork(doc, opts)

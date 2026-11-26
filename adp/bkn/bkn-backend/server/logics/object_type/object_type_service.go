@@ -107,7 +107,9 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 
 // validateObjectTypeStrictExternalDeps checks backing Vega resources and logic property references.
 func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.Context, objectType *interfaces.ObjectType) error {
-	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
+	// A resource a kind keeps is made by the platform, which the kind checks: the caller has no
+	// permission of their own on it to look it up with.
+	if objectType.DataSource != nil && objectType.DataSource.ID != "" && !logics.KeepsResource(objectType) {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
 			lookupCtx := interfaces.WithDependencyBindingScope(ctx, objectType.KNID,
@@ -218,6 +220,10 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	}()
 
 	currentTime := time.Now().UnixMilli()
+	storedKinds, err := ots.prepareSavedKinds(ctx, objectTypes, mode)
+	if err != nil {
+		return nil, err
+	}
 	for _, objectType := range objectTypes {
 		objectType.OTID, err = permission.PrepareKNChildResourceID(ctx, objectType.OTID)
 		if err != nil {
@@ -225,6 +231,12 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		}
 		if err = permission.ValidateKNChildAuthorizationIDs(ctx, objectType.KNID, []string{objectType.OTID}); err != nil {
 			return nil, err
+		}
+		// An ignore import leaves an existing object type as it is.
+		if stored := storedKinds[objectType.OTID]; stored == nil || mode != interfaces.ImportMode_Ignore {
+			if err = prepareKinds(ctx, objectType, stored); err != nil {
+				return nil, err
+			}
 		}
 
 		accountInfo := interfaces.AccountInfo{}
@@ -427,6 +439,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	insetObjectTypes := createObjectTypes
 	insetObjectTypes = append(insetObjectTypes, updateObjectTypes...)
+	if err = savedKinds(ctx, tx, insetObjectTypes, storedKinds); err != nil {
+		return []string{}, err
+	}
 	err = ots.InsertDatasetData(ctx, insetObjectTypes)
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
@@ -505,9 +520,18 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 		return err
 	}
 
+	storedKinds, err := ots.prepareSavedKinds(ctx, objectTypes, mode)
+	if err != nil {
+		return err
+	}
 	for _, objectType := range objectTypes {
 		objectType.KNID = knID
 		objectType.Branch = branch
+		if stored := storedKinds[objectType.OTID]; stored == nil || mode != interfaces.ImportMode_Ignore {
+			if err := prepareKinds(ctx, objectType, stored); err != nil {
+				return err
+			}
+		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return err
 		}
@@ -1209,13 +1233,19 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return err
 	}
+	var storedForKinds *interfaces.ObjectType
 	if keepStoredDeclarations {
 		stored, err := ots.ota.GetObjectTypeByID(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID)
 		if err != nil {
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
 				WithErrorDetails(err.Error())
 		}
+		storedForKinds = stored
 		keepUndeclared(objectType, stored)
+		// An overwrite import prepares the kinds in CreateObjectTypes.
+		if err := prepareKinds(ctx, objectType, stored); err != nil {
+			return err
+		}
 	}
 
 	if err := validateDeclarations(ctx, objectType); err != nil {
@@ -1305,6 +1335,13 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 			return err
 		}
 	}
+	// An overwrite import keeps what the kinds make in CreateObjectTypes, with the rest of its save.
+	if keepStoredDeclarations {
+		if err = savedKinds(ctx, tx, []*interfaces.ObjectType{objectType},
+			map[string]*interfaces.ObjectType{objectType.OTID: storedForKinds}); err != nil {
+			return err
+		}
+	}
 
 	err = ots.InsertDatasetData(ctx, []*interfaces.ObjectType{objectType})
 	if err != nil {
@@ -1335,6 +1372,11 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	err := ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
+	}
+	// The only kind there is, event, keeps the properties of its object types.
+	if len(objectType.Kinds) > 0 {
+		return invalidKinds(ctx, "the platform keeps the data properties of object type %s, which is of kinds %v",
+			objectType.OTID, objectType.Kinds)
 	}
 
 	accountInfo := interfaces.AccountInfo{}
@@ -1476,6 +1518,15 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		berrors.BknBackend_ObjectType_StillReferenced, berrors.BknBackend_ObjectType_InternalError); err != nil {
 		return err
 	}
+	// The object types of a kind are handed to it before they go.
+	var deleting []*interfaces.ObjectType
+	if logics.AnyObjectTypeKind() {
+		deleting, err = ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
+		if err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
+		}
+	}
 	if tx == nil {
 		// 0. Begin the transaction.
 		tx, err = ots.db.Begin()
@@ -1509,6 +1560,9 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		}()
 	}
 	if err = logics.CheckDefinitionRevision(ctx, tx, interfaces.RevisionKindObjectType, knID, branch, otIDs...); err != nil {
+		return err
+	}
+	if err = deletingKinds(ctx, tx, deleting); err != nil {
 		return err
 	}
 

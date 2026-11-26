@@ -50,7 +50,7 @@ type frontmatterRule struct {
 
 var frontmatterRules = map[string]frontmatterRule{
 	kindNetwork:    {fields: []string{"type", "id", "name", "tags", "bkn_spec", "version", "branch", "capabilities"}},
-	kindObjectType: {fields: []string{"type", "id", "name", "tags", "aliases", "lifecycle"}},
+	kindObjectType: {fields: []string{"type", "id", "name", "tags", "kinds", "aliases", "lifecycle"}},
 	kindRelationType: {fields: []string{
 		"type", "id", "name", "tags", "aliases", "reverse_name", "importance", "fallback_for", "verification", "lifecycle",
 	}},
@@ -107,6 +107,7 @@ var sectionRules = map[string]map[string]sectionRule{
 		"Property Constraints": {content: contentYAML},
 		"Logic Properties":     {content: contentLogic},
 		"Keys":                 {content: contentKeys},
+		"Event":                {content: contentYAML},
 	},
 	kindRelationType: {
 		"Endpoint": {content: contentTable, table: tableRule{
@@ -142,7 +143,7 @@ var sectionRules = map[string]map[string]sectionRule{
 			singleRow: true,
 		}},
 		"Parameter Binding": {content: contentTable, table: parameterTableRule},
-		"Schedule":          {content: contentTable, table: tableRule{columns: []string{"Type", "Expression"}, singleRow: true}},
+		"Schedule":          {content: contentTable, table: tableRule{columns: []string{"Type", "Expression", "Timezone"}, singleRow: true}},
 	},
 	kindConceptGroup: {
 		"Object Types": {content: contentTable, table: tableRule{columns: []string{"ID", "Name", "Description"}}},

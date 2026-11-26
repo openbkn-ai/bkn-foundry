@@ -116,10 +116,12 @@ const (
 
 	// The terminal write. A cancel that landed while the execution was still running wins
 	// over the status the executor computed; counters and timing still record what
-	// actually ran. Results live in the results index and are not touched here.
+	// actually ran. Results live in the results index and are not touched here. A target
+	// count is written only when the executor learned it while running (a record-event check).
 	finishScript = "if (ctx._source.status != params.cancelled) { ctx._source.status = params.status } " +
 		"ctx._source.success_count = params.success_count; ctx._source.failed_count = params.failed_count; " +
-		"ctx._source.end_time = params.end_time; ctx._source.duration_ms = params.duration_ms;"
+		"ctx._source.end_time = params.end_time; ctx._source.duration_ms = params.duration_ms; " +
+		"if (params.target_count != null) { ctx._source.target_count = params.target_count }"
 )
 
 func painlessUpdate(source string, params map[string]any) map[string]any {
@@ -189,14 +191,18 @@ func (s *actionLogsService) FinishExecution(ctx context.Context, knID, execID st
 		attr.Key("status").String(outcome.Status),
 	)
 
-	_, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, painlessUpdate(finishScript, map[string]any{
+	params := map[string]any{
 		"cancelled":     interfaces.ExecutionStatusCancelled,
 		"status":        outcome.Status,
 		"success_count": outcome.SuccessCount,
 		"failed_count":  outcome.FailedCount,
 		"end_time":      outcome.EndTime,
 		"duration_ms":   outcome.DurationMs,
-	}))
+	}
+	if outcome.TargetCount != nil {
+		params["target_count"] = *outcome.TargetCount
+	}
+	_, err := s.osAccess.UpdateData(ctx, interfaces.GetActionExecutionIndex(knID), execID, painlessUpdate(finishScript, params))
 	if err != nil {
 		return fmt.Errorf("failed to finish execution %s: %w", execID, err)
 	}
@@ -380,6 +386,32 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 	if query.InteractionID != "" {
 		mustConditions = append(mustConditions, map[string]any{
 			"term": map[string]any{"interaction_id": query.InteractionID},
+		})
+	}
+
+	if query.ObjectTypeID != "" {
+		mustConditions = append(mustConditions, map[string]any{
+			"term": map[string]any{"object_type_id": query.ObjectTypeID},
+		})
+	}
+
+	if query.TargetKey != "" {
+		// The executions are found through their results, the only documents that list
+		// targets; at most MaxTargetKeyExecutions of them, the most recent first.
+		executionIDs, err := s.executionsWithTarget(ctx, query.KNID, query.TargetKey)
+		if err != nil {
+			logger.Errorf("Failed to find the executions of target %q: %v", query.TargetKey, err)
+			return nil, fmt.Errorf("failed to query executions: %w", err)
+		}
+		if len(executionIDs) == 0 {
+			result := &interfaces.ActionExecutionList{Entries: []interfaces.ActionExecution{}}
+			if query.NeedTotal {
+				result.TotalCount = new(0)
+			}
+			return result, nil
+		}
+		mustConditions = append(mustConditions, map[string]any{
+			"terms": map[string]any{"id": executionIDs},
 		})
 	}
 
@@ -599,13 +631,20 @@ func (s *actionLogsService) ensureIndexExists(ctx context.Context, indexName str
 // the same index simultaneously, only one will succeed and others will detect the
 // index already exists.
 func (s *actionLogsService) createIndexIfMissing(ctx context.Context, indexName string, indexBody map[string]any) error {
+	_, err := s.createIndex(ctx, indexName, indexBody)
+	return err
+}
+
+// createIndex is createIndexIfMissing that also reports whether this call created the index,
+// so with the mapping in indexBody.
+func (s *actionLogsService) createIndex(ctx context.Context, indexName string, indexBody map[string]any) (bool, error) {
 	exists, err := s.osAccess.IndexExists(ctx, indexName)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if exists {
-		return nil
+		return false, nil
 	}
 
 	if err := s.osAccess.CreateIndex(ctx, indexName, indexBody); err != nil {
@@ -613,9 +652,9 @@ func (s *actionLogsService) createIndexIfMissing(ctx context.Context, indexName 
 		existsAfter, checkErr := s.osAccess.IndexExists(ctx, indexName)
 		if checkErr == nil && existsAfter {
 			logger.Debugf("Index %s was created by another request", indexName)
-			return nil
+			return false, nil
 		}
-		return fmt.Errorf("failed to create index: %w", err)
+		return false, fmt.Errorf("failed to create index: %w", err)
 	}
 
 	logger.Infof("Created index: %s", indexName)
@@ -623,7 +662,7 @@ func (s *actionLogsService) createIndexIfMissing(ctx context.Context, indexName 
 	// Wait a bit for the index to be ready
 	time.Sleep(100 * time.Millisecond)
 
-	return nil
+	return true, nil
 }
 
 // CancelExecution cancels a running or pending execution

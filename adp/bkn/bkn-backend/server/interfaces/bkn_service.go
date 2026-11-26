@@ -27,11 +27,14 @@ type BKNService interface {
 }
 
 // The specification an export is written in. Auto writes 3.0 when the network carries a declaration
-// only 3.0 can hold and 2.x otherwise, so a network without one exports exactly as before; 2.0
-// writes 2.x and leaves such declarations out; 3.0 writes 3.0.
+// only 3.0 can hold, 2.1 when it has event classes and no such declaration, and 2.x otherwise, so a
+// network with neither exports exactly as before; 2.0 writes 2.x and leaves event classes and the
+// declarations out; 2.1 writes 2.x with event classes and leaves the declarations out; 3.0 writes
+// 3.0, event classes included.
 const (
 	BKN_EXPORT_SPEC_AUTO = ""
 	BKN_EXPORT_SPEC_2    = "2.0"
+	BKN_EXPORT_SPEC_21   = "2.1"
 	BKN_EXPORT_SPEC_3    = "3.0"
 )
 

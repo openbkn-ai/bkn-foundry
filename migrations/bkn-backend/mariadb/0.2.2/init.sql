@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS t_object_type (
   f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
   f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
   f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
+  f_kinds VARCHAR(255) NOT NULL DEFAULT '' COMMENT '对象类的种类，JSON 字符串数组，空为普通对象类',
+  f_event TEXT DEFAULT NULL COMMENT 'event 种类的配置JSON',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_object_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象类';
@@ -142,6 +144,9 @@ CREATE TABLE IF NOT EXISTS t_action_type (
   f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
   f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
   f_revision VARCHAR(40) NOT NULL DEFAULT '' COMMENT '定义修订标识',
+  f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT '执行身份ID，记录事件的行动类',
+  f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '执行身份类型',
+  f_rule_version VARCHAR(64) NOT NULL DEFAULT '' COMMENT '规则版本，记录事件的行动类',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_action_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '行动类';
@@ -233,6 +238,7 @@ CREATE TABLE IF NOT EXISTS t_action_schedule (
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT 'Update timestamp (ms)',
   f_execution_subject VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Current execution subject ID',
   f_execution_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Current execution subject type',
+  f_source VARCHAR(16) NOT NULL DEFAULT '' COMMENT '空为用户建立的定时；action_type 为平台按记录事件的行动类维护',
   PRIMARY KEY (f_id),
   KEY idx_kn_branch (f_kn_id, f_branch),
   KEY idx_status_next_run (f_status, f_next_run_time),
@@ -479,43 +485,11 @@ CREATE TABLE IF NOT EXISTS t_object_metric_reference (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象指标版本引用索引';
 
 
--- 知识网络事件类型（识别配置）
-CREATE TABLE IF NOT EXISTS t_kn_event_type (
-  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
-  f_code VARCHAR(64) NOT NULL DEFAULT '' COMMENT '事件类型编码',
-  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件类型名称',
-  f_source VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'rule|report',
-  f_subject VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件涉及的对象类ID',
-  f_severity VARCHAR(16) NOT NULL DEFAULT '' COMMENT '默认严重程度',
-  f_merge_hours DOUBLE NOT NULL DEFAULT 0 COMMENT '登记事件的合并窗口（小时）',
-  f_rule LONGTEXT NOT NULL COMMENT '规则定义JSON',
-  f_rule_version VARCHAR(64) NOT NULL DEFAULT '' COMMENT '规则版本',
-  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者ID',
-  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
-  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
-  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者ID',
-  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
-  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
-  f_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件类（对象类）ID，空为尚未建立',
-  f_dataset_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '事件数据集ID，空为尚未建立',
-  f_dataset_synced TINYINT(1) NOT NULL DEFAULT 0 COMMENT '账本中已有的事件是否已写入数据集',
-  f_rule_tool TEXT DEFAULT NULL COMMENT '规则工具JSON（box_id、tool_id、parameters），空为由应用检查',
-  f_check_cron VARCHAR(128) NOT NULL DEFAULT '' COMMENT '检查时间（五段cron）',
-  f_check_timezone VARCHAR(64) NOT NULL DEFAULT '' COMMENT '检查时区（IANA）',
-  f_check_subject_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '执行身份ID',
-  f_check_subject_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '执行身份类型',
-  f_next_check_at BIGINT(20) NOT NULL DEFAULT 0 COMMENT '下次检查时间，0为不由平台检查',
-  f_check_failures INT(11) NOT NULL DEFAULT 0 COMMENT '连续无法判断的检查次数',
-  PRIMARY KEY (f_kn_id, f_code),
-  KEY idx_kn_event_type_next_check (f_next_check_at)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件类型';
-
-
 -- 知识网络事件账本
 CREATE TABLE IF NOT EXISTS t_kn_event (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '事件ID',
   f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
-  f_event_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '事件类型编码',
+  f_event_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '事件类ID',
   f_title VARCHAR(256) NOT NULL DEFAULT '' COMMENT '标题',
   f_status VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'unverified|verified|rejected|duplicate|closed',
   f_severity VARCHAR(16) NOT NULL DEFAULT '' COMMENT '严重程度',
@@ -545,7 +519,8 @@ CREATE TABLE IF NOT EXISTS t_kn_event (
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
   PRIMARY KEY (f_id),
   INDEX idx_kn_event_recorded (f_kn_id, f_recorded_at, f_id),
-  INDEX idx_kn_event_type_object (f_kn_id, f_event_type, f_object_key)
+  INDEX idx_kn_event_type_object (f_kn_id, f_event_type, f_object_key),
+  INDEX idx_kn_event_type_occurred (f_kn_id, f_event_type, f_occurred_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件';
 
 
@@ -562,16 +537,17 @@ CREATE TABLE IF NOT EXISTS t_kn_event_change (
   f_actor_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '操作者显示名',
   f_note VARCHAR(512) NOT NULL DEFAULT '' COMMENT '原因或说明',
   f_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '变更时间',
+  f_execution_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '写入这次变更的行动执行ID',
   PRIMARY KEY (f_kn_id, f_seq),
   INDEX idx_kn_event_change_event (f_event_id, f_seq),
   INDEX idx_kn_event_change_action_time (f_action, f_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件变更记录';
 
 
--- 知识网络事件规则检查（各事件类型最近一次）
+-- 知识网络事件规则检查（各事件类最近一次，及事件类数据集是否已写入账本中的事件）
 CREATE TABLE IF NOT EXISTS t_kn_event_rule_check (
   f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
-  f_event_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '事件类型编码',
+  f_event_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '事件类ID',
   f_status VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'ok|unknown',
   f_rule_version VARCHAR(64) NOT NULL DEFAULT '' COMMENT '规则版本',
   f_hits INT NOT NULL DEFAULT 0 COMMENT '命中对象数',
@@ -579,6 +555,8 @@ CREATE TABLE IF NOT EXISTS t_kn_event_rule_check (
   f_last_ok BIGINT(20) NOT NULL DEFAULT 0 COMMENT '最近一次成功判断的时间',
   f_checked_by VARCHAR(40) NOT NULL DEFAULT '' COMMENT '检查人ID',
   f_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '检查时间',
+  f_last_ok_rule_version VARCHAR(64) NOT NULL DEFAULT '' COMMENT '最近一次成功判断时的规则版本',
+  f_dataset_synced TINYINT(1) NOT NULL DEFAULT 0 COMMENT '账本中已有的事件是否已写入数据集',
   PRIMARY KEY (f_kn_id, f_event_type)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '知识网络事件规则检查';
 

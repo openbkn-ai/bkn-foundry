@@ -206,6 +206,9 @@ func (ats *actionTypeService) hydrateActionSummaries(ctx context.Context, knID, 
 			}
 		}
 		accounts = append(accounts, &item.Creator, &item.Updater)
+		if item.ExecutionSubject != nil {
+			accounts = append(accounts, item.ExecutionSubject)
+		}
 	}
 	if err := ats.ums.GetAccountNames(ctx, accounts); err != nil {
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,

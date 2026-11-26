@@ -1425,6 +1425,21 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		MCPToolsTotal:  capabilityTotals[interfaces.CAPABILITY_TYPE_MCP_TOOL],
 	}
 
+	// Event classes are object types too; the workspace lists them on a page of their own.
+	eventClassCnt, err := kns.ota.GetObjectTypesTotal(ctx, interfaces.ObjectTypesQueryParams{
+		KNID:   kn.KNID,
+		Branch: kn.Branch,
+		Kind:   interfaces.ObjectTypeKindEvent,
+	})
+	if err != nil {
+		logger.Errorf("Count the event classes in knowledge network[%s] error: %s", kn.KNID, err.Error())
+		span.SetStatus(codes.Error, fmt.Sprintf("Count the event classes in knowledge network[%s], error: %v", kn.KNID, err))
+
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed).WithErrorDetails(err.Error())
+	}
+	statistics.EventClassesTotal = &eventClassCnt
+
 	span.SetStatus(codes.Ok, "")
 	return statistics, nil
 }

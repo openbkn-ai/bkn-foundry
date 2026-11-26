@@ -106,6 +106,16 @@ func (c *safeClient) changeLifecycle(ctx context.Context, proxyAccountID, action
 	return &account, nil
 }
 
+func (c *safeClient) Grant(ctx context.Context, proxyAccountID, grantorID string,
+	source interfaces.ProxyGrantSourceSpec) error {
+	_, err := c.do(ctx, http.MethodPost, "/api/safe/in/v1/proxy-grant-sources", map[string]any{
+		"proxy_account_id": proxyAccountID,
+		"grantor_id":       grantorID,
+		"source":           source,
+	}, nil)
+	return err
+}
+
 func (c *safeClient) CheckGrant(ctx context.Context, proxyAccountID, grantorID string,
 	source interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantCheckResult, error) {
 	var result interfaces.ProxyGrantCheckResult

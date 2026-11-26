@@ -402,6 +402,20 @@ func (mr *MockManagedProxyAccessMockRecorder) Get(ctx, proxyAccountID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockManagedProxyAccess)(nil).Get), ctx, proxyAccountID)
 }
 
+// Grant mocks base method.
+func (m *MockManagedProxyAccess) Grant(ctx context.Context, proxyAccountID, grantorID string, source interfaces.ProxyGrantSourceSpec) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Grant", ctx, proxyAccountID, grantorID, source)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Grant indicates an expected call of Grant.
+func (mr *MockManagedProxyAccessMockRecorder) Grant(ctx, proxyAccountID, grantorID, source any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grant", reflect.TypeOf((*MockManagedProxyAccess)(nil).Grant), ctx, proxyAccountID, grantorID, source)
+}
+
 // CheckGrant mocks base method.
 func (m *MockManagedProxyAccess) CheckGrant(ctx context.Context, proxyAccountID, grantorID string, source interfaces.ProxyGrantSourceSpec) (interfaces.ProxyGrantCheckResult, error) {
 	m.ctrl.T.Helper()

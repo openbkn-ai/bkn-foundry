@@ -20,6 +20,9 @@ type ActionScheduleService interface {
 	GetSchedule(ctx context.Context, scheduleID string) (*ActionSchedule, error)
 	GetSchedules(ctx context.Context, scheduleIDs []string) (map[string]*ActionSchedule, error)
 	ListSchedules(ctx context.Context, queryParams ActionScheduleQueryParams) ([]*ActionSchedule, int64, error)
+	// RunSchedule runs the schedule of the network's branch once now, as its execution subject,
+	// without changing when it runs next, and returns the execution ID.
+	RunSchedule(ctx context.Context, knID, branch, scheduleID string) (string, error)
 
 	// Cron expression validation and next run time calculation
 	ValidateCronExpression(cronExpr string) error

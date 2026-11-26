@@ -25,6 +25,7 @@ BKN（Business Knowledge Network）是基于 Markdown 的声明式建模语言�
 |------|------|
 | 知识网络（knowledge_network） | 一组定义的顶层容器，对应目录根部的 `network.bkn` |
 | 对象类（object_type） | 业务对象的类型，如订单、物料 |
+| 事件类 | `kinds` 含 `event` 的对象类：每个对象是知识网络事件账本中的一条事件（§6.9）。带发生时间的业务单据（订单、工单）是普通对象类 |
 | 关系类（relation_type） | 连接两个对象类的关系 |
 | 行动类（action_type） | 调用一个工具或 MCP 工具完成的单个操作：操作对象实例、建立或解除关系，或不绑定对象独立调用工具（§8.9） |
 | 风险类（risk_type） | 对执行风险的结构化建模；BKN 文件只承载其名称与说明 |
@@ -45,14 +46,15 @@ bkn_spec: "3.0"
 | 声明 | 读取规则 |
 |------|----------|
 | 不写，或写 `2.0` / `2.0.x` | 2.x 规则。这是 `bkn_spec` 出现之前所有包的读法，**永久保持不变**，包括附录 A 中标注「2.x 现状」的行为 |
+| `2.1` 或 `2.1.x` | 2.x 规则，另外读取事件类：对象类的 `kinds` 与 `### Event`（§6.9），以及记录事件的行动类：`Operation Config` 的 `type: event`（§8.9）与 `Schedule` 的 `Timezone` 列（§8.8）。除此之外与 2.0 相同 |
 | `3.0`、`3` 或 `3.0.x` | 3.0 规则：本文标注「3.0」的条款生效 |
 | 其他任何值 | 拒绝导入，错误信息为 `unsupported bkn_spec`；不会按猜测读取 |
 
 - 版本只在 `network.bkn` 中声明，对整个包生效；定义文件里写 `bkn_spec` 在 2.x 下没有作用，3.0 下按未列出的字段拒绝（§1.3）。
 - 写成不带引号的 `3.0` 也可以：YAML 会把它读成数字 3，解析器按 `3.0` 处理。
-- 网络不含 3.0 声明时，导出器不写 `bkn_spec`，导出的包按 2.x 读取；含 3.0 声明时写 `bkn_spec: "3.0"` 并按 3.0 的写法输出（§14.2）。3.0 导入后入库的数据已经是修正后的含义，
+- 网络不含 3.0 声明时，导出器不写 `bkn_spec`，导出的包按 2.x 读取；含事件类而不含 3.0 声明时写 `bkn_spec: "2.1"`；含 3.0 声明时写 `bkn_spec: "3.0"` 并按 3.0 的写法输出（§14.2）。3.0 同样读写事件类。3.0 导入后入库的数据已经是修正后的含义，
   按当前列布局导出、再按 2.x 读回时含义不变。
-- 不认识 `bkn_spec` 的旧版解析器会忽略这个字段，按 2.x 读取：不报错，只是得不到 3.0 的修正。
+- 不认识 `bkn_spec` 的旧版解析器会忽略这个字段，按 2.x 读取：不报错，只是得不到 3.0 的修正。认识 `bkn_spec` 而不认识 `2.1` 的解析器按「其他任何值」拒绝 2.1 包。
 
 3.0 相对 2.x 的区别：
 
@@ -379,12 +381,12 @@ Display Key: material_name
 Incremental Key: updated_at
 ```
 
-已知小节：`Data Source`、`Data Properties`、`Logic Properties`、`Keys`；3.0 另有 `Property Constraints`（§6.8）。
+已知小节：`Data Source`、`Data Properties`、`Logic Properties`、`Keys`；2.1 起另有事件类的 `Event`（§6.9），3.0 另有 `Property Constraints`（§6.8）。
 
 | 小节 | 必需 | 说明 |
 |------|:----:|------|
-| Data Properties | 是 | 缺少该小节时校验报错 |
-| Keys | 是 | 缺少该小节时校验报错 |
+| Data Properties | 是 | 缺少该小节时校验报错；事件类不写（§6.9） |
+| Keys | 是 | 缺少该小节时校验报错；事件类不写（§6.9） |
 | Data Source | 否 | 不写表示对象类不绑定资源 |
 | Logic Properties | 否 | 可写空小节 |
 
@@ -549,7 +551,7 @@ Incremental Key: updated_at
 
 | 组 | Semantic | 含义 | 允许的 Type | 规则 | 示例（对象类.属性） |
 |----|----------|------|-------------|------|---------------------|
-| 时间 | `event_time` | 事件发生的时间 | `date`、`datetime`、`timestamp` | 含它的对象类即事件类 | 订单.下单时间；风险事件.发生时间 |
+| 时间 | `event_time` | 事件发生的时间 | `date`、`datetime`、`timestamp` | | 订单.下单时间；风险事件.发生时间 |
 | 时间 | `end_time` | 事件结束的时间 | 同上 | 必须与 `event_time` 同时出现 | 住院记录.出院时间；工单.关闭时间 |
 | 时间 | `valid_from` | 有效期开始 | 同上 | 可单独出现 | 合同.生效日期；价格.起始日期 |
 | 时间 | `valid_to` | 有效期结束；值为空表示长期有效 | 同上 | 可单独出现 | 合同.到期日期；证件.有效期至 |
@@ -650,6 +652,59 @@ aliases: [病人, 就诊人]
 `latitude` 与 `longitude` 不成对、`location` 与 `latitude` / `longitude` 同时出现；
 `Required` 不是 `true` / `false` / 空；约束的键不是已定义的数据属性、出现未知键、与 Type 不匹配、
 `pattern` 无法编译、`min` 大于 `max`；引用的值类型不存在或 `base_type` 与 Type 不同；引用了值类型的属性写了 `range`、`length`、`pattern` 或 `unit`；`crs`、`timezone` 取值非法或用在不适用的属性上，`latitude` 与 `longitude` 的 `crs` 不同；别名违反上述规则。
+
+### 6.9 事件类（2.1）
+
+> **状态：2.1。** 声明 `bkn_spec: "2.1"` 或 `"3.0"` 的包可以带事件类；规范库解析、校验与导出 `kinds` 与 `### Event`。bkn-backend 从专业版起提供 `event` 种类：对象类接口读写 `kinds` 与 `event`，保存时按本节规则校验，并维护事件类的数据来源、属性、主键与到关于对象类的关系；上传与导出 2.1、3.0 包时它们随包往返。没有事件能力的平台不认识 `event` 种类，带事件类的包拒绝导入。
+
+frontmatter 的 `kinds` 列出对象类具有的平台行为，每一种由正文中同名的小节配置。现在只有一种：`event`，对象类是**事件类**，每个对象是知识网络事件账本中的一条事件。不写 `kinds` 即普通对象类。
+
+````markdown
+---
+type: object_type
+id: late_order
+name: 订单超期
+tags: []
+kinds: [event]
+---
+
+## ObjectType: 订单超期
+
+每个对象是一条“订单超期”事件。
+
+### Event
+
+```yaml
+event:
+  source: rule
+  subject: order
+  severity: high
+  merge_hours: 24
+  handling_note: 联系供应商确认交期。
+```
+````
+
+`### Event` 是一个 YAML 块，配置写在唯一的键 `event` 下：
+
+| 键 | 必需 | 说明 |
+|----|:----:|------|
+| `source` | 是 | `rule`：由识别规则发现；`report`：由人或应用登记。事件类建立后不能修改 |
+| `subject` | 是 | 事件关于的对象类 ID：本网络中有且只有一个主键的对象类，不能是事件类自身 |
+| `severity` | 否 | 事件的默认严重程度，最长 16 个字符 |
+| `merge_hours` | 否 | 合并窗口（小时），不小于 0：窗口内关于同一对象的登记记为重复。不写即不合并 |
+| `handling_note` | 否 | 处置说明：发生这类事件时该做什么，最长 500 个字符 |
+
+规则：
+
+- `kinds` 写成列表，不重复，取值只有 `event`。`kinds` 含 `event` 时必须写 `### Event`；不含时不能写 `### Event`。
+- 事件类的 `id` 最长 64 个字符。
+- 事件类的 `Data Source`、`Data Properties`、`Logic Properties` 与 `Keys` 由平台生成：数据来源是平台为它维护的数据集，属性是固定的事件属性，主键为 `event_id`，显示属性为 `title`。导出不写这些小节；导入时可以写，与平台生成的不同时拒绝（数据属性的 `Display Name` 与 `Description` 可以不同）。
+- 到关于对象类的关系 `{id}_subject` 由平台随事件类建立、修改与删除，导出不写；包中写了这个关系时拒绝。
+- `event` 种类不能在对象类建立后加上或去掉。
+- `kinds` 与 `### Event` 从 2.1 起有效，3.0 写法相同。不声明版本或声明 `2.0` 的包不认识它们：`kinds` 忽略，`### Event` 归入描述。
+- 来源为 `rule` 的事件类由一个记录事件的行动类按计划检查并记录（§8.9）；包中可以同时带上这个行动类。
+
+**拒绝条件**：`kinds` 不是列表、含未知种类或重复；`kinds` 含 `event` 而没有 `### Event`，或有 `### Event` 而 `kinds` 不含 `event`；`### Event` 不是 YAML 块、没有 `event` 键或含未知键；`source` 不是 `rule` / `report`；没有 `subject`、`subject` 是自身或不是网络中的对象类；`severity`、`handling_note`、`id` 超长；`merge_hours` 小于 0；包中写了 `{id}_subject` 关系。
 
 ---
 
@@ -1000,11 +1055,16 @@ sub_conds:
 | `field` | 属性名；叶子条件必需 |
 | `operation` | 操作符，必需，不区分大小写 |
 | `sub_conds` | `and` / `or` 的子条件，最多 100 个 |
-| `value_from` | 比较值的来源，可选：缺省或 `const` 为固定值，`property` 为同一对象的另一个属性，`input` 为同一次执行的动态输入 |
-| `value` | 比较值；`value_from` 为 `property` 或 `input` 时写属性名或参数名 |
+| `value_from` | 比较值的来源，可选：缺省或 `const` 为固定值，`property` 为同一对象的另一个属性，`input` 为同一次执行的动态输入；记录事件的行动类（§8.9，2.1）另有 `check_time`（检查时间）与 `check_date`（检查日期） |
+| `value` | 比较值；`value_from` 为 `property` 或 `input` 时写属性名或参数名；为 `check_time`、`check_date` 时写可选的 ISO 8601 偏移量，如 `-PT48H`、`-P3D` |
 
 条件只判断一个已指定的实例能否执行，不用来挑选实例（§8.9）。`value_from: property` 只在条件所属的对象上取值；
 `value_from: input` 引用的必须是 `Parameter Binding` 中 `ValueFrom` 为 `input` 的参数。
+
+**检查时间（2.1）。** 记录事件的行动类按计划运行，没有调用方输入，条件只能取 `const`、`property`、`check_time`、`check_date`。
+`check_time` 是本次检查开始的时刻，加上 `value` 中的偏移量（可带正负号，如 `-PT48H`、`P1DT12H`），按 `Schedule` 的时区写成 RFC 3339 时间；
+`check_date` 是检查当天在该时区的日期，加上整日、周、月或年的偏移量（如 `-P3D`），写成 `YYYY-MM-DD`，不能带 `T` 之后的时分秒。
+不写 `value` 即不偏移。其他行动类不能使用这两个取值。
 不需要比较值的操作符（如 `empty`、`not_null`）不能写引用。严格导入（`strict_mode=true`）与所有关系操作还会核对：
 `field` 必须是该对象的属性；`in`、`not_in`、`range`、`out_range`、`between`、`before` 要求引用为数组，其余操作符要求两侧类型兼容；
 `like`、`not_like` 的固定值必须是完整的模式，不能以单独的 `\` 结尾。
@@ -1085,8 +1145,16 @@ sub_conds:
 |----|------|
 | `Type` | `FIX_RATE` 或 `CRON` |
 | `Expression` | 间隔或 cron 表达式 |
+| `Timezone` | 2.1。计划所在的时区，IANA 时区名，如 `Asia/Shanghai`；记录事件的行动类必需 |
 
 只读第一行，可以留空表。
+
+`Timezone` 列从 2.1 起有效，3.0 写法相同；不声明版本或声明 `2.0` 的包忽略这一列。导出时只有计划带时区才写这一列，
+否则仍输出 `Type | Expression` 两列，与 2.x 导出逐字节相同。
+
+记录事件的行动类（§8.9）的计划：`FIX_RATE` 的 `Expression` 是正整数加单位 `m`、`h` 或 `d`（如 `30m`、`2h`、`1d`）；
+`CRON` 的 `Expression` 是五段 cron 表达式（分、时、日、月、星期），在 `Timezone` 中解释，时区不写在表达式里。
+两次检查至少间隔 5 分钟。
 
 ### 8.9 Operation Config
 
@@ -1102,14 +1170,18 @@ sub_conds:
 
 | 字段 | 说明 |
 |------|------|
-| `type` | 必需。`object`（对象操作）、`relation`（关系操作）或 `tool`（工具调用） |
+| `type` | 必需。`object`（对象操作）、`relation`（关系操作）、`tool`（工具调用），或 2.1 起的 `event`（记录事件） |
 | `relation_type_id` | 关系操作必需，所操作的关系类 ID |
 | `relation_operation` | 关系操作必需，`create`（建立关系）或 `delete`（解除关系） |
 | `anchor_role` | 关系操作可选，`source` 或 `target`：`Bound Object` 是关系的起点还是终点 |
 | `other_object_condition` | 关系操作可选，对关系另一端实例的条件，结构同 `Trigger Condition`（§8.5） |
+| `event_class` | 记录事件必需，所记录的事件类 ID（§6.9） |
+| `targets` | 记录事件可选，按查询、函数或指标异常挑选对象，见下文「记录事件」 |
 
 **解析行为。** 小节中必须有 YAML 块，且块中必须有 `operation_config` 键，否则拒绝。字段按上表严格识别，
-写了未列出的字段（包括嵌套条件中的字段）即拒绝，2.x 与 3.0 都是如此。非关系操作写了关系字段同样拒绝。
+写了未列出的字段（包括嵌套条件中的字段）即拒绝，2.x 与 3.0 都是如此。非关系操作写了关系字段同样拒绝；
+不是记录事件的操作写了 `event_class` 或 `targets` 同样拒绝。`type: event` 从 2.1 起有效：不声明版本或声明 `2.0` 的包写了它即拒绝，
+错误信息提示声明 `bkn_spec: "2.1"`。
 
 **三类操作：**
 
@@ -1118,6 +1190,7 @@ sub_conds:
 | `object` | 必须绑定 | 新建（`action_intent: add`）不能写；修改、删除可以写 | 新建时由调用方提供新实例的属性值，不读取已有实例；修改、删除时由调用方明确指定实例的主键 |
 | `relation` | 必须绑定，且是所选关系的一端 | 可以写，作用于 `Bound Object` 一端 | 由调用方明确指定一对起点与终点实例，每次执行一对 |
 | `tool` | 不绑定 | 不能写 | 不涉及对象，只传参数 |
+| `event` | 必须绑定，且是事件类关于的对象类 | 与 `targets` 二选一 | 不由调用方指定：按计划由平台挑选，见下文 |
 
 条件只校验调用方指定的实例能否执行，不会扫描出一批实例去执行；修改、删除与关系操作在调用方未指定目标时拒绝执行。
 新建实例时，调用方只能填写被 `property` 参数引用的属性，未被引用的属性不开放填写；被引用的属性都必须填写，缺少任一个时拒绝执行。
@@ -1134,6 +1207,107 @@ sub_conds:
 **严格导入的额外校验。** 严格导入（`strict_mode=true`）时，对象操作还会核对：`Bound Object` 存在，
 `property` 参数引用的属性存在且类型与参数兼容（整数可以传给 `number` 参数），条件字段与引用的类型（§8.5）。
 关系操作无论是否严格导入，都做这些校验，并核对两端对象类与主键。
+
+**记录事件（2.1）。** `type: event` 的行动类记录一个来源为 `rule` 的事件类（§6.9）：平台按它的 `Schedule` 检查，
+挑选出 `Bound Object` 中当前异常的对象，作为该事件类的一次规则检查记入事件账本——新出现的对象开启事件，
+不再被挑中的对象结束事件。它不调用工具，也不写业务数据。
+
+- `event_class` 必须是网络中来源为 `rule` 的事件类，`Bound Object` 必须是该事件类的 `subject`。
+- 一个事件类最多有一个记录事件的行动类。
+- `action_intent` 为 `add`。不写 `Action Source` 与 `Parameter Binding`（可以输出空表）。
+- 必须写 `Schedule`，且带 `Timezone`（§8.8）。
+- 挑选对象的依据二选一：
+  - 写 `Trigger Condition`：挑选满足条件的对象。条件的取值只能是 `const`、`property`、`check_time`、`check_date`（§8.5）。
+  - 写 `targets`：不写 `Trigger Condition`，`targets` 下只写下表中的一种。
+
+| `targets` 下的键 | 字段 | 挑选的对象 |
+|------------------|------|------------|
+| `cypher` | `query`（只读 Cypher 查询，最长 16 KiB）、`parameters` | 查询返回的 `Bound Object` 对象；查询可直接使用平台提供的 `$check_time` 与 `$check_date` |
+| `function` | `box_id`、`tool_id`、`parameters` | 网络中 Cypher 函数以表返回的对象 |
+| `metric` | `metric_id`、`version`（已发布版本）、`operator`（`<`、`<=`、`>`、`>=`、`==`、`!=`）、`value`、`subject_key` | 指标值与 `value` 比较成立的分组对应的对象；没有分组的指标用 `subject_key` 指明关于哪个对象 |
+
+`parameters` 的每个键是参数名（字母、数字与下划线，最多 32 个），值写 `value_from` 与 `value`：
+`const` 为固定值，`check_time`、`check_date` 的含义与 §8.5 相同。Cypher 查询的参数不能命名为 `check_time` 或 `check_date`。
+
+执行身份、规则版本与试运行结果由平台维护，不写进包中。导出为 2.0 时不含记录事件的行动类（2.0 也不含事件类）。
+
+````markdown
+---
+type: action_type
+id: late_order_check
+name: 识别订单超期
+tags: [采购]
+action_intent: add
+---
+
+## ActionType: 识别订单超期
+
+每天早上找出交期已过 48 小时仍未发货的采购订单。
+
+### Operation Config
+
+```yaml
+operation_config:
+  type: event
+  event_class: late_order
+```
+
+### Bound Object
+
+| Bound Object |
+|--------------|
+| purchase_order |
+
+### Trigger Condition
+
+```yaml
+operation: and
+sub_conds:
+  - field: status
+    operation: ==
+    value: 待发货
+  - field: due_at
+    operation: <
+    value_from: check_time
+    value: -PT48H
+```
+
+### Schedule
+
+| Type | Expression | Timezone |
+|------|------------|----------|
+| CRON | 0 8 * * * | Asia/Shanghai |
+````
+
+按查询挑选时，把 `Trigger Condition` 换成 `targets`：
+
+```yaml
+operation_config:
+  type: event
+  event_class: late_order
+  targets:
+    cypher:
+      query: |-
+        MATCH (o:purchase_order)
+        WHERE o.status = $status AND o.due_at < $since
+        RETURN o
+      parameters:
+        since:
+          value_from: check_time
+          value: -PT48H
+        status:
+          value_from: const
+          value: 待发货
+```
+
+**记录事件的校验**（规范库的网络校验，错误码）：`event_class` 缺失（`invalid_recognition_action`）；
+不是网络中的事件类（`invalid_event_class_ref`）；事件类来源不是 `rule`（`event_class_not_rule`）；
+`Bound Object` 不是事件类的 `subject`（`event_subject_mismatch`）；同一事件类有两个记录事件的行动类（`duplicate_recognition_action`）；
+`action_intent` 不是 `add`（`invalid_recognition_action`）；写了 `Action Source` 或参数（`recognition_action_source`）；
+条件与 `targets` 都写或都没写、`targets` 写了多种或字段不合法、条件取值不合法（`invalid_recognition_basis`）；
+没有计划、缺时区、时区不存在、表达式不合法或间隔小于 5 分钟（`invalid_recognition_schedule`）。
+其他行动类的条件用了 `check_time` 或 `check_date` 时报 `invalid_action_condition`。平台保存时还会核对 cron 表达式的实际间隔、
+函数是否可用与指标版本是否已发布。
 
 关系操作示例：为采购订单指定供应商。
 
@@ -1466,14 +1640,15 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 - frontmatter 的值原样写出，不加引号（见附录 A-3）。
 - 网络文件附带 `## Network Overview`（各类定义一览表）和 `## Directory Structure`（目录树）。
 - 各类定义按 ID 排序。
-- 对象类总是输出 `Data Source`、`Data Properties`、`Logic Properties`、`Keys` 四个小节，
+- 对象类总是输出 `Data Source`、`Data Properties`、`Logic Properties`、`Keys` 四个小节（2.1 与 3.0 的事件类只输出 `### Event`，§6.9），
   行动类总是输出 `Bound Object`、`Affect Object`、`Trigger Condition`、`Action Source`、
   `Parameter Binding`、`Schedule`，没有内容的输出空表；有操作定义时在 `Bound Object` 之前输出 `Operation Config`，
   `const` 参数的值按 JSON 写出（字符串带双引号，§8.7）。
 - 逻辑属性的 Source 表在来源为 `tool` 时输出 6 列，否则输出 3 列。
+- **（2.1）** 网络中有事件类（§6.9）而没有 3.0 专有声明时，`network.bkn` 写 `bkn_spec: "2.1"`，事件类只输出 frontmatter 的 `kinds` 与 `### Event`，记录事件的行动类输出 `type: event` 与带 `Timezone` 列的 `Schedule`（§8.8、§8.9），其余内容与 2.x 导出逐字节相同。
 - **（3.0）** 网络中存在任一 3.0 专有声明（§4.3、§6.8、§7.6、§8.2 的 `aliases`、§16）时，`network.bkn` 写
   `bkn_spec: "3.0"` 并输出新列、新小节与 `value_types/`，全部内容按 §1.3 的唯一写法输出（只写 `action_intent`，列顺序固定，`Affect Object` 只在有内容时输出）；否则导出与现在逐字节相同，不写 `bkn_spec`。
-  bkn-backend 导出时可用 `bkn_spec` 参数指定：不传即按上面的规则自动选择；`2.0` 按 2.x 导出，不含 3.0 声明，结果与从未有过声明的网络逐字节相同；`3.0` 按 3.0 导出。
+  bkn-backend 导出时可用 `bkn_spec` 参数指定：不传即按上面的规则自动选择；`2.0` 按 2.x 导出，不含 3.0 声明与事件类（事件类按普通对象类写出，记录事件的行动类不导出），结果与从未有过声明的网络逐字节相同；`2.1` 按 2.1 导出，含事件类，不含 3.0 声明；`3.0` 按 3.0 导出，含事件类。
   按 3.0 导出前，bkn-backend 先做升级预检（即网络体检，`GET /bkns/{kn_id}/check`）：`Source` 为 `property` / `input` / `const`（不区分大小写）的参数视为疑似错位，按旧参数表转换预填建议值（`ValueFrom` 转小写，`input` 行与 `-` 的 `Value` 为空），由人工确认；`ValueFrom` 不是 `property` / `input` / `const`、`Source` 也不是值来源的参数一并列出，没有建议值；写出的包还会按 3.0 规则读回一遍，读不回时拒绝并给出原因。修正前不按 3.0 导出，但可以显式选择按 2.x 导出（不含 3.0 声明）。预检不阻止在平台上保存声明。同一检查也可随时对 2.x 网络运行。
 - **（3.0）** **描述中的 `#` 行首转义。** 描述（网络、定义的描述文字）里以 `#` 开头的行会被当成标题，打乱小节结构。3.0 导出时，行首若是零个或多个 `\` 后接 `#`，在行首再加一个 `\`；3.0 导入时，行首若是一个或多个 `\` 后接 `#`，去掉一个 `\`。这一变换可逆：存储中的描述原样不动，往返逐字节不变，用户在 Studio 里写的标题也不必改写。2.x 导出不转义；旧后端读到 `\#` 时会原样保留反斜杠，只影响显示。
 - **（3.0）** 按 3.0 导出时，frontmatter 使用保留字符串类型的 YAML 序列化（`id`、`name`、`tags`、`aliases`、`reverse_name` 等需要时加引号）；3.0 导入按原文读取这些字段。2.x 导出不变（附录 A-3）。
@@ -1646,6 +1821,7 @@ unit: 元
 | 列名 | 声称接受中文列名 | 只接受英文列名 |
 | 实例数据 | `data/*.csv` | 不再属于 BKN 包；数据由资源提供 |
 | 属性与关系声明、值类型、别名 | 无 | 3.0：§6.8、§7.6、§8.2、§16 |
+| 事件类 | 无 | 2.1 起：`kinds` 与 `### Event`（§6.9）；记录事件的行动类 `type: event` 与计划时区（§8.8、§8.9） |
 | 写法收紧 | 同义写法与未知内容静默处理 | 3.0：每样东西只保留一种写法，其余拒绝（§1.3） |
 | 生命周期、主次与可信度 | 无 | 3.0：`lifecycle`（§4.3）、关系 `importance` / `fallback_for` / `verification`（§7.6） |
 
@@ -1937,7 +2113,7 @@ Display Key: order_no
 Incremental Key: updated_at
 ````
 
-要点：有 `event_time`，因此是事件类；问「最近一周的检验申请」按 `ordered_at` 过滤，问「平均出报告时长」用 `reported_at - ordered_at`。
+要点：有 `event_time`，按发生时间展示与过滤；问「最近一周的检验申请」按 `ordered_at` 过滤，问「平均出报告时长」用 `reported_at - ordered_at`。
 `search_schema` 返回 `status` 时会展开五个枚举项，`X` 带 `deprecated: true`，模型筛「已撤销」时写 `status IN ('C', 'X')`。
 
 ### C.9 relation_types/order_for_patient.bkn（direct）

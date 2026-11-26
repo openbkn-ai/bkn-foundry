@@ -33,6 +33,9 @@ type ActionOperationConfig struct {
 	RelationOperation    string         `json:"relation_operation,omitempty" mapstructure:"relation_operation"`
 	AnchorRole           string         `json:"anchor_role,omitempty" mapstructure:"anchor_role"`
 	OtherObjectCondition *ActionCondCfg `json:"other_object_condition,omitzero" mapstructure:"other_object_condition"`
+	// EventClass and Targets belong to a record-event action type (action_event.go).
+	EventClass string              `json:"event_class,omitempty" mapstructure:"event_class"`
+	Targets    *ActionEventTargets `json:"targets,omitzero" mapstructure:"targets"`
 }
 
 // ValidateIdentitySchedule keeps the legacy schedule transport within the
@@ -78,6 +81,12 @@ func ValidateActionOperation(at *ActionType) error {
 	cfg := at.OperationConfig
 	if cfg == nil {
 		return fmt.Errorf("operation_config is required; migrate existing action definitions before use")
+	}
+	if cfg.Type == ActionOperationEvent {
+		return validateEventOperation(at)
+	}
+	if cfg.EventClass != "" || cfg.Targets != nil {
+		return fmt.Errorf("event_class and targets are only valid for record-event operations")
 	}
 	switch cfg.Type {
 	case ActionOperationObject, ActionOperationRelation:

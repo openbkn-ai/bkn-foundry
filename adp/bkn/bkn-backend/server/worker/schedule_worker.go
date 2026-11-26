@@ -22,12 +22,16 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_schedule"
 )
 
 const (
 	DefaultPollInterval     = 10 * time.Second
 	DefaultLockTimeout      = 5 * time.Minute
 	DefaultExecutionTimeout = 10 * time.Minute
+	// eventScheduleSyncPolls is how many polls pass between two syncs of the schedules the
+	// platform keeps for record-event action types, in case a sync after a change was missed.
+	eventScheduleSyncPolls = 6
 )
 
 var (
@@ -62,7 +66,9 @@ func NewScheduleWorker(appSetting *common.AppSetting) *ScheduleWorker {
 			appSetting: appSetting,
 			asa:        logics.ASA,
 			ata:        logics.ATA,
-			cronParser: cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow),
+			// The five-field cron of a user's schedule, and the zoned cron or fixed rate of a
+			// record-event action type's.
+			cronParser: interfaces.ScheduleParser().Parser,
 			httpClient: &http.Client{
 				Timeout: DefaultExecutionTimeout,
 			},
@@ -110,11 +116,15 @@ func (w *ScheduleWorker) pollLoop() {
 	defer ticker.Stop()
 
 	// Run immediately on start
+	w.syncEventSchedules()
 	w.pollAndExecute()
 
-	for {
+	for polls := 1; ; polls++ {
 		select {
 		case <-ticker.C:
+			if polls%eventScheduleSyncPolls == 0 {
+				w.syncEventSchedules()
+			}
 			w.pollAndExecute()
 		case <-w.stopChan:
 			return
@@ -146,8 +156,31 @@ func (w *ScheduleWorker) pollAndExecute() {
 	}
 }
 
+// syncEventSchedules keeps the platform's schedules of record-event action types, when the module
+// that provides them is assembled.
+func (w *ScheduleWorker) syncEventSchedules() {
+	if logics.ActionTypeOperationNamed(interfaces.ActionOperationEvent) == nil {
+		return
+	}
+	if err := action_schedule.SyncEventSchedules(context.Background(), w.asa, w.ata, "", time.Now()); err != nil {
+		logger.Errorf("Failed to sync the schedules of record-event action types: %v", err)
+	}
+}
+
+// eventSchedulesRun reports whether the schedules of record-event action types may run now. One
+// that may not is passed over without a run and keeps its next run time, so it runs as planned
+// once the license allows it again.
+func eventSchedulesRun() bool {
+	operation := logics.ActionTypeOperationNamed(interfaces.ActionOperationEvent)
+	return operation != nil && operation.Available()
+}
+
 // tryExecuteSchedule attempts to acquire lock and execute a schedule
 func (w *ScheduleWorker) tryExecuteSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) {
+	if schedule.PlatformKept() && !eventSchedulesRun() {
+		logger.Debugf("Schedule %s of a record-event action type waits for the license", schedule.ID)
+		return
+	}
 	now := time.Now().UnixMilli()
 	lockTimeoutMs := w.lockTimeout.Milliseconds()
 
@@ -191,6 +224,14 @@ func (w *ScheduleWorker) tryExecuteSchedule(ctx context.Context, schedule *inter
 	}
 }
 
+// ExecuteSchedule runs the schedule once now, as its execution subject, without changing when it
+// runs next.
+func (w *ScheduleWorker) ExecuteSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) (string, error) {
+	return w.executeSchedule(ctx, schedule)
+}
+
+var _ interfaces.ScheduleExecutor = (*ScheduleWorker)(nil)
+
 // executeSchedule calls ontology-query to execute the action
 func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfaces.ActionSchedule) (string, error) {
 	executionSubject := schedule.ExecutionSubject
@@ -207,7 +248,14 @@ func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfac
 	if len(actionTypes) == 0 {
 		return "", fmt.Errorf("scheduled action type %q no longer exists", schedule.ActionTypeID)
 	}
-	if err := interfaces.ValidateIdentitySchedule(actionTypes[0], schedule.InstanceIdentities); err != nil {
+	identities := schedule.InstanceIdentities
+	if schedule.PlatformKept() {
+		// A record-event action type selects its objects when it runs.
+		if !interfaces.IsEventAction(actionTypes[0]) {
+			return "", fmt.Errorf("schedule %q follows action type %q, which no longer records events", schedule.ID, schedule.ActionTypeID)
+		}
+		identities = []map[string]any{}
+	} else if err := interfaces.ValidateIdentitySchedule(actionTypes[0], schedule.InstanceIdentities); err != nil {
 		return "", fmt.Errorf("schedule %q cannot execute: %w", schedule.ID, err)
 	}
 
@@ -217,7 +265,7 @@ func (w *ScheduleWorker) executeSchedule(ctx context.Context, schedule *interfac
 
 	requestBody := map[string]any{
 		"trigger_type":         "scheduled",
-		"_instance_identities": schedule.InstanceIdentities,
+		"_instance_identities": identities,
 		"dynamic_params":       schedule.DynamicParams,
 	}
 

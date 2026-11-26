@@ -216,8 +216,8 @@ func Test_ActionTypeAccess_CreateActionType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_action_type,f_action_intent,f_impact_contracts,f_operation_config,f_aliases,f_lifecycle_status,f_deprecation,f_object_type_id,f_condition,f_affect,f_action_source,"+
-			"f_parameters,f_schedule,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", AT_TABLE_NAME)
+			"f_parameters,f_schedule,f_execution_subject,f_execution_subject_type,f_rule_version,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_revision) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", AT_TABLE_NAME)
 
 		Convey("CreateActionType Success \n", func() {
 			smock.ExpectBegin()
@@ -256,9 +256,9 @@ func Test_ActionTypeAccess_CreateActionTypes(t *testing.T) {
 		second.ATName = "Action Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_action_type,f_action_intent,f_impact_contracts,f_operation_config,f_aliases,f_lifecycle_status,f_deprecation,f_object_type_id,f_condition,"+
-			"f_affect,f_action_source,f_parameters,f_schedule,f_creator,f_creator_type,f_create_time,f_updater,"+
+			"f_affect,f_action_source,f_parameters,f_schedule,f_execution_subject,f_execution_subject_type,f_rule_version,f_creator,f_creator_type,f_create_time,f_updater,"+
 			"f_updater_type,f_update_time,f_revision) VALUES "+
-			"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", AT_TABLE_NAME)
+			"(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", AT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := ata.db.Begin()
@@ -284,19 +284,20 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
-			"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", AT_TABLE_NAME)
 
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 			"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+			"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 			"f_creator", "f_creator_type", "f_create_time",
 			"f_updater", "f_updater_type", "f_update_time",
 		}).AddRow(
 			"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 			"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 			"admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
@@ -362,12 +363,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -387,12 +389,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -412,12 +415,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -437,12 +441,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -462,12 +467,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -487,12 +493,13 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", invalidBytes, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -509,19 +516,20 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 		Convey("ListActionTypes with Sort ASC\n", func() {
 			sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 				"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
-				"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+				"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name ASC LIMIT 20 OFFSET 10", AT_TABLE_NAME)
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -551,19 +559,20 @@ func Test_ActionTypeAccess_ListActionTypes(t *testing.T) {
 		Convey("ListActionTypes with Sort DESC\n", func() {
 			sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 				"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
-				"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+				"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 				"FROM %s WHERE f_kn_id = ? AND f_branch = ? ORDER BY f_name DESC", AT_TABLE_NAME)
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -612,7 +621,7 @@ func Test_ActionTypeAccess_ListActionTypeSummariesPreservesPublicSchema(t *testi
 		sqlStr, _, err := processQueryCondition(query, sq.Select(
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
 			"f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id", "f_condition",
-			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_creator", "f_creator_type",
+			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_execution_subject", "f_execution_subject_type", "f_rule_version", "f_creator", "f_creator_type",
 			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
 		).From(AT_TABLE_NAME)).OrderBy("f_name ASC", "f_id ASC").Limit(10).ToSql()
 		So(err, ShouldBeNil)
@@ -620,12 +629,12 @@ func Test_ActionTypeAccess_ListActionTypeSummariesPreservesPublicSchema(t *testi
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
 			"f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id", "f_condition",
-			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_creator", "f_creator_type",
+			"f_affect", "f_action_source", "f_parameters", "f_schedule", "f_execution_subject", "f_execution_subject_type", "f_rule_version", "f_creator", "f_creator_type",
 			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
 		}).AddRow(
 			"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "kn1", "main",
 			interfaces.ACTION_SOURCE_TYPE_TOOL, "", impactContractsBytes, nil, nil, nil, nil, "ot1", conditionBytes,
-			affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "admin", "admin",
+			affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "", "admin", "admin",
 			testUpdateTime, "admin", "admin", testUpdateTime,
 		)
 		smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
@@ -703,7 +712,7 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
-			"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?,?)", AT_TABLE_NAME)
 
 		conditionBytes, _ := jsoncodec.Marshal((*interfaces.ActionCondCfg)(nil))
@@ -716,18 +725,19 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 			"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+			"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 			"f_creator", "f_creator_type", "f_create_time",
 			"f_updater", "f_updater_type", "f_update_time",
 		}).AddRow(
 			"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 			"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 			"admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		).AddRow(
 			"at2", "Action Type 2", `"tag2"`, "comment2", "icon2", "color2", "detail2",
 			"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 			"admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
@@ -791,12 +801,13 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -816,12 +827,13 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -841,12 +853,13 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -866,12 +879,13 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -891,12 +905,13 @@ func Test_ActionTypeAccess_GetActionTypesByIDs(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -918,8 +933,8 @@ func Test_ActionTypeAccess_UpdateActionType(t *testing.T) {
 		ata, smock := MockNewActionTypeAccess(appSetting)
 
 		sqlStr := fmt.Sprintf("UPDATE %s SET f_action_intent = ?, f_action_source = ?, f_action_type = ?, f_affect = ?, f_aliases = ?, f_bkn_raw_content = ?, "+
-			"f_color = ?, f_comment = ?, f_condition = ?, f_deprecation = ?, f_icon = ?, f_impact_contracts = ?, f_lifecycle_status = ?, f_name = ?, f_object_type_id = ?, f_operation_config = ?, f_parameters = ?, "+
-			"f_revision = ?, f_schedule = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
+			"f_color = ?, f_comment = ?, f_condition = ?, f_deprecation = ?, f_execution_subject = ?, f_execution_subject_type = ?, f_icon = ?, f_impact_contracts = ?, f_lifecycle_status = ?, f_name = ?, f_object_type_id = ?, f_operation_config = ?, f_parameters = ?, "+
+			"f_revision = ?, f_rule_version = ?, f_schedule = ?, f_tags = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? "+
 			"WHERE f_id = ? AND f_kn_id = ? AND f_branch = ?", AT_TABLE_NAME)
 		existsSQL := fmt.Sprintf("SELECT 1 FROM %s WHERE f_branch = ? AND f_id = ? AND f_kn_id = ? LIMIT 1", AT_TABLE_NAME)
 
@@ -1256,7 +1271,7 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_action_type, f_action_intent, f_impact_contracts, f_operation_config, f_aliases, f_lifecycle_status, f_deprecation, f_object_type_id, f_condition, f_affect, f_action_source, "+
-			"f_parameters, f_schedule, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_parameters, f_schedule, f_execution_subject, f_execution_subject_type, f_rule_version, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", AT_TABLE_NAME)
 
 		conditionBytes, _ := jsoncodec.Marshal((*interfaces.ActionCondCfg)(nil))
@@ -1269,18 +1284,19 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 			"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+			"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 			"f_creator", "f_creator_type", "f_create_time",
 			"f_updater", "f_updater_type", "f_update_time",
 		}).AddRow(
 			"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 			"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 			"admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		).AddRow(
 			"at2", "Action Type 2", `"tag2"`, "comment2", "icon2", "color2", "detail2",
 			"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+			conditionBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 			"admin", "admin", testUpdateTime,
 			"admin", "admin", testUpdateTime,
 		)
@@ -1333,12 +1349,13 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				invalidBytes, affectBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -1358,12 +1375,13 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes,
+				conditionBytes, invalidBytes, actionSourceBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -1383,12 +1401,13 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes,
+				conditionBytes, affectBytes, invalidBytes, parametersBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -1408,12 +1427,13 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes,
+				conditionBytes, affectBytes, actionSourceBytes, invalidBytes, scheduleBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)
@@ -1433,12 +1453,13 @@ func Test_ActionTypeAccess_GetAllActionTypesByKnID(t *testing.T) {
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_action_type", "f_action_intent", "f_impact_contracts", "f_operation_config", "f_aliases", "f_lifecycle_status", "f_deprecation", "f_object_type_id",
 				"f_condition", "f_affect", "f_action_source", "f_parameters", "f_schedule",
+				"f_execution_subject", "f_execution_subject_type", "f_rule_version",
 				"f_creator", "f_creator_type", "f_create_time",
 				"f_updater", "f_updater_type", "f_update_time",
 			}).AddRow(
 				"at1", "Action Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", interfaces.ACTION_SOURCE_TYPE_TOOL, "", nil, nil, nil, nil, nil, "ot1",
-				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes,
+				conditionBytes, affectBytes, actionSourceBytes, parametersBytes, invalidBytes, "", "", "",
 				"admin", "admin", testUpdateTime,
 				"admin", "admin", testUpdateTime,
 			)

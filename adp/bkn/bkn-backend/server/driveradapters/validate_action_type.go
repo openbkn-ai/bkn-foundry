@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -447,6 +448,15 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		}
 	}
 
+	if cfg.ValueFrom == bknsdk.ValueFromCheckTime || cfg.ValueFrom == bknsdk.ValueFromCheckDate {
+		// The check time or date of a record-event action type compares with one value.
+		switch cfg.Operation {
+		case cond.OperationEq, cond.OperationNotEq, cond.OperationGt, cond.OperationGte, cond.OperationLt, cond.OperationLte:
+			return nil
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("%s compares with ==, !=, >, >=, < or <=, not %s", cfg.ValueFrom, cfg.Operation))
+	}
 	if cfg.ValueFrom == "property" || cfg.ValueFrom == "input" {
 		if _, noValue := cond.NotRequiredValueOperationMap[cfg.Operation]; noValue {
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("this condition operator does not accept a value reference")

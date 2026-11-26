@@ -2178,6 +2178,12 @@ components:
             Bound MCP Server tool count. An MCP tool is addressed by (mcp_id, tool_name) and runs
             through the MCP proxy, so it is counted separately rather than inside functions_total.
           type: integer
+        event_classes_total:
+          description: >-
+            Event class count: object types whose `kinds` include `event`. They are counted in
+            object_types_total as well. Absent when the caller sees the network only for
+            navigation.
+          type: integer
     ConceptGroupInfo:
       description: Concept group information
       type: object

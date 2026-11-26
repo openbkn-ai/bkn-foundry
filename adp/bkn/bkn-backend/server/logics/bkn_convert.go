@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"math"
+	"slices"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
@@ -65,8 +66,18 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 		},
 		Aliases:   interfaces.NormalizeAliases(bknObj.Aliases),
 		Lifecycle: toADPLifecycle(bknObj.Lifecycle),
+		Kinds:     slices.Clone(bknObj.Kinds),
 		KNID:      knID,
 		Branch:    branch,
+	}
+	if bknObj.Event != nil {
+		adpObj.Event = &interfaces.ObjectTypeEvent{
+			Source:       bknObj.Event.Source,
+			Subject:      bknObj.Event.Subject,
+			Severity:     bknObj.Event.Severity,
+			MergeHours:   bknObj.Event.MergeHours,
+			HandlingNote: bknObj.Event.HandlingNote,
+		}
 	}
 
 	// Convert DataSource.
@@ -138,12 +149,22 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 			Tags:      adpObj.Tags,
 			Aliases:   adpObj.Aliases,
 			Lifecycle: toBKNLifecycle(adpObj.Lifecycle),
+			Kinds:     slices.Clone(adpObj.Kinds),
 		},
 		Summary:        bknsdk.ExtractSummary(adpObj.Comment),
 		Description:    adpObj.Comment,
 		PrimaryKeys:    adpObj.PrimaryKeys,
 		DisplayKey:     adpObj.DisplayKey,
 		IncrementalKey: adpObj.IncrementalKey,
+	}
+	if adpObj.Event != nil {
+		bknObj.Event = &bknsdk.ObjectTypeEvent{
+			Source:       adpObj.Event.Source,
+			Subject:      adpObj.Event.Subject,
+			Severity:     adpObj.Event.Severity,
+			MergeHours:   adpObj.Event.MergeHours,
+			HandlingNote: adpObj.Event.HandlingNote,
+		}
 	}
 
 	// Convert DataSource.
@@ -412,6 +433,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		adpAction.OperationConfig = &interfaces.ActionOperationConfig{
 			Type: cfg.Type, RelationTypeID: cfg.RelationTypeID, RelationOperation: cfg.RelationOperation,
 			AnchorRole: cfg.AnchorRole, OtherObjectCondition: toADPActionCondCfg(cfg.OtherObjectCondition),
+			EventClass: cfg.EventClass, Targets: toADPEventTargets(cfg.Targets),
 		}
 	}
 	for _, ic := range bknAction.ImpactContracts {
@@ -469,6 +491,7 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 		adpAction.Schedule = interfaces.Schedule{
 			Type:       bknAction.Schedule.Type,
 			Expression: bknAction.Schedule.Expression,
+			Timezone:   bknAction.Schedule.Timezone,
 		}
 	}
 
@@ -503,6 +526,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 		bknAction.OperationConfig = &bknsdk.ActionOperationConfig{
 			Type: cfg.Type, RelationTypeID: cfg.RelationTypeID, RelationOperation: cfg.RelationOperation,
 			AnchorRole: cfg.AnchorRole, OtherObjectCondition: toBKNActionCondCfg(cfg.OtherObjectCondition),
+			EventClass: cfg.EventClass, Targets: toBKNEventTargets(cfg.Targets),
 		}
 	}
 	for _, ic := range adpAction.ImpactContracts {
@@ -562,10 +586,75 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 		bknAction.Schedule = &bknsdk.Schedule{
 			Type:       adpAction.Schedule.Type,
 			Expression: adpAction.Schedule.Expression,
+			Timezone:   adpAction.Schedule.Timezone,
 		}
 	}
+	// The execution subject, the rule version and the trial of a recognition action are the
+	// platform's: a package does not carry them.
 
 	return bknAction
+}
+
+// toADPEventTargets converts the targets of a recognition action.
+func toADPEventTargets(targets *bknsdk.ActionEventTargets) *interfaces.ActionEventTargets {
+	if targets == nil {
+		return nil
+	}
+	converted := &interfaces.ActionEventTargets{}
+	if c := targets.Cypher; c != nil {
+		converted.Cypher = &interfaces.ActionCypherTargets{Query: c.Query, Parameters: toADPTargetParameters(c.Parameters)}
+	}
+	if f := targets.Function; f != nil {
+		converted.Function = &interfaces.ActionFunctionTargets{BoxID: f.BoxID, ToolID: f.ToolID,
+			Parameters: toADPTargetParameters(f.Parameters)}
+	}
+	if m := targets.Metric; m != nil {
+		converted.Metric = &interfaces.ActionMetricTargets{MetricID: m.MetricID, Version: m.Version,
+			Operator: m.Operator, Value: m.Value, SubjectKey: m.SubjectKey}
+	}
+	return converted
+}
+
+func toADPTargetParameters(parameters map[string]bknsdk.ActionTargetParameter) map[string]interfaces.ActionTargetParameter {
+	if parameters == nil {
+		return nil
+	}
+	converted := make(map[string]interfaces.ActionTargetParameter, len(parameters))
+	for name, p := range parameters {
+		converted[name] = interfaces.ActionTargetParameter{ValueFrom: p.ValueFrom, Value: p.Value}
+	}
+	return converted
+}
+
+// toBKNEventTargets converts the targets of a recognition action.
+func toBKNEventTargets(targets *interfaces.ActionEventTargets) *bknsdk.ActionEventTargets {
+	if targets == nil {
+		return nil
+	}
+	converted := &bknsdk.ActionEventTargets{}
+	if c := targets.Cypher; c != nil {
+		converted.Cypher = &bknsdk.ActionCypherTargets{Query: c.Query, Parameters: toBKNTargetParameters(c.Parameters)}
+	}
+	if f := targets.Function; f != nil {
+		converted.Function = &bknsdk.ActionFunctionTargets{BoxID: f.BoxID, ToolID: f.ToolID,
+			Parameters: toBKNTargetParameters(f.Parameters)}
+	}
+	if m := targets.Metric; m != nil {
+		converted.Metric = &bknsdk.ActionMetricTargets{MetricID: m.MetricID, Version: m.Version,
+			Operator: m.Operator, Value: m.Value, SubjectKey: m.SubjectKey}
+	}
+	return converted
+}
+
+func toBKNTargetParameters(parameters map[string]interfaces.ActionTargetParameter) map[string]bknsdk.ActionTargetParameter {
+	if parameters == nil {
+		return nil
+	}
+	converted := make(map[string]bknsdk.ActionTargetParameter, len(parameters))
+	for name, p := range parameters {
+		converted[name] = bknsdk.ActionTargetParameter{ValueFrom: p.ValueFrom, Value: p.Value}
+	}
+	return converted
 }
 
 // ToADPRiskType converts a BKN RiskType to an ADP RiskType.

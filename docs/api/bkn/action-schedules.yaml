@@ -8,6 +8,11 @@ info:
     Object creation, relation changes, and independent tool invocation require target fields that this schedule API does not yet store or dispatch; creating or activating such schedules is rejected.
     All APIs are exposed under /api/bkn-backend/v1, require OAuth2 authentication, default the branch query parameter
     to main, and use Unix milliseconds for timestamps.
+
+    A record-event action type (operation_config.type=event) runs on the schedule its definition carries. The
+    platform keeps one schedule for each such action type of the running version (source=action_type): it is listed
+    and read here, and can be run now, but it cannot be updated, deactivated or deleted through this API (409
+    BknBackend.ActionSchedule.PlatformKept). Change the schedule on the action type instead.
 security:
   - OAuth2: []
 paths:
@@ -260,6 +265,12 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          description: The schedule is kept by the platform for a record-event action type (BknBackend.ActionSchedule.PlatformKept)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}/status:
     put:
       tags:
@@ -319,6 +330,12 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          description: The schedule is kept by the platform for a record-event action type (BknBackend.ActionSchedule.PlatformKept)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_ids}:
     delete:
       tags:
@@ -364,6 +381,81 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "409":
+          description: One of the schedules is kept by the platform for a record-event action type (BknBackend.ActionSchedule.PlatformKept)
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/action-schedules/{schedule_id}/run:
+    post:
+      tags:
+        - ActionSchedule
+      summary: Run an action schedule now
+      description: |-
+        Runs the schedule once now, as its execution subject, as it runs on time, and leaves its next run as it was.
+        Requires the network's modify permission. A schedule of a record-event action type runs only where the
+        license allows record-event action types; elsewhere it is not found. The execution runs asynchronously:
+        follow it by its ID in the action logs of ontology-query.
+      operationId: runActionSchedule
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: Business knowledge network ID
+          schema:
+            type: string
+        - name: schedule_id
+          in: path
+          required: true
+          description: Action schedule ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: Branch name. Defaults to main.
+          schema:
+            type: string
+            default: main
+      responses:
+        "202":
+          description: The execution started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [execution_id]
+                properties:
+                  execution_id:
+                    type: string
+        "401":
+          description: Unauthorized
+        "403":
+          description: No modify permission on the network
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "404":
+          description: Knowledge network or action schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "502":
+          description: The execution could not be started
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "503":
+          description: The schedule worker is not running
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
 components:
   securitySchemes:
     OAuth2:
@@ -401,7 +493,16 @@ components:
           description: ID of the bound action type
         cron_expression:
           type: string
-          description: Standard five-field cron expression with minute, hour, day, month, and weekday fields
+          description: |-
+            Standard five-field cron expression with minute, hour, day, month, and weekday fields. A schedule of a
+            record-event action type reads CRON_TZ=<zone> <cron> or @every <interval>, from the action type's schedule.
+        source:
+          type: string
+          enum:
+            - action_type
+          description: |-
+            action_type for a schedule the platform keeps for a record-event action type, read-only here; absent for
+            a user's schedule.
         _instance_identities:
           type: array
           description: Instance identity list. The JSON key has a leading underscore.

@@ -131,6 +131,14 @@ type ActionType struct {
 	ModuleType string   `json:"module_type" mapstructure:"module_type"`
 	Operations []string `json:"operations,omitempty"`
 
+	// ExecutionSubject and RuleVersion are kept by the platform for a record-event action type:
+	// the person it checks as, who last changed its basis or schedule, and the digest of its basis.
+	// Requests cannot set them.
+	ExecutionSubject *AccountInfo `json:"execution_subject,omitempty" mapstructure:"-"`
+	RuleVersion      string       `json:"rule_version,omitempty" mapstructure:"-"`
+	// Trial is the trial run of a record-event action type saved through the API.
+	Trial *ActionEventTrial `json:"trial,omitempty" mapstructure:"-"`
+
 	IfNameModify bool `json:"-"`
 	// Vector.
 	Vector []float32 `json:"_vector,omitempty"`
@@ -174,6 +182,8 @@ type ActionAffect struct {
 type Schedule struct {
 	Type       string `json:"type" mapstructure:"type"`
 	Expression string `json:"expression" mapstructure:"expression"`
+	// Timezone is the IANA zone of the schedule; only a record-event action type runs on it.
+	Timezone string `json:"timezone,omitempty" mapstructure:"timezone"`
 }
 
 // Object type pagination query.
@@ -188,6 +198,8 @@ type ActionTypesQueryParams struct {
 	ActionType        string
 	OperationKind     string
 	RelationOperation string
+	// EventClass keeps the record-event action types of the event class.
+	EventClass string
 	// ValidAuthorizationIDsOnly excludes stored IDs that cannot be represented
 	// as canonical Safe child resources.
 	ValidAuthorizationIDsOnly bool

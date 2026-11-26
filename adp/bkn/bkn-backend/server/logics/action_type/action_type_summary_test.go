@@ -142,3 +142,29 @@ func TestListActionTypeSummariesReturnsEmptyForEmptyScope(t *testing.T) {
 		t.Fatalf("result = (%v, %d, %v), want empty", items, total, err)
 	}
 }
+
+// A record-event action type shows who it checks as by name, as it shows its creator and updater.
+func TestActionSummariesNameTheExecutionSubject(t *testing.T) {
+	service, _, _, ots, ums := newActionSummaryTestService(t)
+	item := summaryAction("at-check", "orders")
+	item.ExecutionSubject = &interfaces.AccountInfo{ID: "u-1", Type: "user"}
+	ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"orders"}, false).Return(map[string]*interfaces.ObjectType{}, nil)
+	ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(3)).DoAndReturn(
+		func(_ context.Context, accounts []*interfaces.AccountInfo) error {
+			for _, account := range accounts {
+				if account.ID == "u-1" {
+					account.Name = "Ann"
+				}
+			}
+			return nil
+		})
+
+	if err := service.hydrateActionSummaries(context.Background(), "kn-1", interfaces.MAIN_BRANCH,
+		[]*interfaces.ActionType{item}); err != nil {
+		t.Fatal(err)
+	}
+	if item.ExecutionSubject.Name != "Ann" {
+		t.Fatalf("execution subject = %#v, want its name", item.ExecutionSubject)
+	}
+}

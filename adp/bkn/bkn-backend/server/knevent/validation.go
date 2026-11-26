@@ -8,19 +8,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
-var eventTypeCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
-
 // Limits the contract leaves to the columns that hold them.
 const (
-	subjectMax       = 128
 	attributeNameMax = 128
 	objectNameMax    = 256
 	messageMax       = 1024
@@ -54,32 +49,6 @@ func normalizeJSON(field string, raw json.RawMessage, limit int) (json.RawMessag
 		return nil, tooLarge{detail: fmt.Sprintf("%s exceeds %d bytes", field, limit)}
 	}
 	return json.RawMessage(trimmed), nil
-}
-
-func validateEventTypeInput(input *interfaces.KnEventTypeInput) error {
-	input.Name = strings.TrimSpace(input.Name)
-	switch {
-	case input.Name == "":
-		return invalidf("name is required")
-	case longerThan(input.Name, interfaces.KnEventNameMax):
-		return invalidf("name exceeds %d characters", interfaces.KnEventNameMax)
-	case input.Source != interfaces.KnEventSourceRule && input.Source != interfaces.KnEventSourceReport:
-		return invalidf("source must be rule or report")
-	case longerThan(input.Subject, subjectMax):
-		return invalidf("subject exceeds %d characters", subjectMax)
-	case longerThan(input.Severity, interfaces.KnEventSeverityMax):
-		return invalidf("severity exceeds %d characters", interfaces.KnEventSeverityMax)
-	case input.MergeHours < 0 || math.IsNaN(input.MergeHours) || math.IsInf(input.MergeHours, 0):
-		return invalidf("merge_hours must be a non-negative number")
-	case longerThan(input.RuleVersion, interfaces.KnEventRuleVersionMax):
-		return invalidf("rule_version exceeds %d characters", interfaces.KnEventRuleVersionMax)
-	}
-	rule, err := normalizeJSON("rule", input.Rule, interfaces.KnEventRuleMaxBytes)
-	if err != nil {
-		return err
-	}
-	input.Rule = rule
-	return nil
 }
 
 func validateAttributes(field string, attributes map[string]interfaces.KnEventAttribute) error {
@@ -140,6 +109,8 @@ func validateRuleCheckInput(input *interfaces.KnEventRuleCheckInput) error {
 		return invalidf("event_type is required")
 	case input.Status != interfaces.KnEventCheckOK && input.Status != interfaces.KnEventCheckUnknown:
 		return invalidf("status must be ok or unknown")
+	case longerThan(input.ActionTypeID, interfaces.RESOURCE_ID_MAX_LENGTH):
+		return invalidf("action_type_id exceeds %d characters", interfaces.RESOURCE_ID_MAX_LENGTH)
 	case longerThan(input.RuleVersion, interfaces.KnEventRuleVersionMax):
 		return invalidf("rule_version exceeds %d characters", interfaces.KnEventRuleVersionMax)
 	case longerThan(input.Message, messageMax):
@@ -156,6 +127,16 @@ func validateRuleCheckInput(input *interfaces.KnEventRuleCheckInput) error {
 		}
 		if err := validateAttributes(fmt.Sprintf("hits[%d].attributes", index), hit.Attributes); err != nil {
 			return err
+		}
+		if len(hit.Detail) > 0 {
+			detail, err := normalizeJSON(fmt.Sprintf("hits[%d].detail", index), hit.Detail, interfaces.KnEventHitDetailMaxBytes)
+			if err != nil {
+				return err
+			}
+			if detail[0] != '{' {
+				return invalidf("hits[%d].detail must be a JSON object", index)
+			}
+			input.Hits[index].Detail = detail
 		}
 	}
 	return nil

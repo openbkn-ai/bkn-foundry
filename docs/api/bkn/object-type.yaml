@@ -21,6 +21,36 @@ info:
     never copied into the public response. Tool-backed logical properties use the same 400/502/503
     dependency classification.
 
+    ### Event classes
+
+    `kinds` lists the platform behaviours of an object type, each configured by the field of the same
+    name. The one kind is `event`, from the professional edition up: the object type is an event class,
+    each of its objects an event of the network's event ledger (`kn-events.yaml`), configured by
+    `event`. Without the license, or on a platform without the event module, `event` is refused as an
+    unsupported kind, the same answer as for any unknown kind; event classes that exist are read and
+    deleted as before.
+
+    - The platform keeps an event class's `data_source` (a dataset that copies the class's events),
+      `data_properties` (the standard event properties), `logic_properties` (none), `primary_keys`
+      (`event_id`), `display_key` (`title`) and `incremental_key` (none). A create or update may leave
+      them out; written and different from what the platform keeps, they are refused with 400
+      `BknBackend.ObjectType.InvalidParameter`. Only the `display_name` and `comment` of a standard
+      property may differ.
+    - The platform keeps the relation type `{id}_subject` from the class to `event.subject`, made,
+      changed and deleted with the class. The relation type API and imports may not change it.
+    - `kinds` is fixed once the object type exists. `event.source` is fixed once the class exists. An
+      update that leaves `event` out keeps the stored configuration.
+    - `event.subject` must be an object type of the same branch with exactly one primary key, not the
+      class itself. The ID of an event class has at most 64 characters.
+    - A class that has events is not deleted: 409 `BknBackend.KnEvent.EventTypeInUse`. Deleting one
+      leaves its dataset in place.
+    - A class whose source is `rule` may have one record-event action type (`operation_config.type`
+      `event`, `action-type.yaml`), bound to `event.subject`, that records its checks on a schedule.
+      While it has one, the class is not deleted and its `event.subject` does not change: 409
+      `BknBackend.KnEvent.RecognizedByAction` (error_details: `{"event_type", "action_type_id", "change"}`).
+      A delete checks for events first, so a class that has events answers `EventTypeInUse` whether or
+      not an action type records it.
+
     ### Refused declarations and references
 
     A save the declaration rules refuse answers 400 `BknBackend.ObjectType.InvalidParameter.Declarations`. As before,
@@ -1394,6 +1424,8 @@ paths:
             that this request does not delete. `error_details.references` lists each reference; change or remove them
             first, or delete the referring definitions in the same request.
 
+            BknBackend.KnEvent.EventTypeInUse: an event class to delete has events; `error_details` is its ID.
+
             On a versioned network the request also answers 409 `BknBackend.KNVersion.DefinitionModified` when `If-Match`
             is stale, `BknBackend.KNVersion.DraftRevisionMismatch` when `expected_draft_revision` is stale, and
             `BknBackend.KNVersion.VersioningDisabling` while versioning is being turned off.
@@ -2148,6 +2180,16 @@ components:
               type: string
             replaced_by:
               type: string
+        kinds:
+          description: |
+            Platform behaviours of the object type, each configured by the field of the same name. The one kind is
+            `event`: the object type is an event class (see "Event classes" above). Fixed once the object type exists.
+          type: array
+          items:
+            type: string
+            enum: [event]
+        event:
+          $ref: "#/components/schemas/ObjectTypeEvent"
         tags:
           description: Tags used for business identification
           type: array
@@ -2226,6 +2268,16 @@ components:
               type: string
             replaced_by:
               type: string
+        kinds:
+          description: |
+            Platform behaviours of the object type, each configured by the field of the same name. The one kind is
+            `event`: the object type is an event class (see "Event classes" above). Fixed once the object type exists.
+          type: array
+          items:
+            type: string
+            enum: [event]
+        event:
+          $ref: "#/components/schemas/ObjectTypeEvent"
         tags:
           description: Tags used for business identification
           type: array
@@ -2376,6 +2428,14 @@ components:
               type: string
             replaced_by:
               type: string
+        kinds:
+          description: Platform behaviours of the object type; left out for a plain object type. `event` is an event class.
+          type: array
+          items:
+            type: string
+            enum: [event]
+        event:
+          $ref: "#/components/schemas/ObjectTypeEvent"
         tags:
           description: Tags. May be empty.
           type: array
@@ -2490,6 +2550,14 @@ components:
               type: string
             replaced_by:
               type: string
+        kinds:
+          description: Platform behaviours of the object type; left out for a plain object type. `event` is an event class.
+          type: array
+          items:
+            type: string
+            enum: [event]
+        event:
+          $ref: "#/components/schemas/ObjectTypeEvent"
         tags:
           description: Tags. May be empty.
           type: array
@@ -2615,6 +2683,33 @@ components:
               description: Index status update time
               type: integer
               format: int64
+    ObjectTypeEvent:
+      description: |
+        Configuration of the event kind: the object type is an event class. Required when `kinds` lists `event`, refused
+        otherwise.
+      type: object
+      required: [source, subject]
+      additionalProperties: false
+      properties:
+        source:
+          description: "`rule`: a rule finds the events; `report`: people and applications report them. Fixed once the class exists."
+          type: string
+          enum: [rule, report]
+        subject:
+          description: ID of the object type the events are about, with exactly one primary key; not the class itself.
+          type: string
+        severity:
+          description: Default severity of the class's events.
+          type: string
+          maxLength: 16
+        merge_hours:
+          description: Window, in hours, in which a report about the same object is a duplicate. 0 or absent merges nothing.
+          type: number
+          minimum: 0
+        handling_note:
+          description: What to do about an event of the class.
+          type: string
+          maxLength: 500
     ConceptGroup:
       description: Concept groups
       required:

@@ -22,11 +22,7 @@ const (
 	projectPeriod = 5 * time.Second
 	// projectRun bounds one round; what is left goes on the next.
 	projectRun = time.Minute
-	// backfillPeriod is how often event types without a class are looked for.
-	// There are only those created before events were object types, and
-	// those whose class could not be made.
-	backfillPeriod = 10 * time.Minute
-	// retryAfter is how long a network or an event type that failed is left alone.
+	// retryAfter is how long a network or a class that failed is left alone.
 	retryAfter = time.Minute
 	// projectLock lets one replica write the datasets at a time, so an event
 	// is never written older than it was written before.
@@ -35,15 +31,14 @@ const (
 	feedPage         = interfaces.KnEventChangeDefaultSize
 	rewritePage      = 500
 	networksPerRound = 500
-	typesPerRound    = 500
+	classesPerRound  = 500
 )
 
 // projector keeps the copy of the ledger in the event classes' datasets. It
-// does three things in turn, all by one goroutine:
+// does two things in turn, both by one goroutine:
 //
-//   - gives a class to the event types that have none;
-//   - writes the ledger's events of a type whose dataset lacks them: the type
-//     was just given the dataset, or the dataset was lost;
+//   - writes the ledger's events of a class whose dataset lacks them: the
+//     dataset was made after the class had events, or was lost;
 //   - follows each network's feed, and writes every event that changed as it
 //     is now.
 //
@@ -54,11 +49,10 @@ type projector struct {
 	classes *classes
 	now     func() time.Time
 
-	backfilled time.Time
-	// resume is the last event written of a type that is being written from
-	// the ledger, by network and code: a round goes on where the last stopped.
+	// resume is the last event written of a class that is being written from
+	// the ledger, by network and class: a round goes on where the last stopped.
 	resume map[string]string
-	// retry is when what failed is tried again, by network, or network and code.
+	// retry is when what failed is tried again, by network, or network and class.
 	retry map[string]time.Time
 }
 
@@ -83,18 +77,15 @@ func (p *projector) run(ctx context.Context) error {
 	}
 }
 
-// round makes again the class releases that failed, and does one turn of the
-// work, unless another replica is at it.
+// round does one turn of the work, unless another replica is at it.
 func (p *projector) round(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, projectRun)
 	defer cancel()
-	// Each replica makes again the releases that failed on it.
-	p.classes.republish(ctx)
 	_, err := p.store.alone(ctx, projectLock, func() error {
 		for _, step := range []struct {
 			name string
 			do   func(context.Context) error
-		}{{"give classes", p.backfill}, {"write ledger events", p.rewrite}, {"follow feeds", p.follow}} {
+		}{{"write ledger events", p.rewrite}, {"follow feeds", p.follow}} {
 			if err := step.do(ctx); err != nil && ctx.Err() == nil {
 				logger.Errorf("knowledge-network event classes: %s: %v", step.name, err)
 			}
@@ -106,7 +97,7 @@ func (p *projector) round(ctx context.Context) {
 	}
 }
 
-func typeKey(knID, code string) string { return knID + "\x00" + code }
+func classKey(knID, classID string) string { return knID + "\x00" + classID }
 
 // waiting reports whether what failed under key is still left alone.
 func (p *projector) waiting(key string) bool {
@@ -123,131 +114,37 @@ func (p *projector) failed(key, what string, err error) {
 	logger.Errorf("knowledge-network event classes: %s: %v", what, err)
 }
 
-// backfill gives a class to the event types that have none. A versioned
-// network's classes are published at once, in one version for all the types
-// of the network given theirs in a round, unless its draft holds changes of
-// other people, which they then wait in with them. One version, not one per
-// type: a network that keeps no full history drops its versions before the
-// last two at each publication, and an upgrade must not drop its people's.
-func (p *projector) backfill(ctx context.Context) error {
-	if p.now().Sub(p.backfilled) < backfillPeriod {
-		return nil
-	}
-	types, err := p.store.classlessTypes(ctx, typesPerRound)
-	if err != nil {
-		return err
-	}
-	p.backfilled = p.now()
-	var networks []string
-	byNetwork := map[string][]interfaces.KnEventType{}
-	for _, eventType := range types {
-		if _, seen := byNetwork[eventType.KNID]; !seen {
-			networks = append(networks, eventType.KNID)
-		}
-		byNetwork[eventType.KNID] = append(byNetwork[eventType.KNID], eventType)
-	}
-	for _, knID := range networks {
-		if ctx.Err() != nil {
-			return nil
-		}
-		p.giveAll(ctx, knID, byNetwork[knID])
-	}
-	return nil
-}
-
-// giveAll gives the event types of a network their classes under the head
-// lock of its classes, and publishes them once the lock is let go.
-func (p *projector) giveAll(ctx context.Context, knID string, types []interfaces.KnEventType) {
-	var writes context.Context
-	var given []string
-	err := p.store.exclusive(ctx, classLock(knID), func() error {
-		var err error
-		if writes, err = p.classes.begin(ctx, knID); err != nil {
-			return err
-		}
-		for _, eventType := range types {
-			if ctx.Err() != nil {
-				return nil
-			}
-			defined, err := p.give(writes, eventType)
-			if err != nil {
-				logger.Warnf("knowledge-network event classes: give event type %s of network %s its class: %v",
-					eventType.Code, eventType.KNID, err)
-			}
-			if defined {
-				given = append(given, eventType.Name)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		logger.Warnf("knowledge-network event classes: give the event types of network %s their classes: %v", knID, err)
-	}
-	if len(given) > 0 {
-		p.classes.publish(writes, knID, classNote(given...))
-	}
-}
-
-// give makes the class of an event type and stores it with the type, unless
-// the type was given one or deleted meanwhile, or another type has the class.
-// It is called under the head lock of the network's classes, with a context
-// from begin; defined says its class definitions were written, which are then
-// published even when the type could not be stored with them, as ensure does.
-func (p *projector) give(ctx context.Context, listed interfaces.KnEventType) (defined bool, err error) {
-	eventType, found, err := p.store.getType(ctx, listed.KNID, listed.Code)
-	if err != nil || !found || eventType.ObjectTypeID != "" {
-		return false, err
-	}
-	if err := claim(ctx, p.store, eventType.KNID, eventType.Code, false); err != nil {
-		return false, err
-	}
-	class, err := p.classes.define(ctx, eventType)
-	if err != nil {
-		return false, err
-	}
-	return true, p.store.write(ctx, eventType.KNID, func(w *writer) error {
-		current, found, err := w.eventType(eventType.Code)
-		if err != nil || !found || current.ObjectTypeID != "" {
-			return err
-		}
-		if err := p.classes.clear(ctx, eventType, class); err != nil {
-			return err
-		}
-		return w.setClass(eventType.Code, class)
-	})
-}
-
-// rewrite writes the ledger's events of the types whose datasets lack them.
+// rewrite writes the ledger's events of the classes whose datasets lack them.
 func (p *projector) rewrite(ctx context.Context) error {
-	types, err := p.store.unsyncedTypes(ctx, typesPerRound)
+	classes, err := p.store.unsyncedClasses(ctx, classesPerRound)
 	if err != nil {
 		return err
 	}
-	for _, eventType := range types {
+	for _, class := range classes {
 		if ctx.Err() != nil {
 			return nil
 		}
-		key := typeKey(eventType.KNID, eventType.Code)
+		key := classKey(class.knID, class.id)
 		if p.waiting(key) {
 			continue
 		}
-		if err := p.rewriteType(ctx, eventType, key); err != nil {
-			p.failed(key, "write the events of type "+eventType.Code+" of network "+eventType.KNID, err)
+		if err := p.rewriteClass(ctx, class, key); err != nil {
+			p.failed(key, "write the events of class "+class.id+" of network "+class.knID, err)
 		}
 	}
 	return nil
 }
 
-// rewriteType writes a type's events page by page in the order of their IDs.
+// rewriteClass writes a class's events page by page in the order of their IDs.
 // An event that changes meanwhile is in the feed, which is followed after.
-func (p *projector) rewriteType(ctx context.Context, eventType interfaces.KnEventType, key string) error {
+func (p *projector) rewriteClass(ctx context.Context, class classRef, key string) error {
 	for {
-		events, err := p.store.eventsOfType(ctx, eventType.KNID, eventType.Code, p.resume[key], rewritePage)
+		events, err := p.store.eventsOfClass(ctx, class.knID, class.id, p.resume[key], rewritePage)
 		if err != nil {
 			return err
 		}
 		if len(events) > 0 {
-			restored, err := p.put(ctx, eventType.KNID, eventType.Code, eventType.DatasetID, events)
+			restored, err := p.put(ctx, class.knID, class.id, events)
 			if err != nil || restored {
 				// A dataset made again holds nothing: the next round starts over.
 				return err
@@ -262,27 +159,27 @@ func (p *projector) rewriteType(ctx context.Context, eventType interfaces.KnEven
 		}
 	}
 	delete(p.resume, key)
-	return p.store.setSynced(ctx, eventType.KNID, eventType.Code, eventType.DatasetID, true)
+	return p.store.setSynced(ctx, class.knID, class.id, true)
 }
 
-// put writes events to the dataset of their type. A dataset that is gone is
-// made again, and its type marked for the ledger's events to be written to
+// put writes events to the dataset of their class. A dataset that is gone is
+// made again, and its class marked for the ledger's events to be written to
 // it: restored then says the events given were not written.
-func (p *projector) put(ctx context.Context, knID, code, datasetID string, events []*interfaces.KnEvent) (restored bool, err error) {
-	if err = p.classes.write(ctx, datasetID, events); err == nil {
+func (p *projector) put(ctx context.Context, knID, classID string, events []*interfaces.KnEvent) (restored bool, err error) {
+	if err = p.classes.write(ctx, classDatasetID(knID, classID), events); err == nil {
 		return false, nil
 	}
 	if ctx.Err() != nil {
 		return false, err
 	}
-	made, restoreErr := p.classes.restore(ctx, interfaces.KnEventType{KNID: knID, Code: code, DatasetID: datasetID})
+	made, restoreErr := p.classes.restore(ctx, knID, classID)
 	if restoreErr != nil || !made {
 		return false, err
 	}
-	logger.Warnf("knowledge-network event classes: dataset %s of event type %s of network %s was gone and is made again",
-		datasetID, code, knID)
-	delete(p.resume, typeKey(knID, code))
-	return true, p.store.setSynced(ctx, knID, code, datasetID, false)
+	logger.Warnf("knowledge-network event classes: dataset of class %s of network %s was gone and is made again",
+		classID, knID)
+	delete(p.resume, classKey(knID, classID))
+	return true, p.store.setSynced(ctx, knID, classID, false)
 }
 
 // follow writes what changed in the networks whose feeds are ahead of their
@@ -308,9 +205,9 @@ func (p *projector) follow(ctx context.Context) error {
 
 // followNetwork reads a network's feed from where its datasets have got to
 // and writes each event that changed, once, as it is now. The position moves
-// on only past what was written. An event of a type without a dataset is
-// passed over: the type's events are written from the ledger once it has one.
-// So is a check's refresh: it changes nothing a dataset keeps.
+// on only past what was written. An event of a class the module does not keep
+// a dataset for is passed over. So is a check's refresh: it changes nothing a
+// dataset keeps.
 func (p *projector) followNetwork(ctx context.Context, position feedPosition) error {
 	after := position.projected
 	for ctx.Err() == nil {
@@ -323,22 +220,22 @@ func (p *projector) followNetwork(ctx context.Context, position feedPosition) er
 			// was refreshes that have expired and been purged.
 			return p.store.setProjected(ctx, position.knID, position.last)
 		}
-		datasets, err := p.store.datasetsOf(ctx, position.knID)
+		kept, err := p.store.classesOf(ctx, position.knID)
 		if err != nil {
 			return err
 		}
-		byType := map[string][]*interfaces.KnEvent{}
+		byClass := map[string][]*interfaces.KnEvent{}
 		seen := make(map[string]bool, len(changes))
 		for index := range changes {
 			event := &changes[index].Event
-			if changes[index].Action == interfaces.KnEventChecked || seen[event.ID] || datasets[event.EventType] == "" {
+			if changes[index].Action == interfaces.KnEventChecked || seen[event.ID] || !kept[event.EventType] {
 				continue
 			}
 			seen[event.ID] = true
-			byType[event.EventType] = append(byType[event.EventType], event)
+			byClass[event.EventType] = append(byClass[event.EventType], event)
 		}
-		for code, events := range byType {
-			if _, err := p.put(ctx, position.knID, code, datasets[code], events); err != nil {
+		for classID, events := range byClass {
+			if _, err := p.put(ctx, position.knID, classID, events); err != nil {
 				return err
 			}
 		}

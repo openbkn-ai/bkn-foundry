@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 func (r *restHandler) HandleActionTypeGetOverrideByIn(c *gin.Context) {
@@ -199,8 +200,9 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// Create the resources.
-	atIDs, err := r.createActionTypes(ctx, knID, branch, actionTypes, mode, strictMode)
+	// Create the resources. A record-event action type runs once first, and the reply shows what
+	// it found.
+	atIDs, err := r.createActionTypes(logics.WithActionTrial(ctx), knID, branch, actionTypes, mode, strictMode)
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
@@ -209,9 +211,19 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	trials := map[string]*interfaces.ActionEventTrial{}
+	for _, actionType := range actionTypes {
+		if actionType.Trial != nil {
+			trials[actionType.ATID] = actionType.Trial
+		}
+	}
 	result := []any{}
 	for _, atID := range atIDs {
-		result = append(result, map[string]any{"id": atID})
+		entry := map[string]any{"id": atID}
+		if trial := trials[atID]; trial != nil {
+			entry["trial"] = trial
+		}
+		result = append(result, entry)
 	}
 
 	logger.Debug("Handler CreateActionTypes Success")
@@ -502,8 +514,8 @@ func (r *restHandler) UpdateActionType(c *gin.Context, visitor hydra.Visitor) {
 	}
 	actionType.IfNameModify = ifNameModify
 
-	// Update the resource by ID.
-	err = r.updateActionType(ctx, &actionType, strictMode)
+	// Update the resource by ID. A record-event action type runs once first.
+	err = r.updateActionType(logics.WithActionTrial(ctx), &actionType, strictMode)
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
 
@@ -515,6 +527,11 @@ func (r *restHandler) UpdateActionType(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler UpdateActionType Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	if actionType.Trial != nil {
+		// What the record-event action type found when it ran once before the save.
+		rest.ReplyOK(c, http.StatusOK, map[string]any{"trial": actionType.Trial})
+		return
+	}
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
 
@@ -723,12 +740,15 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 		ActionType:        actionType,
 		OperationKind:     c.Query("operation_kind"),
 		RelationOperation: c.Query("relation_operation"),
+		EventClass:        c.Query("event_class"),
 	}
 	if objectTypeID != "" {
 		parameter.ObjectTypeIDs = []string{objectTypeID}
 	}
-	if parameter.OperationKind != "" && parameter.OperationKind != "object" && parameter.OperationKind != "relation" && parameter.OperationKind != "tool" {
-		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("operation_kind must be object, relation or tool"))
+	switch parameter.OperationKind {
+	case "", interfaces.ActionOperationObject, interfaces.ActionOperationRelation, interfaces.ActionOperationTool, interfaces.ActionOperationEvent:
+	default:
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails("operation_kind must be object, relation, tool or event"))
 		return
 	}
 	if parameter.RelationOperation != "" && parameter.RelationOperation != "create" && parameter.RelationOperation != "delete" {

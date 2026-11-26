@@ -103,6 +103,13 @@ type ObjectType struct {
 	// declared names the declaration fields the JSON carried, null included.
 	declared map[string]bool
 
+	// Kinds lists the platform behaviours the object type has, each configured by the field of
+	// the same name; empty for a plain object type. Kinds are fixed once the object type exists.
+	Kinds []string `json:"kinds,omitempty" mapstructure:"kinds"`
+	// Event configures the event kind: the object type is an event class. An update that leaves
+	// it out keeps the stored configuration.
+	Event *ObjectTypeEvent `json:"event,omitempty" mapstructure:"event"`
+
 	KNID          string          `json:"kn_id" mapstructure:"kn_id"`
 	Branch        string          `json:"branch" mapstructure:"branch"`
 	Revision      string          `json:"revision,omitempty" mapstructure:"-"`
@@ -465,6 +472,8 @@ type ObjectTypesQueryParams struct {
 	Branch      string
 	KNID        string
 	OTIDS       []string // Filter by object type IDs
+	// Kind keeps only the object types whose kinds include it, such as event for event classes.
+	Kind string
 }
 
 // Object search list.
