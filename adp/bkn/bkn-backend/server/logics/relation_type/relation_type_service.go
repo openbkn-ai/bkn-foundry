@@ -1371,7 +1371,7 @@ func (rts *relationTypeService) GetRelationTypeIDsByKnID(ctx context.Context, kn
 // GetAllRelationTypesByKnID reads every relation type of one network branch, unfiltered.
 // Internal call without permission checks: the caller applies its own.
 func (rts *relationTypeService) GetAllRelationTypesByKnID(ctx context.Context, knID string, branch string) ([]*interfaces.RelationType, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("按kn_id[%s]获取全部关系类", knID))
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, fmt.Sprintf("Get all relation types of knowledge network [%s]", knID))
 	defer span.End()
 
 	if branch == "" {
