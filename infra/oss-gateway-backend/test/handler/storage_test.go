@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -87,10 +87,10 @@ func TestStorageHandler_Create_Success(t *testing.T) {
 		Region:          "cn-hangzhou",
 	}
 
-	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
+	mockService.On("Create", mock.Anything, mock.IsType((*service.CreateStorageRequest)(nil))).
 		Return("storage123", nil)
 
-	body, _ := json.Marshal(req)
+	body, _ := jsoncodec.Marshal(req)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/storages", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -116,6 +116,37 @@ func TestStorageHandler_Create_InvalidJSON(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestStorageHandler_Update_InvalidJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "duplicate name", body: `{"storage_name":"original","storage_name":"replacement"}`},
+		{name: "second JSON value", body: `{} {}`},
+		{name: "invalid UTF-8", body: "{\"storage_name\":\"\xff\"}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockStorageService)
+			mockService.On("Update", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			h := handler.NewStorageHandler(mockService)
+			router := setupRouter()
+			router.PUT("/storages/:id", h.Update)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPut, "/storages/storage123", bytes.NewBufferString(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+
+			router.ServeHTTP(w, r)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), `"code":"400000"`)
+			mockService.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
 func TestStorageHandler_Create_ValidationError_StorageNameExists(t *testing.T) {
 	mockService := new(MockStorageService)
 	h := handler.NewStorageHandler(mockService)
@@ -132,13 +163,13 @@ func TestStorageHandler_Create_ValidationError_StorageNameExists(t *testing.T) {
 		Region:          "cn-hangzhou",
 	}
 
-	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
+	mockService.On("Create", mock.Anything, mock.IsType((*service.CreateStorageRequest)(nil))).
 		Return("", &service.StorageValidationError{
 			Code:   "400031107",
 			Params: map[string]interface{}{"StorageName": "existing-storage"},
 		})
 
-	body, _ := json.Marshal(req)
+	body, _ := jsoncodec.Marshal(req)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/storages", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -167,7 +198,7 @@ func TestStorageHandler_Create_ValidationError_StorageExists(t *testing.T) {
 		Region:          "cn-hangzhou",
 	}
 
-	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
+	mockService.On("Create", mock.Anything, mock.IsType((*service.CreateStorageRequest)(nil))).
 		Return("", &service.StorageValidationError{
 			Code: "400031108",
 			Params: map[string]interface{}{
@@ -176,7 +207,7 @@ func TestStorageHandler_Create_ValidationError_StorageExists(t *testing.T) {
 			},
 		})
 
-	body, _ := json.Marshal(req)
+	body, _ := jsoncodec.Marshal(req)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/storages", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -206,13 +237,13 @@ func TestStorageHandler_Create_ValidationError_InvalidVendorType(t *testing.T) {
 		Region:          "cn-hangzhou",
 	}
 
-	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
+	mockService.On("Create", mock.Anything, mock.IsType((*service.CreateStorageRequest)(nil))).
 		Return("", &service.StorageValidationError{
 			Code:   "400031110",
 			Params: map[string]interface{}{"VendorType": "INVALID"},
 		})
 
-	body, _ := json.Marshal(req)
+	body, _ := jsoncodec.Marshal(req)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/storages", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -231,16 +262,18 @@ func TestStorageHandler_Update_Success(t *testing.T) {
 	router := setupRouter()
 	router.PUT("/storages/:id", h.Update)
 
-	req := service.UpdateStorageRequest{
+	enabled := false
+	expected := &service.UpdateStorageRequest{
 		StorageName: "updated-storage",
+		IsEnabled:   &enabled,
 	}
 
-	mockService.On("Update", mock.Anything, "storage123", mock.AnythingOfType("*service.UpdateStorageRequest")).
+	mockService.On("Update", mock.Anything, "storage123", expected).
 		Return(nil)
 
-	body, _ := json.Marshal(req)
+	body := bytes.NewBufferString(`{"storage_name":"updated-storage","is_enabled":false,"extra":true}`)
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/storages/storage123", bytes.NewBuffer(body))
+	r := httptest.NewRequest(http.MethodPut, "/storages/storage123", body)
 	r.Header.Set("Content-Type", "application/json")
 
 	router.ServeHTTP(w, r)
@@ -259,10 +292,10 @@ func TestStorageHandler_Update_Error(t *testing.T) {
 		StorageName: "updated-storage",
 	}
 
-	mockService.On("Update", mock.Anything, "storage123", mock.AnythingOfType("*service.UpdateStorageRequest")).
+	mockService.On("Update", mock.Anything, "storage123", mock.IsType((*service.UpdateStorageRequest)(nil))).
 		Return(errors.New("update failed"))
 
-	body, _ := json.Marshal(req)
+	body, _ := jsoncodec.Marshal(req)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/storages/storage123", bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -358,7 +391,7 @@ func TestStorageHandler_List_Success(t *testing.T) {
 		},
 	}
 
-	mockService.On("List", mock.Anything, mock.AnythingOfType("*service.ListStorageRequest")).
+	mockService.On("List", mock.Anything, mock.IsType((*service.ListStorageRequest)(nil))).
 		Return(expectedResponse, nil)
 
 	w := httptest.NewRecorder()

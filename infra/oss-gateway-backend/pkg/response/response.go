@@ -3,6 +3,7 @@ package response
 import (
 	stderrors "errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -15,15 +16,15 @@ import (
 
 // Response is the OSS Gateway response envelope.
 type Response struct {
-	Res         int         `json:"res,omitempty"`
+	Res         int         `json:"res,omitzero"`
 	Code        string      `json:"code,omitempty"`
 	Message     string      `json:"message,omitempty"`
 	Description string      `json:"description,omitempty"`
 	Detail      string      `json:"detail,omitempty"`
 	Solution    string      `json:"solution,omitempty"`
 	Cause       string      `json:"cause,omitempty"`
-	Data        interface{} `json:"data,omitempty"`
-	Count       int         `json:"count,omitempty"`
+	Data        interface{} `json:"data,omitzero"`
+	Count       int         `json:"count,omitzero"`
 }
 
 type localizedError struct {
@@ -34,29 +35,29 @@ type localizedError struct {
 
 // Success writes a successful response.
 func Success(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusOK, Response{Res: 0, Data: data})
+	rest.ReplyOK(c, http.StatusOK, Response{Res: 0, Data: data})
 }
 
 // SuccessWithCount writes a successful paginated response.
 func SuccessWithCount(c *gin.Context, data interface{}, count int) {
-	c.JSON(http.StatusOK, Response{Count: count, Data: data})
+	rest.ReplyOK(c, http.StatusOK, Response{Count: count, Data: data})
 }
 
 // ErrorWithCode writes a localized error while preserving the stable code and
-// HTTP status. Cause remains an English diagnostic in the existing response field.
+// HTTP status. Upstream diagnostics in Cause are normalized to valid UTF-8.
 func ErrorWithCode(c *gin.Context, code *errors.ErrorCode, templateData map[string]interface{}, cause string) {
 	if code == nil {
 		code = &errors.InternalError
 	}
 	text := localize(c, code, templateData)
 	rest.MarkLocalizedResponse(c)
-	c.JSON(code.HTTPStatus, Response{
+	rest.ReplyOK(c, code.HTTPStatus, Response{
 		Code:        code.Code,
 		Message:     text.Message,
 		Description: text.Description,
 		Detail:      text.Description,
 		Solution:    text.Solution,
-		Cause:       cause,
+		Cause:       strings.ToValidUTF8(cause, "\uFFFD"),
 	})
 }
 
@@ -129,7 +130,7 @@ func ServiceNotReady(c *gin.Context, checks map[string]string) {
 	code := &errors.ServiceNotReady
 	text := localize(c, code, nil)
 	rest.MarkLocalizedResponse(c)
-	c.JSON(code.HTTPStatus, gin.H{
+	rest.ReplyOK(c, code.HTTPStatus, gin.H{
 		"code":        code.Code,
 		"message":     text.Message,
 		"description": text.Description,

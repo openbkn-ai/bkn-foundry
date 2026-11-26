@@ -2,11 +2,11 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"oss-gateway/internal/model"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -38,7 +38,7 @@ func (c *StorageCache) GetStorage(ctx context.Context, storageID string) (*model
 	}
 
 	var storage model.StorageConfig
-	if err := json.Unmarshal([]byte(data), &storage); err != nil {
+	if err := jsoncodec.Unmarshal([]byte(data), &storage); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal storage config: %w", err)
 	}
 
@@ -48,7 +48,7 @@ func (c *StorageCache) GetStorage(ctx context.Context, storageID string) (*model
 func (c *StorageCache) SetStorage(ctx context.Context, storage *model.StorageConfig) error {
 	key := storageConfigPrefix + storage.StorageID
 
-	data, err := json.Marshal(storage)
+	data, err := jsoncodec.Marshal(storage)
 	if err != nil {
 		return fmt.Errorf("failed to marshal storage: %w", err)
 	}

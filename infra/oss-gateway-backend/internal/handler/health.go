@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"gorm.io/gorm"
 )
 
@@ -25,7 +26,7 @@ func NewHealthHandler(db *gorm.DB, redis *cache.RedisClient) *HealthHandler {
 }
 
 func (h *HealthHandler) Alive(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
+	rest.ReplyOK(c, http.StatusOK, gin.H{
 		"res":    0,
 		"status": "ok",
 	})
@@ -61,7 +62,7 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	}
 
 	if allHealthy {
-		c.JSON(http.StatusOK, gin.H{
+		rest.ReplyOK(c, http.StatusOK, gin.H{
 			"res":    0,
 			"status": "ok",
 			"checks": checks,
