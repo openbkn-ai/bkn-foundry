@@ -115,7 +115,7 @@ func TestHeadHandler_BatchGetHeadURL_Success(t *testing.T) {
 		Return(expectedURLs, nil)
 
 	reqBody := map[string]interface{}{
-		"keys":    []string{"file1.txt", "file2.txt"},
+		"Keys":    []string{"file1.txt", "file2.txt"},
 		"expires": int64(9007199254740993),
 	}
 	body, _ := jsoncodec.Marshal(reqBody)

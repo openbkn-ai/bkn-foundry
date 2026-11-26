@@ -122,6 +122,7 @@ func TestStorageHandler_Update_InvalidJSON(t *testing.T) {
 		body string
 	}{
 		{name: "duplicate name", body: `{"storage_name":"original","storage_name":"replacement"}`},
+		{name: "duplicate name with different case", body: `{"is_enabled":true,"IS_ENABLED":false}`},
 		{name: "second JSON value", body: `{} {}`},
 		{name: "invalid UTF-8", body: "{\"storage_name\":\"\xff\"}"},
 	}
@@ -257,29 +258,42 @@ func TestStorageHandler_Create_ValidationError_InvalidVendorType(t *testing.T) {
 }
 
 func TestStorageHandler_Update_Success(t *testing.T) {
-	mockService := new(MockStorageService)
-	h := handler.NewStorageHandler(mockService)
-	router := setupRouter()
-	router.PUT("/storages/:id", h.Update)
-
 	enabled := false
-	expected := &service.UpdateStorageRequest{
-		StorageName: "updated-storage",
-		IsEnabled:   &enabled,
+	tests := []struct {
+		name      string
+		body      string
+		isEnabled *bool
+	}{
+		{name: "exact names", body: `{"storage_name":"updated-storage","is_enabled":false,"extra":true}`, isEnabled: &enabled},
+		{name: "mixed case names", body: `{"Storage_Name":"updated-storage","IS_ENABLED":false}`, isEnabled: &enabled},
+		{name: "different delimiter", body: `{"storage_name":"updated-storage","IsEnabled":false,"is-enabled":false}`},
 	}
 
-	mockService.On("Update", mock.Anything, "storage123", expected).
-		Return(nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockStorageService)
+			h := handler.NewStorageHandler(mockService)
+			router := setupRouter()
+			router.PUT("/storages/:id", h.Update)
 
-	body := bytes.NewBufferString(`{"storage_name":"updated-storage","is_enabled":false,"extra":true}`)
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPut, "/storages/storage123", body)
-	r.Header.Set("Content-Type", "application/json")
+			var actual *service.UpdateStorageRequest
+			mockService.On("Update", mock.Anything, "storage123", mock.IsType((*service.UpdateStorageRequest)(nil))).
+				Run(func(args mock.Arguments) { actual = args.Get(2).(*service.UpdateStorageRequest) }).
+				Return(nil).Once()
 
-	router.ServeHTTP(w, r)
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPut, "/storages/storage123", bytes.NewBufferString(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, r)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	mockService.AssertExpectations(t)
+			assert.Equal(t, http.StatusOK, w.Code)
+			mockService.AssertExpectations(t)
+			assert.Equal(t, &service.UpdateStorageRequest{
+				StorageName: "updated-storage",
+				IsEnabled:   tt.isEnabled,
+			}, actual)
+		})
+	}
 }
 
 func TestStorageHandler_Update_Error(t *testing.T) {
