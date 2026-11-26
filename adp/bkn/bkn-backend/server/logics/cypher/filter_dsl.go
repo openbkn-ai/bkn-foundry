@@ -381,6 +381,20 @@ type dateComparison struct {
 	PlanPredicate
 }
 
+// dateValue reports whether a computed comparison's side is a date column or
+// min or max over one, as max(s.shipped_on) > o.due is.
+func dateValue(value PlanExpression, isDate func(table int, column string) bool) bool {
+	switch node := value.(type) {
+	case PlanValueColumn:
+		return isDate(node.Table, node.Column)
+	case PlanAggregate:
+		return (node.Function == "MIN" || node.Function == "MAX") && !node.Star && node.Argument == nil &&
+			node.Column != "" && isDate(node.Table, node.Column)
+	default:
+		return false
+	}
+}
+
 // markDateComparisons wraps every comparison and IN over a date or time
 // column, at any depth, so that pushFilter leaves it to the executor.
 func markDateComparisons(predicate PlanPredicate, isDate func(table int, column string) bool) PlanPredicate {
@@ -395,6 +409,10 @@ func markDateComparisons(predicate PlanPredicate, isDate func(table int, column 
 		}
 	case PlanColumnComparison:
 		if isDate(node.LeftTable, node.LeftColumn) || isDate(node.RightTable, node.RightColumn) {
+			return dateComparison{PlanPredicate: node}
+		}
+	case PlanExpressionComparison:
+		if dateValue(node.Left, isDate) || dateValue(node.Right, isDate) {
 			return dateComparison{PlanPredicate: node}
 		}
 	case PlanNegation:

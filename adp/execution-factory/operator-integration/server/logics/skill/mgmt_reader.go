@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
@@ -136,6 +137,7 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 		}
 	}
 
+	resp.Content = strings.ToValidUTF8(resp.Content, "\uFFFD")
 	return resp, nil
 }
 
@@ -223,6 +225,7 @@ func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *int
 		resp.URL = downloadURL
 	}
 
+	resp.Content = strings.ToValidUTF8(resp.Content, "\uFFFD")
 	return resp, nil
 }
 

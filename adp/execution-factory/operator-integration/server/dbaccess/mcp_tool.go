@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -63,10 +63,7 @@ func (mt *mcpToolDB) BatchInsert(ctx context.Context, tx *sql.Tx, tools []*model
 	values := make([][]interface{}, len(tools))
 	for i, tool := range tools {
 		if tool.MCPToolID == "" {
-			id, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return generateErr
-			}
+			id := uuid.NewV7()
 			tool.MCPToolID = id.String()
 		}
 		now := time.Now().UnixNano()

@@ -193,6 +193,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricExecution(ctx context.C
 			return dependencyResolutionFailed(ctx, err)
 		}
 	}
+	ctx = interfaces.WithMetricExecutionModelAccess(ctx, knID)
 	err := s.authorizeObjectMetricDefinitions(ctx, knID, inputs, resources)
 	var denied *httperrors.HTTPError
 	if errors.As(err, &denied) && denied.HTTPCode == http.StatusForbidden {

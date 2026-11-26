@@ -156,8 +156,8 @@ github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 h1:RWengNIwukTxcDr9
 github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826/go.mod h1:TaXosZuwdSHYgviHp1DAtfrULt5eUgsSMsZf+YrPgl8=
 github.com/nsqio/go-nsq v1.1.0 h1:PQg+xxiUjA7V+TLdXw7nVrJ5Jbl3sN86EhGCQj4+FYE=
 github.com/nsqio/go-nsq v1.1.0/go.mod h1:vKq36oyeVXgsS5Q8YEO7WghqidAVXQlcFxzQbQTuDEY=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba h1:VPcAPuWYjeZ8ilpB5aA+kAgUEoPXbQ0AfM5EAU/xQwU=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641 h1:KkrAhSuJ4la0WzUpk/jLQCH3MLP/3xeiRNBKrxlNBXk=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=
 github.com/openbkn-ai/licverify v0.5.1/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=

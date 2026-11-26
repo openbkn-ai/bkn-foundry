@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 func observationTestForwarder() *forwarder {
@@ -100,6 +102,30 @@ func TestForwardObservationFollowsRedirects(t *testing.T) {
 		So(observation.QueryKeys, ShouldResemble, []string{"keep"})
 		So(observation.Redirected, ShouldBeTrue)
 	})
+}
+
+func TestRequestObservationJSONIncludesOnlyKnownPositiveContentLength(t *testing.T) {
+	for _, tc := range []struct {
+		length int64
+		want   string
+	}{
+		{length: -1},
+		{length: 0},
+		{length: 17, want: "17"},
+	} {
+		t.Run(strconv.FormatInt(tc.length, 10), func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/", nil)
+			req.ContentLength = tc.length
+			body, err := jsoncodec.Marshal(buildRequestObservation(req, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response map[string]json.RawMessage
+			if err := json.Unmarshal(body, &response); err != nil || string(response["content_length"]) != tc.want {
+				t.Fatalf("observation = %s, want content_length %q, err = %v", body, tc.want, err)
+			}
+		})
+	}
 }
 
 func TestForwardObservationDoesNotClaimRedirectWhenPolicyReturnsRedirectResponse(t *testing.T) {

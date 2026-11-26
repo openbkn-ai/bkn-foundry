@@ -121,7 +121,7 @@ func (h *UploadHandler) GetUploadPartURLs(c *gin.Context) {
 		InternalRequest bool   `json:"internal_request"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSON(c.Request.Body, &req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -177,7 +177,7 @@ func (h *UploadHandler) CompleteMultipartUpload(c *gin.Context) {
 	}
 
 	var etagMap map[string]string
-	if err := c.ShouldBindJSON(&etagMap); err != nil {
+	if err := bindJSON(c.Request.Body, &etagMap); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}

@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/creasty/defaults"
-	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -278,10 +278,7 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 	metadataMap := map[string]interfaces.IMetadataDB{}
 	for _, metadataDB := range metadataDBs {
 		version := metadataDB.GetVersion()
-		metadataVersion, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return nil, generateErr
-		}
+		metadataVersion := uuid.NewV7()
 		metadataDB.SetVersion(metadataVersion.String())
 		metadataMap[version] = metadataDB
 	}

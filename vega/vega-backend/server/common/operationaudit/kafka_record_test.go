@@ -28,6 +28,7 @@ func TestBuildKafkaAuditRecord(t *testing.T) {
 	require.NoError(t, err)
 	var record map[string]any
 	require.NoError(t, json.Unmarshal(value, &record))
+	assert.Equal(t, "039c09b0-00d3-5432-930f-e09e82a0aaa1", record["event_id"])
 	assert.Equal(t, "vega", record["source_id"])
 	assert.Equal(t, "vega.operation.observed", record["event_name"])
 	assert.Equal(t, "success", record["outcome"])

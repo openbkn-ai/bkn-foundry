@@ -11,11 +11,10 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-sql-driver/mysql v1.10.2
-	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -59,6 +58,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.34.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.4 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect

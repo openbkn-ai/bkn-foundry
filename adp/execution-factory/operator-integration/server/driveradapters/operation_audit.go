@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	infra "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -101,10 +101,7 @@ func operationAuditForSurface(recorder interface {
 		if path == "/capabilities/openapi-bundle" && outcome == "success" && c.GetBool(operationaudit.PartialBundleContextKey) {
 			outcome, failureCode, failureMessage = "unknown", "", ""
 		}
-		attemptID, err := uuid.NewV7()
-		if err != nil {
-			return
-		}
+		attemptID := uuid.NewV7()
 		now := time.Now().UTC()
 		sourceChannel := "api"
 		if private {

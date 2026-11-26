@@ -159,8 +159,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/nsqio/go-nsq v1.1.0 h1:PQg+xxiUjA7V+TLdXw7nVrJ5Jbl3sN86EhGCQj4+FYE=
 github.com/nsqio/go-nsq v1.1.0/go.mod h1:vKq36oyeVXgsS5Q8YEO7WghqidAVXQlcFxzQbQTuDEY=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125092756-a47ecfe26db5 h1:u66iIY/4lmCZDgyln2yzA3K3p//Hj71ojItc9VeM4iQ=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125092756-a47ecfe26db5/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641 h1:KkrAhSuJ4la0WzUpk/jLQCH3MLP/3xeiRNBKrxlNBXk=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
 github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server v0.0.0-20261125092756-a47ecfe26db5 h1:mY+GdSsDLUxDQC017yfpnBfOdSRu/xTdMavdLiQGE1A=
 github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server v0.0.0-20261125092756-a47ecfe26db5/go.mod h1:PqzYFf5DOvvEPmUJtyWznOSbeTKbod23fHzwvLmnXic=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=

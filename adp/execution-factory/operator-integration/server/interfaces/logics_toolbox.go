@@ -90,7 +90,7 @@ type ToolBoxToolInfo struct {
 	CreateUser   string       `json:"create_user"`                                              // Create user.
 	UpdateUser   string       `json:"update_user"`                                              // Update user.
 	ReleaseUser  string       `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime  int64        `json:"release_time,omitempty"`                                   // Release time.
+	ReleaseTime  int64        `json:"release_time,omitzero"`                                    // Release time.
 }
 
 // ToolInfo tool information.
@@ -186,7 +186,7 @@ type ToolBoxInfo struct {
 	CreateUser   string              `json:"create_user"`                                              // Create user.
 	UpdateUser   string              `json:"update_user"`                                              // Update user.
 	ReleaseUser  string              `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime  int64               `json:"release_time,omitempty"`                                   // Release time.
+	ReleaseTime  int64               `json:"release_time,omitzero"`                                    // Release time.
 }
 
 // QueryToolBoxListResp Gets the toolbox list and returns the results.

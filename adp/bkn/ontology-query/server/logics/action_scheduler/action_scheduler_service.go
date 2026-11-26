@@ -197,7 +197,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		return nil, actionTargetError(ctx, err.Error())
 	}
 	if actionType.OperationConfig.Type == interfaces.ActionOperationEvent {
-		// Selected at each check, as the schedule's execution subject: no proxy, no governance.
+		// Event checks select targets as the schedule's execution subject.
 		return s.executeEventAction(ctx, req, &actionType, actionTypeSnapshot)
 	}
 	if err := bindEventInputs(&actionType, req.InputBindings); err != nil {

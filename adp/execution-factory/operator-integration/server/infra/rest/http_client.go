@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -172,7 +172,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 		}
 		return
 	}
-	err = sonic.Unmarshal(respBody, &respData)
+	err = jsoncodec.Unmarshal(respBody, &respData)
 	if err != nil {
 		c.logger.Error(err.Error())
 	}
@@ -235,7 +235,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 			reader = bytes.NewReader(v)
 		} else {
 			var reqData []byte
-			reqData, err = sonic.Marshal(reqParam)
+			reqData, err = jsoncodec.Marshal(reqParam)
 			if err != nil {
 				c.logger.Error(err.Error())
 				return nil, err
@@ -274,7 +274,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 			read = bytes.NewReader(v)
 		} else {
 			var reqData []byte
-			reqData, err := sonic.Marshal(reqParam)
+			reqData, err := jsoncodec.Marshal(reqParam)
 			if err != nil {
 				errs <- err
 				return

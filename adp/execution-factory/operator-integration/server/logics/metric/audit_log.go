@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
@@ -318,10 +318,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 		return nil, fmt.Errorf("invalid operation type")
 	}
 	// organization.
-	outBizID, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
+	outBizID := uuid.NewV7()
 	logObj := &AuditLogOperationModel{
 		Operation:   p.Operation,
 		Description: p.Description,
@@ -451,11 +448,7 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 		b.logger.WithContext(ctx).Warn("audit coverage_gap: unsupported outcome")
 		return
 	}
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		b.logger.WithContext(ctx).Warn("audit coverage_gap: unable to generate event id")
-		return
-	}
+	eventID := uuid.NewV7()
 	requestID := "unknown"
 	if traceCtx, ok := infraCommon.GetTraceContextFromCtx(ctx); ok && infraCommon.IsValidBKNRequestID(traceCtx.RequestID) {
 		requestID = traceCtx.RequestID

@@ -28,6 +28,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 func (r *restHandler) HandleObjectTypeGetOverrideByIn(c *gin.Context) {
@@ -1014,7 +1015,17 @@ func (r *restHandler) GetObjectTypesByIn(c *gin.Context) {
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
 	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
+	setMetricExecutionModelRead(c)
 	r.GetObjectTypes(c, visitor, false)
+}
+
+// Only internal object and relation detail handlers accept this request purpose.
+func setMetricExecutionModelRead(c *gin.Context) {
+	if c.GetHeader("X-Bkn-Model-Purpose") == "metric-execution" &&
+		c.DefaultQuery("branch", interfaces.MAIN_BRANCH) == interfaces.MAIN_BRANCH &&
+		c.Query("kn_version") != interfaces.DRAFT_BRANCH {
+		c.Request = c.Request.WithContext(permission.WithMetricExecutionModelRead(c.Request.Context()))
+	}
 }
 
 // Get object type by ID (external).

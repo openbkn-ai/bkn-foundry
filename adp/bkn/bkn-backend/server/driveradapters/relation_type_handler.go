@@ -757,6 +757,7 @@ func (r *restHandler) GetRelationTypesByIn(c *gin.Context) {
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
 	// Construct a visitor for the internal request.
 	visitor := visitor.GenerateVisitor(c)
+	setMetricExecutionModelRead(c)
 	r.GetRelationTypes(c, visitor)
 }
 

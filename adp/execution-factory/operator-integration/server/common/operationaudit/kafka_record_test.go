@@ -4,15 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestBuildKafkaRecordPreservesManagementAttemptWithoutInventingChangedState(t *testing.T) {
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	eventID := uuid.NewV7()
 	entry := Entry{
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "user-1", ActorName: "Operator", ActorType: "user", AuthMethod: "oauth",
@@ -50,10 +46,7 @@ func TestSafeAuditAliasKeepsValidBKNIdentifierButMasksCredentials(t *testing.T) 
 }
 
 func TestBuildKafkaRecordKeepsUnauthenticatedDenialAnonymous(t *testing.T) {
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	eventID := uuid.NewV7()
 	entry := Entry{
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "anonymous", ActorType: "anonymous", AuthMethod: "unknown",
@@ -76,10 +69,7 @@ func TestBuildKafkaRecordKeepsUnauthenticatedDenialAnonymous(t *testing.T) {
 }
 
 func TestBuildKafkaRecordAcceptsRequestLevelCompoundImport(t *testing.T) {
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	eventID := uuid.NewV7()
 	entry := Entry{
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "user-1", ActorType: "user", AuthMethod: "oauth", RequestID: "req-import-1",
@@ -92,10 +82,7 @@ func TestBuildKafkaRecordAcceptsRequestLevelCompoundImport(t *testing.T) {
 }
 
 func TestBuildKafkaRecordAllowsUnknownPartialBundleWithoutFailureCode(t *testing.T) {
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	eventID := uuid.NewV7()
 	entry := Entry{
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "user-1", ActorType: "user", AuthMethod: "oauth", RequestID: "req-bundle-1",
@@ -116,10 +103,7 @@ func TestBuildKafkaRecordAllowsUnknownPartialBundleWithoutFailureCode(t *testing
 }
 
 func TestBuildKafkaRecordPreservesUnknownPrivateChannelAndCategoryTarget(t *testing.T) {
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatal(err)
-	}
+	eventID := uuid.NewV7()
 	entry := Entry{
 		EventID: eventID.String(), EventTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
 		ActorID: "anonymous", ActorType: "anonymous", AuthMethod: "unknown",

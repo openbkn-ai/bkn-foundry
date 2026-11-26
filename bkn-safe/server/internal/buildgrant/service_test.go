@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/glebarez/sqlite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -72,6 +73,13 @@ func TestDelegationIsIdempotentScopedAndCredentialFree(t *testing.T) {
 	if err != nil || !created {
 		t.Fatal(g, created, err)
 	}
+	id, err := uuid.Parse(g.PrincipalID)
+	if err != nil {
+		t.Fatalf("invalid build principal UUID %q: %v", g.PrincipalID, err)
+	}
+	if version := id[6] >> 4; version != 7 {
+		t.Fatalf("build principal UUID version = %d, want 7", version)
+	}
 	replay, created, err := s.Create(t.Context(), r)
 	if err != nil || created || replay.PrincipalID != g.PrincipalID {
 		t.Fatal("replay changed identity", err)
@@ -116,6 +124,27 @@ func TestDelegationIsIdempotentScopedAndCredentialFree(t *testing.T) {
 		t.Fatal("dependency failure confused with denial", err)
 	}
 }
+func TestCreateReusesExistingV4Principal(t *testing.T) {
+	s, db, _, r := fixture(t)
+	_, hash, err := canonical(r.Versions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := model.BuildGrant{
+		ID: r.ID, ProjectID: r.ProjectID, BuildID: r.BuildID, DelegatorID: r.DelegatorID,
+		ModelFingerprint: r.ModelFingerprint, ManifestHash: hash,
+		Revision: 1, Status: StatusActive, PrincipalID: uuid.NewV4().String(),
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	grant, created, err := s.Create(t.Context(), r)
+	if err != nil || created || grant == nil || grant.PrincipalID != existing.PrincipalID {
+		t.Fatalf("existing v4 principal was not reused: grant=%+v created=%t err=%v", grant, created, err)
+	}
+}
+
 func TestRevocationAndCleanupFenceLateCreate(t *testing.T) {
 	for _, early := range []bool{false, true} {
 		t.Run(map[bool]string{true: "release_before_create", false: "existing_grant"}[early], func(t *testing.T) {

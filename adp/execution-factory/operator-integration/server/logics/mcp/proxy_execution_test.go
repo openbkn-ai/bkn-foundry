@@ -10,13 +10,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.uber.org/mock/gomock"
 )
 
@@ -47,7 +47,7 @@ func TestCallMCPToolPreservesStructuredResultThroughServedProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := sonic.MarshalString(response)
+	wire, err := jsoncodec.MarshalString(response)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestProxyCallToolResponsePreservesStructuredAndMultiBlockContent(t *testing
 	if err := json.Unmarshal(upstreamJSON, &upstream); err != nil {
 		t.Fatal(err)
 	}
-	response, err := json.Marshal(proxyCallToolResponse(&upstream))
+	response, err := jsoncodec.Marshal(proxyCallToolResponse(&upstream))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestProxyCallToolResponsePreservesStructuredAndMultiBlockContent(t *testing
 			t.Fatalf("content block %d = %s, %v", i, got.Content[i], err)
 		}
 	}
-	generated, err := json.Marshal(proxyCallToolResponse(&mcp.CallToolResult{StructuredContent: map[string]any{"answer": 7}}))
+	generated, err := jsoncodec.Marshal(proxyCallToolResponse(&mcp.CallToolResult{StructuredContent: map[string]any{"answer": 7}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +112,32 @@ func TestProxyCallToolResponsePreservesStructuredAndMultiBlockContent(t *testing
 	var plainFields map[string]json.RawMessage
 	if err := json.Unmarshal(plain, &plainFields); err != nil || plainFields["structuredContent"] != nil || string(plainFields["is_error"]) != "true" {
 		t.Fatalf("plain error response changed: %s, %v", plain, err)
+	}
+}
+
+func TestProxyCallToolResponsePreservesExplicitEmptyStructuredContent(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result mcp.CallToolResult
+		want   string
+	}{
+		{name: "upstream empty object", result: mcp.CallToolResult{RawStructuredContent: json.RawMessage(`{}`)}, want: `{}`},
+		{name: "generated empty object", result: mcp.CallToolResult{StructuredContent: map[string]any{}}, want: `{}`},
+		{name: "missing structured content"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := jsoncodec.Marshal(proxyCallToolResponse(&tc.result))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response map[string]json.RawMessage
+			if err := json.Unmarshal(body, &response); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(response["structuredContent"]); got != tc.want {
+				t.Fatalf("structuredContent = %q, want %q, body = %s", got, tc.want, body)
+			}
+		})
 	}
 }
 

@@ -470,6 +470,13 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, rtIDs); err != nil {
 		return nil, err
 	}
+	metricExecution := permission.IsMetricExecutionModelRead(ctx)
+	if metricExecution {
+		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps, interfaces.RESOURCE_TYPE_RELATION_TYPE,
+			knID, rtIDs, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+			return nil, err
+		}
+	}
 	var err error
 
 	// De-duplicate IDs before querying.
@@ -494,16 +501,21 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 		return []*interfaces.RelationType{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_RelationType_RelationTypeNotFound).WithErrorDetails(errStr)
 	}
-	if len(rtIDs) == 1 {
+	switch {
+	case metricExecution:
+		// The query_data check above authorizes the internal model read.
+	case len(rtIDs) == 1:
 		operations, err := permission.GetKNChildOperations(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs[0])
 		if err != nil {
 			return nil, err
 		}
 		relationTypes[0].Operations = operations
-	} else if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
-		interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
-		return nil, err
+	default:
+		if err = permission.CheckKNChildBatchPermission(ctx, rts.ps,
+			interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			return nil, err
+		}
 	}
 	// All or nothing, like the permission check above: a relation type whose endpoint the caller
 	// holds nothing on is not readable, so asking for it by id is refused.

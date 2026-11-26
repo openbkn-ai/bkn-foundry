@@ -7,7 +7,6 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // apiKeyPrefix marks an API key a person issued for themselves in bkn-safe.
@@ -46,7 +46,7 @@ type introspectResponse struct {
 
 // owner resolves a key to the account that issued it.
 func (v *apiKeyVerifier) owner(ctx context.Context, key string) (introspectResponse, error) {
-	body, err := json.Marshal(map[string]string{"token": key})
+	body, err := jsoncodec.Marshal(map[string]string{"token": key})
 	if err != nil {
 		return introspectResponse{}, err
 	}
@@ -68,7 +68,7 @@ func (v *apiKeyVerifier) owner(ctx context.Context, key string) (introspectRespo
 		return introspectResponse{}, fmt.Errorf("api key introspection: status %d", resp.StatusCode)
 	}
 	var result introspectResponse
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := jsoncodec.Unmarshal(data, &result); err != nil {
 		return introspectResponse{}, err
 	}
 	if !result.Active || result.Sub == "" {

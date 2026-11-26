@@ -24,11 +24,36 @@ import (
 
 type detailRESTBackend struct {
 	interfaces.BknBackendAccess
-	detail *interfaces.KnowledgeNetworkDetail
+	detail      *interfaces.KnowledgeNetworkDetail
+	detailReads []int // the number of ids in each by-id read
 }
 
+// GetKnowledgeNetworkDetail answers as bkn-backend does: the object type listing is summaries,
+// without properties, and the definitions come from GetObjectTypeDetail (#3412).
 func (b *detailRESTBackend) GetKnowledgeNetworkDetail(context.Context, string) (*interfaces.KnowledgeNetworkDetail, error) {
-	return b.detail, nil
+	listed := *b.detail
+	listed.ObjectTypes = make([]*interfaces.ObjectType, 0, len(b.detail.ObjectTypes))
+	for _, objectType := range b.detail.ObjectTypes {
+		summary := *objectType
+		summary.DataProperties, summary.LogicProperties, summary.PrimaryKeys = nil, nil, nil
+		listed.ObjectTypes = append(listed.ObjectTypes, &summary)
+	}
+	return &listed, nil
+}
+
+func (b *detailRESTBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
+	b.detailReads = append(b.detailReads, len(ids))
+	wanted := map[string]bool{}
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	var found []*interfaces.ObjectType
+	for _, objectType := range b.detail.ObjectTypes {
+		if wanted[objectType.ID] {
+			found = append(found, objectType)
+		}
+	}
+	return found, nil
 }
 
 func (b *detailRESTBackend) ListKNCapabilities(context.Context, string, string, string) ([]*interfaces.CapabilityRef, error) {
@@ -69,8 +94,12 @@ func restNetwork(objectTypes, properties int) *interfaces.KnowledgeNetworkDetail
 
 func getKnDetailREST(t *testing.T, detail *interfaces.KnowledgeNetworkDetail, properties int, body string) (string, map[string]any) {
 	t.Helper()
+	return getKnDetailRESTFrom(t, &detailRESTBackend{detail: detail}, properties, body)
+}
+
+func getKnDetailRESTFrom(t *testing.T, backend *detailRESTBackend, properties int, body string) (string, map[string]any) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
-	backend := &detailRESTBackend{detail: detail}
 	handler := &knQueryToolsHandler{
 		bknBackend:   backend,
 		metrics:      knmetrics.NewKnMetricsServiceWith(nil, backend, nil),
@@ -153,5 +182,30 @@ func TestGetKnDetailRESTNarrowsWithinTheCharacterLimitInTOON(t *testing.T) {
 	}
 	if !strings.Contains(body, "data_property_count") || !strings.Contains(body, "notice") {
 		t.Fatalf("want the outline with its notice, got %.200s", body)
+	}
+}
+
+// The REST route reads the definitions the listing leaves out, in batches of 50 ids, and its
+// outline counts the properties they carry (#3412).
+func TestGetKnDetailRESTReadsDefinitionsTheListingLeavesOut(t *testing.T) {
+	backend := &detailRESTBackend{detail: restNetwork(2, 3)}
+	_, m := getKnDetailRESTFrom(t, backend, 3, `{"kn_id":"kn-1","detail_level":"full"}`)
+	objectTypes, _ := m["object_types"].([]any)
+	first, _ := objectTypes[0].(map[string]any)
+	if properties, _ := first["data_properties"].([]any); len(properties) != 3 {
+		t.Fatalf("data_properties = %v, want the three properties", first["data_properties"])
+	}
+
+	backend = &detailRESTBackend{detail: restNetwork(120, 40)}
+	_, m = getKnDetailRESTFrom(t, backend, 40, `{"kn_id":"kn-1"}`)
+	if fmt.Sprint(backend.detailReads) != "[50 50 20]" {
+		t.Fatalf("by-id reads = %v, want batches of 50, 50, 20", backend.detailReads)
+	}
+	objectTypes, _ = m["object_types"].([]any)
+	if len(objectTypes) != 120 {
+		t.Fatalf("outline carries %d object types, want 120", len(objectTypes))
+	}
+	if last, _ := objectTypes[119].(map[string]any); last["data_property_count"] != float64(40) {
+		t.Fatalf("outline count = %v, want 40", last["data_property_count"])
 	}
 }

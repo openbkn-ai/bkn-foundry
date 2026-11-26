@@ -118,6 +118,23 @@ func TestConnectionFailed(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "timeout")
 }
 
+func TestConnectionFailedWithInvalidUTF8(t *testing.T) {
+	c, w := setupTestContext()
+
+	response.ConnectionFailed(c, "upstream diagnostic \xff")
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "zh-CN", w.Header().Get(i18n.ContentLanguageHeader))
+	assert.JSONEq(t, `{
+		"code": "500001",
+		"message": "连接失败",
+		"description": "无法连接到指定的存储服务。",
+		"detail": "无法连接到指定的存储服务。",
+		"solution": "请检查存储配置和网络连接。",
+		"cause": "upstream diagnostic �"
+	}`, w.Body.String())
+}
+
 func TestStorageNameExist(t *testing.T) {
 	c, w := setupTestContext()
 
@@ -200,7 +217,7 @@ func TestSuccessWithCount_ZeroCount(t *testing.T) {
 	response.SuccessWithCount(c, []interface{}{}, 0)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// count=0 may be omitted from the JSON response.
+	assert.JSONEq(t, `{"data":[]}`, w.Body.String())
 }
 
 func TestSuccessWithCount_LargeCount(t *testing.T) {

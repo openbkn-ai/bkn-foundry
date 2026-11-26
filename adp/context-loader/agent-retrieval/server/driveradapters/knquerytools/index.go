@@ -167,6 +167,13 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		resp.ReduceToNavigationShell()
 		resp.Notice = notice(interfaces.KnDetailReductionShell)
 	} else {
+		// The listing carries summaries without properties; read the definitions first.
+		resp.ObjectTypes, err = knmetrics.WithObjectTypeDefinitions(ctx, h.bknBackend, req.KnID, req.Branch, resp.ObjectTypes)
+		if err != nil {
+			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object type definitions unreadable: %v", err)
+			rest.ReplyError(c, err)
+			return
+		}
 		resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, h.schemaAccess, req.KnID, req.Branch, resp.ObjectTypes)
 		if err != nil {
 			h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetKnDetail] object property authorization failed: %v", err)

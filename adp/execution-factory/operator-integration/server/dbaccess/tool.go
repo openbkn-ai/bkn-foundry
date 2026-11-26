@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -52,10 +52,7 @@ const (
 func (t *toolDB) InsertTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB) (toolID string, err error) {
 	now := time.Now().UnixNano()
 	if tool.ToolID == "" {
-		id, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		id := uuid.NewV7()
 		tool.ToolID = id.String()
 	}
 	toolID = tool.ToolID
@@ -124,10 +121,7 @@ func (t *toolDB) InsertTools(ctx context.Context, tx *sql.Tx, tools []*model.Too
 	toolIDs = []string{}
 	for _, tool := range tools {
 		if tool.ToolID == "" {
-			id, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return nil, generateErr
-			}
+			id := uuid.NewV7()
 			tool.ToolID = id.String()
 		}
 		toolIDs = append(toolIDs, tool.ToolID)

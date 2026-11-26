@@ -8,7 +8,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/smartystreets/goconvey v1.8.1

@@ -53,13 +53,32 @@ func retainedBusinessRefs(ctx context.Context) []BusinessRef {
 // when evidence publication is disabled or fails.
 func retainSchemaSnapshotTargets(ctx context.Context, kind, knID string, ids []string) {
 	outcome := evidenceOutcomeFromContext(ctx)
-	knID = strings.TrimSpace(knID)
-	if outcome == nil || knID == "" || (kind != "object" && kind != "relation") {
+	if outcome == nil {
 		return
+	}
+	targets := SchemaSnapshotBusinessRefs(ctx, kind, knID, ids)
+	if len(targets) == 0 {
+		return
+	}
+	outcome.mu.Lock()
+	defer outcome.mu.Unlock()
+	if !outcome.closed {
+		outcome.businessRefs = mergeBusinessRefs(outcome.businessRefs, targets)
+	}
+}
+
+// SchemaSnapshotBusinessRefs are the business refs a schema snapshot of ids adds to the
+// attempt's receipt: one per object or relation type returned, none for other kinds.
+// A handler that bounds its answer reads them to leave room for the receipt the
+// managed call attaches afterwards (#3413).
+func SchemaSnapshotBusinessRefs(ctx context.Context, kind, knID string, ids []string) []BusinessRef {
+	knID = strings.TrimSpace(knID)
+	if knID == "" || (kind != "object" && kind != "relation") {
+		return nil
 	}
 	for _, ref := range requestDerivedBusinessRefsFromContext(ctx) {
 		if ref.RefType == "knowledge_network" && ref.RefID != "kn:"+knID {
-			return
+			return nil
 		}
 	}
 	refType := trace30RefType(kind)
@@ -74,9 +93,11 @@ func retainSchemaSnapshotTargets(ctx context.Context, kind, knID string, ids []s
 			targets = append(targets, BusinessRef{RefType: refType, RefID: refID, Version: version})
 		}
 	}
-	outcome.mu.Lock()
-	defer outcome.mu.Unlock()
-	if !outcome.closed {
-		outcome.businessRefs = mergeBusinessRefs(outcome.businessRefs, targets)
-	}
+	return targets
+}
+
+// ReceiptExpected reports whether this call runs as a managed operation, whose result
+// the session guard extends with a receipt after the handler returns.
+func ReceiptExpected(ctx context.Context) bool {
+	return evidenceOutcomeFromContext(ctx) != nil
 }

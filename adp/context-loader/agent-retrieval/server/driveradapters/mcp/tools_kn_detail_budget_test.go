@@ -269,3 +269,32 @@ func TestKnDetailShellsCountTheNetworkAlike(t *testing.T) {
 		t.Fatalf("object_type_count = %v, want the network's 60", s["object_type_count"])
 	}
 }
+
+// A small network's properties come back at summary and full, in JSON and TOON, though the
+// network listing carries summaries without them; the stub backend lists summaries as
+// bkn-backend does (#3412).
+func TestKnDetailCarriesPropertiesTheListingLeavesOut(t *testing.T) {
+	network := func() *interfaces.KnowledgeNetworkDetail {
+		return &interfaces.KnowledgeNetworkDetail{ID: "kn-001", Name: "repro", ObjectTypes: []*interfaces.ObjectType{{
+			ID: "ot000", Name: "Object000", PrimaryKeys: []string{"property_00"},
+			DataSource:     &interfaces.ResourceInfo{Type: "resource", ID: "res"},
+			DataProperties: []*interfaces.DataProperty{{Name: "property_00", Type: "string", DisplayName: "ID"}},
+		}}}
+	}
+	for _, level := range []string{interfaces.DetailLevelSummary, interfaces.DetailLevelFull} {
+		for _, format := range []string{"json", "toon"} {
+			result, _ := callKnDetail(t, network(), map[string]any{
+				"kn_id": "kn-001", "detail_level": level, "response_format": format,
+			})
+			if !strings.Contains(resultText(result), "property_00") {
+				t.Fatalf("%s/%s: answer lacks the property: %s", level, format, resultText(result))
+			}
+			objectTypes, _ := resultToMap(t, result)["object_types"].([]any)
+			first, _ := objectTypes[0].(map[string]any)
+			properties, _ := first["data_properties"].([]any)
+			if len(properties) != 1 {
+				t.Fatalf("%s/%s: data_properties = %v, want the one property", level, format, first["data_properties"])
+			}
+		}
+	}
+}

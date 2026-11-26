@@ -90,6 +90,14 @@ func (s *actionSchedulerService) executeEventAction(ctx context.Context, req *in
 	if err := s.checkEventExecution(ctx, req, actionType); err != nil {
 		return nil, err
 	}
+	required, err := s.actionGovernanceRequired(ctx, req.KNID, req.ActionTypeID)
+	if err != nil {
+		return nil, err
+	}
+	if required {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_GovernanceRequired).
+			WithErrorDetails("record-event actions do not support governance permits")
+	}
 	requirements, err := eventPermissionRequirements(ctx, req.KNID, actionType)
 	if err != nil {
 		return nil, err

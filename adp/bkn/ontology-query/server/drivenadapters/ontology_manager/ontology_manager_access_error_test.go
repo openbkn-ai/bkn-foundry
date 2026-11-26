@@ -38,6 +38,39 @@ func TestListRelationTypesPreservesForbiddenError(t *testing.T) {
 	assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 }
 
+func TestMetricExecutionModelReadsPreserveCallerAndVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	client := rmock.NewMockHTTPClient(ctrl)
+	access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
+	ctx, _ := pinnedContext(t, "3", "")
+	caller := interfaces.AccountInfo{ID: "user-1", Type: "user"}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, caller)
+	metricCtx := access.WithMetricExecutionModelAccess(ctx, "kn")
+	headers := func(forMetric bool) gomock.Matcher {
+		return gomock.Cond(func(values map[string]string) bool {
+			return values[interfaces.HTTP_HEADER_ACCOUNT_ID] == caller.ID &&
+				values[interfaces.HTTP_HEADER_ACCOUNT_TYPE] == caller.Type &&
+				(values["X-Bkn-Model-Purpose"] == "metric-execution") == forMetric
+		})
+	}
+	client.EXPECT().GetNoUnmarshal(gomock.Any(), "http://test-om/kn/object-types/orders?branch=main&kn_version=3",
+		nil, headers(true)).Return(http.StatusOK, []byte(`{"entries":[{"id":"orders"}]}`), nil)
+	client.EXPECT().GetNoUnmarshal(gomock.Any(), "http://test-om/kn/relation-types/supplier?branch=main&kn_version=3",
+		nil, headers(true)).Return(http.StatusOK, []byte(`{"entries":[{"id":"supplier","type":"direct","mapping_rules":[]}]}`), nil)
+	client.EXPECT().GetNoUnmarshal(gomock.Any(), "http://test-om/other/object-types/orders?branch=main&kn_version=3",
+		nil, headers(false)).Return(http.StatusOK, []byte(`{"entries":[{"id":"orders"}]}`), nil)
+
+	if _, exists, err := access.GetObjectType(metricCtx, "kn", "main", "orders"); err != nil || !exists {
+		t.Fatalf("owner model exists=%t, error=%v", exists, err)
+	}
+	if _, exists, err := access.GetRelationType(metricCtx, "kn", "main", "supplier"); err != nil || !exists {
+		t.Fatalf("relation model exists=%t, error=%v", exists, err)
+	}
+	if _, exists, err := access.GetObjectType(metricCtx, "other", "main", "orders"); err != nil || !exists {
+		t.Fatalf("other network model exists=%t, error=%v", exists, err)
+	}
+}
+
 func TestGetObjectMetricExecutionContextPreservesExactLiteral(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := rmock.NewMockHTTPClient(ctrl)
