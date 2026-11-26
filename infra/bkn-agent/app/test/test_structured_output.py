@@ -514,6 +514,16 @@ def test_regeneration_hint_does_not_stack():
     assert "$.greeting" in str(m.seen[2][-1])
 
 
+def test_truncated_then_invalid_keeps_the_shorter_note():
+    m = _JsonMode([('{"greeting": "cut', "length"), ('{"wrong": 1}', "stop"), ('{"greeting": "hi"}', "stop")])
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "hi"}
+    third = m.seen[2]
+    assert third[:-1] == m.seen[1]
+    assert "cut off" in str(third[-2]) and "required property" in str(third[-1])
+    assert all('"wrong"' not in str(part) for part in third)
+
+
 def test_invalid_answer_every_attempt_raises():
     m = _JsonMode([('{"wrong": 1}', "stop")] * structured.FALLBACK_ATTEMPTS)
     with pytest.raises(structured.StructuredOutputError, match="'greeting' is a required property"):

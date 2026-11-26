@@ -7,7 +7,8 @@ JSON Schema from the conversation messages:
 2. Fallback: when the native path errors because the model does not support it
    — a thinking-mode qwen rejects tool_choice=required, for instance — the
    schema is folded into the prompt so the model emits JSON only, the result is
-   validated with jsonschema, and an invalid one is fed back for a single retry.
+   validated with jsonschema, and an invalid one is regenerated from the
+   original conversation with a short hint, up to FALLBACK_ATTEMPTS answers.
 The fallback is not guaranteed to succeed, but it works with any model that can
 hold a conversation.
 
@@ -57,6 +58,11 @@ FALLBACK_ATTEMPTS = 3
 # Bound on the validation message quoted in the regeneration hint; jsonschema
 # quotes the offending instance, which can be a long list.
 _HINT_DETAIL_CHARS = 300
+_SHORTER = (
+    "Your previous answer was cut off at the output length limit. "
+    "Answer again with valid JSON only, matching the schema, and keep "
+    "it shorter: fewer items, and shorter texts and quotes."
+)
 
 
 def _extract_json(text: str) -> Any:
@@ -302,17 +308,15 @@ async def _fallback_extract(model, messages: list, schema: dict, system_prompt: 
             if truncated:
                 # The cut-off text is not repeated: the model writes it whole
                 # again, shorter.
-                msgs = msgs + [(
-                    "user",
-                    "Your previous answer was cut off at the output length limit. "
-                    "Answer again with valid JSON only, matching the schema, and keep "
-                    "it shorter: fewer items, and shorter texts and quotes.",
-                )]
+                msgs = msgs + [("user", _SHORTER)]
+                if ("user", _SHORTER) not in base:
+                    base = base + [("user", _SHORTER)]
             else:
                 # Regenerate from the original conversation with a short hint.
                 # Feeding the whole invalid answer back for repair rarely fixed
                 # it (1 of 5 on DeepSeek), while a fresh answer is valid about
                 # 72% of the time; str(e) would also repeat a schema excerpt.
+                # A shorter-answer note from an earlier truncation is kept.
                 msgs = base + [("user", _regeneration_hint(e))]
     raise StructuredOutputError(
         "structured output failed: not supported natively and the prompt "
