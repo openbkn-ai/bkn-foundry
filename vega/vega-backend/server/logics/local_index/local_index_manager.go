@@ -75,6 +75,7 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 			"username":       opensearchSetting["user"],
 			"password":       opensearchSetting["password"],
 			"index_patterns": opensearchSetting["index_patterns"],
+			"index_settings": opensearchSetting["index_settings"],
 		}
 
 		connector, err := opensearchConnector.NewOpenSearchConnector().New(cfg)
