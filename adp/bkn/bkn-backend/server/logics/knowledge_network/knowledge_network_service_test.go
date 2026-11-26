@@ -1841,6 +1841,9 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			vbs:        vbs,
 			db:         db,
 		}
+		// A written network document keeps the creation info stored on its branch (#3433).
+		kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+			Return(&interfaces.KN{KNID: "kn1", Branch: interfaces.MAIN_BRANCH}, nil).AnyTimes()
 		Convey("Success updating KN\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
@@ -3062,9 +3065,10 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			// CreateKN handleKNImportMode + UpdateKN(strict) → ValidateKN(..., Overwrite) → handleKNImportMode again
 			kna2.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
 			kna2.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
+			// Once to validate the import, once to keep the stored creation info (#3433).
 			kna2.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(&interfaces.KN{
 				KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
-			}, nil)
+			}, nil).Times(2)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
@@ -3119,7 +3123,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("old-name", true, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), "new-name", interfaces.MAIN_BRANCH).Return("", false, nil)
-			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(old, nil)
+			// The compensation snapshot, then the stored creation info for the new document (#3433).
+			kna.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(old, nil).Times(2)
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
