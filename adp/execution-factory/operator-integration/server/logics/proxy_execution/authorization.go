@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -84,7 +84,7 @@ func (a auditLogger) RecordProxyExecution(ctx context.Context, event interfaces.
 	if a.logger == nil {
 		return
 	}
-	encoded, err := sonic.MarshalString(event)
+	encoded, err := jsoncodec.MarshalString(event)
 	if err != nil {
 		a.logger.WithContext(ctx).Errorf("marshal proxy execution audit failed: %v", err)
 		return

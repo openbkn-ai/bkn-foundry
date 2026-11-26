@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -55,10 +55,7 @@ func (c *categoryDB) Insert(ctx context.Context, tx *sql.Tx, category *model.Cat
 	now := time.Now().UnixNano()
 
 	if category.CategoryID == "" {
-		id, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		id := uuid.NewV7()
 		category.CategoryID = id.String()
 	}
 	category.CreateTime = now

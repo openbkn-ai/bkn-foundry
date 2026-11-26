@@ -2,13 +2,14 @@ package common
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -26,6 +27,49 @@ type functionTimeoutSessionPool struct {
 
 func (p functionTimeoutSessionPool) ExecuteCode(_ context.Context, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error) {
 	return p.execute(req), nil
+}
+
+func TestFunctionInferSchemaPreservesExplicitEmptyParameterValues(t *testing.T) {
+	const schema = `{"supported":true,"inputs":[
+		{"name":"text","type":"string","default":"","example":""},
+		{"name":"items","type":"array","default":[],"example":[]},
+		{"name":"options","type":"object","default":{},"example":{}},
+		{"name":"unset","type":"string"}
+	]}`
+	var result map[string]any
+	if err := json.Unmarshal([]byte(schema), &result); err != nil {
+		t.Fatal(err)
+	}
+	pool := functionTimeoutSessionPool{execute: func(*interfaces.ExecuteCodeReq) *interfaces.ExecuteCodeResp {
+		return &interfaces.ExecuteCodeResp{ReturnValue: result}
+	}}
+	handler := &unifiedProxyHandler{Logger: logger.DefaultLogger(), SessionPool: pool}
+	engine := gin.New()
+	engine.POST("/function/infer-schema", handler.FunctionInferSchema)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/function/infer-schema", strings.NewReader(`{"code":"def handler(): pass"}`))
+	request.Header.Set("Content-Type", "application/json")
+	engine.ServeHTTP(recorder, request)
+
+	var response struct {
+		Supported bool `json:"supported"`
+		Inputs    []struct {
+			Name    string          `json:"name"`
+			Default json.RawMessage `json:"default"`
+			Example json.RawMessage `json:"example"`
+		} `json:"inputs"`
+	}
+	want := map[string]string{"text": `""`, "items": `[]`, "options": `{}`, "unset": ""}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || recorder.Code != http.StatusOK ||
+		!response.Supported || len(response.Inputs) != len(want) {
+		t.Fatalf("unexpected inference response %d %s, err = %v", recorder.Code, recorder.Body.String(), err)
+	}
+	for _, param := range response.Inputs {
+		expected, ok := want[param.Name]
+		if !ok || string(param.Default) != expected || string(param.Example) != expected {
+			t.Errorf("%s: default = %q, example = %q, want %q, body = %s", param.Name, param.Default, param.Example, expected, recorder.Body.String())
+		}
+	}
 }
 
 func TestFunctionExecuteProxyTimeout(t *testing.T) {
@@ -83,36 +127,20 @@ func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 	Convey("Function proxy execution context should separate task and capability identifiers", t, func() {
 		version := "11111111-1111-4111-8111-111111111111"
 
-		env, err := buildFunctionProxyExecutionEnv(nil, version)
-		So(err, ShouldBeNil)
+		env := buildFunctionProxyExecutionEnv(nil, version)
 
 		So(env["source"], ShouldEqual, "function_proxy")
 		So(env["function_version_id"], ShouldEqual, version)
 		So(env["task_id"], ShouldNotEqual, version)
-		So(strings.HasPrefix(env["task_id"].(string), "function_proxy_"), ShouldBeTrue)
+		taskID := env["task_id"].(string)
+		So(strings.HasPrefix(taskID, "function_proxy_"), ShouldBeTrue)
+		id, err := uuid.Parse(strings.TrimPrefix(taskID, "function_proxy_"))
+		So(err, ShouldBeNil)
+		So(id[6]>>4, ShouldEqual, 7)
+		So(buildFunctionProxyExecutionEnv(nil, version)["task_id"], ShouldNotEqual, taskID)
 		So(env["capability_id"], ShouldNotEqual, version)
 		So(env["capability_id"], ShouldEqual, "function_version:"+version)
 	})
-}
-
-func TestBuildFunctionProxyExecutionEnvKeepsSafeEnvWhenUUIDGenerationFails(t *testing.T) {
-	uuid.SetRand(strings.NewReader(""))
-	defer uuid.SetRand(nil)
-
-	version := "11111111-1111-4111-8111-111111111111"
-	env, err := buildFunctionProxyExecutionEnv(nil, version)
-	if err == nil {
-		t.Fatal("buildFunctionProxyExecutionEnv() error = nil, want UUID generation error")
-	}
-	if env == nil {
-		t.Fatal("buildFunctionProxyExecutionEnv() env = nil")
-	}
-	if env["task_id"] != "" {
-		t.Fatalf("task_id = %v, want blank safe fallback", env["task_id"])
-	}
-	if env["source"] != "function_proxy" || env["function_version_id"] != version || env["capability_id"] != "function_version:"+version {
-		t.Fatalf("execution context was not preserved: %v", env)
-	}
 }
 
 func TestNewFunctionExecuteResp(t *testing.T) {
@@ -305,13 +333,10 @@ func TestBuildFunctionExecutionEnvDoesNotDeriveSessionContext(t *testing.T) {
 // The proxy path carries no body fields at all: a registered function is invoked
 // by version, so the acting account has to come from the request.
 func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
-	env, err := buildFunctionProxyExecutionEnv(
+	env := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
 	)
-	if err != nil {
-		t.Fatalf("构造函数代理执行环境失败: %v", err)
-	}
 
 	if env["user_id"] != "acct-req" {
 		t.Fatalf("user_id 未从鉴权上下文兜底: %v", env["user_id"])
@@ -326,13 +351,10 @@ func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
 // functionRuntimeHeaders before the request gets here; this route receives the
 // token only when that gate let it through, and fills no Interaction for it.
 func TestBuildFunctionProxyExecutionEnvCarriesCredentialWithoutInteraction(t *testing.T) {
-	env, err := buildFunctionProxyExecutionEnv(
+	env := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
 	)
-	if err != nil {
-		t.Fatalf("构造函数代理执行环境失败: %v", err)
-	}
 
 	if env["BKN_TOKEN"] != "tok-req" {
 		t.Fatalf("上游放行的调用方凭据未注入: %v", env["BKN_TOKEN"])
@@ -351,10 +373,7 @@ func TestBuildFunctionProxyExecutionEnvWithholdsWithoutCredential(t *testing.T) 
 	c.Request.Header.Set("bkn-conversation-id", "conv_1")
 	c.Request.Header.Set("bkn-interaction-id", "int_1")
 
-	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
-	if err != nil {
-		t.Fatalf("构造函数代理执行环境失败: %v", err)
-	}
+	env := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
 	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
 		if value, ok := env[key]; !ok || value != "" {
 			t.Fatalf("无凭据时 %s 必须在场且为空: %v", key, env)
@@ -370,10 +389,7 @@ func TestBuildFunctionProxyExecutionEnvCarriesAManagedInteraction(t *testing.T) 
 	c.Request.Header.Set("bkn-interaction-id", "int_1")
 	c.Request.Header.Set("bkn-parent-operation-id", "op_function")
 
-	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
-	if err != nil {
-		t.Fatalf("构造函数代理执行环境失败: %v", err)
-	}
+	env := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
 
 	for key, want := range map[string]string{
 		"BKN_TOKEN":               "tok-req",
@@ -394,10 +410,7 @@ func TestBuildFunctionProxyExecutionEnvRefusesAPartialInteraction(t *testing.T) 
 		c := newRequestContext("tok-req", "acct-req")
 		c.Request.Header.Set(header, "only_half")
 
-		env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
-		if err != nil {
-			t.Fatalf("构造函数代理执行环境失败: %v", err)
-		}
+		env := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
 
 		for _, key := range []string{"BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
 			value, ok := env[key]
@@ -438,10 +451,7 @@ func TestInferSchemaExecutionEnvCarriesNoCredential(t *testing.T) {
 func TestFunctionExecutionParentIsClearedWithoutManagedInvocation(t *testing.T) {
 	c := newRequestContext("tok-req", "acct-req")
 	c.Request.Header.Set("bkn-parent-operation-id", "op_unrelated")
-	env, err := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
-	if err != nil {
-		t.Fatal(err)
-	}
+	env := buildFunctionProxyExecutionEnv(c, "11111111-1111-4111-8111-111111111111")
 	for name, values := range map[string]map[string]any{
 		"proxy": env, "direct": buildFunctionExecutionEnv(c, nil), "schema": inferSchemaExecutionEnv(),
 	} {

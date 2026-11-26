@@ -7,8 +7,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	jsoniter "github.com/json-iterator/go"
 )
@@ -40,15 +39,6 @@ func ObjectUUIDHash(data interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h := md5.New() //nolint:gosec
-	_, err = h.Write(b)
-	if err != nil {
-		return "", err
-	}
-	md5Hash := h.Sum(nil)
-	uuidObj, err := uuid.FromBytes(md5Hash)
-	if err != nil {
-		return "", err
-	}
-	return uuidObj.String(), nil
+	digest := md5.Sum(b) //nolint:gosec // Historical object identifier.
+	return uuid.UUID(digest).String(), nil
 }

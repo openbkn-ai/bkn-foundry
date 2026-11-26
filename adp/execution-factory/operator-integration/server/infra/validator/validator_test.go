@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"uuid"
 
 	validatorv10 "github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -75,10 +75,7 @@ func TestUUIDValidationAcceptsV4AndV7(t *testing.T) {
 	}
 
 	v := &validator{Validator: validatorv10.New()}
-	v7ID, err := uuid.NewV7()
-	if err != nil {
-		t.Fatalf("uuid.NewV7() error = %v", err)
-	}
+	v7ID := uuid.NewV7()
 	v7 := v7ID.String()
 	for _, id := range []string{"c2d8baf0-e31f-4cac-851d-30ad8c2e4722", v7} {
 		if err := v.Validator.Struct(request{ID: id}); err != nil {

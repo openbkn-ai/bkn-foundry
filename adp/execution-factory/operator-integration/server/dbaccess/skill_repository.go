@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -50,10 +50,7 @@ func (s *skillRepositoryDB) InsertSkill(ctx context.Context, tx *sql.Tx, skill *
 		orm = s.orm.WithTx(tx)
 	}
 	if skill.SkillID == "" {
-		id, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		id := uuid.NewV7()
 		skill.SkillID = id.String()
 	}
 	now := time.Now().UnixNano()

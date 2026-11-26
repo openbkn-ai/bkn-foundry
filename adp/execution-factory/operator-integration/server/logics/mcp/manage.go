@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -115,10 +115,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 
 	// It is not built-in by default. Built-in tools call built-in interfaces.
 	req.IsInternal = false
-	mcpserverConfig, err := s.registerReqToModel(req)
-	if err != nil {
-		return nil, err
-	}
+	mcpserverConfig := s.registerReqToModel(req)
 
 	MCPID, err = s.addMCPConfig(ctx, tx, mcpserverConfig)
 	if err != nil {
@@ -1066,13 +1063,9 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 }
 
 // registerReqToModel converts registration request to model.
-func (s *mcpServiceImpl) registerReqToModel(req *interfaces.MCPServerAddRequest) (config *model.MCPServerConfigDB, err error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-	config = &model.MCPServerConfigDB{
-		MCPID:        id.String(),
+func (s *mcpServiceImpl) registerReqToModel(req *interfaces.MCPServerAddRequest) *model.MCPServerConfigDB {
+	config := &model.MCPServerConfigDB{
+		MCPID:        uuid.NewV7().String(),
 		Version:      1,
 		Name:         req.Name,
 		Description:  req.Description,
@@ -1095,7 +1088,7 @@ func (s *mcpServiceImpl) registerReqToModel(req *interfaces.MCPServerAddRequest)
 		config.Mode = interfaces.MCPModeStream.String()
 		config.URL = s.generateInternalMCPURL(config.MCPID, config.Version, interfaces.MCPMode(config.Mode))
 	}
-	return config, nil
+	return config
 }
 
 // mcpUpdateReqToModel Convert update request to model.

@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -59,10 +59,7 @@ func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *mode
 	now := time.Now().UnixNano()
 	MCPID := config.MCPID
 	if MCPID == "" {
-		generatedID, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		generatedID := uuid.NewV7()
 		MCPID = generatedID.String()
 	}
 

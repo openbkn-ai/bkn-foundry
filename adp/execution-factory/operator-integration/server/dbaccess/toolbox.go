@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
@@ -50,10 +50,7 @@ const (
 // InsertToolBox insert toolbox.
 func (b *toolboxDB) InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB) (boxID string, err error) {
 	if toolbox.BoxID == "" {
-		id, generateErr := uuid.NewV7()
-		if generateErr != nil {
-			return "", generateErr
-		}
+		id := uuid.NewV7()
 		toolbox.BoxID = id.String()
 	}
 	boxID = toolbox.BoxID

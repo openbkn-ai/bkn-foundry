@@ -525,7 +525,7 @@ type ExecuteCodeReq struct {
 	Code                  string            `json:"code" validate:"required"`                                    // Execute code.
 	Event                 map[string]any    `json:"event,omitempty"`                                             // event.
 	Language              string            `json:"language" default:"python"`                                   // execution language.
-	Timeout               int               `json:"timeout,omitempty"`                                           // Timeout time in seconds.
+	Timeout               int               `json:"timeout,omitzero"`                                            // Timeout time in seconds.
 	WorkingDirectory      string            `json:"working_directory,omitempty"`                                 // Working directory, relative to the workspace root directory.
 	EnvVars               map[string]any    `json:"env_vars,omitempty"`                                          // Session business context environment variables.
 	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`                                      // Depend on resources.
@@ -577,17 +577,17 @@ type SandBoxConfigReq struct {
 
 // CreateSessionReq Create session request.
 type CreateSessionReq struct {
-	ID                    string         `json:"id"`                                 // Session ID.
-	TemplateID            string         `json:"template_id"`                        // Template ID.
-	Timeout               int            `json:"timeout"`                            // Timeout time in seconds.
-	CPU                   string         `json:"cpu,omitempty"`                      // Number of CPU cores.
-	Memory                string         `json:"memory,omitempty"`                   // Memory limit, unit MB.
-	Disk                  string         `json:"disk,omitempty"`                     // Disk mount point.
-	EnvVars               map[string]any `json:"env_vars,omitempty"`                 // environment variables.
-	Event                 map[string]any `json:"event,omitempty"`                    // event data.
-	InstallTimeout        int            `json:"install_timeout,omitempty"`          // Dependency installation timeout (seconds), default 300.
-	FailOnDependencyError bool           `json:"fail_on_dependency_error,omitempty"` // Dependency installation failure will directly fail the session. Default is true.
-	AllowVersionConflicts bool           `json:"allow_version_conflicts,omitempty"`  // Whether to allow version conflicts, default false.
+	ID                    string         `json:"id"`                                // Session ID.
+	TemplateID            string         `json:"template_id"`                       // Template ID.
+	Timeout               int            `json:"timeout"`                           // Timeout time in seconds.
+	CPU                   string         `json:"cpu,omitempty"`                     // Number of CPU cores.
+	Memory                string         `json:"memory,omitempty"`                  // Memory limit, unit MB.
+	Disk                  string         `json:"disk,omitempty"`                    // Disk mount point.
+	EnvVars               map[string]any `json:"env_vars,omitempty"`                // environment variables.
+	Event                 map[string]any `json:"event,omitempty"`                   // event data.
+	InstallTimeout        int            `json:"install_timeout,omitzero"`          // Dependency installation timeout (seconds), default 300.
+	FailOnDependencyError bool           `json:"fail_on_dependency_error,omitzero"` // Dependency installation failure will directly fail the session. Default is true.
+	AllowVersionConflicts bool           `json:"allow_version_conflicts,omitzero"`  // Whether to allow version conflicts, default false.
 	// issue #253 Added a new field, whether the session has installed dependent libraries.
 	PythonPackageIndexURL string            `json:"python_package_index_url,omitempty"` // Python third-party package index URL.
 	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`             // Depend on resources.

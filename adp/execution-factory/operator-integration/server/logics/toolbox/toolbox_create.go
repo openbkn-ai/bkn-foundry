@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -256,10 +256,7 @@ func (s *ToolServiceImpl) parseOpenAPIToMetadata(ctx context.Context, boxID, use
 		metadata.SetCreateInfo(userID)
 		metadata.SetUpdateInfo(userID)
 		if metadata.GetVersion() == "" {
-			metadataVersion, generateErr := uuid.NewV7()
-			if generateErr != nil {
-				return nil, nil, nil, generateErr
-			}
+			metadataVersion := uuid.NewV7()
 			metadata.SetVersion(metadataVersion.String())
 		}
 		tools = append(tools, &model.ToolDB{

@@ -7,11 +7,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -34,7 +34,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	)
 
 	if body != nil {
-		bodyStr, err = sonic.MarshalString(body)
+		bodyStr, err = jsoncodec.MarshalString(body)
 		if err != nil {
 			logger.DefaultLogger().Errorf("marshal body error: %v", err)
 			statusCode = http.StatusInternalServerError

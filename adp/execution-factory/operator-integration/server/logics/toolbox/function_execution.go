@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	neturl "net/url"
 	"strings"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -23,7 +23,7 @@ func platformFunctionExecution(req *interfaces.ExecuteToolReq, rawURL string, re
 	}
 	prefix := strings.TrimSuffix(interfaces.GetAOIFuncExecPath(), ":version")
 	version := strings.TrimPrefix(target.Path, prefix)
-	if uuid.Validate(version) != nil {
+	if _, err := uuid.Parse(version); err != nil {
 		return nil
 	}
 	if responseHeader(resp.Headers, interfaces.FunctionVersionHeader) != version {

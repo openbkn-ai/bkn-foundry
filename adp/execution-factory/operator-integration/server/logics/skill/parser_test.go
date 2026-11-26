@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	. "github.com/smartystreets/goconvey/convey"
 )

@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"uuid"
 
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -215,20 +215,16 @@ func inferSchemaExecutionEnv() map[string]any {
 	return env
 }
 
-func buildFunctionProxyExecutionEnv(c *gin.Context, version string) (map[string]any, error) {
+func buildFunctionProxyExecutionEnv(c *gin.Context, version string) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_proxy"
 	env["capability_id"] = "function_version:" + version
 	env["function_version_id"] = version
-	taskID, err := uuid.NewV7()
-	if err != nil {
-		return fillManagedInteractionFromRequest(fillExecutionAccountFromRequest(env, c), c), err
-	}
-	env["task_id"] = "function_proxy_" + taskID.String()
+	env["task_id"] = "function_proxy_" + uuid.NewV7().String()
 	// This path has no body fields to carry the acting account at all: a
 	// registered function is invoked by version, so the account comes from the
 	// request. Whether anything else follows depends on the call being managed.
-	return fillManagedInteractionFromRequest(fillExecutionAccountFromRequest(env, c), c), nil
+	return fillManagedInteractionFromRequest(fillExecutionAccountFromRequest(env, c), c)
 }
 
 // fillManagedInteractionFromRequest hands a proxied Function the invoking
@@ -449,10 +445,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	if metadata.GetDependencies() != "" {
 		dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](metadata.GetDependencies())
 	}
-	executionEnv, generateErr := buildFunctionProxyExecutionEnv(c, req.Version)
-	if generateErr != nil {
-		h.Logger.Warnf("generate function proxy task UUIDv7 failed: %v", generateErr)
-	}
+	executionEnv := buildFunctionProxyExecutionEnv(c, req.Version)
 	execReq := &interfaces.ExecuteCodeReq{
 		Code:                  code,
 		Event:                 event,

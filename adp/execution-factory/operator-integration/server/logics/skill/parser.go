@@ -8,9 +8,9 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"uuid"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
@@ -96,10 +96,7 @@ func (p *skillParser) parseSkillContent(content string, req *interfaces.Register
 		return nil, fmt.Errorf("invalid skill frontmatter: %w", err)
 	}
 
-	version, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
+	version := uuid.NewV7()
 	skill := &model.SkillRepositoryDB{
 		Name:         fm.Name,
 		Description:  fm.Description,

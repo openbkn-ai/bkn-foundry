@@ -1,9 +1,6 @@
 package utils
 
-import (
-	"fmt"
-	"testing"
-)
+import "testing"
 
 type TestHash struct {
 	Name string `json:"name"`
@@ -15,13 +12,12 @@ func TestObjectUUIDHash(t *testing.T) {
 		Name: "test",
 		Desc: "test",
 	}
-	hash1, err := ObjectUUIDHash(a)
+	hash, err := ObjectUUIDHash(a)
 	if err != nil {
-		t.Errorf("ObjectUUIDHash hash1 err: %+v", err)
+		t.Fatal(err)
 	}
-	hash2, err := ObjectUUIDHash(a)
-	if err != nil {
-		t.Errorf("ObjectUUIDHash hash2 err: %+v", err)
+	const want = "613a1d33-ffce-f91d-8a7c-475325b6689d"
+	if hash != want {
+		t.Fatalf("ObjectUUIDHash = %q, want %q", hash, want)
 	}
-	fmt.Println(hash1, hash2, hash1 == hash2)
 }

@@ -103,7 +103,7 @@ type MCPServerConfigInfo struct {
 	MCPCoreConfigInfo `json:",inline"`
 	Operations        []AuthOperationType  `json:"operations,omitempty"`                        // Instance operations held by the requesting user.
 	MCPID             string               `json:"mcp_id"`                                      // MCP Server ID
-	Version           int                  `json:"version,omitempty"`                           // MCP Server version.
+	Version           int                  `json:"version,omitzero"`                            // MCP Server version.
 	CreationType      MCPCreationType      `json:"creation_type,omitempty"`                     // Create type.
 	Name              string               `json:"name,omitempty"`                              // MCP Server name.
 	Description       string               `json:"description,omitempty"`                       // Description information.
@@ -112,10 +112,10 @@ type MCPServerConfigInfo struct {
 	IsInternal        bool                 `json:"is_internal"`                                 // Whether it is built-in.
 	Category          string               `json:"category,omitempty" default:"other_category"` // Classification.
 	CreateUser        string               `json:"create_user,omitempty"`                       // Create user.
-	CreateTime        int64                `json:"create_time,omitempty"`                       // creation time.
+	CreateTime        int64                `json:"create_time,omitzero"`                        // creation time.
 	UpdateUser        string               `json:"update_user,omitempty"`                       // Update user.
-	UpdateTime        int64                `json:"update_time,omitempty"`                       // Update time.
-	ReleaseTime       int64                `json:"release_time,omitempty"`                      // Release time.
+	UpdateTime        int64                `json:"update_time,omitzero"`                        // Update time.
+	ReleaseTime       int64                `json:"release_time,omitzero"`                       // Release time.
 	ReleaseUser       string               `json:"release_user,omitempty"`                      // publish user.
 	ToolConfigs       []*MCPToolConfigInfo `json:"tool_configs,omitempty"`                      // Tool configuration.
 }
@@ -303,9 +303,9 @@ type MCPProxyCallToolRequest struct {
 
 // MCPProxyCallToolResponse MCP tool call response.
 type MCPProxyCallToolResponse struct {
-	Content           []mcp.Content `json:"content"`                     // Tool call result content.
-	StructuredContent any           `json:"structuredContent,omitempty"` // Structured tool result, when provided.
-	IsError           bool          `json:"is_error"`                    // Is it an error.
+	Content           []mcp.Content `json:"content"`                    // Tool call result content.
+	StructuredContent any           `json:"structuredContent,omitzero"` // Structured tool result, when provided.
+	IsError           bool          `json:"is_error"`                   // Is it an error.
 }
 
 // IMCPManageService MCP management interface.

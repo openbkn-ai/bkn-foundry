@@ -76,7 +76,7 @@ type SkillInfo struct {
 	Category     BizCategory         `json:"category,omitempty"`
 	CategoryName string              `json:"category_name,omitempty"`
 	ReleaseUser  string              `json:"release_user,omitempty"`
-	ReleaseTime  int64               `json:"release_time,omitempty"`
+	ReleaseTime  int64               `json:"release_time,omitzero"`
 }
 
 // SkillFileSummary Skill file summary.

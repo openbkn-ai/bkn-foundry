@@ -3,11 +3,13 @@ package skill
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -17,6 +19,60 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 )
+
+func TestSkillManagementInlineContentIsValidUTF8(t *testing.T) {
+	for _, tc := range []struct {
+		name, relPath, mimeType, content, want string
+		stored, overview                       bool
+	}{
+		{name: "non-UTF-8 script", relPath: "scripts/main.py", mimeType: "text/x-python", content: "# \xd6\xd0\xce\xc4\n", want: "# �\n"},
+		{name: "binary asset", relPath: "assets/image.png", mimeType: "image/png", content: "\x89PNG\r\n\x1a\n", want: "�PNG\r\n\x1a\n"},
+		{name: "OSS overview", relPath: SkillMD, mimeType: "text/markdown", content: "# caf\xe9", want: "# caf�", overview: true},
+		{name: "stored overview", relPath: SkillMD, mimeType: "text/markdown", content: "# caf\xe9", want: "# caf�", stored: true, overview: true},
+		{name: "stored file", relPath: SkillMD, mimeType: "text/markdown", content: "# caf\xe9", want: "# caf�", stored: true},
+		{name: "UTF-8 text", relPath: "notes.txt", mimeType: "text/plain", content: "中文", want: "中文"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			files := mocks.NewMockISkillFileIndex(ctrl)
+			assets := mocks.NewMockskillAssetStore(ctrl)
+			skill := &model.SkillRepositoryDB{SkillID: "skill-1", Version: "v1"}
+			files.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), skill.SkillID, skill.Version, tc.relPath).
+				Return(&model.SkillFileIndexDB{RelPath: tc.relPath, MimeType: tc.mimeType, Size: int64(len(tc.content))}, nil)
+			if tc.stored {
+				skill.SkillContent = tc.content
+			} else {
+				assets.EXPECT().Download(gomock.Any(), gomock.Any()).Return([]byte(tc.content), nil)
+			}
+			reader := &skillManagementReader{
+				skillRepo: &stubSkillRepo{selectByID: func(context.Context, *sql.Tx, string) (*model.SkillRepositoryDB, error) {
+					return skill, nil
+				}},
+				fileRepo: files, assetStore: assets, Logger: logger.DefaultLogger(),
+			}
+			var result any
+			var err error
+			if tc.overview {
+				result, err = reader.GetManagementContent(t.Context(), &interfaces.GetManagementContentReq{SkillID: skill.SkillID, ResponseMode: "content"})
+			} else {
+				result, err = reader.ReadManagementFile(t.Context(), &interfaces.ReadManagementFileReq{SkillID: skill.SkillID, RelPath: tc.relPath, ResponseMode: "content"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := jsoncodec.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal(body, &response); err != nil || response.Content != tc.want {
+				t.Fatalf("inline content = %q, want %q, err = %v", response.Content, tc.want, err)
+			}
+		})
+	}
+}
 
 func TestSkillManagementReader(t *testing.T) {
 	Convey("SkillManagementReader", t, func() {

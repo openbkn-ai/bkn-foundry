@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
@@ -132,10 +132,7 @@ func (s *skillIndexBuildService) createTask(ctx context.Context, userID string, 
 		return nil, oerrors.DefaultHTTPError(ctx, http.StatusConflict, "skill index build task is already running")
 	}
 
-	taskID, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
+	taskID := uuid.NewV7()
 	task := &model.SkillIndexBuildTaskDB{
 		TaskID:      taskID.String(),
 		Status:      interfaces.SkillIndexBuildStatusPending.String(),

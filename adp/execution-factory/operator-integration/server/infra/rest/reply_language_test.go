@@ -25,6 +25,62 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
+func TestReplyOKReportsReleaseTimeOnlyForReleasedToolboxes(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	ReplyOK(c, http.StatusOK, []*interfaces.ToolBoxInfo{
+		{BoxID: "draft", Status: interfaces.BizStatusUnpublish},
+		{BoxID: "published", Status: interfaces.BizStatusPublished, ReleaseTime: 1700000000000},
+	})
+
+	var body []map[string]json.RawMessage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || recorder.Code != http.StatusOK || len(body) != 2 {
+		t.Fatalf("unexpected response %d %q, err=%v", recorder.Code, recorder.Body.String(), err)
+	}
+	if _, ok := body[0]["release_time"]; ok || string(body[1]["release_time"]) != "1700000000000" {
+		t.Fatalf("unexpected release timestamps: %s", recorder.Body.String())
+	}
+}
+
+func TestReplyOKPreservesExplicitEmptyOpenAPIParameterExamples(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	ReplyOK(c, http.StatusOK, &interfaces.ToolInfo{
+		Metadata: &interfaces.MetadataInfo{APISpec: &interfaces.APISpec{Parameters: []*interfaces.Parameter{
+			{Name: "text", Example: ""},
+			{Name: "items", Example: []any{}},
+			{Name: "options", Example: map[string]any{}},
+			{Name: "unset"},
+		}}},
+	})
+
+	var response struct {
+		Metadata struct {
+			APISpec struct {
+				Parameters []struct {
+					Name    string          `json:"name"`
+					Example json.RawMessage `json:"example"`
+				} `json:"parameters"`
+			} `json:"api_spec"`
+		} `json:"metadata"`
+	}
+	want := map[string]string{"text": `""`, "items": `[]`, "options": `{}`, "unset": ""}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || recorder.Code != http.StatusOK ||
+		len(response.Metadata.APISpec.Parameters) != len(want) {
+		t.Fatalf("unexpected tool detail response %d %s, err = %v", recorder.Code, recorder.Body.String(), err)
+	}
+	for _, param := range response.Metadata.APISpec.Parameters {
+		expected, ok := want[param.Name]
+		if !ok || string(param.Example) != expected {
+			t.Errorf("%s: example = %q, want %q", param.Name, string(param.Example), expected)
+		}
+	}
+}
+
 func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
