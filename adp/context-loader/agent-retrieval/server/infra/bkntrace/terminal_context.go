@@ -67,6 +67,22 @@ func retainSchemaSnapshotTargets(ctx context.Context, kind, knID string, ids []s
 	}
 }
 
+// DiscardSchemaSnapshotTargets forgets the schema snapshot targets retained so far in this
+// attempt, the only business refs it retains. A call repeated against a newer draft answers
+// from its last run alone, so the receipt names only the types that run returned, at the
+// draft it read, and within the room that run left for them.
+func DiscardSchemaSnapshotTargets(ctx context.Context) {
+	outcome := evidenceOutcomeFromContext(ctx)
+	if outcome == nil {
+		return
+	}
+	outcome.mu.Lock()
+	defer outcome.mu.Unlock()
+	if !outcome.closed {
+		outcome.businessRefs = nil
+	}
+}
+
 // SchemaSnapshotBusinessRefs are the business refs a schema snapshot of ids adds to the
 // attempt's receipt: one per object or relation type returned, none for other kinds.
 // A handler that bounds its answer reads them to leave room for the receipt the

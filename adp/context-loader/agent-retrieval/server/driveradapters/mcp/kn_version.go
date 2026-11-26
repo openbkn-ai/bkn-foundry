@@ -63,7 +63,8 @@ func hasKnVersionProperty(input json.RawMessage) bool {
 // It is carried on the context to the bkn-backend and ontology-query clients,
 // which send it on every read and pin it from the first response. If the draft
 // moves on during a call whose draft revision the caller did not fix, the whole
-// call is repeated once against the new draft.
+// call is repeated once against the new draft, and the schema snapshot targets
+// the first run retained for the receipt are dropped with its answer.
 func withKnVersion(h mcptool.Handler) mcptool.Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		sel, err := knVersionFromRequest(req)
@@ -76,6 +77,7 @@ func withKnVersion(h mcptool.Handler) mcptool.Handler {
 		result, err := h(knversion.WithSelector(ctx, sel), req)
 		if sel.RevisionMismatch() && !sel.RevisionFixed() {
 			sel = sel.Renew()
+			bkntrace.DiscardSchemaSnapshotTargets(ctx)
 			result, err = h(knversion.WithSelector(ctx, sel), req)
 		}
 		bkntrace.RecordKnVersion(ctx, sel.Label())
