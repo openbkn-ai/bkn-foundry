@@ -232,44 +232,40 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 	}
 	query.ActualCondition = actualCond
 
-	knFilter := &cond.CondCfg{
-		Field:     "kn_id",
-		Operation: cond.OperationEq,
-		ValueFrom: cond.ValueFrom_Const,
-		Value:     query.KNID,
-	}
-
-	// Add the module type filter.
-	typeFilter := &cond.CondCfg{
-		Field:     "module_type",
-		Operation: cond.OperationEq,
-		ValueFrom: cond.ValueFrom_Const,
-		Value:     query.ModuleType,
-	}
-
-	// Add the branch filter.
-	branchFilter := &cond.CondCfg{
-		Field:     "branch",
-		Operation: cond.OperationEq,
-		ValueFrom: cond.ValueFrom_Const,
-		Value:     query.Branch,
-	}
-
-	// Include required BKN filters in the condition tree.
+	// Validate the caller's condition before the scope filters join it.
 	err = validateCond(ctx, query.ActualCondition)
 	if err != nil {
 		return err
 	}
 
+	scope := func() []*cond.CondCfg {
+		filters := conceptScopeFilters(query)
+		if query.ExcludeDeprecated {
+			filters = append(filters, notDeprecatedFilter())
+		}
+		return filters
+	}
+	// A knn picks its k neighbours before the conditions around it apply, so
+	// it gets the scope as its own filter too: otherwise concepts of other
+	// networks, branches or kinds can take every neighbour and the outer
+	// filters leave nothing (#3404). Deprecated concepts take none either.
+	scopeKnn(query.ActualCondition, scope)
 	query.ActualCondition = &cond.CondCfg{
 		Operation: cond.OperationAnd,
-		SubConds:  []*cond.CondCfg{query.ActualCondition, knFilter, typeFilter, branchFilter},
-	}
-	if query.ExcludeDeprecated {
-		excludeDeprecated(query.ActualCondition)
+		SubConds:  append([]*cond.CondCfg{query.ActualCondition}, scope()...),
 	}
 
 	return nil
+}
+
+// conceptScopeFilters limits a concept search to the network, branch and
+// kind it was asked for; the concept index holds every network's concepts.
+func conceptScopeFilters(query *interfaces.ConceptsQuery) []*cond.CondCfg {
+	return []*cond.CondCfg{
+		{Field: "kn_id", Operation: cond.OperationEq, ValueFrom: cond.ValueFrom_Const, Value: query.KNID},
+		{Field: "module_type", Operation: cond.OperationEq, ValueFrom: cond.ValueFrom_Const, Value: query.ModuleType},
+		{Field: "branch", Operation: cond.OperationEq, ValueFrom: cond.ValueFrom_Const, Value: query.Branch},
+	}
 }
 
 // notDeprecatedFilter keeps the concepts that are not deprecated. Only a deprecated concept carries
@@ -293,24 +289,19 @@ func notDeprecatedFilter() *cond.CondCfg {
 	}
 }
 
-// excludeDeprecated adds the filter around the whole condition, and inside each knn as its own
-// filter so deprecated concepts take none of its k neighbours.
-func excludeDeprecated(root *cond.CondCfg) {
-	var addToKnn func(cfg *cond.CondCfg)
-	addToKnn = func(cfg *cond.CondCfg) {
-		if cfg == nil {
-			return
-		}
-		if cfg.Operation == cond.OperationKNN {
-			cfg.SubConds = append(cfg.SubConds, notDeprecatedFilter())
-			return
-		}
-		for _, sub := range cfg.SubConds {
-			addToKnn(sub)
-		}
+// scopeKnn adds a fresh copy of the scope filters to every knn in the tree,
+// at any depth, as the knn's own filter.
+func scopeKnn(cfg *cond.CondCfg, scope func() []*cond.CondCfg) {
+	if cfg == nil {
+		return
 	}
-	addToKnn(root)
-	root.SubConds = append(root.SubConds, notDeprecatedFilter())
+	if cfg.Operation == cond.OperationKNN {
+		cfg.SubConds = append(cfg.SubConds, scope()...)
+		return
+	}
+	for _, sub := range cfg.SubConds {
+		scopeKnn(sub, scope)
+	}
 }
 
 func validateCond(ctx context.Context, cfg *cond.CondCfg) error {

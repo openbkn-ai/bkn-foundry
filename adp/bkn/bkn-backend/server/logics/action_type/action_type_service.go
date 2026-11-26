@@ -1304,6 +1304,8 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				atIDs = append(atIDs, atID)
 			}
 		}
+		// The groups' members are a scope as well: a knn picks its neighbours among them.
+		filterCondition = permission.ScopeKnnToIDs(filterCondition, atIDs)
 	}
 
 	// Decide whether to query the total based on NeedTotal.
