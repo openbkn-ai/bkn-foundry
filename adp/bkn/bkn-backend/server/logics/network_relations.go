@@ -420,6 +420,24 @@ func (nr *NetworkRelations) DeleteReferences(ctx context.Context, knID, branch, 
 		for _, at := range stored {
 			replacedBy(at.ATID, at.Lifecycle)
 		}
+		// An event class handles its events with the action type: deleted, they would fail.
+		classes, err := nr.OTA.ListHandlingEventClasses(ctx, knID, branch)
+		if err != nil {
+			return nil, err
+		}
+		sort.Slice(classes, func(i, j int) bool { return classes[i].OTID < classes[j].OTID })
+		for _, class := range classes {
+			handling := class.Event.HandlingAction
+			if !slices.Contains(ids, handling.ActionTypeID) {
+				continue
+			}
+			referrers = append(referrers, Reference{
+				Kind: kind, ID: handling.ActionTypeID, ReferrerKind: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+				ReferrerID: class.OTID, Via: ReferenceViaHandlingAction,
+				Message: fmt.Sprintf("action type %q handles the events of event class %q (%s)",
+					handling.ActionTypeID, class.OTID, class.OTName),
+			})
+		}
 	case interfaces.RESOURCE_TYPE_RELATION_TYPE:
 		relationIDs, err := nr.RTA.ListDeprecatedOrFallbackRelationTypeIDs(ctx, knID, branch)
 		if err != nil || len(relationIDs) == 0 {

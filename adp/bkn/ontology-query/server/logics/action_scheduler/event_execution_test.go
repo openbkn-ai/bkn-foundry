@@ -358,3 +358,17 @@ func TestATrialBranchNamesAVersion(t *testing.T) {
 		t.Errorf("a request without kn_version carries an empty pin: %v", err)
 	}
 }
+
+// A check gives the ledger each object's identity, which the handling action of an event of the
+// object runs on.
+func TestACheckGivesTheIdentityOfEachObject(t *testing.T) {
+	action := recordEventAction()
+	check := eventRuleCheck(&action, &action_target.Selection{Targets: []action_target.EventTarget{{
+		Identity: map[string]any{"id": json.Number("9007199254740993")},
+		EventHit: interfaces.EventHit{Key: "9007199254740993", Name: "PO"},
+	}}})
+	encoded, _ := json.Marshal(check.Hits)
+	if !strings.Contains(string(encoded), `"identity":{"id":9007199254740993}`) {
+		t.Fatalf("hits = %s", encoded)
+	}
+}

@@ -259,7 +259,9 @@ func (s *actionSchedulerService) executeEventAsync(execution *interfaces.ActionE
 func eventRuleCheck(actionType *interfaces.ActionType, selection *action_target.Selection) *interfaces.EventRuleCheckRequest {
 	hits := make([]interfaces.EventHit, 0, len(selection.Targets))
 	for _, target := range selection.Targets {
-		hits = append(hits, target.EventHit)
+		hit := target.EventHit
+		hit.Identity = target.Identity
+		hits = append(hits, hit)
 	}
 	message := selection.Message
 	if utf8.RuneCountInString(message) > eventCheckMessageMax {

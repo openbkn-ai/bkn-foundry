@@ -310,6 +310,21 @@ func (mr *MockObjectTypeAccessMockRecorder) ListDeprecatedObjectTypes(ctx, knID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeprecatedObjectTypes", reflect.TypeOf((*MockObjectTypeAccess)(nil).ListDeprecatedObjectTypes), ctx, knID, branch)
 }
 
+// ListHandlingEventClasses mocks base method.
+func (m *MockObjectTypeAccess) ListHandlingEventClasses(ctx context.Context, knID, branch string) ([]*interfaces.ObjectType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHandlingEventClasses", ctx, knID, branch)
+	ret0, _ := ret[0].([]*interfaces.ObjectType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHandlingEventClasses indicates an expected call of ListHandlingEventClasses.
+func (mr *MockObjectTypeAccessMockRecorder) ListHandlingEventClasses(ctx, knID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHandlingEventClasses", reflect.TypeOf((*MockObjectTypeAccess)(nil).ListHandlingEventClasses), ctx, knID, branch)
+}
+
 // ListObjectTypeLogicProperties mocks base method.
 func (m *MockObjectTypeAccess) ListObjectTypeLogicProperties(ctx context.Context, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
 	m.ctrl.T.Helper()

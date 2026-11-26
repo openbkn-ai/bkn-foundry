@@ -93,6 +93,10 @@ func Setup(host Host) error {
 	if err := host.RegisterWorker(ProjectionWorker, newProjector(store, classes).run); err != nil {
 		return err
 	}
+	handling := newHandler(store, action_execution.NewEventHandlingAccess(setting))
+	if err := host.RegisterWorker(HandlingWorker, handling.run); err != nil {
+		return err
+	}
 	return host.RegisterRoutes(RouteExtension, func(engine *gin.Engine) {
 		driveradapters.RegisterKnEventRoutes(engine, setting, service, gate)
 	})

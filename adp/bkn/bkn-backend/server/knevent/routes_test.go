@@ -79,7 +79,7 @@ func TestNetworkDeletionRemovesEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectBegin()
-	for _, table := range []string{headTable, changeTable, eventTable, checkTable} {
+	for _, table := range []string{headTable, changeTable, eventTable, checkTable, handlingTable} {
 		mock.ExpectExec("DELETE FROM " + table + " WHERE f_kn_id = \\?").WithArgs("kn1").WillReturnResult(sqlmock.NewResult(0, 1))
 	}
 	mock.ExpectCommit()

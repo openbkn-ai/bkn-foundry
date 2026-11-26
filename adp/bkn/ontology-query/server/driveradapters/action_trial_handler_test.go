@@ -134,3 +134,58 @@ func TestOnlyTheInternalExecuteRouteIsInternal(t *testing.T) {
 		t.Fatalf("internal = %v", internal)
 	}
 }
+
+// Handling an event is the platform's: only the internal route takes trigger_type event, as the
+// execution subject of the event's class.
+func TestOnlyThePlatformHandlesEvents(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	service := omock.NewMockActionSchedulerService(ctrl)
+	var triggers []string
+	service.EXPECT().ExecuteAction(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *interfaces.ActionExecutionRequest) (*interfaces.ActionExecutionResponse, error) {
+			triggers = append(triggers, req.TriggerType)
+			return &interfaces.ActionExecutionResponse{ExecutionID: "e"}, nil
+		}).Times(1)
+	r := &restHandler{ass: service}
+	request := func(path string) (*gin.Context, *httptest.ResponseRecorder) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, path,
+			strings.NewReader(`{"trigger_type":"event","_instance_identities":[{"id":"PO-1"}]}`))
+		c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "u-subject")
+		c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+		c.Params = gin.Params{{Key: "kn_id", Value: "kn-1"}, {Key: "at_id", Value: "notify_buyer"}}
+		return c, w
+	}
+	c, w := request("/api/ontology-query/in/v1/knowledge-networks/kn-1/action-types/notify_buyer/execute")
+	r.ExecuteActionByIn(c)
+	if w.Code != http.StatusAccepted || len(triggers) != 1 || triggers[0] != interfaces.TriggerTypeEvent {
+		t.Fatalf("internal: status %d, triggers %v, body %s", w.Code, triggers, w.Body.String())
+	}
+	c, w = request("/api/ontology-query/v1/knowledge-networks/kn-1/action-types/notify_buyer/execute")
+	r.ExecuteAction(c, hydra.Visitor{ID: "u-subject", Type: hydra.VisitorType_User})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("external: status %d, body %s", w.Code, w.Body.String())
+	}
+}
+
+// Input bindings come only with the platform's handling of an event, never with another run.
+func TestInputBindingsComeOnlyWithAnEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	service := omock.NewMockActionSchedulerService(ctrl)
+	service.EXPECT().ExecuteAction(gomock.Any(), gomock.Any()).Times(0)
+	r := &restHandler{ass: service}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost,
+		"/api/ontology-query/in/v1/knowledge-networks/kn-1/action-types/notify_buyer/execute",
+		strings.NewReader(`{"trigger_type":"scheduled","_instance_identities":[{"id":"PO-1"}],`+
+			`"input_bindings":{"reason":{"value_from":"const","value":"late"}}}`))
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "u-subject")
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-1"}, {Key: "at_id", Value: "notify_buyer"}}
+	r.ExecuteActionByIn(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", w.Code, w.Body.String())
+	}
+}

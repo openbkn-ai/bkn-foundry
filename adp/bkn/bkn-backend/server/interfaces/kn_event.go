@@ -75,6 +75,11 @@ const (
 	// KnEventClassIDMax is the longest ID of an event class, the column the
 	// ledger keeps it in.
 	KnEventClassIDMax = 64
+	// KnEventHandlingAuto and KnEventHandlingSuggest are how a class handles its events with
+	// its handling action.
+	KnEventHandlingAuto    = "auto"
+	KnEventHandlingSuggest = "suggest"
+
 	// KnEventHandlingNoteMax is the longest handling note of an event class.
 	KnEventHandlingNoteMax = 500
 	// KnEventStatsDefaultSpan is the span of the occurrence counts when no
@@ -140,6 +145,9 @@ type KnEvent struct {
 	UpdateTime       int64                       `json:"update_time"`
 	Actions          []string                    `json:"actions"`
 	History          []KnEventTransition         `json:"history,omitempty"`
+	// Handling is how the platform handled the event with its class's handling action, when the
+	// class runs it by itself.
+	Handling *KnEventHandling `json:"handling,omitempty"`
 }
 
 // KnEventFilter narrows the event list. From and To bound the time the
@@ -217,6 +225,32 @@ type KnEventRuleHit struct {
 	// Detail is what the rule found about the object, such as the value of a metric. It is
 	// written to the event the check opens; a later check does not change it.
 	Detail json.RawMessage `json:"detail,omitempty"`
+	// Identity is the object's identity, its primary keys and their values, which an action
+	// type is executed on. A class whose handling action runs by itself needs it.
+	Identity json.RawMessage `json:"identity,omitempty"`
+}
+
+// How the platform's handling of an event went, when its class runs its handling action by
+// itself: queued until it is tried, started once the action is executing, needs_person when the
+// action type is governed and only a person can start it, failed when it could not be executed.
+const (
+	KnEventHandlingQueued      = "queued"
+	KnEventHandlingStarted     = "started"
+	KnEventHandlingNeedsPerson = "needs_person"
+	KnEventHandlingFailed      = "failed"
+
+	// KnEventIdentityMaxBytes bounds the identity of a hit.
+	KnEventIdentityMaxBytes = 4 << 10
+)
+
+// KnEventHandling is how the platform handled an event with its class's handling action.
+type KnEventHandling struct {
+	ActionTypeID string `json:"action_type_id"`
+	Status       string `json:"status"`
+	ExecutionID  string `json:"execution_id,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Attempts     int    `json:"attempts"`
+	UpdateTime   int64  `json:"update_time"`
 }
 
 // KnEventRuleCheckInput is one check of a rule event class.

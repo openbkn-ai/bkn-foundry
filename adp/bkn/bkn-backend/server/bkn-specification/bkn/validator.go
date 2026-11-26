@@ -307,6 +307,7 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 		objectTypes[ot.ID] = ot
 	}
 	recorded := map[string]string{}
+	validateEventHandlingActions(result, doc)
 	for _, at := range doc.ActionTypes {
 		t := tableName("action_type", at.ID)
 		validateDefFrontmatter(result, t, at.Type, at.ID, at.Name)
@@ -456,6 +457,59 @@ func validateEventClassInNetwork(result *ValidationResult, table string, ot *Bkn
 		appendError(result, table, "event.subject", "invalid_event_subject_ref",
 			fmt.Sprintf("event subject %q is not a defined object type id", ot.Event.Subject))
 	}
+}
+
+// validateEventHandlingActions checks that the handling action of each event class is an action
+// type of the network that can handle its events.
+func validateEventHandlingActions(result *ValidationResult, doc *BknNetwork) {
+	actions := make(map[string]*BknActionType, len(doc.ActionTypes))
+	for _, at := range doc.ActionTypes {
+		actions[at.ID] = at
+	}
+	objects := make(map[string]*BknObjectType, len(doc.ObjectTypes))
+	for _, ot := range doc.ObjectTypes {
+		objects[ot.ID] = ot
+	}
+	for _, ot := range doc.ObjectTypes {
+		if !ot.IsEventClass() || ot.Event == nil || ot.Event.HandlingAction == nil || ValidateEventClass(ot) != nil {
+			continue
+		}
+		table := tableName("object_type", ot.ID)
+		at, ok := actions[ot.Event.HandlingAction.ActionTypeID]
+		if !ok {
+			appendError(result, table, "event.handling_action.action_type_id", "invalid_handling_action_ref",
+				fmt.Sprintf("handling action %q is not a defined action type id", ot.Event.HandlingAction.ActionTypeID))
+			continue
+		}
+		if refusal := EventHandlingRefusal(ot.Event, strings.TrimSpace(at.BoundObject), at.IsRecognitionAction(), inputParameters(at)); refusal != "" {
+			appendError(result, table, "event.handling_action", "invalid_handling_action", refusal)
+			continue
+		}
+		if subject, ok := objects[ot.Event.Subject]; ok {
+			if refusal := EventHandlingPropertyRefusal(ot.Event, dataPropertyNames(subject)); refusal != "" {
+				appendError(result, table, "event.handling_action.parameters", "invalid_handling_action", refusal)
+			}
+		}
+	}
+}
+
+func dataPropertyNames(ot *BknObjectType) []string {
+	names := make([]string, 0, len(ot.DataProperties))
+	for _, property := range ot.DataProperties {
+		names = append(names, property.Name)
+	}
+	return names
+}
+
+// inputParameters names the parameters of an action type that its caller gives.
+func inputParameters(at *BknActionType) []string {
+	var names []string
+	for _, parameter := range at.Parameters {
+		if strings.EqualFold(strings.TrimSpace(parameter.ValueFrom), "input") {
+			names = append(names, parameter.Name)
+		}
+	}
+	return names
 }
 
 func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjectType) {

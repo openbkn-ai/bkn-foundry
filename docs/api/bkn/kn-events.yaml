@@ -723,6 +723,35 @@ components:
           description: Only in the response of the get operation. Oldest first.
           items:
             $ref: "#/components/schemas/KnEventTransition"
+        handling:
+          $ref: "#/components/schemas/KnEventHandling"
+    KnEventHandling:
+      type: object
+      description: |
+        How the platform handled the event with its class's handling action, run by itself (`handling_action.mode`
+        `auto`). Absent for an event the platform does not handle.
+      required: [action_type_id, status, attempts, update_time]
+      properties:
+        action_type_id:
+          type: string
+        status:
+          type: string
+          description: |
+            `queued`: waiting to be tried, again after ontology-query could not be asked; `started`: the action is
+            executing, see `execution_id` in the action logs; `needs_person`: the action type is governed and only a
+            person can start it; `failed`: it could not be executed, see `message`.
+          enum: [queued, started, needs_person, failed]
+        execution_id:
+          type: string
+          description: The action execution, once started. Absent when an execution of the action on the object was already running.
+        message:
+          type: string
+          description: Why it is waiting, needs a person or failed.
+        attempts:
+          type: integer
+        update_time:
+          type: integer
+          format: int64
     KnEventList:
       type: object
       properties:
@@ -801,6 +830,12 @@ components:
           type: object
           additionalProperties: true
           description: What the rule found about the object, such as a metric's value; at most 16 KiB. Written to the event the check opens.
+        identity:
+          type: object
+          additionalProperties: true
+          description: |
+            The object's primary keys and their values, at most 4 KiB. The handling action of a class that runs it by
+            itself is executed on it; an event found without it is not handled (`failed`).
     KnEventRuleCheckInput:
       type: object
       required:

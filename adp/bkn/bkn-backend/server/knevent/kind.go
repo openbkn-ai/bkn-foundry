@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	corelogics "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
@@ -102,7 +103,56 @@ func checkEventConfig(ctx context.Context, objectType *interfaces.ObjectType, be
 	case longerThan(event.HandlingNote, interfaces.KnEventHandlingNoteMax):
 		return invalidClass(ctx, "event.handling_note exceeds %d characters", interfaces.KnEventHandlingNoteMax)
 	}
+	return checkHandlingConfig(ctx, event)
+}
+
+// checkHandlingConfig checks the handling action of a class on its own: what it names and how it
+// runs. Whether the action type can handle the class's events is checked when the class is saved.
+func checkHandlingConfig(ctx context.Context, event *interfaces.ObjectTypeEvent) error {
+	handling := event.HandlingAction
+	if handling == nil {
+		return nil
+	}
+	handling.ActionTypeID = strings.TrimSpace(handling.ActionTypeID)
+	handling.Mode = strings.TrimSpace(handling.Mode)
+	switch {
+	case handling.ActionTypeID == "":
+		return invalidClass(ctx, "event.handling_action.action_type_id is required: the action type that handles its events")
+	case handling.Mode != interfaces.KnEventHandlingAuto && handling.Mode != interfaces.KnEventHandlingSuggest:
+		return invalidClass(ctx, "event.handling_action.mode must be %s or %s",
+			interfaces.KnEventHandlingAuto, interfaces.KnEventHandlingSuggest)
+	case handling.Mode == interfaces.KnEventHandlingAuto && event.Source != interfaces.KnEventSourceRule:
+		return invalidClass(ctx, "only a class whose source is rule runs its handling action by itself; use mode %s",
+			interfaces.KnEventHandlingSuggest)
+	}
+	trimmed := bknsdk.TrimHandlingParameters(specEvent(event).HandlingAction.Parameters)
+	handling.Parameters = nil
+	for name, parameter := range trimmed {
+		if handling.Parameters == nil {
+			handling.Parameters = make(map[string]interfaces.ObjectTypeEventHandlingParameter, len(trimmed))
+		}
+		handling.Parameters[name] = interfaces.ObjectTypeEventHandlingParameter{ValueFrom: parameter.ValueFrom, Value: parameter.Value}
+	}
+	if problem := bknsdk.HandlingParameterProblem(trimmed); problem != "" {
+		return invalidClass(ctx, "event.handling_action.parameters: %s", problem)
+	}
 	return nil
+}
+
+// specEvent is the part of an event class's configuration the specification's checks of a
+// handling action read.
+func specEvent(event *interfaces.ObjectTypeEvent) *bknsdk.ObjectTypeEvent {
+	spec := &bknsdk.ObjectTypeEvent{Source: event.Source, Subject: event.Subject}
+	if handling := event.HandlingAction; handling != nil {
+		spec.HandlingAction = &bknsdk.EventHandlingAction{ActionTypeID: handling.ActionTypeID, Mode: handling.Mode}
+		if len(handling.Parameters) > 0 {
+			spec.HandlingAction.Parameters = make(map[string]bknsdk.EventHandlingParameter, len(handling.Parameters))
+			for name, parameter := range handling.Parameters {
+				spec.HandlingAction.Parameters[name] = bknsdk.EventHandlingParameter{ValueFrom: parameter.ValueFrom, Value: parameter.Value}
+			}
+		}
+	}
+	return spec
 }
 
 // completeDataSource binds a class to its dataset. A class without an ID yet is left unbound,
@@ -193,8 +243,12 @@ func (k *eventKind) Saved(ctx context.Context, tx *sql.Tx, objectType, stored *i
 			return err
 		}
 	}
-	subjectKey, err := k.subjectKey(ctx, tx, objectType)
+	subject, err := k.subject(ctx, tx, objectType)
 	if err != nil {
+		return err
+	}
+	subjectKey := subject.PrimaryKeys[0]
+	if err := k.checkHandlingAction(ctx, tx, objectType, subject); err != nil {
 		return err
 	}
 	made, err := k.classes.ensure(ctx, objectType.KNID, objectType.OTID)
@@ -222,24 +276,67 @@ func (k *eventKind) Saved(ctx context.Context, tx *sql.Tx, objectType, stored *i
 	return k.saveRelation(ctx, tx, objectType, subjectKey)
 }
 
-// subjectKey is the single primary key of the subject of a class, which an event's object key
-// stands for.
-func (k *eventKind) subjectKey(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) (string, error) {
+// checkHandlingAction refuses a handling action that cannot handle the class's events: one that
+// does not act on the subject, records events, or, run by the platform, asks for input. An action
+// type the branch does not have yet is taken: a package writes its action types after its object
+// types, and the platform says why a handling action it cannot run did not run.
+func (k *eventKind) checkHandlingAction(ctx context.Context, tx *sql.Tx, objectType, subject *interfaces.ObjectType) error {
+	handling := objectType.Event.HandlingAction
+	if handling == nil {
+		return nil
+	}
+	action, found, err := k.store.handlingActionType(ctx, tx, objectType.KNID, objectType.Branch, handling.ActionTypeID)
+	if err != nil {
+		return classInternalError(ctx, err)
+	}
+	if !found {
+		return nil
+	}
+	if refusal := handlingRefusal(objectType.Event, action, subjectProperties(subject)); refusal != "" {
+		return invalidClass(ctx, "%s", refusal)
+	}
+	return nil
+}
+
+func subjectProperties(subject *interfaces.ObjectType) []string {
+	names := make([]string, 0, len(subject.DataProperties))
+	for _, property := range subject.DataProperties {
+		if property != nil {
+			names = append(names, property.Name)
+		}
+	}
+	return names
+}
+
+// handlingRefusal says why an action type cannot handle the events of a class, or "" when it can:
+// it must act on the subject and record no events, its bound inputs must be its inputs and take
+// properties the subject has, and, run by itself, it must have every input given.
+func handlingRefusal(event *interfaces.ObjectTypeEvent, action handlingAction, properties []string) string {
+	spec := specEvent(event)
+	if refusal := bknsdk.EventHandlingRefusal(spec, action.objectTypeID, action.recordsEvents, action.inputs); refusal != "" {
+		return refusal
+	}
+	return bknsdk.EventHandlingPropertyRefusal(spec, properties)
+}
+
+// subject is the object type a class is about, which must have a single primary key: an event's
+// object key stands for it.
+func (k *eventKind) subject(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType) (*interfaces.ObjectType, error) {
 	subject := objectType.Event.Subject
 	found, err := k.objects.GetObjectTypesByIDs(ctx, tx, objectType.KNID, objectType.Branch, []string{subject})
 	if err != nil {
-		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
 	}
 	if len(found) == 0 || found[0] == nil {
-		return "", invalidClass(ctx, "the subject %s of event class %s is not an object type of the network",
+		return nil, invalidClass(ctx, "the subject %s of event class %s is not an object type of the network",
 			subject, objectType.OTID)
 	}
 	if len(found[0].PrimaryKeys) != 1 {
-		return "", invalidClass(ctx, "the subject %s of event class %s must have exactly one primary key: an event names its object by one key",
+		return nil, invalidClass(ctx, "the subject %s of event class %s must have exactly one primary key: an event names its object by one key",
 			subject, objectType.OTID)
 	}
-	return found[0].PrimaryKeys[0], nil
+	return found[0], nil
 }
 
 // saveRelation writes the relation from a class to its subject as the relation type API does, as

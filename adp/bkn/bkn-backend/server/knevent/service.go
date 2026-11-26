@@ -249,10 +249,29 @@ func (s *service) ListEvents(ctx context.Context, knID string, filter interfaces
 		events = events[:filter.Limit]
 		list.NextCursor = encodeCursor(events[len(events)-1])
 	}
+	if err := s.attachHandlings(ctx, knID, events); err != nil {
+		return interfaces.KnEventList{}, fail(ctx, "event list", err)
+	}
 	for _, event := range events {
 		list.Entries = append(list.Entries, *event)
 	}
 	return list, nil
+}
+
+// attachHandlings gives each event how the platform handled it, if it did.
+func (s *service) attachHandlings(ctx context.Context, knID string, events []*interfaces.KnEvent) error {
+	ids := make([]string, 0, len(events))
+	for _, event := range events {
+		ids = append(ids, event.ID)
+	}
+	handlings, err := s.store.handlingsOf(ctx, knID, ids)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		event.Handling = handlings[event.ID]
+	}
+	return nil
 }
 
 func (s *service) GetEvent(ctx context.Context, knID, eventID string) (interfaces.KnEvent, error) {
@@ -268,6 +287,9 @@ func (s *service) GetEvent(ctx context.Context, knID, eventID string) (interface
 	}
 	if event.History, err = s.store.history(ctx, knID, eventID); err != nil {
 		return interfaces.KnEvent{}, fail(ctx, "event history", err)
+	}
+	if err := s.attachHandlings(ctx, knID, []*interfaces.KnEvent{event}); err != nil {
+		return interfaces.KnEvent{}, fail(ctx, "event handling", err)
 	}
 	return *event, nil
 }
@@ -433,6 +455,9 @@ func recordCheck(w *writer, class eventClass, input interfaces.KnEventRuleCheckI
 	}
 	changes, check := applyRuleCheck(class, previous, mine, input, o)
 	if err := w.record(changes); err != nil {
+		return interfaces.KnEventRuleCheckResult{}, err
+	}
+	if err := w.queueHandlings(handlingsFor(class, changes, input.Hits, o)); err != nil {
 		return interfaces.KnEventRuleCheckResult{}, err
 	}
 	if err := w.saveCheck(check); err != nil {

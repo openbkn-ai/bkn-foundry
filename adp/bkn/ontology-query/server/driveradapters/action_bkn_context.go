@@ -24,10 +24,11 @@ import (
 // is dropped rather than rejected. Both ids are labels the caller owns: nothing here creates, infers or checks them
 // against the trace core, and nothing may use them for authorization.
 //
-// A scheduled execution has no caller run, so both stay empty and are not validated.
+// A scheduled execution, or one that handles an event, has no caller run, so both stay empty
+// and are not validated.
 func resolveActionBKNContext(ctx context.Context, req *interfaces.ActionExecutionRequest) error {
 	req.ConversationID, req.InteractionID = "", ""
-	if req.TriggerType == interfaces.TriggerTypeScheduled {
+	if req.TriggerType == interfaces.TriggerTypeScheduled || req.TriggerType == interfaces.TriggerTypeEvent {
 		return nil
 	}
 

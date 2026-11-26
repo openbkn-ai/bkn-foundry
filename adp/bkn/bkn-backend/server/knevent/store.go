@@ -24,6 +24,9 @@ const (
 	changeTable = "t_kn_event_change"
 	checkTable  = "t_kn_event_rule_check"
 	headTable   = "t_kn_event_head"
+	// handlingTable keeps how the platform handles the events of classes that run their
+	// handling action by themselves.
+	handlingTable = "t_kn_event_handling"
 
 	objectTypeTable   = "t_object_type"
 	versionStateTable = "t_kn_version_state"
@@ -112,6 +115,8 @@ type eventClass struct {
 	subject    string
 	severity   string
 	mergeHours float64
+	// handling is the class's handling action, nil when it has none.
+	handling *interfaces.ObjectTypeEventHandling
 }
 
 // readClass reads the event class id of a network on the branch it runs on, reporting false
@@ -145,7 +150,7 @@ func readClass(ctx context.Context, q queryer, knID, id string) (eventClass, boo
 	}
 	return eventClass{
 		id: id, name: name, source: event.Source, subject: event.Subject,
-		severity: event.Severity, mergeHours: event.MergeHours,
+		severity: event.Severity, mergeHours: event.MergeHours, handling: event.HandlingAction,
 	}, true, nil
 }
 
@@ -379,7 +384,7 @@ func (s *store) listChanges(ctx context.Context, knID string, after int64, limit
 // the network. The head row goes first: it waits for a write in progress, and
 // a write that waited for it finds the network gone.
 func (s *store) DeleteKnEvents(ctx context.Context, tx *sql.Tx, knID string) error {
-	for _, table := range []string{headTable, changeTable, eventTable, checkTable} {
+	for _, table := range []string{headTable, changeTable, eventTable, checkTable, handlingTable} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE f_kn_id = ?", knID); err != nil {
 			return fmt.Errorf("delete %s of knowledge network %s: %w", table, knID, err)
 		}
@@ -749,6 +754,53 @@ func (s *store) locked(ctx context.Context, name string, wait int, fn func() err
 		}
 	}()
 	return true, fn()
+}
+
+// handlingAction is what decides whether an action type can handle the events of a class.
+type handlingAction struct {
+	objectTypeID  string
+	recordsEvents bool
+	inputs        []string
+}
+
+// handlingActionType reads an action type of a branch in tx, reporting false when the branch
+// has none of the ID.
+func (s *store) handlingActionType(ctx context.Context, tx *sql.Tx, knID, branch, id string) (handlingAction, bool, error) {
+	var objectTypeID string
+	var operation, parameters sql.NullString
+	err := tx.QueryRowContext(ctx, "SELECT f_object_type_id, f_operation_config, f_parameters FROM t_action_type"+
+		" WHERE f_kn_id = ? AND f_branch = ? AND f_id = ?", knID, branch, id).Scan(&objectTypeID, &operation, &parameters)
+	if errors.Is(err, sql.ErrNoRows) {
+		return handlingAction{}, false, nil
+	}
+	if err != nil {
+		return handlingAction{}, false, err
+	}
+	action := handlingAction{objectTypeID: objectTypeID}
+	if operation.Valid && operation.String != "" {
+		var config struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(operation.String), &config); err != nil {
+			return handlingAction{}, false, fmt.Errorf("decode the operation of action type %s: %w", id, err)
+		}
+		action.recordsEvents = config.Type == interfaces.ActionOperationEvent
+	}
+	if parameters.Valid && parameters.String != "" {
+		var list []struct {
+			Name      string `json:"name"`
+			ValueFrom string `json:"value_from"`
+		}
+		if err := json.Unmarshal([]byte(parameters.String), &list); err != nil {
+			return handlingAction{}, false, fmt.Errorf("decode the parameters of action type %s: %w", id, err)
+		}
+		for _, parameter := range list {
+			if parameter.ValueFrom == "input" {
+				action.inputs = append(action.inputs, parameter.Name)
+			}
+		}
+	}
+	return action, true, nil
 }
 
 // recognitionActions lists the record-event action types of a class in a branch, in tx when it is

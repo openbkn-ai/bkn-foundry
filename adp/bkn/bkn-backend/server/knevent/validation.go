@@ -138,6 +138,19 @@ func validateRuleCheckInput(input *interfaces.KnEventRuleCheckInput) error {
 			}
 			input.Hits[index].Detail = detail
 		}
+		if len(hit.Identity) > 0 {
+			identity, err := normalizeJSON(fmt.Sprintf("hits[%d].identity", index), hit.Identity, interfaces.KnEventIdentityMaxBytes)
+			if err != nil {
+				return err
+			}
+			switch {
+			case identity[0] != '{':
+				return invalidf("hits[%d].identity must be a JSON object of the object's primary keys", index)
+			case string(identity) == "{}":
+				identity = nil
+			}
+			input.Hits[index].Identity = identity
+		}
 	}
 	return nil
 }

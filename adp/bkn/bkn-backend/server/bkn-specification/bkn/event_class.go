@@ -8,6 +8,7 @@ package bkn
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -32,6 +33,20 @@ const (
 	EventSourceReport = "report"
 )
 
+// How an event class handles its events with an action type: auto runs it on the object of each
+// event a check newly finds; suggest only offers it to the person handling an event.
+const (
+	EventHandlingAuto    = "auto"
+	EventHandlingSuggest = "suggest"
+)
+
+// Where the value of a bound input of a handling action is from: a constant, or a property of the
+// object the event is about.
+const (
+	EventHandlingFromConst    = "const"
+	EventHandlingFromProperty = "property"
+)
+
 // Limits of an event class, the platform's own.
 const (
 	EventClassIDMax        = 64
@@ -48,6 +63,24 @@ type ObjectTypeEvent struct {
 	Severity     string  `yaml:"severity,omitempty"`
 	MergeHours   float64 `yaml:"merge_hours,omitempty"`
 	HandlingNote string  `yaml:"handling_note,omitempty"`
+	// HandlingAction is the action type that handles an event of the class, if any.
+	HandlingAction *EventHandlingAction `yaml:"handling_action,omitempty"`
+}
+
+// EventHandlingAction is the action type that handles the events of a class, and how.
+type EventHandlingAction struct {
+	ActionTypeID string `yaml:"action_type_id"`
+	Mode         string `yaml:"mode"`
+	// Parameters gives inputs of the action type a value, by the input's name. Run by itself, the
+	// action needs each of its inputs given here; suggested, these are the values offered.
+	Parameters map[string]EventHandlingParameter `yaml:"parameters,omitempty"`
+}
+
+// EventHandlingParameter is the value of an input of a handling action: a constant (value_from
+// const), or the property of the object the event is about that value names (value_from property).
+type EventHandlingParameter struct {
+	ValueFrom string `yaml:"value_from"`
+	Value     any    `yaml:"value"`
 }
 
 // HasKind reports whether the object type lists the kind.
@@ -132,6 +165,11 @@ func parseEventSection(section string) (*ObjectTypeEvent, error) {
 	event.Subject = strings.TrimSpace(event.Subject)
 	event.Severity = strings.TrimSpace(event.Severity)
 	event.HandlingNote = strings.TrimSpace(event.HandlingNote)
+	if event.HandlingAction != nil {
+		event.HandlingAction.ActionTypeID = strings.TrimSpace(event.HandlingAction.ActionTypeID)
+		event.HandlingAction.Mode = strings.TrimSpace(event.HandlingAction.Mode)
+		event.HandlingAction.Parameters = TrimHandlingParameters(event.HandlingAction.Parameters)
+	}
 	return event, nil
 }
 
@@ -163,7 +201,124 @@ func ValidateEventClass(ot *BknObjectType) error {
 	case utf8.RuneCountInString(event.HandlingNote) > EventHandlingNoteMax:
 		return specErrorf("event class %s: event.handling_note exceeds %d characters", ot.ID, EventHandlingNoteMax)
 	}
+	if handling := event.HandlingAction; handling != nil {
+		switch {
+		case handling.ActionTypeID == "":
+			return specErrorf("event class %s: event.handling_action.action_type_id is required: the action type that handles its events", ot.ID)
+		case handling.Mode != EventHandlingAuto && handling.Mode != EventHandlingSuggest:
+			return specErrorf("event class %s: event.handling_action.mode must be %s or %s", ot.ID, EventHandlingAuto, EventHandlingSuggest)
+		case handling.Mode == EventHandlingAuto && event.Source != EventSourceRule:
+			return specErrorf("event class %s: only a class whose source is rule runs its handling action by itself; use mode %s",
+				ot.ID, EventHandlingSuggest)
+		}
+		if problem := HandlingParameterProblem(handling.Parameters); problem != "" {
+			return specErrorf("event class %s: event.handling_action.parameters: %s", ot.ID, problem)
+		}
+	}
 	return nil
+}
+
+// TrimHandlingParameters trims the names of bound inputs, where their values are from and the
+// properties they name.
+func TrimHandlingParameters(parameters map[string]EventHandlingParameter) map[string]EventHandlingParameter {
+	if len(parameters) == 0 {
+		return nil
+	}
+	trimmed := make(map[string]EventHandlingParameter, len(parameters))
+	for name, parameter := range parameters {
+		parameter.ValueFrom = strings.TrimSpace(parameter.ValueFrom)
+		if property, ok := parameter.Value.(string); ok && parameter.ValueFrom == EventHandlingFromProperty {
+			parameter.Value = strings.TrimSpace(property)
+		}
+		trimmed[strings.TrimSpace(name)] = parameter
+	}
+	return trimmed
+}
+
+// HandlingParameterProblem says what is wrong with the bound inputs of a handling action on their
+// own, or "" when nothing is: each names an input, says where its value is from, and has one.
+func HandlingParameterProblem(parameters map[string]EventHandlingParameter) string {
+	for _, name := range sortedParameterNames(parameters) {
+		parameter := parameters[name]
+		switch {
+		case name == "":
+			return "an input needs its name"
+		case parameter.ValueFrom != EventHandlingFromConst && parameter.ValueFrom != EventHandlingFromProperty:
+			return fmt.Sprintf("value_from of input %s must be %s or %s", name, EventHandlingFromConst, EventHandlingFromProperty)
+		case parameter.ValueFrom == EventHandlingFromConst && parameter.Value == nil:
+			return fmt.Sprintf("input %s needs a value", name)
+		case parameter.ValueFrom == EventHandlingFromProperty:
+			if property, _ := parameter.Value.(string); property == "" {
+				return fmt.Sprintf("input %s needs the name of the property it takes", name)
+			}
+		}
+	}
+	return ""
+}
+
+func sortedParameterNames(parameters map[string]EventHandlingParameter) []string {
+	names := make([]string, 0, len(parameters))
+	for name := range parameters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// EventHandlingRefusal says why an action type cannot handle the events of a class, or "" when
+// it can. The action type must act on the class's subject and must not record events; one the
+// platform runs by itself takes no input, since nobody is there to give it.
+func EventHandlingRefusal(event *ObjectTypeEvent, boundObject string, recordsEvents bool, inputs []string) string {
+	handling := event.HandlingAction
+	switch {
+	case recordsEvents:
+		return fmt.Sprintf("action type %q records events; a handling action acts on the subject", handling.ActionTypeID)
+	case boundObject != event.Subject:
+		return fmt.Sprintf("action type %q acts on %q; the events are about %q", handling.ActionTypeID, boundObject, event.Subject)
+	}
+	asked := make(map[string]bool, len(inputs))
+	for _, input := range inputs {
+		asked[input] = true
+	}
+	for _, name := range sortedParameterNames(handling.Parameters) {
+		if !asked[name] {
+			return fmt.Sprintf("action type %q asks for no input %q; only its inputs take a value here", handling.ActionTypeID, name)
+		}
+	}
+	if handling.Mode == EventHandlingAuto {
+		var missing []string
+		for _, input := range inputs {
+			if _, ok := handling.Parameters[input]; !ok {
+				missing = append(missing, input)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Sprintf("action type %q asks for input (%s), which nobody gives when it runs by itself: "+
+				"give each a constant or a property of the object, or use mode %s",
+				handling.ActionTypeID, strings.Join(missing, ", "), EventHandlingSuggest)
+		}
+	}
+	return ""
+}
+
+// EventHandlingPropertyRefusal says which bound input takes a property the subject does not have,
+// or "" when none does.
+func EventHandlingPropertyRefusal(event *ObjectTypeEvent, properties []string) string {
+	have := make(map[string]bool, len(properties))
+	for _, property := range properties {
+		have[property] = true
+	}
+	handling := event.HandlingAction
+	for _, name := range sortedParameterNames(handling.Parameters) {
+		parameter := handling.Parameters[name]
+		if parameter.ValueFrom != EventHandlingFromProperty {
+			continue
+		}
+		if property, _ := parameter.Value.(string); !have[property] {
+			return fmt.Sprintf("input %q takes property %q, which %q does not have", name, property, event.Subject)
+		}
+	}
+	return ""
 }
 
 // HasEventClasses reports whether the network has an event class, which a package carries from
@@ -205,6 +360,26 @@ func writeEvent(sb *strings.Builder, ot *BknObjectType) {
 	}
 	if ot.Event.HandlingNote != "" {
 		add("handling_note", strNode(ot.Event.HandlingNote))
+	}
+	if handling := ot.Event.HandlingAction; handling != nil {
+		node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+			strNode("action_type_id"), strNode(handling.ActionTypeID), strNode("mode"), strNode(handling.Mode),
+		}}
+		if len(handling.Parameters) > 0 {
+			parameters := &yaml.Node{Kind: yaml.MappingNode}
+			for _, name := range sortedParameterNames(handling.Parameters) {
+				parameter := handling.Parameters[name]
+				value := &yaml.Node{}
+				if err := value.Encode(parameter.Value); err != nil {
+					value = strNode(fmt.Sprint(parameter.Value))
+				}
+				parameters.Content = append(parameters.Content, strNode(name), &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+					strNode("value_from"), strNode(parameter.ValueFrom), strNode("value"), value,
+				}})
+			}
+			node.Content = append(node.Content, strNode("parameters"), parameters)
+		}
+		add("handling_action", node)
 	}
 	root := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{strNode("event"), config}}
 	_, _ = fmt.Fprintf(sb, "### Event\n\n%s\n", encodeYAMLBlock(root))

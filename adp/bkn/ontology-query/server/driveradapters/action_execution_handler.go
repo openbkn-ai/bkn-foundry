@@ -215,6 +215,16 @@ func (r *restHandler) executeAction(c *gin.Context, visitor hydra.Visitor, inter
 	req.Branch = branch
 	req.ActionTypeID = atID
 	req.Internal = internal
+	if (req.TriggerType == interfaces.TriggerTypeEvent && !internal) ||
+		(len(req.InputBindings) > 0 && req.TriggerType != interfaces.TriggerTypeEvent) {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+			WithErrorDetails("trigger_type event and input_bindings are the platform's handling of an event; a caller cannot claim them")
+
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	if err := resolveActionBKNContext(ctx, &req); err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(err.Error())

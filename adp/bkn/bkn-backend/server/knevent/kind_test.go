@@ -7,6 +7,7 @@ package knevent
 import (
 	"errors"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -111,6 +112,16 @@ func TestCompleteRefusesWhatDiffersFromWhatThePlatformKeeps(t *testing.T) {
 			class.Event.HandlingNote = strings.Repeat("处", interfaces.KnEventHandlingNoteMax+1)
 		},
 		"a long ID": func(class *interfaces.ObjectType) { class.OTID = strings.Repeat("e", interfaces.KnEventClassIDMax+1) },
+		"a handling action without its action type": func(class *interfaces.ObjectType) {
+			class.Event.HandlingAction = &interfaces.ObjectTypeEventHandling{ActionTypeID: " ", Mode: interfaces.KnEventHandlingAuto}
+		},
+		"a handling action of an unknown mode": func(class *interfaces.ObjectType) {
+			class.Event.HandlingAction = &interfaces.ObjectTypeEventHandling{ActionTypeID: "notify_buyer", Mode: "later"}
+		},
+		"a reported class handling its events by itself": func(class *interfaces.ObjectType) {
+			class.Event.Source = interfaces.KnEventSourceReport
+			class.Event.HandlingAction = &interfaces.ObjectTypeEventHandling{ActionTypeID: "notify_buyer", Mode: interfaces.KnEventHandlingAuto}
+		},
 	} {
 		class := newClass("late_order")
 		change(class)
@@ -190,6 +201,55 @@ func TestPlatformResourceIsTheClassesOwnDataset(t *testing.T) {
 	} {
 		if kind.PlatformResource(other[0], other[1], other[2]) {
 			t.Fatalf("%v is kept", other)
+		}
+	}
+}
+
+func TestCompleteTakesAHandlingAction(t *testing.T) {
+	for _, source := range []string{interfaces.KnEventSourceRule, interfaces.KnEventSourceReport} {
+		class := newClass("late_order")
+		class.Event.Source = source
+		class.Event.HandlingAction = &interfaces.ObjectTypeEventHandling{ActionTypeID: " notify_buyer ", Mode: " suggest "}
+		if err := testKind().Complete(userContext(), class, nil); err != nil {
+			t.Fatalf("%s: %v", source, err)
+		}
+		want := interfaces.ObjectTypeEventHandling{ActionTypeID: "notify_buyer", Mode: interfaces.KnEventHandlingSuggest}
+		if !reflect.DeepEqual(*class.Event.HandlingAction, want) {
+			t.Fatalf("%s: %+v, want %+v", source, *class.Event.HandlingAction, want)
+		}
+	}
+}
+
+// A handling action acts on the subject and records no events; run by the platform, it asks for
+// no input, since nobody is there to give it.
+func TestHandlingRefusal(t *testing.T) {
+	onOrder := handlingAction{objectTypeID: "order"}
+	asksForReason := handlingAction{objectTypeID: "order", inputs: []string{"reason"}}
+	fixed := map[string]interfaces.ObjectTypeEventHandlingParameter{"reason": {ValueFrom: "const", Value: "late"}}
+	fromBuyer := map[string]interfaces.ObjectTypeEventHandlingParameter{"reason": {ValueFrom: "property", Value: "buyer"}}
+	fromMissing := map[string]interfaces.ObjectTypeEventHandlingParameter{"reason": {ValueFrom: "property", Value: "nowhere"}}
+	notAnInput := map[string]interfaces.ObjectTypeEventHandlingParameter{"other": {ValueFrom: "const", Value: 1}}
+	for name, c := range map[string]struct {
+		mode       string
+		action     handlingAction
+		parameters map[string]interfaces.ObjectTypeEventHandlingParameter
+		refused    string
+	}{
+		"auto on the subject":         {interfaces.KnEventHandlingAuto, onOrder, nil, ""},
+		"another object type":         {interfaces.KnEventHandlingSuggest, handlingAction{objectTypeID: "buyer"}, nil, `acts on "buyer"`},
+		"a recognition action":        {interfaces.KnEventHandlingAuto, handlingAction{objectTypeID: "order", recordsEvents: true}, nil, "records events"},
+		"input left open, run itself": {interfaces.KnEventHandlingAuto, asksForReason, nil, "reason"},
+		"input offered to a person":   {interfaces.KnEventHandlingSuggest, asksForReason, nil, ""},
+		"input fixed, run itself":     {interfaces.KnEventHandlingAuto, asksForReason, fixed, ""},
+		"input from a property":       {interfaces.KnEventHandlingAuto, asksForReason, fromBuyer, ""},
+		"input from no property":      {interfaces.KnEventHandlingAuto, asksForReason, fromMissing, "nowhere"},
+		"a bound name not an input":   {interfaces.KnEventHandlingSuggest, asksForReason, notAnInput, "other"},
+	} {
+		event := &interfaces.ObjectTypeEvent{Source: "rule", Subject: "order",
+			HandlingAction: &interfaces.ObjectTypeEventHandling{ActionTypeID: "notify_buyer", Mode: c.mode, Parameters: c.parameters}}
+		got := handlingRefusal(event, c.action, []string{"order_id", "buyer"})
+		if c.refused == "" && got != "" || c.refused != "" && !strings.Contains(got, c.refused) {
+			t.Fatalf("%s: %q, want %q", name, got, c.refused)
 		}
 	}
 }

@@ -200,6 +200,9 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		// Selected at each check, as the schedule's execution subject: no proxy, no governance.
 		return s.executeEventAction(ctx, req, &actionType, actionTypeSnapshot)
 	}
+	if err := bindEventInputs(&actionType, req.InputBindings); err != nil {
+		return nil, actionTargetError(ctx, err.Error())
+	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
 			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),

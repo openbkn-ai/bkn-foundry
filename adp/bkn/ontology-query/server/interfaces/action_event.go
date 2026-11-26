@@ -45,6 +45,9 @@ type EventHit struct {
 	Name       string                    `json:"name"`
 	Attributes map[string]EventAttribute `json:"attributes"`
 	Detail     map[string]any            `json:"detail,omitempty"`
+	// Identity is the object's identity, which the handling action of an event of the object is
+	// executed on. A check sends it; a trial does not show it.
+	Identity map[string]any `json:"identity,omitempty"`
 }
 
 // EventRuleCheckRequest is the body of POST .../rule-checks. Covered is nil when the check read

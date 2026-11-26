@@ -78,6 +78,19 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			MergeHours:   bknObj.Event.MergeHours,
 			HandlingNote: bknObj.Event.HandlingNote,
 		}
+		if handling := bknObj.Event.HandlingAction; handling != nil {
+			adpObj.Event.HandlingAction = &interfaces.ObjectTypeEventHandling{
+				ActionTypeID: handling.ActionTypeID, Mode: handling.Mode,
+			}
+			if len(handling.Parameters) > 0 {
+				adpObj.Event.HandlingAction.Parameters = make(map[string]interfaces.ObjectTypeEventHandlingParameter, len(handling.Parameters))
+				for name, parameter := range handling.Parameters {
+					adpObj.Event.HandlingAction.Parameters[name] = interfaces.ObjectTypeEventHandlingParameter{
+						ValueFrom: parameter.ValueFrom, Value: parameter.Value,
+					}
+				}
+			}
+		}
 	}
 
 	// Convert DataSource.
@@ -164,6 +177,19 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 			Severity:     adpObj.Event.Severity,
 			MergeHours:   adpObj.Event.MergeHours,
 			HandlingNote: adpObj.Event.HandlingNote,
+		}
+		if handling := adpObj.Event.HandlingAction; handling != nil {
+			bknObj.Event.HandlingAction = &bknsdk.EventHandlingAction{
+				ActionTypeID: handling.ActionTypeID, Mode: handling.Mode,
+			}
+			if len(handling.Parameters) > 0 {
+				bknObj.Event.HandlingAction.Parameters = make(map[string]bknsdk.EventHandlingParameter, len(handling.Parameters))
+				for name, parameter := range handling.Parameters {
+					bknObj.Event.HandlingAction.Parameters[name] = bknsdk.EventHandlingParameter{
+						ValueFrom: parameter.ValueFrom, Value: parameter.Value,
+					}
+				}
+			}
 		}
 	}
 
