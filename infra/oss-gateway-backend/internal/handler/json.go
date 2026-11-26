@@ -1,9 +1,7 @@
 package handler
 
 import (
-	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"io"
 
@@ -16,11 +14,7 @@ func bindJSON(body io.Reader, target any) error {
 		return io.EOF
 	}
 	decoder := jsontext.NewDecoder(body)
-	// Match existing field spellings regardless of case while preserving underscores.
-	if err := jsoncodec.UnmarshalDecode(decoder, target,
-		jsonv2.MatchCaseInsensitiveNames(true),
-		jsonv1.MatchCaseSensitiveDelimiter(true),
-	); err != nil {
+	if err := jsoncodec.UnmarshalDecode(decoder, target); err != nil {
 		return err
 	}
 	if _, err := decoder.ReadToken(); err != io.EOF {

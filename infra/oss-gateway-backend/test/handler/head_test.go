@@ -115,7 +115,7 @@ func TestHeadHandler_BatchGetHeadURL_Success(t *testing.T) {
 		Return(expectedURLs, nil)
 
 	reqBody := map[string]interface{}{
-		"Keys":    []string{"file1.txt", "file2.txt"},
+		"keys":    []string{"file1.txt", "file2.txt"},
 		"expires": int64(9007199254740993),
 	}
 	body, _ := jsoncodec.Marshal(reqBody)
@@ -131,21 +131,32 @@ func TestHeadHandler_BatchGetHeadURL_Success(t *testing.T) {
 }
 
 func TestHeadHandler_BatchGetHeadURL_MissingKeys(t *testing.T) {
-	mockService := new(MockURLService)
-	h := handler.NewHeadHandler(mockService)
-	router := setupRouter()
-	router.POST("/head/:storageId", h.BatchGetHeadURL)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing", body: `{}`},
+		{name: "wrong case", body: `{"Keys":["file.txt"]}`},
+	}
 
-	reqBody := map[string]interface{}{}
-	body, _ := jsoncodec.Marshal(reqBody)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockURLService)
+			mockService.On("BatchGetHeadURL", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(map[string]*adapter.PresignedURL{}, nil).Maybe()
+			h := handler.NewHeadHandler(mockService)
+			router := setupRouter()
+			router.POST("/head/:storageId", h.BatchGetHeadURL)
 
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBuffer(body))
-	r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBufferString(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, r)
 
-	router.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			mockService.AssertNumberOfCalls(t, "BatchGetHeadURL", 0)
+		})
+	}
 }
 
 func TestHeadHandler_BatchGetHeadURL_TooManyKeys(t *testing.T) {

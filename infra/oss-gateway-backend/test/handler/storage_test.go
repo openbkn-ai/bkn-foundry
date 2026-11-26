@@ -122,7 +122,6 @@ func TestStorageHandler_Update_InvalidJSON(t *testing.T) {
 		body string
 	}{
 		{name: "duplicate name", body: `{"storage_name":"original","storage_name":"replacement"}`},
-		{name: "duplicate name with different case", body: `{"is_enabled":true,"IS_ENABLED":false}`},
 		{name: "second JSON value", body: `{} {}`},
 		{name: "invalid UTF-8", body: "{\"storage_name\":\"\xff\"}"},
 	}
@@ -265,7 +264,7 @@ func TestStorageHandler_Update_Success(t *testing.T) {
 		isEnabled *bool
 	}{
 		{name: "exact names", body: `{"storage_name":"updated-storage","is_enabled":false,"extra":true}`, isEnabled: &enabled},
-		{name: "mixed case names", body: `{"Storage_Name":"updated-storage","IS_ENABLED":false}`, isEnabled: &enabled},
+		{name: "wrong case", body: `{"storage_name":"updated-storage","Storage_Name":"ignored-storage","IS_ENABLED":false}`},
 		{name: "different delimiter", body: `{"storage_name":"updated-storage","IsEnabled":false,"is-enabled":false}`},
 	}
 
