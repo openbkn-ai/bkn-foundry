@@ -17,6 +17,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -28,11 +30,16 @@ type relationListingRESTBackend struct {
 	gotLimit       int
 	// many, when set, is how many long-commented entries a page carries.
 	many int
+	// empty, when set, makes the listing find nothing.
+	empty bool
 }
 
 func (b *relationListingRESTBackend) ListRelationTypesBranch(_ context.Context, _, branch string, objectTypeIDs []string,
 	_, limit int) (*interfaces.RelationTypePage, error) {
 	b.gotBranch, b.gotObjectTypes, b.gotLimit = branch, objectTypeIDs, limit
+	if b.empty {
+		return &interfaces.RelationTypePage{}, nil
+	}
 	if b.many > 0 {
 		page := &interfaces.RelationTypePage{TotalCount: int64(b.many * 2), Scanned: b.many}
 		for i := 0; i < b.many; i++ {
@@ -175,5 +182,44 @@ func TestGetObjectTypesRESTCutsAPageAndWalks(t *testing.T) {
 	}
 	if len(seen) != 60 || calls < 2 {
 		t.Fatalf("the walk saw %d of 60 object types in %d calls", len(seen), calls)
+	}
+}
+
+// An object type filter that matches no relation type answers with an empty list and
+// total_count 0, in JSON and TOON, instead of leaving the total out (#3414).
+func TestGetRelationTypesRESTSaysTotalCountZeroForAnEmptyListing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, format := range []rest.ResponseFormat{rest.FormatJSON, rest.FormatTOON} {
+		handler := &knQueryToolsHandler{bknBackend: &relationListingRESTBackend{empty: true}}
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Request = c.Request.WithContext(common.SetResponseFormatToCtx(c.Request.Context(), format))
+			c.Next()
+		})
+		router.POST("/kn/get_relation_types", handler.GetRelationTypes)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/kn/get_relation_types", strings.NewReader(
+			`{"kn_id":"kn-1","branch":"main","object_type_ids":["ot003"],"offset":0,"limit":50}`)))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, body = %s", format, response.Code, response.Body.String())
+		}
+		body := response.Body.String()
+		if format == rest.FormatTOON {
+			if !strings.Contains(body, "total_count: 0") || strings.Contains(body, "next_offset") {
+				t.Fatalf("TOON body = %q, want total_count: 0 and no next_offset", body)
+			}
+			continue
+		}
+		m := map[string]any{}
+		if err := json.Unmarshal(response.Body.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		relations, ok := m["relation_types"].([]any)
+		if total, present := m["total_count"]; !ok || len(relations) != 0 || !present || total != float64(0) {
+			t.Fatalf("JSON body = %v, want relation_types [] and total_count 0", m)
+		}
+		if _, present := m["next_offset"]; present {
+			t.Fatalf("an empty listing has no next page: %v", m)
+		}
 	}
 }

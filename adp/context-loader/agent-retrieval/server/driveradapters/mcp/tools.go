@@ -715,7 +715,7 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		// of refusing. Named ids stay the primary path and ignore the paging inputs.
 		var (
 			matched    []*interfaces.ObjectType
-			totalCount int64
+			totalCount *int64
 			nextOffset *int
 			offset     int
 			notice     string
@@ -730,8 +730,8 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			matched, totalCount = page.Entries, page.TotalCount
-			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+			matched, totalCount = page.Entries, &page.TotalCount
+			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, page.TotalCount)
 			interfaces.ShortenObjectTypeComments(matched)
 			if clamped {
 				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": args.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
@@ -835,7 +835,7 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 		// refusing, as get_object_types does (#1889).
 		var (
 			matched    []*interfaces.RelationType
-			totalCount int64
+			totalCount *int64
 			nextOffset *int
 			notice     string
 			offset     int
@@ -849,8 +849,8 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			matched, totalCount = page.Entries, page.TotalCount
-			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+			matched, totalCount = page.Entries, &page.TotalCount
+			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, page.TotalCount)
 			interfaces.ReduceToRelationTypeIndex(matched)
 			if clamped {
 				notice = renderDetailNotice(ctx, "agentRetrieval.Detail.RelationTypePageLimitClamped",
