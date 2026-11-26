@@ -1202,6 +1202,8 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				rtIDs = append(rtIDs, rtID)
 			}
 		}
+		// The groups' members are a scope as well: a knn picks its neighbours among them.
+		filterCondition = permission.ScopeKnnToIDs(filterCondition, rtIDs)
 	}
 
 	// Decide whether to query the total based on NeedTotal.

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
@@ -640,5 +641,55 @@ func TestProcessObjectTypeDetailsKeepsATableTextFieldUnfilterable(t *testing.T) 
 		fmt.Sprint(body.ConditionOperations) != fmt.Sprint(interfaces.DSL_KEYWORD_OPS) {
 		t.Errorf("body: filterable = %v, ops = %v, want not filterable with the index's %v",
 			body.Filterable, body.ConditionOperations, interfaces.DSL_KEYWORD_OPS)
+	}
+}
+
+// A knn in an object type search picks its neighbours among the object types the caller may see
+// and, when concept groups are asked for, among the groups' members (#3404).
+func TestSearchObjectTypesScopesKnnToVisibleGroupMembers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	mfs := bmock.NewMockModelFactoryService(ctrl)
+	ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]string{"ot1", "ot2", "ot3"}, nil)
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(allowAllPermissionResources).AnyTimes()
+	mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{}, nil)
+	mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), []string{"订单"}).
+		Return([]*cond.VectorResp{{Vector: []float32{0.1}}}, nil)
+	cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
+	cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"},
+		interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{"ot2"}, nil)
+
+	var knnFilters []map[string]any
+	vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+			outer, _ := params.FilterCondition["sub_conditions"].([]map[string]any)
+			if len(outer) == 2 {
+				knnFilters, _ = outer[0]["sub_conditions"].([]map[string]any)
+			}
+			return &interfaces.DatasetQueryResponse{}, nil
+		})
+
+	service := &objectTypeService{
+		appSetting: &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}},
+		vbs:        vbs, ps: ps, ota: ota, cga: cga, mfs: mfs,
+	}
+	query := searchQuery()
+	query.ConceptGroups = []string{"cg1"}
+	query.ActualCondition = &cond.CondCfg{Field: "*", Operation: cond.OperationKNN, Value: "订单",
+		ValueFrom: cond.ValueFrom_Const, RemainCfg: map[string]any{"limit_key": "k", "limit_value": 1}}
+	if _, err := service.SearchObjectTypes(context.Background(), query); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []map[string]any{
+		{"field": "id", "operation": "in", "value": []string{"ot1", "ot2", "ot3"}, "value_from": "const"},
+		{"field": "id", "operation": "in", "value": []string{"ot2"}, "value_from": "const"},
+	}
+	if fmt.Sprint(knnFilters) != fmt.Sprint(want) {
+		t.Fatalf("knn filters = %v, want the visible IDs then the group members", knnFilters)
 	}
 }

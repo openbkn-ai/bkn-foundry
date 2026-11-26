@@ -2057,6 +2057,8 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				otIDs = append(otIDs, otID)
 			}
 		}
+		// The groups' members are a scope as well: a knn picks its neighbours among them.
+		filterCondition = permission.ScopeKnnToIDs(filterCondition, otIDs)
 	}
 
 	// Decide whether to query the total based on NeedTotal.

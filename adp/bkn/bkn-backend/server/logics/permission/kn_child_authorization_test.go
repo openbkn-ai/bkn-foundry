@@ -392,3 +392,50 @@ func TestCheckKNChildBatchPermissionPropagatesCheckFailure(t *testing.T) {
 		t.Fatalf("CheckKNChildBatchPermission() error = %v, want %v", err, wantErr)
 	}
 }
+
+// Each knn of a converted condition, at any depth, picks its neighbours among the IDs the
+// caller may see, and the IDs still bound the whole result (#3404).
+func TestRestrictDatasetFilterToIDsScopesEveryKnn(t *testing.T) {
+	ids := []string{"ot1", "ot2"}
+	idsFilter := map[string]any{"field": "id", "operation": "in", "value": ids, "value_from": "const"}
+	tags := map[string]any{"field": "tags", "operation": "==", "value": "sales", "value_from": "const"}
+	first := map[string]any{"field": "_vector", "operation": "knn_vector", "value": []float32{0.1},
+		"sub_conditions": []map[string]any{tags}}
+	second := map[string]any{"field": "_vector", "operation": "knn_vector", "value": []float32{0.2},
+		"sub_conditions": []map[string]any{}}
+	match := map[string]any{"field": "*", "operation": "match", "value": "订单"}
+	filter := map[string]any{"operation": "or", "sub_conditions": []map[string]any{
+		first,
+		{"operation": "and", "sub_conditions": []map[string]any{second, match}},
+	}}
+
+	got := RestrictDatasetFilterToIDs(filter, ids)
+
+	want := map[string]any{"operation": "and", "sub_conditions": []map[string]any{filter, idsFilter}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filter = %v, want the IDs around the condition", got)
+	}
+	if !reflect.DeepEqual(first["sub_conditions"], []map[string]any{tags, idsFilter}) {
+		t.Fatalf("first knn filters = %v, want its own filter then the IDs", first["sub_conditions"])
+	}
+	if !reflect.DeepEqual(second["sub_conditions"], []map[string]any{idsFilter}) {
+		t.Fatalf("nested knn filters = %v, want the IDs", second["sub_conditions"])
+	}
+	if _, ok := match["sub_conditions"]; ok {
+		t.Fatalf("a condition that is not a knn gained filters: %v", match)
+	}
+}
+
+func TestScopeKnnToIDsLeavesConditionsWithoutKnnAlone(t *testing.T) {
+	if got := ScopeKnnToIDs(nil, []string{"ot1"}); got != nil {
+		t.Fatalf("nil condition = %v", got)
+	}
+	match := map[string]any{"field": "*", "operation": "match", "value": "订单"}
+	if got := ScopeKnnToIDs(match, []string{"ot1"}); !reflect.DeepEqual(got, map[string]any{"field": "*", "operation": "match", "value": "订单"}) {
+		t.Fatalf("condition without knn = %v", got)
+	}
+	if got := RestrictDatasetFilterToIDs(nil, []string{"ot1"}); !reflect.DeepEqual(got,
+		map[string]any{"field": "id", "operation": "in", "value": []string{"ot1"}, "value_from": "const"}) {
+		t.Fatalf("no condition = %v, want the IDs alone", got)
+	}
+}
