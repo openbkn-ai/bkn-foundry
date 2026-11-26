@@ -56,43 +56,56 @@ func init() {
 	}
 }
 
-// computeDuplicateFingerprint returns a stable SHA-256 hex digest of the resolved
-// instance set plus dynamic_params. Instance map keys are ordered during encoding;
-// instance digests are sorted so request order does not matter. dynamic_params are
-// included so unbound / virtual-instance actions (empty identity) with different
-// inputs are not incorrectly treated as duplicates.
-func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any, executionContext ...any) (string, error) {
-	parts := make([]string, 0, len(instances)+1)
+type duplicateFingerprints struct {
+	primary   string
+	alternate string
+}
+
+// computeDuplicateFingerprints hashes the resolved instances, dynamic parameters,
+// and execution context. It orders instance identities and map keys so equal
+// requests match regardless of order, while distinct parameter values stay distinct.
+func computeDuplicateFingerprints(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any, executionContext ...any) (duplicateFingerprints, error) {
+	parts := make([]string, 0, len(instances)+2)
 	for _, inst := range instances {
 		b, err := jsoncodec.Marshal(inst.InstanceIdentity, duplicateFingerprintOptions)
 		if err != nil {
-			return "", fmt.Errorf("marshal instance identity: %w", err)
+			return duplicateFingerprints{}, fmt.Errorf("marshal instance identity: %w", err)
 		}
 		parts = append(parts, string(b))
 	}
 	sort.Strings(parts)
 
-	// Omitted and empty parameters both mean the execution supplies no inputs.
-	var fingerprintParams any
-	if len(dynamicParams) > 0 {
-		fingerprintParams = dynamicParams
+	// Keep the same primary fingerprint as versions that normalize empty inputs to null.
+	if len(dynamicParams) == 0 {
+		dynamicParams = nil
 	}
-	paramsJSON, err := jsoncodec.Marshal(fingerprintParams, duplicateFingerprintOptions)
+	paramsJSON, err := jsoncodec.Marshal(dynamicParams, duplicateFingerprintOptions)
 	if err != nil {
-		return "", fmt.Errorf("marshal dynamic_params: %w", err)
+		return duplicateFingerprints{}, fmt.Errorf("marshal dynamic_params: %w", err)
 	}
+	paramsPart := len(parts)
 	parts = append(parts, "dynamic_params:"+string(paramsJSON))
 	if len(executionContext) > 0 {
 		// Relation conditions emit raw JSON through MarshalJSON. Sort those keys before hashing.
 		encoded, err := jsoncodec.Marshal(executionContext, duplicateFingerprintOptions, jsontext.ReorderRawObjects(true))
 		if err != nil {
-			return "", fmt.Errorf("marshal action context: %w", err)
+			return duplicateFingerprints{}, fmt.Errorf("marshal action context: %w", err)
 		}
 		parts = append(parts, "action_context:"+string(encoded))
 	}
 
+	fingerprints := duplicateFingerprints{primary: hashDuplicateParts(parts)}
+	if dynamicParams == nil {
+		// Also match records from versions that wrote an explicit empty object.
+		parts[paramsPart] = "dynamic_params:{}"
+		fingerprints.alternate = hashDuplicateParts(parts)
+	}
+	return fingerprints, nil
+}
+
+func hashDuplicateParts(parts []string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	return hex.EncodeToString(sum[:]), nil
+	return hex.EncodeToString(sum[:])
 }
 
 // defaultDuplicateCheck rejects when the same kn + action type + fingerprint
@@ -102,28 +115,25 @@ func (s *actionSchedulerService) defaultDuplicateCheck(ctx context.Context, req 
 	if duplicateWindowSeconds <= 0 {
 		return true, nil
 	}
-	hash := req.InstanceIdentityHash
-	if hash == "" {
-		var err error
-		hash, err = computeDuplicateFingerprint(req.Instances, req.DynamicParams)
+	if req.InstanceIdentityHash == "" {
+		fingerprints, err := computeDuplicateFingerprints(req.Instances, req.DynamicParams)
 		if err != nil {
 			return false, fmt.Errorf("compute duplicate fingerprint: %w", err)
 		}
-		if hash == "" {
-			return true, nil
-		}
-		req.InstanceIdentityHash = hash
+		req.InstanceIdentityHash = fingerprints.primary
+		req.AlternateInstanceIdentityHash = fingerprints.alternate
 	}
 
 	now := time.Now().UnixMilli()
 	from := now - int64(duplicateWindowSeconds)*1000
 	list, err := s.logsService.QueryExecutions(ctx, &interfaces.ActionLogQuery{
-		KNID:                 req.KNID,
-		ActionTypeID:         req.ActionTypeID,
-		Statuses:             []string{interfaces.ExecutionStatusPending, interfaces.ExecutionStatusRunning},
-		InstanceIdentityHash: hash,
-		StartTimeRange:       []int64{from, now},
-		Limit:                1,
+		KNID:                          req.KNID,
+		ActionTypeID:                  req.ActionTypeID,
+		Statuses:                      []string{interfaces.ExecutionStatusPending, interfaces.ExecutionStatusRunning},
+		InstanceIdentityHash:          req.InstanceIdentityHash,
+		AlternateInstanceIdentityHash: req.AlternateInstanceIdentityHash,
+		StartTimeRange:                []int64{from, now},
+		Limit:                         1,
 	})
 	if err != nil {
 		return false, fmt.Errorf("query in-flight executions for duplicate check: %w", err)
@@ -131,7 +141,7 @@ func (s *actionSchedulerService) defaultDuplicateCheck(ctx context.Context, req 
 	if list != nil && len(list.Entries) > 0 {
 		logger.Infof(
 			"Duplicate action execution detected: kn_id=%s action_type_id=%s hash=%s existing=%s",
-			req.KNID, req.ActionTypeID, hash, list.Entries[0].ID,
+			req.KNID, req.ActionTypeID, list.Entries[0].InstanceIdentityHash, list.Entries[0].ID,
 		)
 		return false, nil
 	}

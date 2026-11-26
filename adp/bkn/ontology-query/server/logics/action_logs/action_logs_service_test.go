@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
@@ -222,6 +223,58 @@ func TestQueryExecutionsOnlyReportsKnownTotals(t *testing.T) {
 			}
 			if got := string(fields["total_count"]); got != tc.want {
 				t.Fatalf("total_count = %q, want %q (JSON: %s)", got, tc.want, raw)
+			}
+		})
+	}
+}
+
+func TestQueryExecutionsDuplicateFingerprintFilter(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		alternate string
+		filter    map[string]any
+	}{
+		{
+			name:   "one fingerprint",
+			filter: map[string]any{"term": map[string]any{"instance_identity_hash": "primary"}},
+		},
+		{
+			name:      "either historical fingerprint",
+			alternate: "alternate",
+			filter:    map[string]any{"terms": map[string]any{"instance_identity_hash": []string{"primary", "alternate"}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, osa := newWriteTestService(t)
+			index := interfaces.GetActionExecutionIndex("kn_1")
+			osa.EXPECT().IndexExists(gomock.Any(), index).Return(true, nil)
+			statuses := []string{interfaces.ExecutionStatusPending, interfaces.ExecutionStatusRunning}
+			want := []map[string]any{
+				{"term": map[string]any{"action_type_id": "at_1"}},
+				{"terms": map[string]any{"status": statuses}},
+				tc.filter,
+				{"range": map[string]any{"start_time": map[string]any{"gte": int64(100), "lte": int64(200)}}},
+			}
+			osa.EXPECT().SearchData(gomock.Any(), index, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, query any) ([]interfaces.Hit, error) {
+					filters := query.(map[string]any)["query"].(map[string]any)["bool"].(map[string]any)["must"]
+					if !reflect.DeepEqual(filters, want) {
+						t.Errorf("search filters = %#v, want %#v", filters, want)
+					}
+					return nil, nil
+				})
+
+			_, err := svc.QueryExecutions(context.Background(), &interfaces.ActionLogQuery{
+				KNID:                          "kn_1",
+				ActionTypeID:                  "at_1",
+				Statuses:                      statuses,
+				InstanceIdentityHash:          "primary",
+				AlternateInstanceIdentityHash: tc.alternate,
+				StartTimeRange:                []int64{100, 200},
+				Limit:                         1,
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

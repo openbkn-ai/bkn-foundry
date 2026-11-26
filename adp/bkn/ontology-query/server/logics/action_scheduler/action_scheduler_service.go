@@ -273,13 +273,14 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 				logics.ActionExecutionMaxObjects))
 	}
 
-	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
+	fingerprints, err := computeDuplicateFingerprints(req.Instances, req.DynamicParams, actionType.OperationConfig, req.ObjectInput)
 	if err != nil {
 		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
-	req.InstanceIdentityHash = instanceHash
+	req.InstanceIdentityHash = fingerprints.primary
+	req.AlternateInstanceIdentityHash = fingerprints.alternate
 
 	// Duplicate check hook (default: reject in-flight same kn + action type + instance set + dynamic_params)
 	if s.duplicateCheckHook != nil {
@@ -365,7 +366,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ProxyVersion:            actionProxy.ProxyVersion,
 		ProxyModelVersion:       actionProxy.PublishedModelVersion,
 		ProxyPermissionSnapshot: proxyPermissionSnapshot,
-		InstanceIdentityHash:    instanceHash,
+		InstanceIdentityHash:    fingerprints.primary,
 		// Correlation labels only; a scheduled execution has none (the handler clears them).
 		ConversationID: req.ConversationID,
 		InteractionID:  req.InteractionID,

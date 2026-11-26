@@ -366,7 +366,13 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 		})
 	}
 
-	if query.InstanceIdentityHash != "" {
+	if query.InstanceIdentityHash != "" && query.AlternateInstanceIdentityHash != "" {
+		mustConditions = append(mustConditions, map[string]any{
+			"terms": map[string]any{
+				"instance_identity_hash": []string{query.InstanceIdentityHash, query.AlternateInstanceIdentityHash},
+			},
+		})
+	} else if query.InstanceIdentityHash != "" {
 		mustConditions = append(mustConditions, map[string]any{
 			"term": map[string]any{
 				"instance_identity_hash": query.InstanceIdentityHash,
