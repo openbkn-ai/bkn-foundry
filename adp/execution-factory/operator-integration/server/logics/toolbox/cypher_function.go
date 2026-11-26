@@ -477,7 +477,7 @@ func decodeJSONBody(body []byte) any {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if err := decoder.Decode(&decoded); err != nil {
-		return string(body)
+		return strings.ToValidUTF8(string(body), "\uFFFD")
 	}
 	return decoded
 }

@@ -162,12 +162,12 @@ type HTTPResponse struct {
 // It is transport metadata only: header values, cookies, the request body and
 // query values are never included, so it can safely be returned to callers.
 type RequestObservation struct {
-	Method        string   `json:"method"`                   // final HTTP method, after any redirects.
-	Path          string   `json:"path"`                     // final encoded request path, after any redirects.
-	QueryKeys     []string `json:"query_keys,omitempty"`     // sorted query parameter names, without values.
-	ContentType   string   `json:"content_type,omitempty"`   // request Content-Type, if a body was sent.
-	ContentLength int64    `json:"content_length,omitempty"` // request body length in bytes, if known and positive.
-	Redirected    bool     `json:"redirected"`               // whether the transport followed redirects and the final URL differed from the original one; the shared raw HTTP client returns redirect responses instead of following them.
+	Method        string   `json:"method"`                  // final HTTP method, after any redirects.
+	Path          string   `json:"path"`                    // final encoded request path, after any redirects.
+	QueryKeys     []string `json:"query_keys,omitempty"`    // sorted query parameter names, without values.
+	ContentType   string   `json:"content_type,omitempty"`  // request Content-Type, if a body was sent.
+	ContentLength int64    `json:"content_length,omitzero"` // request body length in bytes, if known and positive.
+	Redirected    bool     `json:"redirected"`              // whether the transport followed redirects and the final URL differed from the original one; the shared raw HTTP client returns redirect responses instead of following them.
 }
 
 // BizStatus status.

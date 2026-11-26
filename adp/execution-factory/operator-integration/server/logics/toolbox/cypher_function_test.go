@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 )
 
 // fakeBknBackend records what a Cypher function sent and answers with a fixed reply.
@@ -170,6 +171,23 @@ func TestCypherFunctionPassesARefusalThrough(t *testing.T) {
 	resp := runCypherTool(t, s, map[string]any{"id": "S1"}, 0)
 	if resp.StatusCode != http.StatusForbidden || !strings.Contains(bodyJSON(t, resp), "PublicError_Forbidden") {
 		t.Fatalf("got %d %s", resp.StatusCode, bodyJSON(t, resp))
+	}
+}
+
+func TestCypherFunctionReturnsNonJSONFailureAsValidUTF8(t *testing.T) {
+	backend := &fakeBknBackend{status: http.StatusBadGateway, body: "upstream failure: caf\xe9"}
+	s := newCypherExecutor(t, backend, cypherFunction(t, interfaces.CypherResultShapeValue, idInput()))
+	resp := runCypherTool(t, s, map[string]any{"id": "S1"}, 0)
+	body, err := jsoncodec.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		StatusCode int    `json:"status_code"`
+		Body       string `json:"body"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.StatusCode != http.StatusBadGateway || result.Body != "upstream failure: caf�" {
+		t.Fatalf("cypher failure = %s, err = %v", body, err)
 	}
 }
 
