@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/casbin/casbin/v2/util"
+	"github.com/casbin/casbin/v3/util"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"

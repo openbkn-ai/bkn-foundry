@@ -9,7 +9,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/casbin/casbin/v2/util"
+	"github.com/casbin/casbin/v3/util"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
