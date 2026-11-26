@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // Incorrect input parameters for metric query. They are all errors on the caller's side, and are directly returned to the Agent to change the parameters and try again.
@@ -91,8 +93,11 @@ const objectTypeDefinitionBatch = 50
 // bkn-backend lists a network's object types as summaries, without data properties, logic
 // properties or primary keys, so get_kn_detail answered with none and its outline counted
 // zero properties (#3412). The by-id read is the one get_object_types answers from, so both
-// tools now show the same definition; property authorization still runs on the result. An
-// object type the by-id read no longer returns keeps its summary.
+// tools now show the same definition; property authorization still runs on the result.
+//
+// An object type deleted after the listing keeps its summary. bkn-backend answers a by-id
+// read 404 as a whole when any id in it is gone, so such a batch is read again one id at a
+// time and only the missing ids keep their summaries.
 func WithObjectTypeDefinitions(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string,
 	listed []*interfaces.ObjectType) ([]*interfaces.ObjectType, error) {
 	ids := make([]string, 0, len(listed))
@@ -105,6 +110,12 @@ func WithObjectTypeDefinitions(ctx context.Context, bkn interfaces.BknBackendAcc
 	for start := 0; start < len(ids); start += objectTypeDefinitionBatch {
 		batch := ids[start:min(start+objectTypeDefinitionBatch, len(ids))]
 		read, err := ObjectTypeDetailForBranch(ctx, bkn, knID, branch, batch, true)
+		if objectTypeNotFound(err) && len(batch) > 1 {
+			read, err = objectTypeDefinitionsOneByOne(ctx, bkn, knID, branch, batch)
+		}
+		if objectTypeNotFound(err) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -125,6 +136,37 @@ func WithObjectTypeDefinitions(ctx context.Context, bkn interfaces.BknBackendAcc
 		result = append(result, objectType)
 	}
 	return result, nil
+}
+
+// objectTypeDefinitionsOneByOne reads each id on its own, skipping the ones that are gone.
+func objectTypeDefinitionsOneByOne(ctx context.Context, bkn interfaces.BknBackendAccess, knID, branch string,
+	ids []string) ([]*interfaces.ObjectType, error) {
+	definitions := make([]*interfaces.ObjectType, 0, len(ids))
+	for _, id := range ids {
+		read, err := ObjectTypeDetailForBranch(ctx, bkn, knID, branch, []string{id}, true)
+		if objectTypeNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, read...)
+	}
+	return definitions, nil
+}
+
+// objectTypeNotFoundCode is the error bkn-backend answers a by-id read with when an id is gone.
+const objectTypeNotFoundCode = "BknBackend.ObjectType.ObjectTypeNotFound"
+
+// objectTypeNotFound reports a by-id read bkn-backend refused because an id is gone. A 404 for
+// any other reason, such as a network deleted meanwhile, is a failure and must stay one.
+func objectTypeNotFound(err error) bool {
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusNotFound {
+		return false
+	}
+	cause, ok := httpErr.ErrorDetails.(httperrors.BaseError)
+	return ok && cause.ErrorCode == objectTypeNotFoundCode
 }
 
 // RelationTypesForBranch reads one page of a network's relation types, keeping those that
