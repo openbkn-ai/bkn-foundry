@@ -51,17 +51,25 @@ func (scopes managedActionScopes) contains(network, action string) bool {
 	return ok
 }
 
-func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req *interfaces.ActionExecutionRequest, executor interfaces.AccountInfo, snapshot map[string]any) error {
+func (s *actionSchedulerService) actionGovernanceRequired(ctx context.Context, knID, actionTypeID string) (bool, error) {
 	if s.governanceConfigError != nil {
-		return governanceUnavailable(ctx, s.governanceConfigError)
+		return false, governanceUnavailable(ctx, s.governanceConfigError)
 	}
-	required := s.managedActions.contains(req.KNID, req.ActionTypeID)
+	required := s.managedActions.contains(knID, actionTypeID)
 	if resolver, ok := s.governanceGate.(interfaces.ActionGovernanceScope); ok {
-		current, err := resolver.RequiresActionGovernance(ctx, req.KNID, req.ActionTypeID)
+		current, err := resolver.RequiresActionGovernance(ctx, knID, actionTypeID)
 		if err != nil {
-			return governanceUnavailable(ctx, err)
+			return false, governanceUnavailable(ctx, err)
 		}
 		required = required || current
+	}
+	return required, nil
+}
+
+func (s *actionSchedulerService) claimActionGovernance(ctx context.Context, req *interfaces.ActionExecutionRequest, executor interfaces.AccountInfo, snapshot map[string]any) error {
+	required, err := s.actionGovernanceRequired(ctx, req.KNID, req.ActionTypeID)
+	if err != nil {
+		return err
 	}
 	if !required {
 		// Client-supplied references are not trusted for an ungoverned execution.

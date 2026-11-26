@@ -149,8 +149,62 @@ func TestAnUnlicensedRecordEventActionIsUnknown(t *testing.T) {
 	refusal(t, err, http.StatusBadRequest, `unsupported action operation "event"`)
 }
 
+func TestRecordEventActionHonorsGovernanceScope(t *testing.T) {
+	request := scheduledCheck()
+	managed, err := parseManagedActionScopes(request.KNID + "/" + request.ActionTypeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name       string
+		managed    managedActionScopes
+		gate       interfaces.ActionGovernanceGate
+		configErr  error
+		wantStatus int
+	}{
+		{
+			name:       "static scope requires governance even without a saved policy",
+			managed:    managed,
+			gate:       &dynamicScopeGateStub{},
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name:       "saved policy requires governance without a static scope",
+			gate:       &dynamicScopeGateStub{required: true},
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name:       "policy lookup unavailable",
+			gate:       &dynamicScopeGateStub{lookupErr: errors.New("policy unavailable")},
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:       "invalid scope configuration",
+			configErr:  errors.New("invalid action governance scope"),
+			wantStatus: http.StatusServiceUnavailable,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, m := newEventScheduler(t)
+			service.managedActions = tt.managed
+			service.governanceGate = tt.gate
+			service.governanceConfigError = tt.configErr
+			m.models.EXPECT().GetActionType(gomock.Any(), request.KNID, interfaces.MAIN_BRANCH, request.ActionTypeID).
+				Return(recordEventAction(), nil, true, nil)
+
+			// The execution log and event ledger mocks expect no writes.
+			response, err := service.ExecuteAction(asExecutor(), scheduledCheck())
+			if response != nil || status(err) != tt.wantStatus {
+				t.Fatalf("expected %d before creating an execution, got %v, %v", tt.wantStatus, response, err)
+			}
+		})
+	}
+}
+
 func TestAScheduledCheckRecordsItsHits(t *testing.T) {
 	service, m := newEventScheduler(t)
+	service.governanceGate = &dynamicScopeGateStub{}
 	m.models.EXPECT().GetActionType(gomock.Any(), eventKN, interfaces.MAIN_BRANCH, "po_overdue_recognize").
 		Return(recordEventAction(), map[string]any{"id": "po_overdue_recognize"}, true, nil)
 	var created *interfaces.ActionExecution
