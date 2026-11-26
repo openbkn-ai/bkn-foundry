@@ -98,7 +98,7 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "当前账号可见、且符合 object_type_ids 条件的关系类总数。仅列举时出现。"
+        "description": "当前账号可见、且符合 object_type_ids 条件的关系类总数。列举时总会出现，没有符合条件的为 0；按 ids 取时不出现。"
       },
       "next_offset": {
         "type": "integer",
