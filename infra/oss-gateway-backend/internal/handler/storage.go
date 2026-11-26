@@ -17,7 +17,7 @@ func NewStorageHandler(service service.StorageService) *StorageHandler {
 
 func (h *StorageHandler) Create(c *gin.Context) {
 	var req service.CreateStorageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSON(c.Request.Body, &req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -41,7 +41,7 @@ func (h *StorageHandler) Update(c *gin.Context) {
 	storageID := c.Param("id")
 
 	var req service.UpdateStorageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSON(c.Request.Body, &req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}

@@ -2,7 +2,6 @@ package handler_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,7 @@ import (
 	"oss-gateway/pkg/adapter"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -35,6 +35,7 @@ func TestHeadHandler_GetHeadURL_Success(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"data":{"method":"HEAD","url":"https://test-bucket.oss-cn-hangzhou.aliyuncs.com/test/file.txt?signature=xxx","headers":{},"form_field":{},"body":""}}`, w.Body.String())
 	mockService.AssertExpectations(t)
 }
 
@@ -110,13 +111,14 @@ func TestHeadHandler_BatchGetHeadURL_Success(t *testing.T) {
 		},
 	}
 
-	mockService.On("BatchGetHeadURL", mock.Anything, "storage123", []string{"file1.txt", "file2.txt"}, int64(0), false).
+	mockService.On("BatchGetHeadURL", mock.Anything, "storage123", []string{"file1.txt", "file2.txt"}, int64(9007199254740993), false).
 		Return(expectedURLs, nil)
 
 	reqBody := map[string]interface{}{
-		"keys": []string{"file1.txt", "file2.txt"},
+		"keys":    []string{"file1.txt", "file2.txt"},
+		"expires": int64(9007199254740993),
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := jsoncodec.Marshal(reqBody)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBuffer(body))
@@ -129,21 +131,32 @@ func TestHeadHandler_BatchGetHeadURL_Success(t *testing.T) {
 }
 
 func TestHeadHandler_BatchGetHeadURL_MissingKeys(t *testing.T) {
-	mockService := new(MockURLService)
-	h := handler.NewHeadHandler(mockService)
-	router := setupRouter()
-	router.POST("/head/:storageId", h.BatchGetHeadURL)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing", body: `{}`},
+		{name: "wrong case", body: `{"Keys":["file.txt"]}`},
+	}
 
-	reqBody := map[string]interface{}{}
-	body, _ := json.Marshal(reqBody)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockURLService)
+			mockService.On("BatchGetHeadURL", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(map[string]*adapter.PresignedURL{}, nil).Maybe()
+			h := handler.NewHeadHandler(mockService)
+			router := setupRouter()
+			router.POST("/head/:storageId", h.BatchGetHeadURL)
 
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBuffer(body))
-	r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBufferString(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, r)
 
-	router.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			mockService.AssertNumberOfCalls(t, "BatchGetHeadURL", 0)
+		})
+	}
 }
 
 func TestHeadHandler_BatchGetHeadURL_TooManyKeys(t *testing.T) {
@@ -161,7 +174,7 @@ func TestHeadHandler_BatchGetHeadURL_TooManyKeys(t *testing.T) {
 	reqBody := map[string]interface{}{
 		"keys": keys,
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := jsoncodec.Marshal(reqBody)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBuffer(body))
@@ -184,7 +197,7 @@ func TestHeadHandler_BatchGetHeadURL_ServiceError(t *testing.T) {
 	reqBody := map[string]interface{}{
 		"keys": []string{"file1.txt"},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := jsoncodec.Marshal(reqBody)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/head/storage123", bytes.NewBuffer(body))

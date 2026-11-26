@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,7 @@ import (
 	"oss-gateway/pkg/adapter"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -279,7 +279,7 @@ func TestUploadHandler_GetUploadPartURLs_Success(t *testing.T) {
 		"upload_id": "upload123",
 		"part_id":   []int{1, 2},
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := jsoncodec.Marshal(reqBody)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/uploadpart/storage123/large-file.zip", bytes.NewBuffer(body))
@@ -300,7 +300,7 @@ func TestUploadHandler_GetUploadPartURLs_MissingFields(t *testing.T) {
 	reqBody := map[string]interface{}{
 		"upload_id": "upload123",
 	}
-	body, _ := json.Marshal(reqBody)
+	body, _ := jsoncodec.Marshal(reqBody)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/uploadpart/storage123/large-file.zip", bytes.NewBuffer(body))
@@ -326,14 +326,17 @@ func TestUploadHandler_CompleteMultipartUpload_Success(t *testing.T) {
 		Body: "<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>\"etag1\"</ETag></Part></CompleteMultipartUpload>",
 	}
 
-	mockService.On("CompleteMultipartUpload", mock.Anything, "storage123", "large-file.zip", "upload123", mock.AnythingOfType("[]adapter.PartInfo")).
+	mockService.On("CompleteMultipartUpload", mock.Anything, "storage123", "large-file.zip", "upload123", []adapter.PartInfo{
+		{PartNumber: 1, ETag: `"etag1"`},
+		{PartNumber: 2, ETag: `"etag2"`},
+	}).
 		Return(expectedURL, nil)
 
 	etagMap := map[string]string{
 		"1": "\"etag1\"",
 		"2": "\"etag2\"",
 	}
-	body, _ := json.Marshal(etagMap)
+	body, _ := jsoncodec.Marshal(etagMap)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/completeupload/storage123/large-file.zip?upload_id=upload123", bytes.NewBuffer(body))
@@ -342,6 +345,18 @@ func TestUploadHandler_CompleteMultipartUpload_Success(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	var result struct {
+		Data struct {
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+			Body    string            `json:"request_body"`
+		} `json:"data"`
+	}
+	if assert.NoError(t, jsoncodec.Unmarshal(w.Body.Bytes(), &result)) {
+		assert.Equal(t, expectedURL.URL, result.Data.URL)
+		assert.Equal(t, expectedURL.Headers, result.Data.Headers)
+		assert.Equal(t, expectedURL.Body, result.Data.Body)
+	}
 	mockService.AssertExpectations(t)
 }
 
@@ -354,7 +369,7 @@ func TestUploadHandler_CompleteMultipartUpload_MissingUploadID(t *testing.T) {
 	etagMap := map[string]string{
 		"1": "\"etag1\"",
 	}
-	body, _ := json.Marshal(etagMap)
+	body, _ := jsoncodec.Marshal(etagMap)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/completeupload/storage123/large-file.zip", bytes.NewBuffer(body))
@@ -371,13 +386,13 @@ func TestUploadHandler_CompleteMultipartUpload_ServiceError(t *testing.T) {
 	router := setupRouter()
 	router.POST("/completeupload/:storageId/*key", h.CompleteMultipartUpload)
 
-	mockService.On("CompleteMultipartUpload", mock.Anything, "storage123", "large-file.zip", "upload123", mock.AnythingOfType("[]adapter.PartInfo")).
+	mockService.On("CompleteMultipartUpload", mock.Anything, "storage123", "large-file.zip", "upload123", mock.IsType([]adapter.PartInfo(nil))).
 		Return(nil, errors.New("completion failed"))
 
 	etagMap := map[string]string{
 		"1": "\"etag1\"",
 	}
-	body, _ := json.Marshal(etagMap)
+	body, _ := jsoncodec.Marshal(etagMap)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/completeupload/storage123/large-file.zip?upload_id=upload123", bytes.NewBuffer(body))

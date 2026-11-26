@@ -21,7 +21,7 @@ func TestHealthHandler_Alive_Success(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "ok")
+	assert.JSONEq(t, `{"res":0,"status":"ok"}`, w.Body.String())
 }
 
 func TestHealthHandler_Ready_AllHealthy(t *testing.T) {

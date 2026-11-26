@@ -65,7 +65,7 @@ func (h *HeadHandler) BatchGetHeadURL(c *gin.Context) {
 		Expires         int64    `json:"expires"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSON(c.Request.Body, &req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
