@@ -184,8 +184,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/ncruces/go-strftime v1.1.0 h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL47Hk=
 github.com/ncruces/go-strftime v1.1.0/go.mod h1:yVaq7iwCN09vHRrKBrrflXT0M9tTMG2KmZ9Fj7xeG/g=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba h1:VPcAPuWYjeZ8ilpB5aA+kAgUEoPXbQ0AfM5EAU/xQwU=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641 h1:KkrAhSuJ4la0WzUpk/jLQCH3MLP/3xeiRNBKrxlNBXk=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=
 github.com/openbkn-ai/licverify v0.5.1/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=

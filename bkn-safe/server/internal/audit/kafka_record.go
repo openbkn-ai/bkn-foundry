@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -125,10 +125,7 @@ func BuildKafkaAdminRecord(entry Entry, environment string) ([]byte, error) {
 	} else if entry.Status >= http.StatusBadRequest {
 		outcome, decision = "failure", "failed"
 	}
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
+	eventID := uuid.NewV7()
 	transport := "http"
 	if systemEvent {
 		transport = "non_http"
