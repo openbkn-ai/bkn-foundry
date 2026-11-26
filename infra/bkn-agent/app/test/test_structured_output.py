@@ -481,10 +481,44 @@ def test_truncated_reply_asks_for_a_shorter_one():
     assert "cut off" in str(retry[-1])
 
 
-def test_truncated_twice_says_so():
-    m = _JsonMode([('{"greeting": "cut', "length"), ('{"greeting": "cut again', "length")])
+def test_truncated_every_attempt_says_so():
+    m = _JsonMode([('{"greeting": "cut', "length")] * structured.FALLBACK_ATTEMPTS)
     with pytest.raises(structured.StructuredOutputError, match=structured.TRUNCATED):
         asyncio.run(structured_extract(m, [], SCHEMA))
+    assert len(m.seen) == structured.FALLBACK_ATTEMPTS
+    # Each truncated retry still adds the shorter-answer note to the last request.
+    assert all("cut off" in str(req[-1]) for req in m.seen[1:])
+
+
+def test_invalid_answer_is_regenerated_from_the_original_conversation():
+    convo = [HumanMessage(content="say hi")]
+    m = _JsonMode([('{"greeting": 42, "marker": "BAD-ANSWER"}', "stop"), ('{"greeting": "hi"}', "stop")])
+    out = asyncio.run(structured_extract(m, convo, SCHEMA))
+    assert out == {"greeting": "hi"}
+    first, retry = m.seen
+    # The retry is the original request plus one hint, not a repair of the
+    # previous answer.
+    assert retry[:-1] == first
+    assert all("BAD-ANSWER" not in str(part) for part in retry)
+    hint = str(retry[-1])
+    assert "$.greeting" in hint and "is not of type 'string'" in hint
+    # The schema excerpt jsonschema puts in str(e) is not repeated.
+    assert "Failed validating" not in hint
+
+
+def test_regeneration_hint_does_not_stack():
+    m = _JsonMode([('{"wrong": 1}', "stop"), ('{"greeting": 1}', "stop"), ('{"greeting": "hi"}', "stop")])
+    out = asyncio.run(structured_extract(m, [], SCHEMA))
+    assert out == {"greeting": "hi"}
+    assert len(m.seen[2]) == len(m.seen[1]) == len(m.seen[0]) + 1
+    assert "$.greeting" in str(m.seen[2][-1])
+
+
+def test_invalid_answer_every_attempt_raises():
+    m = _JsonMode([('{"wrong": 1}', "stop")] * structured.FALLBACK_ATTEMPTS)
+    with pytest.raises(structured.StructuredOutputError, match="'greeting' is a required property"):
+        asyncio.run(structured_extract(m, [], SCHEMA))
+    assert len(m.seen) == structured.FALLBACK_ATTEMPTS
 
 
 # ---------- run_agent_once 集成 ----------
