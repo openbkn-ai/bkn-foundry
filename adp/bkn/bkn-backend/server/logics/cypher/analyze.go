@@ -2199,6 +2199,13 @@ const supportedFunctions = "the aggregates count, sum, avg, min, max and collect
 // not say which one to change.
 func unsupportedFunction(invocation parsing.IOC_FunctionInvocationContext) error {
 	name := identifier(invocation.OC_FunctionName().GetText())
+	if _, aggregate := aggregateFunctions[strings.ToLower(name)]; aggregate {
+		// The function is known; the place is not. Listing it as callable
+		// would leave the author no way to tell what to change.
+		return unsupportedf(invocation, name+"() here",
+			"aggregate in a WITH and test the name it gives in that WITH's WHERE, as in "+
+				"WITH o, %s(...) AS v WHERE v > o.property", name)
+	}
 	return unsupportedf(invocation, "the function "+name+"()", "a query may call %s", supportedFunctions)
 }
 

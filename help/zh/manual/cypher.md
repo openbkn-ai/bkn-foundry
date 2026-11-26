@@ -250,6 +250,7 @@ RETURN t.team_name AS team, n ORDER BY n DESC
 
 - WITH 里的值要用 `AS` 命名。节点可以直接传下去（`WITH t`），按对象的主键分组，所以同名的两个对象不会被合并。传下去的节点可以在 RETURN 里直接返回，例如 `WITH p, t, count(g) AS n WHERE n > 1 RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, n`（见「虚拟边与证据」）。
 - WITH 的 WHERE 里，只涉及分组键的条件在分组之前过滤，涉及聚合的条件对每个分组判断。
+- `min`、`max` 的结果与原属性同类型，日期或字符串的 `min`、`max` 也能比较，日期按时间先后比较：`WITH o, max(s.ship_date) AS last WHERE last > o.due_date`。`sum`、`avg` 只能用于数字。
 - **可以连写多个 WITH 接力计算**。只有第一个 WITH 能聚合，后面的 WITH 用前面的名字算新值，并各自加条件：
 
 ```cypher

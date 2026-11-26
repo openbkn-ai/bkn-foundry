@@ -250,6 +250,7 @@ RETURN t.team_name AS team, n ORDER BY n DESC
 
 - Values in a WITH are named with `AS`. A node may be passed on as it is (`WITH t`) and groups by its primary key, so two objects that share a name stay two groups. A node passed on may be returned as it is, as in `WITH p, t, count(g) AS n WHERE n > 1 RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, n` (see "Derived relationships with evidence").
 - In the WITH's WHERE, a condition on grouping keys filters rows before grouping, and one on aggregates is tested per group.
+- `min` and `max` give a value of the property's own type, so the `min` or `max` of a date or a string compares too, dates by time: `WITH o, max(s.ship_date) AS last WHERE last > o.due_date`. `sum` and `avg` take numbers only.
 - **WITHs may be chained.** Only the first aggregates; later ones compute from the names before them, each with its own WHERE:
 
 ```cypher

@@ -100,6 +100,22 @@ func TestWithGenerates(t *testing.T) {
 				"FROM {{res_order}} t0 GROUP BY t0.`f_region`) g LIMIT 5"},
 		},
 		{
+			name: "max over a date compares with a date the WITH grouped by",
+			query: "MATCH (o:Order)-[:FOLLOWS]->(p:Order) WITH o.id AS id, o.placed_at AS due, max(p.placed_at) AS last " +
+				"WHERE last > due RETURN id, last",
+			want: []string{"HAVING t0.`f_placed` < MAX(t1.`f_placed`)"},
+		},
+		{
+			name:  "min over a date compares with a date written in the query",
+			query: "MATCH (o:Order) WITH o.region AS r, min(o.placed_at) AS first WHERE first < date('2024-02-01') RETURN r",
+			want:  []string{"HAVING MIN(t0.`f_placed`) < '2024-02-01'"},
+		},
+		{
+			name:  "max over a string compares with a string",
+			query: "MATCH (o:Order) WITH o.region AS r, max(o.customer_code) AS top WHERE top >= 'c2' RETURN r",
+			want:  []string{"HAVING MAX(t0.`f_cust`) >= 'c2'"},
+		},
+		{
 			name:  "an opening WITH names a list that IN uses",
 			query: "WITH ['east', 'west'] AS regions, 50 AS floor MATCH (o:Order) WHERE o.region IN regions AND o.amount >= floor RETURN o.id",
 			want:  []string{"WHERE t0.`f_region` IN ('east', 'west') AND t0.`f_amount` >= 50"},
@@ -214,6 +230,17 @@ func TestWithEvaluates(t *testing.T) {
 			want: [][]any{{"c1"}},
 		},
 		{
+			name:  "max over a date tested per group compares by wall clock",
+			query: "MATCH (o:Order) WITH o.region AS r, max(o.placed_at) AS last WHERE last > '2024-01-31 23:59:59' RETURN r",
+			want:  [][]any{{"east"}},
+		},
+		{
+			name: "max over a date tested against a date the WITH grouped by",
+			query: "MATCH (o:Order)-[:FOLLOWS]->(p:Order) WITH o.id AS id, o.placed_at AS due, max(p.placed_at) AS last " +
+				"WHERE last > due RETURN id ORDER BY id",
+			want: [][]any{{1}, {2}},
+		},
+		{
 			name:  "an opening WITH names a list",
 			query: "WITH ['east'] AS rs MATCH (o:Order) WHERE o.region IN rs RETURN o.id AS id ORDER BY id",
 			want:  [][]any{{1}, {3}},
@@ -274,6 +301,14 @@ func TestWithRefuses(t *testing.T) {
 		want  string
 	}{
 		{"MATCH (o:Order) WITH DISTINCT o.region AS r RETURN r", "WITH DISTINCT"},
+		{"MATCH (o:Order) WITH o.region AS r, max(o.placed_at) AS last WHERE last > 5 RETURN r",
+			"comparing a number with a value that is not one"},
+		{"MATCH (o:Order) WITH o.region AS r, max(o.placed_at) AS last WHERE last > 'soon' RETURN r", "\"soon\" is not a date"},
+		{"MATCH (o:Order) WITH o.region AS r, max(o.amount) AS top WHERE top > date('2024-01-01') RETURN r",
+			"comparing a computed number"},
+		{"MATCH (o:Order) WITH o.region AS r, max(o.rush) AS any WHERE any > 0 RETURN r", "which is boolean"},
+		{"MATCH (o:Order) WITH o.region AS r, sum(o.placed_at) AS s WHERE s > '2024-01-01' RETURN r", "arithmetic takes numbers"},
+
 		{"MATCH (o:Order) WITH * RETURN o.id", "WITH *"},
 		{"MATCH (o:Order) WITH o.region AS r ORDER BY r RETURN r", "ORDER BY, SKIP or LIMIT on WITH"},
 		{"MATCH (o:Order) WITH o.region RETURN o.region", "an unnamed value in WITH"},
