@@ -83,8 +83,8 @@ github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba h1:VPcAPuWYjeZ8ilpB5aA+kAgUEoPXbQ0AfM5EAU/xQwU=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641 h1:KkrAhSuJ4la0WzUpk/jLQCH3MLP/3xeiRNBKrxlNBXk=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641/go.mod h1:JVaZZniO7smVHOVXF0HFQvECgi3ienpt3+0mTuzEA1k=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0/go.mod h1:8LDr9FCgUTVoT+5ESjc2+iaZuldqE+23Iq0r1XeNue8=
 github.com/pelletier/go-toml/v2 v2.4.3 h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=

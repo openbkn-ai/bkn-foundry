@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"uuid"
 
 	driver "github.com/go-sql-driver/mysql"
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"gorm.io/driver/mysql"
@@ -41,7 +41,7 @@ func mariaDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal("open test server")
 	}
-	name := "safe_test_build_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	name := "safe_test_build_" + strings.ReplaceAll(uuid.NewV4().String(), "-", "")
 	if _, err = admin.Exec("CREATE DATABASE " + name); err != nil {
 		t.Fatal("create test database")
 	}
@@ -101,7 +101,7 @@ func TestMariaDBBuildGrantRaces(t *testing.T) {
 		return CreateRequest{ID: "grant-" + id, ProjectID: "project", BuildID: "build-" + id, DelegatorID: "owner", ModelFingerprint: strings.Repeat("a", 64), Versions: []Version{{KnowledgeBaseID: "1", FileID: "41", ContentVersionID: "8"}}}
 	}
 	for i := 0; i < 12; i++ {
-		r := request(uuid.NewString())
+		r := request(uuid.NewV4().String())
 		start := make(chan struct{})
 		results := make(chan error, 2)
 		var wg sync.WaitGroup

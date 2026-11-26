@@ -14,7 +14,7 @@ require (
 	github.com/go-python/gpython v0.2.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.57.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125092756-a47ecfe26db5
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641
 	github.com/pkg/errors v0.9.1
 	github.com/qustavo/sqlhooks/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.24.0

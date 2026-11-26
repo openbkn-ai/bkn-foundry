@@ -17,8 +17,7 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/go-sql-driver/mysql v1.10.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/uuid v1.6.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125070454-119dabd35aba
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/ory/hydra-client-go/v2 v2.2.1
 	golang.org/x/crypto v0.59.0
@@ -59,6 +58,7 @@ require (
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.4 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

@@ -13,7 +13,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-sql-driver/mysql v1.10.2
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261125092756-a47ecfe26db5
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261126040629-259a33e93641
 	github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server v0.0.0-20261125092756-a47ecfe26db5
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0

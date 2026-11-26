@@ -13,8 +13,8 @@ import (
 	"errors"
 	"regexp"
 	"sort"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"gorm.io/gorm"
@@ -176,7 +176,17 @@ func (s *Service) Create(ctx context.Context, r CreateRequest) (*Grant, bool, er
 	if err = s.permitted(ctx, r.DelegatorID, versions); err != nil {
 		return nil, false, err
 	}
-	g := model.BuildGrant{ID: r.ID, ProjectID: r.ProjectID, BuildID: r.BuildID, DelegatorID: r.DelegatorID, ModelFingerprint: r.ModelFingerprint, ManifestHash: hash, Revision: 1, Status: StatusActive, PrincipalID: uuid.NewString()}
+	g := model.BuildGrant{
+		ID:               r.ID,
+		ProjectID:        r.ProjectID,
+		BuildID:          r.BuildID,
+		DelegatorID:      r.DelegatorID,
+		ModelFingerprint: r.ModelFingerprint,
+		ManifestHash:     hash,
+		Revision:         1,
+		Status:           StatusActive,
+		PrincipalID:      uuid.NewV7().String(),
+	}
 	created := false
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		claim := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&g)

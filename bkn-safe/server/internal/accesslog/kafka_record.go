@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
 )
 
@@ -25,10 +25,7 @@ func BuildKafkaRecord(entry Entry, environment string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	eventID, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
+	eventID := uuid.NewV7()
 	actorID := strings.TrimSpace(entry.ActorID)
 	if actorID == "" {
 		return nil, errors.New("safe access actor is missing")

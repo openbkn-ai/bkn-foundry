@@ -19,11 +19,10 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"uuid"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/google/uuid"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permissionproposal"
@@ -264,14 +263,6 @@ func (s *Service) refreshResourceLiveness(ctx context.Context, db *gorm.DB, req 
 		return err
 	}
 	return nil
-}
-
-func newUUIDv7() (string, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", fmt.Errorf("generate UUID v7: %w", err)
-	}
-	return id.String(), nil
 }
 
 func retiredRequestKey(requestID, status string) string {
@@ -702,10 +693,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 		}
 	}
 	requestKey := requestFingerprint(in)
-	id, err := newUUIDv7()
-	if err != nil {
-		return nil, false, err
-	}
+	id := uuid.NewV7().String()
 	req := model.PermissionRequest{
 		ID: id, RequestKey: requestKey, RequesterID: in.RequesterID,
 		ResourceType: in.ResourceType, ResourceID: in.ResourceID, ResourceName: in.ResourceName,
@@ -718,10 +706,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*model.Permission
 	if result.RowsAffected == 1 {
 		rows := make([]model.PermissionRequestOperation, 0, len(in.Operations))
 		for _, operation := range in.Operations {
-			operationID, err := newUUIDv7()
-			if err != nil {
-				return nil, false, err
-			}
+			operationID := uuid.NewV7().String()
 			rows = append(rows, model.PermissionRequestOperation{ID: operationID, RequestID: req.ID, Operation: operation})
 		}
 		if len(rows) > 0 {
@@ -928,10 +913,7 @@ func (s *Service) syncReviewerWithContext(ctx context.Context, db *gorm.DB, req 
 	if eligible {
 		status = ReviewerActive
 	}
-	reviewerRecordID, err := newUUIDv7()
-	if err != nil {
-		return false, err
-	}
+	reviewerRecordID := uuid.NewV7().String()
 	record := model.PermissionRequestReviewer{
 		ID: reviewerRecordID, RequestID: req.ID, ReviewerID: reviewerID,
 		EligibilityStatus: status, AuthorizationRootType: reviewerContext.rootType, AuthorizationRootID: reviewerContext.rootID,
@@ -1286,10 +1268,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 			return ErrForbidden
 		}
 		if in.Decision == "reject" {
-			decisionID, err := newUUIDv7()
-			if err != nil {
-				return err
-			}
+			decisionID := uuid.NewV7().String()
 			decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
 			if err := tx.DB().Create(&decision).Error; err != nil {
 				return err
@@ -1322,10 +1301,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					if !errors.Is(err, permissionproposal.ErrStale) {
 						return err
 					}
-					decisionID, idErr := newUUIDv7()
-					if idErr != nil {
-						return idErr
-					}
+					decisionID := uuid.NewV7().String()
 					decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: DecisionInvalidated, Comment: in.Comment}
 					if err := tx.DB().Create(&decision).Error; err != nil {
 						return err
@@ -1338,10 +1314,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					result = req
 					return nil
 				}
-				decisionID, err := newUUIDv7()
-				if err != nil {
-					return err
-				}
+				decisionID := uuid.NewV7().String()
 				decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
 				if err := tx.DB().Create(&decision).Error; err != nil {
 					return err
@@ -1386,10 +1359,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					return err
 				}
 				if len(missing) > 0 {
-					decisionID, err := newUUIDv7()
-					if err != nil {
-						return err
-					}
+					decisionID := uuid.NewV7().String()
 					decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: DecisionInvalidated, Comment: in.Comment}
 					if err := tx.DB().Create(&decision).Error; err != nil {
 						return err
@@ -1403,10 +1373,7 @@ func (s *Service) Decide(ctx context.Context, requestID string, in DecisionInput
 					return nil
 				}
 			}
-			decisionID, err := newUUIDv7()
-			if err != nil {
-				return err
-			}
+			decisionID := uuid.NewV7().String()
 			decision := model.PermissionRequestDecision{ID: decisionID, RequestID: req.ID, ReviewerID: in.ReviewerID, Decision: in.Decision, Comment: in.Comment}
 			if err := tx.DB().Create(&decision).Error; err != nil {
 				return err
