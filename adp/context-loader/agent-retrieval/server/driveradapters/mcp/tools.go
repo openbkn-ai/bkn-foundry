@@ -599,6 +599,11 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 			resp.ReduceToNavigationShell()
 			resp.Notice = notice(interfaces.KnDetailReductionShell)
 		} else {
+			// The listing carries summaries without properties; read the definitions first.
+			resp.ObjectTypes, err = knmetrics.WithObjectTypeDefinitions(ctx, bkn, knID, branch, resp.ObjectTypes)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 			resp.ObjectTypes, err = objectpermission.FilterObjectTypesBranch(ctx, schemaAccess, knID, branch, resp.ObjectTypes)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil

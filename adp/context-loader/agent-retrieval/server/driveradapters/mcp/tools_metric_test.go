@@ -33,8 +33,29 @@ func (s *stubMetricBknBackend) ListKNCapabilities(_ context.Context, _, _, _ str
 	return s.capabilities, s.capErr
 }
 
+// GetKnowledgeNetworkDetail answers as bkn-backend does: its object type listing is summaries,
+// without properties or primary keys, and the definitions come from GetObjectTypeDetail (#3412).
 func (s *stubMetricBknBackend) GetKnowledgeNetworkDetail(_ context.Context, _ string) (*interfaces.KnowledgeNetworkDetail, error) {
-	return s.detail, nil
+	return listedAsSummaries(s.detail), nil
+}
+
+// listedAsSummaries copies detail with each object type cut to what the network listing carries.
+func listedAsSummaries(detail *interfaces.KnowledgeNetworkDetail) *interfaces.KnowledgeNetworkDetail {
+	if detail == nil {
+		return nil
+	}
+	listed := *detail
+	listed.ObjectTypes = make([]*interfaces.ObjectType, 0, len(detail.ObjectTypes))
+	for _, objectType := range detail.ObjectTypes {
+		if objectType == nil {
+			listed.ObjectTypes = append(listed.ObjectTypes, nil)
+			continue
+		}
+		summary := *objectType
+		summary.DataProperties, summary.LogicProperties, summary.PrimaryKeys = nil, nil, nil
+		listed.ObjectTypes = append(listed.ObjectTypes, &summary)
+	}
+	return &listed
 }
 
 func (s *stubMetricBknBackend) ListMetricsByObjectTypes(_ context.Context, _ string, _ []string) ([]*interfaces.RelatedMetric, error) {
