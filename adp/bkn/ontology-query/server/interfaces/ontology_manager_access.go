@@ -10,6 +10,20 @@ import (
 	"context"
 )
 
+type metricExecutionModelAccessKey struct{}
+
+// WithMetricExecutionModelAccess scopes internal model reads to a published metric's network.
+// The model service authorizes these reads with the original caller's query_data permission.
+func WithMetricExecutionModelAccess(ctx context.Context, knID string) context.Context {
+	return context.WithValue(ctx, metricExecutionModelAccessKey{}, knID)
+}
+
+// UsesMetricExecutionModelAccess reports whether a published model read is for metric execution.
+func UsesMetricExecutionModelAccess(ctx context.Context, knID, branch string) bool {
+	network, _ := ctx.Value(metricExecutionModelAccessKey{}).(string)
+	return network != "" && network == knID && branch == MAIN_BRANCH
+}
+
 // Request body for retrieving an object subgraph by source, direction, and path length.
 type PathsQueryBaseOnSource struct {
 	ConceptGroups     []string `json:"concept_groups,omitempty"`

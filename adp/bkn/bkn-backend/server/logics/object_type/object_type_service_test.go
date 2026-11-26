@@ -26,7 +26,58 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
+
+func TestGetObjectTypesByIDsForMetricExecution(t *testing.T) {
+	const knID, branch, id = "kn1", "v3", "orders"
+	ids := []string{id}
+	requirements := []interfaces.PermissionRequirement{{
+		Resource:  interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: knID + "/" + id},
+		Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
+	}}
+	ctx := context.Background()
+	metricCtx := permission.WithMetricExecutionModelRead(ctx)
+	ctrl := gomock.NewController(t)
+	permissions := bmock.NewMockPermissionService(ctrl)
+	access := bmock.NewMockObjectTypeAccess(ctrl)
+	groups := bmock.NewMockConceptGroupAccess(ctrl)
+	users := bmock.NewMockUserMgmtService(ctrl)
+	db, mockDB, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mockDB.ExpectClose()
+		assert.NoError(t, db.Close())
+		assert.NoError(t, mockDB.ExpectationsWereMet())
+	})
+	svc := &objectTypeService{db: db, ps: permissions, ota: access, cga: groups, ums: users}
+	model := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: id}}
+
+	permissions.EXPECT().RequirePermissions(gomock.Any(), requirements).Return(nil)
+	mockDB.ExpectBegin()
+	access.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, branch, ids).Return([]*interfaces.ObjectType{model}, nil)
+	groups.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+	users.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+	mockDB.ExpectCommit()
+	items, err := svc.GetObjectTypesByIDs(metricCtx, nil, knID, branch, ids)
+	require.NoError(t, err)
+	require.Equal(t, []*interfaces.ObjectType{model}, items)
+
+	denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
+	permissions.EXPECT().RequirePermissions(gomock.Any(), requirements).Return(denied)
+	_, err = svc.GetObjectTypesByIDs(metricCtx, nil, knID, branch, ids)
+	require.ErrorIs(t, err, denied)
+
+	mockDB.ExpectBegin()
+	access.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, branch, ids).Return([]*interfaces.ObjectType{model}, nil)
+	permissions.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{knID + "/" + id}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil, nil)
+	mockDB.ExpectCommit()
+	_, err = svc.GetObjectTypesByIDs(ctx, nil, knID, branch, ids)
+	var httpErr *httperrors.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
+}
 
 func allowAllPermissionResources(_ context.Context, _ string, ids, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
 	matched := make(map[string]interfaces.PermissionResourceOps, len(ids))

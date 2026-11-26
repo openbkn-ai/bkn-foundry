@@ -30,7 +30,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricExecutionWithFingerprin
 			inputs = append(inputs, objectMetricAuthorizationInput{definition: &dependency.Definition})
 		}
 	}
-	return s.objectMetricAuthorizationFingerprint(ctx, knID, inputs)
+	return s.objectMetricAuthorizationFingerprint(interfaces.WithMetricExecutionModelAccess(ctx, knID), knID, inputs)
 }
 
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrialWithFingerprint(ctx context.Context,
