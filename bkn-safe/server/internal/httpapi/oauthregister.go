@@ -52,7 +52,8 @@ var mcpScopes = []string{"openid", "offline"}
 // first also names the root document.
 var mcpResources = []struct{ prefix, name string }{
 	{"/api/agent-retrieval/v1/mcp", "OpenBKN Context Loader"}, // /mcp and /mcp-compact
-	{"/api/workshop/v1/mcp", "OpenBKN Workshop"},              // licensed editions only
+	{"/api/bkn-backend/v1/eval/mcp", "OpenBKN Eval"},
+	{"/api/workshop/v1/mcp", "OpenBKN Workshop"}, // licensed editions only
 }
 
 // mcpResourceName names the MCP endpoint a path is under; false when it is none.
