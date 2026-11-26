@@ -312,3 +312,17 @@ func TestDynamicRegistrationIsAbsentUnlessConfigured(t *testing.T) {
 		t.Fatalf("register: status %d, want 404", w.Code)
 	}
 }
+
+func TestEvalProtectedResourceMetadata(t *testing.T) {
+	r, _ := registrationEngine(t, OAuthDynamicRegistration{})
+	for _, suffix := range []string{"", "/"} {
+		w := serve(r, http.MethodGet, "/.well-known/oauth-protected-resource/api/bkn-backend/v1/eval/mcp"+suffix, "", map[string]string{"X-Forwarded-Proto": "https"})
+		if w.Code != http.StatusOK {
+			t.Fatalf("Eval discovery: %d %s", w.Code, w.Body)
+		}
+		meta := decode(t, w)
+		if meta["resource_name"] != "OpenBKN Eval" || meta["resource"] != "https://10.211.55.4/api/bkn-backend/v1/eval/mcp"+suffix {
+			t.Fatalf("unexpected Eval metadata: %v", meta)
+		}
+	}
+}

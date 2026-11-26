@@ -43,7 +43,8 @@ paths:
       description: |
         Path-suffixed form (RFC 9728 §3.1). Only MCP paths are answered:
         Context Loader's (`api/agent-retrieval/v1/mcp…`, resource_name
-        "OpenBKN Context Loader") and Workshop's (`api/workshop/v1/mcp`,
+        "OpenBKN Context Loader"), Eval's (`api/bkn-backend/v1/eval/mcp`,
+        "OpenBKN Eval"), and Workshop's (`api/workshop/v1/mcp`,
         "OpenBKN Workshop"); `resource` echoes the origin the caller used.
       security: []
       parameters:
