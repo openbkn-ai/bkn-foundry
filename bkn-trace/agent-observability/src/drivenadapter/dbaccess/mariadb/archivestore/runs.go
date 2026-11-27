@@ -55,12 +55,29 @@ func (store *Store) LatestRun(ctx context.Context, kind observabilityvo.ArchiveK
 	return scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM bkn_trace_archive_runs WHERE archive_kind=? ORDER BY created_at DESC, run_id DESC LIMIT 1`, kind))
 }
 
+func batchRunPattern(batchRunID string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(batchRunID) + `\_%`
+}
+
+// LatestBatchProgress reads only progress, never the frozen payloads, so the
+// overview can poll it while a large batch is in flight.
+func (store *Store) LatestBatchProgress(ctx context.Context, batchRunID string) (*archivesvc.BatchProgress, error) {
+	var raw []byte
+	err := store.db.QueryRowContext(ctx, `SELECT batch_progress FROM bkn_trace_archive_jobs WHERE archive_job_id LIKE ? ORDER BY archive_job_id DESC LIMIT 1`, batchRunPattern(batchRunID)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return decodeProgress(raw)
+}
+
 // LatestBatch finds the newest job of a batch run. Job IDs are the run ID plus
 // a zero-padded batch number, so the primary key orders them.
 func (store *Store) LatestBatch(ctx context.Context, batchRunID string) (archivesvc.Job, bool, error) {
-	pattern := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(batchRunID) + `\_%`
 	var id string
-	err := store.db.QueryRowContext(ctx, `SELECT archive_job_id FROM bkn_trace_archive_jobs WHERE archive_job_id LIKE ? ORDER BY archive_job_id DESC LIMIT 1`, pattern).Scan(&id)
+	err := store.db.QueryRowContext(ctx, `SELECT archive_job_id FROM bkn_trace_archive_jobs WHERE archive_job_id LIKE ? ORDER BY archive_job_id DESC LIMIT 1`, batchRunPattern(batchRunID)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return archivesvc.Job{}, false, nil
 	}

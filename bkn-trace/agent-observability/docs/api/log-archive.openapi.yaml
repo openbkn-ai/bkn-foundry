@@ -154,7 +154,7 @@ components:
         last_failure_code:
           type: string
           description: Reason of the last retry, or of failure when status is failed
-          enum: [storage_unavailable, records_not_ready, cleanup_pending, cleanup_required, cleanup_verification_failed, capacity_exceeded, configuration_invalid, oversized_interaction]
+          enum: [temporarily_unavailable, records_not_ready, cleanup_pending, cleanup_required, cleanup_verification_failed, capacity_exceeded, configuration_invalid, oversized_interaction, unexpected_error]
         created_at: { type: string, format: date-time }
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }

@@ -132,7 +132,7 @@ func TestBackgroundRunRetriesTransientFailuresThenFails(t *testing.T) {
 		svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
 		view := runState(t, svc, run.ID)
 		if attempt < MaxRunRetries {
-			if view.Status != RunRetryWait || view.RetryCount != attempt+1 || view.LastFailureCode != RunFailureStorageUnavailable || !view.NextAttemptAt.Equal(clock.now.Add(runRetryDelays[attempt])) {
+			if view.Status != RunRetryWait || view.RetryCount != attempt+1 || view.LastFailureCode != RunFailureTemporary || !view.NextAttemptAt.Equal(clock.now.Add(runRetryDelays[attempt])) {
 				t.Fatalf("attempt %d: %+v", attempt, view)
 			}
 			svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
@@ -142,7 +142,7 @@ func TestBackgroundRunRetriesTransientFailuresThenFails(t *testing.T) {
 			clock.now = view.NextAttemptAt
 			continue
 		}
-		if view.Status != RunFailed || view.RetryCount != MaxRunRetries || view.LastFailureCode != RunFailureStorageUnavailable || view.FinishedAt.IsZero() {
+		if view.Status != RunFailed || view.RetryCount != MaxRunRetries || view.LastFailureCode != RunFailureTemporary || view.FinishedAt.IsZero() {
 			t.Fatalf("retries not bounded: %+v", view)
 		}
 	}
@@ -159,7 +159,7 @@ func TestBackgroundRunRecoversFromTransientFailureAndCleanupInterruption(t *test
 	svc := runService(s, s, o, clock, Options{})
 	run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
 	svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
-	if view := runState(t, svc, run.ID); view.Status != RunRetryWait || view.LastFailureCode != RunFailureStorageUnavailable {
+	if view := runState(t, svc, run.ID); view.Status != RunRetryWait || view.LastFailureCode != RunFailureTemporary {
 		t.Fatalf("write failure: %+v", view)
 	}
 	clock.now = clock.now.Add(time.Hour)
@@ -277,10 +277,93 @@ func TestClassifyRunOutcome(t *testing.T) {
 		{err: fmt.Errorf("%w: mismatch", ErrCleanupVerificationFailed), code: RunFailureCleanupVerification},
 		{err: ErrCleanupRequired, code: RunFailureCleanupRequired},
 		{err: fmt.Errorf("x: %w", ErrIncompleteCandidates), code: RunFailureRecordsNotReady, retry: true},
-		{err: errors.New("timeout"), code: RunFailureStorageUnavailable, retry: true},
+		{err: errors.New("timeout"), code: RunFailureTemporary, retry: true},
 	} {
 		if code, retry := classifyRunOutcome(tc.last, tc.err); code != tc.code || retry != tc.retry {
 			t.Fatalf("%v: got %q %v", tc.err, code, retry)
 		}
+	}
+}
+
+func TestBackgroundLogRunArchivesEveryBatch(t *testing.T) {
+	s := newBatchSourceFixture(t, 5, 2)
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(s, s, &batchObjectFixture{s: s}, clock, Options{})
+	run := mustSubmit(t, svc, observabilityvo.ArchiveKindLog)
+	svc.processDue(context.Background(), observabilityvo.ArchiveKindLog)
+	if view := runState(t, svc, run.ID); view.Status != RunCompleted || view.ProcessedCount != 5 || view.BatchCount != 3 || len(s.rows) != 0 {
+		t.Fatalf("log run: %+v rows=%d", view, len(s.rows))
+	}
+}
+
+func TestRetryCleanupCompletesWhenAnotherCleanupIsStillPending(t *testing.T) {
+	s := newBatchSourceFixture(t, 4, 2)
+	s.failCleanup = true
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(s, s, &batchObjectFixture{s: s}, clock, Options{})
+	job, err := svc.Create(context.Background(), observabilityvo.ArchiveKindTrace)
+	if err != nil || job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+		t.Fatalf("fixture: %+v %v", job, err)
+	}
+	other := Job{ID: "older-pending", Kind: observabilityvo.ArchiveKindTrace, Status: observabilityvo.ArchiveStatusCleanupIncomplete, CreatedAt: clock.now.Add(-time.Hour)}
+	if err := s.store.Create(other); err != nil {
+		t.Fatal(err)
+	}
+	s.failCleanup = false
+	run, err := svc.SubmitRetryCleanup(context.Background(), job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
+	if view := runState(t, svc, run.ID); view.Status != RunCompleted || view.LastFailureCode != "" {
+		t.Fatalf("requested cleanup succeeded but run did not complete: %+v", view)
+	}
+	if cleaned, _ := s.store.Get(job.ID); cleaned.Status != observabilityvo.ArchiveStatusCompleted || len(s.rows) != 2 {
+		t.Fatalf("cleanup or continuation wrong: %+v rows=%d", cleaned, len(s.rows))
+	}
+}
+
+type panickingSource struct{ batchSourceFixture }
+
+func (s *panickingSource) FreezeBatch(context.Context, observabilityvo.ArchiveKind, observabilityvo.ArchiveRange) (Batch, error) {
+	panic("defect in archive code")
+}
+
+func TestPanickingRunFailsInsteadOfCrashingTheService(t *testing.T) {
+	s := newBatchSourceFixture(t, 2, 2)
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(&panickingSource{batchSourceFixture: *s}, s, &batchObjectFixture{s: s}, clock, Options{})
+	run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
+	svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
+	if view := runState(t, svc, run.ID); view.Status != RunFailed || view.LastFailureCode != RunFailureUnexpected {
+		t.Fatalf("panic not contained: %+v", view)
+	}
+	if _, err := svc.Submit(context.Background(), observabilityvo.ArchiveKindTrace); err != nil {
+		t.Fatalf("failed run still blocks new runs: %v", err)
+	}
+}
+
+type hangingSource struct{ batchSourceFixture }
+
+func (s *hangingSource) FreezeBatch(ctx context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) (Batch, error) {
+	<-ctx.Done()
+	return Batch{}, ctx.Err()
+}
+
+func TestHungBatchTimesOutAndReleasesTheKind(t *testing.T) {
+	s := newBatchSourceFixture(t, 2, 2)
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(&hangingSource{batchSourceFixture: *s}, s, &batchObjectFixture{s: s}, clock, Options{})
+	svc.batchTimeout = 20 * time.Millisecond
+	run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
+	done := make(chan struct{})
+	go func() { svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("hung batch held the kind lock")
+	}
+	if view := runState(t, svc, run.ID); view.Status != RunRetryWait || view.LastFailureCode != RunFailureTemporary {
+		t.Fatalf("timed-out batch should wait for a retry: %+v", view)
 	}
 }

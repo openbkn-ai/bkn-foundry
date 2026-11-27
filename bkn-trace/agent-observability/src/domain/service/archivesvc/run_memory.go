@@ -108,6 +108,14 @@ func (store *memoryStore) LatestBatch(ctx context.Context, batchRunID string) (J
 	return storedJob(store.jobs[latest]), true, nil
 }
 
+func (store *memoryStore) LatestBatchProgress(ctx context.Context, batchRunID string) (*BatchProgress, error) {
+	job, found, err := store.LatestBatch(ctx, batchRunID)
+	if err != nil || !found {
+		return nil, err
+	}
+	return job.BatchProgress, nil
+}
+
 func (store *memoryStore) RetainInteraction(ctx context.Context, item RetainedInteraction) error {
 	if err := ctx.Err(); err != nil {
 		return err

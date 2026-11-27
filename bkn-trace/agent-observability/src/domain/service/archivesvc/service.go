@@ -141,6 +141,8 @@ type Service struct {
 	now         func() time.Time
 	location    *time.Location
 	wake        map[observabilityvo.ArchiveKind]chan struct{}
+	// batchTimeout bounds each background batch; tests shorten it.
+	batchTimeout time.Duration
 }
 
 func New(store Store, source Source, objectStore ObjectStore, options Options) *Service {
@@ -154,7 +156,7 @@ func New(store Store, source Source, objectStore ObjectStore, options Options) *
 		observabilityvo.ArchiveKindLog:   make(chan struct{}, 1),
 		observabilityvo.ArchiveKindTrace: make(chan struct{}, 1),
 	}
-	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location, wake: wake}
+	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location, wake: wake, batchTimeout: runBatchTimeout}
 }
 
 func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (job Job, err error) {
@@ -194,7 +196,10 @@ func (service *Service) withKindLock(ctx context.Context, kind observabilityvo.A
 }
 
 func (service *Service) createBatches(ctx context.Context, kind observabilityvo.ArchiveKind, window observabilityvo.ArchiveRange, runID string, number, cleaned int) (last Job, err error) {
+	cancelBatch := context.CancelFunc(func() {})
+	defer func() { cancelBatch() }()
 	for {
+		cancelBatch()
 		if err := ctx.Err(); err != nil {
 			return last, err
 		}
@@ -214,11 +219,14 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 			}
 			ctx = WithLogLimits(ctx, limits)
 		}
+		// Background runs bound each batch; a timed-out batch stays recoverable.
+		var batchCtx context.Context
+		batchCtx, cancelBatch = withBatchDeadline(ctx)
 		var batch Batch
 		if source, ok := service.source.(BatchSource); ok {
-			batch, err = source.FreezeBatch(ctx, kind, window)
+			batch, err = source.FreezeBatch(batchCtx, kind, window)
 		} else {
-			batch.Candidates, err = service.source.Freeze(ctx, kind, window)
+			batch.Candidates, err = service.source.Freeze(batchCtx, kind, window)
 			batch.EligibleCount = len(batch.Candidates)
 		}
 		if err != nil {
@@ -277,7 +285,7 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 			job.ID = fmt.Sprintf("%s_%06d", runID, number)
 			job.BatchProgress = &BatchProgress{RunID: runID, BatchNumber: number, EligibleAtSelection: batch.EligibleCount, CleanedInRun: cleaned, RemainingAtSelection: batch.EligibleCount - len(batch.Candidates)}
 		}
-		last, err = service.writeAndCleanBatch(ctx, job, batch.Candidates)
+		last, err = service.writeAndCleanBatch(batchCtx, job, batch.Candidates)
 		if err != nil || last.Status != observabilityvo.ArchiveStatusCompleted {
 			return last, err
 		}

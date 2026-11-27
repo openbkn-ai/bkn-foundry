@@ -39,14 +39,18 @@ const (
 
 // Failure codes are business outcomes shown to administrators, never raw errors.
 const (
-	RunFailureStorageUnavailable    = "storage_unavailable"
-	RunFailureRecordsNotReady       = "records_not_ready"
-	RunFailureCleanupPending        = "cleanup_pending"
-	RunFailureCleanupRequired       = "cleanup_required"
-	RunFailureCleanupVerification   = "cleanup_verification_failed"
-	RunFailureCapacityExceeded      = "capacity_exceeded"
-	RunFailureConfigurationInvalid  = "configuration_invalid"
-	RunFailureOversizedInteraction  = "oversized_interaction"
+	RunFailureTemporary            = "temporarily_unavailable"
+	RunFailureRecordsNotReady      = "records_not_ready"
+	RunFailureCleanupPending       = "cleanup_pending"
+	RunFailureCleanupRequired      = "cleanup_required"
+	RunFailureCleanupVerification  = "cleanup_verification_failed"
+	RunFailureCapacityExceeded     = "capacity_exceeded"
+	RunFailureConfigurationInvalid = "configuration_invalid"
+	RunFailureOversizedInteraction = "oversized_interaction"
+	RunFailureUnexpected           = "unexpected_error"
+	// A batch moves at most a few tens of MiB; a call hung beyond this frees
+	// the kind lock through an ordinary retry instead of blocking every run.
+	runBatchTimeout                 = 15 * time.Minute
 	MaxRunRetries                   = 3
 	defaultRunWorkerInterval        = 5 * time.Second
 	maxRetainedListed               = 500
@@ -111,6 +115,8 @@ type RunStore interface {
 	LatestRun(context.Context, observabilityvo.ArchiveKind) (Run, bool, error)
 	// LatestBatch returns the newest job of a batch run, with frozen candidates.
 	LatestBatch(context.Context, string) (Job, bool, error)
+	// LatestBatchProgress reads only that job's progress, for frequent polling.
+	LatestBatchProgress(context.Context, string) (*BatchProgress, error)
 	RetainInteraction(context.Context, RetainedInteraction) error
 	RetainedIDs(context.Context, string) ([]string, error)
 	// ListRetained filters by run and/or policy; empty filters match all.
@@ -131,6 +137,7 @@ type RunResult struct {
 }
 
 type excludedCandidatesKey struct{}
+type batchTimeoutKey struct{}
 type runRowKey struct{}
 type stopSignalKey struct{}
 
@@ -143,6 +150,13 @@ func WithExcludedCandidates(ctx context.Context, ids []string) context.Context {
 func ExcludedCandidates(ctx context.Context) []string {
 	ids, _ := ctx.Value(excludedCandidatesKey{}).([]string)
 	return ids
+}
+
+func withBatchDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	if timeout, ok := ctx.Value(batchTimeoutKey{}).(time.Duration); ok && timeout > 0 {
+		return context.WithTimeout(ctx, timeout)
+	}
+	return ctx, func() {}
 }
 
 func stopRequested(ctx context.Context) bool {
@@ -318,10 +332,32 @@ func (service *Service) processDue(ctx context.Context, kind observabilityvo.Arc
 	}
 	// Work continues past a stop request until the current batch ends.
 	work := context.WithValue(context.WithoutCancel(ctx), stopSignalKey{}, ctx.Done())
-	err = service.withKindLock(work, kind, func() error { return service.execute(work, runs, run.ID) })
+	work = context.WithValue(work, batchTimeoutKey{}, service.batchTimeout)
+	err = service.withKindLock(work, kind, func() error { return service.executeGuarded(work, runs, run.ID) })
 	if err != nil && !errors.Is(err, ErrArchiveBusy) {
 		slog.WarnContext(ctx, "archive run could not start", "archive_kind", kind, "error_type", fmt.Sprintf("%T", err))
 	}
+}
+
+// executeGuarded keeps a defect in one run from crashing the service: the run
+// is failed instead of being resumed into the same panic after every restart.
+func (service *Service) executeGuarded(ctx context.Context, runs RunStore, runID string) (err error) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		slog.ErrorContext(ctx, "archive run stopped by an internal error", "run_id", runID, "panic_type", fmt.Sprintf("%T", recovered))
+		run, found, getErr := runs.GetRun(ctx, runID)
+		if getErr != nil || !found {
+			err = errors.Join(errors.New("archive run panicked"), getErr)
+			return
+		}
+		now := service.now().UTC()
+		run.Status, run.LastFailureCode, run.FinishedAt, run.UpdatedAt, run.NextAttemptAt = RunFailed, RunFailureUnexpected, now, now, time.Time{}
+		err = runs.UpdateRun(ctx, run)
+	}()
+	return service.execute(ctx, runs, runID)
 }
 
 func (service *Service) execute(ctx context.Context, runs RunStore, runID string) error {
@@ -383,14 +419,14 @@ func classifyRunOutcome(last Job, err error) (string, bool) {
 	case errors.Is(err, ErrIncompleteCandidates):
 		return RunFailureRecordsNotReady, true
 	default:
-		return RunFailureStorageUnavailable, true
+		return RunFailureTemporary, true
 	}
 }
 
 func (service *Service) continueRun(ctx context.Context, runs RunStore, run Run) (Job, error) {
 	if run.Trigger == RunTriggerRetryCleanup && run.SourceJobID != "" {
 		if job, ok := service.store.Get(run.SourceJobID); ok && job.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
-			if cleaned, err := service.reverifyAndClean(ctx, job); err != nil || cleaned.Status != observabilityvo.ArchiveStatusCompleted {
+			if cleaned, err := service.boundedReverifyAndClean(ctx, job); err != nil || cleaned.Status != observabilityvo.ArchiveStatusCompleted {
 				return cleaned, err
 			}
 		}
@@ -405,7 +441,7 @@ func (service *Service) continueRun(ctx context.Context, runs RunStore, run Run)
 	number, cleaned := 0, 0
 	if found {
 		if last.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
-			if last, err = service.reverifyAndClean(ctx, last); err != nil || last.Status != observabilityvo.ArchiveStatusCompleted {
+			if last, err = service.boundedReverifyAndClean(ctx, last); err != nil || last.Status != observabilityvo.ArchiveStatusCompleted {
 				return last, err
 			}
 		}
@@ -419,6 +455,11 @@ func (service *Service) continueRun(ctx context.Context, runs RunStore, run Run)
 	if pending, err := service.hasIncompleteCleanup(ctx, run.Kind); err != nil {
 		return last, err
 	} else if pending {
+		// Like a synchronous retry, the requested cleanup is done; another
+		// unfinished cleanup must be resumed on its own before continuing.
+		if run.Trigger == RunTriggerRetryCleanup {
+			return last, nil
+		}
 		return last, ErrCleanupRequired
 	}
 	ctx, _, err = service.withRetainedExcluded(ctx, run.Kind)
@@ -452,6 +493,12 @@ func (service *Service) retainOversized(ctx context.Context, blocked *PayloadBud
 	return err == nil, err
 }
 
+func (service *Service) boundedReverifyAndClean(ctx context.Context, current Job) (Job, error) {
+	batchCtx, cancel := withBatchDeadline(ctx)
+	defer cancel()
+	return service.reverifyAndClean(batchCtx, current)
+}
+
 func (service *Service) reverifyAndClean(ctx context.Context, current Job) (Job, error) {
 	reader, _ := service.objectStore.(ReadStore)
 	if err := verifyCleanupArchive(ctx, reader, current); err != nil {
@@ -466,12 +513,12 @@ func (service *Service) reverifyAndClean(ctx context.Context, current Job) (Job,
 func (service *Service) view(ctx context.Context, runs RunStore, run Run) (RunView, error) {
 	view := RunView{Run: run}
 	if run.BatchRunID != "" {
-		last, found, err := runs.LatestBatch(ctx, run.BatchRunID)
+		progress, err := runs.LatestBatchProgress(ctx, run.BatchRunID)
 		if err != nil {
 			return view, err
 		}
-		if found && last.BatchProgress != nil {
-			view.ProcessedCount, view.BatchCount = last.BatchProgress.CleanedInRun, last.BatchProgress.BatchNumber
+		if progress != nil {
+			view.ProcessedCount, view.BatchCount = progress.CleanedInRun, progress.BatchNumber
 		}
 	}
 	if run.Kind == observabilityvo.ArchiveKindTrace {
