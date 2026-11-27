@@ -64,6 +64,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.archive download is unavailable":                                             "archive download is unavailable",
 		"AgentObservability.Message.archive job was not found":                                                   "archive job was not found",
 		"AgentObservability.Message.archive management is not allowed":                                           "archive management is not allowed",
+		"AgentObservability.Message.archive history is unavailable; refresh before starting another archive":     "archive history is unavailable; refresh before starting another archive",
 		"AgentObservability.Message.archive overview is unavailable":                                             "archive overview is unavailable",
 		"AgentObservability.Message.archive request body must be an empty object":                                "archive request body must be an empty object",
 		"AgentObservability.Message.archive service is not configured":                                           "archive service is not configured",

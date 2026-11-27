@@ -53,11 +53,18 @@ paths:
             owner to fix limits. Previously completed batches remain recorded.
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
     get:
-      summary: List the latest 20 log archive jobs
+      summary: List the latest 20 log archive jobs plus unfinished cleanup
+      description: >-
+        Includes all cleanup_incomplete jobs regardless of age, without duplicate
+        jobs. Results are ordered by created_at and archive_job_id descending.
+        Reads that fail return 503 rather than an empty or partial history.
       responses:
-        '200': { description: Bounded job history, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Job' } } } } }
+        '200': { description: Recent history and any older unfinished cleanup, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Job' } } } } }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '503':
+          description: archive_history_unavailable; refresh before starting another archive
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
   /archive-jobs/{job_id}:
     parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
     get:

@@ -178,12 +178,25 @@ func (store *Store) Get(jobID string) (archivesvc.Job, bool) {
 }
 
 func (store *Store) List(kind observabilityvo.ArchiveKind, limit int) []archivesvc.Job {
-	if limit <= 0 {
-		return nil
+	jobs, _ := store.ListJobs(context.Background(), kind, limit)
+	// Keep the original bounded Store contract for existing callers.
+	if limit > 0 && len(jobs) > limit {
+		jobs = jobs[:limit]
 	}
-	rows, err := store.db.Query(`SELECT archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at, batch_progress FROM bkn_trace_archive_jobs WHERE archive_kind=? ORDER BY created_at DESC, archive_job_id DESC LIMIT ?`, kind, limit)
+	return jobs
+}
+
+// ListJobs returns recent history plus all unfinished cleanup. A blocked cleanup
+// must remain discoverable regardless of its age; failed reads are never empty
+// history. UNION removes a pending job already present in the recent window.
+func (store *Store) ListJobs(ctx context.Context, kind observabilityvo.ArchiveKind, limit int) ([]archivesvc.Job, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	const columns = "archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at, batch_progress"
+	rows, err := store.db.QueryContext(ctx, `(SELECT `+columns+` FROM bkn_trace_archive_jobs WHERE archive_kind=? ORDER BY created_at DESC, archive_job_id DESC LIMIT ?) UNION (SELECT `+columns+` FROM bkn_trace_archive_jobs WHERE archive_kind=? AND archive_status=?) ORDER BY created_at DESC, archive_job_id DESC`, kind, limit, kind, observabilityvo.ArchiveStatusCleanupIncomplete)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	jobs := make([]archivesvc.Job, 0, limit)
@@ -197,15 +210,15 @@ func (store *Store) List(kind observabilityvo.ArchiveKind, limit int) []archives
 		var createdAt, updatedAt time.Time
 		var progressRaw []byte
 		if err := rows.Scan(&id, &rangeFrom, &rangeTo, &status, &ids, &count, &manifest, &message, &createdAt, &updatedAt, &progressRaw); err != nil {
-			return nil
+			return nil, err
 		}
 		var candidateIDs []string
-		if json.Unmarshal(ids, &candidateIDs) != nil {
-			return nil
+		if err := json.Unmarshal(ids, &candidateIDs); err != nil {
+			return nil, err
 		}
 		progress, err := decodeProgress(progressRaw)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		job := archivesvc.Job{
 			ID:             id,
@@ -225,10 +238,10 @@ func (store *Store) List(kind observabilityvo.ArchiveKind, limit int) []archives
 		}
 		jobs = append(jobs, job)
 	}
-	if rows.Err() != nil {
-		return nil
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
-	return jobs
+	return jobs, nil
 }
 
 func scan(row *sql.Row, kind observabilityvo.ArchiveKind) (archivesvc.Job, bool) {

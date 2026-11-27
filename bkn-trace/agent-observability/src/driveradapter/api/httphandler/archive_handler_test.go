@@ -153,3 +153,49 @@ func TestArchiveCreateReturnsDurableBlockage(t *testing.T) {
 		t.Fatal("response does not identify durable safe blockage")
 	}
 }
+
+type failedArchiveHistoryStore struct {
+	archivesvc.Store
+	calls int
+}
+
+func (store *failedArchiveHistoryStore) ListJobs(context.Context, observabilityvo.ArchiveKind, int) ([]archivesvc.Job, error) {
+	store.calls++
+	return nil, fmt.Errorf("database password and private URL must not escape")
+}
+
+func TestArchiveHistoryFailureIsUnavailableAndAuthorized(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		roles := []string{"user"}
+		if allowed {
+			roles = []string{"admin"}
+		}
+		auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
+			HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
+			})},
+			AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: roles}},
+		})
+		store := &failedArchiveHistoryStore{Store: archivesvc.NewMemoryStore()}
+		handler := NewArchiveHandler(archivesvc.New(store, nil, nil, archivesvc.Options{}), auth)
+		for _, kind := range []observabilityvo.ArchiveKind{observabilityvo.ArchiveKindLog, observabilityvo.ArchiveKindTrace} {
+			req := httptest.NewRequest(http.MethodGet, "/archives", nil)
+			req.Header.Set("Authorization", "Bearer test-token")
+			rec := httptest.NewRecorder()
+			handler.ListOrCreate(kind)(rec, req)
+			want := http.StatusForbidden
+			if allowed {
+				want = http.StatusServiceUnavailable
+			}
+			if rec.Code != want || strings.Contains(rec.Body.String(), "password") {
+				t.Fatalf("%d %s", rec.Code, rec.Body.String())
+			}
+			if allowed && !strings.Contains(rec.Body.String(), "archive_history_unavailable") {
+				t.Fatal(rec.Body.String())
+			}
+		}
+		if !allowed && store.calls != 0 {
+			t.Fatal("unauthorized history query")
+		}
+	}
+}

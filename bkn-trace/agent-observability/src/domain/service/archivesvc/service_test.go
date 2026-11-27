@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -236,4 +237,35 @@ func (source *checkingSource) Purge(_ context.Context, _ observabilityvo.Archive
 	source.manifestPersisted = job.ManifestRef != ""
 	source.candidatesPersisted = len(job.Candidates[0].Payload) > 0 && candidates[0].ID == job.Candidates[0].ID
 	return nil
+}
+
+func TestHistoryIncludesOldCleanupWithoutMixingKinds(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now().UTC()
+	for i := 0; i < 25; i++ {
+		job := Job{ID: fmt.Sprintf("recent-%02d", i), Kind: observabilityvo.ArchiveKindLog, CreatedAt: now.Add(time.Duration(i) * time.Second), Status: observabilityvo.ArchiveStatusCompleted}
+		if err := store.Create(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, kind := range []observabilityvo.ArchiveKind{observabilityvo.ArchiveKindLog, observabilityvo.ArchiveKindTrace} {
+		if err := store.Create(Job{ID: "pending-" + string(kind), Kind: kind, CreatedAt: now.Add(-time.Hour), Status: observabilityvo.ArchiveStatusCleanupIncomplete}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := New(store, nil, nil, Options{})
+	jobs, err := service.ListJobs(context.Background(), observabilityvo.ArchiveKindLog, 20)
+	if err != nil || len(jobs) != 21 || jobs[20].ID != "pending-log" {
+		t.Fatalf("jobs=%+v err=%v", jobs, err)
+	}
+	for _, job := range jobs {
+		if job.Kind != observabilityvo.ArchiveKindLog {
+			t.Fatal("mixed archive kinds")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.ListJobs(ctx, observabilityvo.ArchiveKindLog, 20); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v", err)
+	}
 }

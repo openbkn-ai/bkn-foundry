@@ -46,7 +46,7 @@ func TestProgressPersistenceAndLegacyReads(t *testing.T) {
 			if !ok || !reflect.DeepEqual(got.BatchProgress, want) {
 				t.Fatalf("latest=%+v %v", got, ok)
 			}
-			m.ExpectQuery("SELECT archive_job_id.*LIMIT ").WithArgs(observabilityvo.ArchiveKindLog, 2).WillReturnRows(row())
+			m.ExpectQuery("SELECT archive_job_id.*LIMIT ").WithArgs(observabilityvo.ArchiveKindLog, 2, observabilityvo.ArchiveKindLog, observabilityvo.ArchiveStatusCleanupIncomplete).WillReturnRows(row())
 			jobs := store.List(observabilityvo.ArchiveKindLog, 2)
 			if len(jobs) != 1 || !reflect.DeepEqual(jobs[0].BatchProgress, want) {
 				t.Fatalf("list=%+v", jobs)
@@ -226,5 +226,47 @@ func TestKindLockReleasesOnPanic(t *testing.T) {
 	}()
 	if err := m.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestListJobsPreservesReadFailures(t *testing.T) {
+	for _, mode := range []string{"query", "scan", "ids", "progress", "iteration"} {
+		t.Run(mode, func(t *testing.T) {
+			db, m, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			q := m.ExpectQuery("SELECT archive_job_id.*UNION.*archive_status=\\?").WithArgs(observabilityvo.ArchiveKindLog, 20, observabilityvo.ArchiveKindLog, observabilityvo.ArchiveStatusCleanupIncomplete)
+			failure := errors.New("private database diagnostic")
+			if mode == "query" {
+				q.WillReturnError(failure)
+			} else {
+				ids, progress := `[]`, `{}`
+				var count any = 1
+				if mode == "ids" {
+					ids = `{invalid`
+				}
+				if mode == "progress" {
+					progress = `{invalid`
+				}
+				if mode == "scan" {
+					count = "invalid"
+				}
+				now := time.Now().UTC()
+				rows := sqlmock.NewRows([]string{"id", "from", "to", "status", "ids", "count", "manifest", "message", "created", "updated", "progress"}).AddRow("job", nil, now, "completed", ids, count, "", "", now, now, progress)
+				if mode == "iteration" {
+					rows.RowError(0, failure)
+				}
+				q.WillReturnRows(rows)
+			}
+			jobs, err := New(db).ListJobs(context.Background(), observabilityvo.ArchiveKindLog, 20)
+			if err == nil || jobs != nil {
+				t.Fatalf("jobs=%+v err=%v", jobs, err)
+			}
+			if err := m.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

@@ -54,6 +54,7 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.archive download is unavailable":                                             "归档下载不可用",
 		"AgentObservability.Message.archive job was not found":                                                   "归档任务不存在",
 		"AgentObservability.Message.archive management is not allowed":                                           "不允许管理归档",
+		"AgentObservability.Message.archive history is unavailable; refresh before starting another archive":     "归档任务历史暂时不可用，请刷新后再开始归档",
 		"AgentObservability.Message.archive overview is unavailable":                                             "归档概览不可用",
 		"AgentObservability.Message.archive request body must be an empty object":                                "归档请求体必须为空对象",
 		"AgentObservability.Message.archive service is not configured":                                           "未配置归档服务",

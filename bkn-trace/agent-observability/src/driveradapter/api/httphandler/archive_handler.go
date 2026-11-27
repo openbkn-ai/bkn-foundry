@@ -87,8 +87,8 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 	}
 }
 
-// ListOrCreate deliberately exposes a short bounded history on the same
-// resource.  Archive creation remains POST-only and never accepts a caller
+// ListOrCreate exposes recent history and all unfinished cleanup on the same
+// resource. Archive creation remains POST-only and never accepts a caller
 // supplied cutoff or retention period.
 func (handler *ArchiveHandler) ListOrCreate(kind observabilityvo.ArchiveKind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +100,11 @@ func (handler *ArchiveHandler) ListOrCreate(kind observabilityvo.ArchiveKind) ht
 		if !ok {
 			return
 		}
-		jobs := handler.service.List(kind, 20)
+		jobs, err := handler.service.ListJobs(r.Context(), kind, 20)
+		if err != nil {
+			writeObservabilityError(w, r, http.StatusServiceUnavailable, "archive_history_unavailable", "archive history is unavailable; refresh before starting another archive")
+			return
+		}
 		response := make([]rdto.ArchiveJobResponse, 0, len(jobs))
 		for _, job := range jobs {
 			response = append(response, rdto.NewArchiveJob(job))
