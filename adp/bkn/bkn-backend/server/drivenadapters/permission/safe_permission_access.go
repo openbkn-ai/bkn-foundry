@@ -46,6 +46,10 @@ func (e *safeHTTPStatusError) Error() string {
 	return fmt.Sprintf("bkn-safe %s %s returned status %d", e.method, e.path, e.statusCode)
 }
 
+func (e *safeHTTPStatusError) HTTPStatusCode() int {
+	return e.statusCode
+}
+
 // concreteResourceOperations is used only when talking to an older bkn-safe
 // that predates the any_operation query flag. Create is deliberately absent:
 // it is a type-level capability and never identifies an existing resource.
@@ -286,12 +290,14 @@ func (c *safeClient) doWithClient(ctx context.Context, client *http.Client, meth
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		// Draining allows connection reuse when the response is complete.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return &safeHTTPStatusError{method: method, path: path, statusCode: resp.StatusCode}
+	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read bkn-safe response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &safeHTTPStatusError{method: method, path: path, statusCode: resp.StatusCode}
 	}
 	if out != nil && len(data) > 0 {
 		return json.Unmarshal(data, out)

@@ -123,7 +123,7 @@ func (a *actionScheduleAccess) CreateSchedule(ctx context.Context, tx *sql.Tx, s
 		return err
 	}
 
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -197,7 +197,7 @@ func (a *actionScheduleAccess) UpdateSchedule(ctx context.Context, tx *sql.Tx, s
 		return err
 	}
 
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -252,7 +252,7 @@ func (a *actionScheduleAccess) DeleteSchedulesByKnID(ctx context.Context, tx *sq
 		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
 		span.SetStatus(codes.Error, "Delete data error")
@@ -280,7 +280,7 @@ func (a *actionScheduleAccess) DeleteSchedules(ctx context.Context, tx *sql.Tx, 
 		return err
 	}
 
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.ExecContext(ctx, sqlStr, vals...)
@@ -414,7 +414,7 @@ func (a *actionScheduleAccess) ListSchedules(ctx context.Context, query interfac
 		return nil, err
 	}
 
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := a.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
