@@ -85,6 +85,9 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 		}
 	}
 	if len(plan.ActionTypes) > 0 {
+		if kns.ats == nil {
+			return logics.DynamicModelEditionError(defCtx)
+		}
 		if _, err = kns.ats.CreateActionTypes(defCtx, tx, plan.ActionTypes, mode, strictMode); err != nil {
 			logger.Errorf("CreateActionTypes error: %s", err.Error())
 			return logics.PreserveHTTPError(ctx, err,
@@ -550,6 +553,9 @@ func (kns *knowledgeNetworkService) refuseClearingDeclarations(ctx context.Conte
 		}
 	}
 	if len(plan.ActionTypes) > 0 {
+		if kns.ats == nil {
+			return logics.DynamicModelEditionError(ctx)
+		}
 		if err := kns.ats.CheckOverwriteDeclarations(ctx, plan.KNID, plan.Branch, plan.ActionTypes, mode); err != nil {
 			return err
 		}

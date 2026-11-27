@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,14 +28,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/bkntrace"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_schedule"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/bkn"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_data_stats"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
@@ -69,7 +65,8 @@ type restHandler struct {
 	oms                     interfaces.ObjectMetricServiceV1
 	kes                     interfaces.KnEventServiceV1
 	kvs                     interfaces.KNVersionService
-	kvsOnce                 sync.Once
+	versioningEntitled      func() bool
+	dynamicModelEntitled    func() bool
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
@@ -99,9 +96,8 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 			return actor
 		},
 		as:                      auth.NewAuthService(appSetting),
-		ass:                     action_schedule.NewActionScheduleService(appSetting),
-		ats:                     action_type.NewActionTypeService(appSetting),
-		cbs:                     capability_binding.NewCapabilityBindingService(appSetting),
+		ats:                     logics.ATS,
+		cbs:                     logics.CBS,
 		cgs:                     concept_group.NewConceptGroupService(appSetting),
 		kns:                     knService,
 		knProxyPublisher:        knService,
@@ -110,12 +106,28 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
 		vts:                     value_type.NewValueTypeService(appSetting),
 		bs:                      bkn.NewBKNService(appSetting),
-		kvs:                     kn_version.NewKNVersionService(appSetting, knService),
+		kvs:                     logics.KNVS,
+		versioningEntitled:      logics.KNVersioningAvailable,
+		dynamicModelEntitled:    logics.ProfessionalModelingLicensed,
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
 		odss:                    object_data_stats.NewObjectDataStatsService(appSetting),
 	}
 	return r
+}
+
+func (r *restHandler) dynamicModelAvailable() bool {
+	return r.dynamicModelEntitled == nil || r.dynamicModelEntitled()
+}
+
+func (r *restHandler) requireDynamicModel(c *gin.Context) {
+	if !r.dynamicModelAvailable() {
+		c.Writer.Header().Del("Cache-Control")
+		c.Abort()
+		c.Data(http.StatusNotFound, gin.MIMEPlain, []byte("404 page not found"))
+		return
+	}
+	c.Next()
 }
 
 func projectionGrantVerifierEnabled() bool {
@@ -151,7 +163,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/knowledge-networks", r.ListKNsByEx)
 	apiV1.GET("/knowledge-networks/:kn_id", r.GetKNByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/overview-graph", r.ListOverviewGraphByEx)
-	r.registerKNVersionRoutes(apiV1)
+	if r.kvs != nil {
+		r.registerKNVersionRoutes(apiV1)
+	}
 	apiV1.POST("/knowledge-networks/:kn_id/validation", r.verifyJsonContentType(), r.ValidateKNByEx)
 	apiV1.POST("/knowledge-networks/:kn_id/relation-type-paths", r.GetRelationTypePathsByEx)
 
@@ -184,17 +198,21 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/knowledge-networks/:kn_id/relation-types/:rt_ids", r.GetRelationTypesByEx)
 
 	// Action types.
-	apiV1.POST("/knowledge-networks/:kn_id/action-types", r.verifyJsonContentType(), r.HandleActionTypeGetOverrideByEx)
-	apiV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.verifyJsonContentType(), r.ValidateActionTypesByEx)
-	apiV1.DELETE("/knowledge-networks/:kn_id/action-types/:at_ids", r.DeleteActionTypes)
-	apiV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.UpdateActionTypeByEx)
-	apiV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByEx)
-	apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByEx)
+	if r.ats != nil {
+		apiV1.POST("/knowledge-networks/:kn_id/action-types", r.requireDynamicModel, r.verifyJsonContentType(), r.HandleActionTypeGetOverrideByEx)
+		apiV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.requireDynamicModel, r.verifyJsonContentType(), r.ValidateActionTypesByEx)
+		apiV1.DELETE("/knowledge-networks/:kn_id/action-types/:at_ids", r.requireDynamicModel, r.DeleteActionTypes)
+		apiV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.requireDynamicModel, r.verifyJsonContentType(), r.UpdateActionTypeByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/action-types", r.requireDynamicModel, r.ListActionTypesByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.requireDynamicModel, r.GetActionTypesByEx)
+	}
 
 	// Capability bindings: which Skills and ToolBox tools belong to this knowledge network.
-	apiV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByEx)
-	apiV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.DetachCapabilitiesByEx)
-	apiV1.GET("/knowledge-networks/:kn_id/capabilities", r.ListCapabilitiesByEx)
+	if r.cbs != nil {
+		apiV1.POST("/knowledge-networks/:kn_id/capabilities", r.requireDynamicModel, r.verifyJsonContentType(), r.AttachCapabilitiesByEx)
+		apiV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.requireDynamicModel, r.DetachCapabilitiesByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/capabilities", r.requireDynamicModel, r.ListCapabilitiesByEx)
+	}
 
 	// Risk types.
 	apiV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByEx)
@@ -209,15 +227,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/knowledge-networks/:kn_id/value-types/:vt_id", r.GetValueTypeByEx)
 	apiV1.PUT("/knowledge-networks/:kn_id/value-types/:vt_id", r.verifyJsonContentType(), r.UpdateValueTypeByEx)
 	apiV1.DELETE("/knowledge-networks/:kn_id/value-types/:vt_id", r.DeleteValueTypeByEx)
-
-	// Action schedule management.
-	apiV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByEx)
-	apiV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByEx)
-	apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByEx)
-	apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByEx)
-	apiV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByEx)
-	apiV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByEx)
-	apiV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByEx)
 
 	// Cypher queries over instance data.
 	apiV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByEx)
@@ -251,11 +260,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.POST("/knowledge-networks/:kn_id/proxy-account/deletion/finalize", r.FinalizeKNProxyDeletion)
 	apiInV1.POST("/proxy-accounts/reconcile", r.ReconcileKNProxies)
 	apiInV1.GET("/authorization-resources", r.ListAuthorizationResources)
-	apiInV1.POST("/knowledge-networks/:kn_id/versioning/disable", knEventInternal(r.disableKNVersioning))
-	// A background run reads where a network's draft stands as the person it runs
-	// for, after that person's sign-in may have lapsed; view_detail is still checked.
-	apiInV1.GET("/knowledge-networks/:kn_id/versioning", knEventInternal(r.getKNVersioning))
-	apiInV1.POST("/knowledge-networks/:kn_id/concept-index/rebuild", knEventInternal(r.rebuildKNConceptIndex))
+	if r.kvs != nil {
+		apiInV1.POST("/knowledge-networks/:kn_id/versioning/disable", r.requireKNVersioning, knEventInternal(r.disableKNVersioning))
+		// Background runs still check view_detail after the caller's sign-in has lapsed.
+		apiInV1.GET("/knowledge-networks/:kn_id/versioning", r.requireKNVersioning, knEventInternal(r.getKNVersioning))
+		apiInV1.POST("/knowledge-networks/:kn_id/concept-index/rebuild", r.requireKNVersioning, knEventInternal(r.rebuildKNConceptIndex))
+	}
 
 	// Knowledge networks.
 	apiInV1.POST("/knowledge-networks", r.verifyJsonContentType(), r.CreateKNByIn)
@@ -293,16 +303,20 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.GET("/knowledge-networks/:kn_id/relation-types/:rt_ids", r.GetRelationTypesByIn)
 
 	// Action types.
-	apiInV1.POST("/knowledge-networks/:kn_id/action-types", r.verifyJsonContentType(), r.HandleActionTypeGetOverrideByIn)
-	apiInV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.verifyJsonContentType(), r.ValidateActionTypesByIn)
-	apiInV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.UpdateActionTypeByIn)
-	apiInV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByIn)
-	apiInV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByIn)
+	apiInV1.POST("/knowledge-networks/:kn_id/action-types", r.verifyJsonContentType(), r.actionTypesForInternalCaller)
+	if r.ats != nil {
+		apiInV1.POST("/knowledge-networks/:kn_id/action-types/validation", r.requireDynamicModel, r.verifyJsonContentType(), r.ValidateActionTypesByIn)
+		apiInV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.requireDynamicModel, r.verifyJsonContentType(), r.UpdateActionTypeByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/action-types", r.requireDynamicModel, r.ListActionTypesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.requireDynamicModel, r.GetActionTypesByIn)
+	}
 
-	// Capability bindings: Context Loader resolves the references of one branch here.
-	apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByIn)
-	apiInV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.DetachCapabilitiesByIn)
-	apiInV1.GET("/knowledge-networks/:kn_id/capabilities", r.ListCapabilitiesByIn)
+	// Context Loader relies on an empty scope when mounts are unavailable.
+	apiInV1.GET("/knowledge-networks/:kn_id/capabilities", r.capabilitiesForInternalCaller)
+	if r.cbs != nil {
+		apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.requireDynamicModel, r.verifyJsonContentType(), r.AttachCapabilitiesByIn)
+		apiInV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.requireDynamicModel, r.DetachCapabilitiesByIn)
+	}
 	// Risk types (internal); GetRiskTypesByIn supports the risk_type_ids query parameter.
 	apiInV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByIn)
 	apiInV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByIn)
@@ -316,15 +330,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.GET("/knowledge-networks/:kn_id/value-types/:vt_id", r.GetValueTypeByIn)
 	apiInV1.PUT("/knowledge-networks/:kn_id/value-types/:vt_id", r.verifyJsonContentType(), r.UpdateValueTypeByIn)
 	apiInV1.DELETE("/knowledge-networks/:kn_id/value-types/:vt_id", r.DeleteValueTypeByIn)
-
-	// Action schedule management.
-	apiInV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByIn)
-	apiInV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByIn)
-	apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByIn)
-	apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByIn)
-	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByIn)
-	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByIn)
-	apiInV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByIn)
 
 	// Cypher queries over instance data.
 	apiInV1.POST("/knowledge-networks/:kn_id/cypher-queries", r.verifyJsonContentType(), r.RunCypherQueryByIn)

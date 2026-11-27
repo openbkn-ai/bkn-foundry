@@ -25,7 +25,41 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 )
+
+// RegisterActionScheduleRoutes exposes schedule management from the paid assembly.
+func RegisterActionScheduleRoutes(engine *gin.Engine, setting *common.AppSetting, service interfaces.ActionScheduleService, gate gin.HandlerFunc) {
+	r := &restHandler{appSetting: setting, as: auth.NewAuthService(setting),
+		ass: service, kns: knowledge_network.NewKNService(setting)}
+	r.registerActionScheduleRoutes(engine, gate)
+}
+
+func (r *restHandler) registerActionScheduleRoutes(engine *gin.Engine, gate gin.HandlerFunc) {
+	apiV1 := engine.Group("/api/bkn-backend/v1")
+	apiInV1 := engine.Group("/api/bkn-backend/in/v1")
+	if gate != nil {
+		apiV1.Use(gate)
+		apiInV1.Use(gate)
+	}
+	apiV1.Use(rest.PrivateNoCacheMiddleware())
+	apiInV1.Use(rest.PrivateNoCacheMiddleware())
+	apiV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByEx)
+	apiV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByEx)
+	apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByEx)
+	apiV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByEx)
+	apiV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByEx)
+	apiV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByEx)
+	apiV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByEx)
+	apiInV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByIn)
+	apiInV1.DELETE("/knowledge-networks/:kn_id/action-schedules/:schedule_ids", r.DeleteActionSchedulesByIn)
+	apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.verifyJsonContentType(), r.UpdateActionScheduleByIn)
+	apiInV1.PUT("/knowledge-networks/:kn_id/action-schedules/:schedule_id/status", r.verifyJsonContentType(), r.UpdateActionScheduleStatusByIn)
+	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules", r.ListActionSchedulesByIn)
+	apiInV1.GET("/knowledge-networks/:kn_id/action-schedules/:schedule_id", r.GetActionScheduleByIn)
+	apiInV1.POST("/knowledge-networks/:kn_id/action-schedules/:schedule_id/run", r.RunActionScheduleByIn)
+}
 
 // CreateActionScheduleByIn creates a new action schedule (internal)
 func (r *restHandler) CreateActionScheduleByIn(c *gin.Context) {

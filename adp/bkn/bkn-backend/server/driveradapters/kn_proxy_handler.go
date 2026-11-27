@@ -183,12 +183,21 @@ func (r *restHandler) proxyBranchReadable(ctx context.Context, c *gin.Context, k
 		return true
 	}
 	n, err := strconv.Atoi(strings.TrimPrefix(branch, "v"))
-	if !strings.HasPrefix(branch, "v") || err != nil || n <= 0 || r.kvs == nil {
+	if !strings.HasPrefix(branch, "v") || err != nil || n <= 0 {
 		replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion).
 			WithErrorDetails("a proxy read is for main or a version branch v<N>"))
 		return false
 	}
-	if _, err := r.kvs.ResolveBranch(ctx, knID, interfaces.KNBranchRequest{KNVersion: strconv.Itoa(n)}); err != nil {
+	req := interfaces.KNBranchRequest{KNVersion: strconv.Itoa(n)}
+	if r.versioningEntitled != nil && !r.versioningEntitled() {
+		_, ok := resolvePublishedBranch(ctx, c, knID, req)
+		return ok
+	}
+	if r.kvs == nil {
+		replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion))
+		return false
+	}
+	if _, err := r.kvs.ResolveBranch(ctx, knID, req); err != nil {
 		replyKNVersionError(c, err)
 		return false
 	}

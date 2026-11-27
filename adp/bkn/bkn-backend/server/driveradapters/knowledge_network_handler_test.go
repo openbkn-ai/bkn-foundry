@@ -792,6 +792,17 @@ func Test_KnowledgeNetworkRestHandler_ListAuthorizationResources(t *testing.T) {
 	}
 }
 
+func TestListActionAuthorizationResourcesWithoutActionTypeService(t *testing.T) {
+	_, _, engine, _ := newKNTestHandler(t)
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/bkn-backend/in/v1/authorization-resources?resource_type=action_type&parent_type=knowledge_network&parent_id=kn-1", nil)
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || w.Body.String() != `{"entries":[],"total":0}` {
+		t.Fatalf("status = %d, response = %s; want an empty action catalog", w.Code, w.Body)
+	}
+}
+
 func Test_KnowledgeNetworkRestHandler_ListAuthorizationResourcesRejectsUnsupportedSort(t *testing.T) {
 	test := setGinMode()
 	defer test()

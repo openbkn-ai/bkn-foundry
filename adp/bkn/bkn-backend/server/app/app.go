@@ -38,7 +38,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/operationaudit"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/action_execution"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/action_schedule"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/action_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/agent_operator"
@@ -60,9 +59,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/knevent"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	logicschedule "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_schedule"
+	knlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	permission_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 	vega_backend_service "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/worker"
@@ -70,7 +68,11 @@ import (
 
 // Options controls application bootstrapping. It is intentionally empty today
 // so callers do not need to change when injectable boot dependencies are added.
-type Options struct{}
+type Options struct {
+	NewActionTypeService        func(*common.AppSetting) interfaces.ActionTypeService
+	NewCapabilityBindingService func(*common.AppSetting) interfaces.CapabilityBindingService
+	NewKNVersionService         func(*common.AppSetting, interfaces.KNMainPublisher) interfaces.KNVersionService
+}
 
 // Application is a booted bkn-backend process that has not started serving yet.
 // Extension assembly belongs between Boot and Run.
@@ -80,7 +82,6 @@ type Application struct {
 	otelProviders    *otel.Providers
 	restHandler      driveradapters.RestHandler
 	conceptSyncer    *worker.ConceptSyncer
-	scheduleWorker   *worker.ScheduleWorker
 	proxySyncWorker  *worker.ProxySyncWorker
 	evidenceRuntime  *evidencepublisher.PublisherRuntime
 	evidenceProducer interface{ Close() error }
@@ -245,7 +246,6 @@ func (server *Application) Run() {
 	logger.Info("Server Register API Success")
 
 	go server.conceptSyncer.Start()
-	go server.scheduleWorker.Start()
 	server.proxySyncWorker.Start()
 	extensionCtx, stopExtensions := context.WithCancel(context.Background())
 	extensionsDone := startWorkerExtensions(extensionCtx, workerExtensions)
@@ -356,7 +356,7 @@ func startEvidenceFlushLoop(ctx context.Context, publisher evidenceFlusher, inte
 
 // Boot initializes shared infrastructure without opening the HTTP listener.
 // Paid entry points may register extensions after Boot returns and before Run.
-func Boot(_ Options) *Application {
+func Boot(options Options) *Application {
 
 	// Enable pprof.
 	// go func() {
@@ -429,7 +429,6 @@ func Boot(_ Options) *Application {
 	logics.SetManagedProxyAccess(kn_proxy.NewManagedProxyAccess(bknSafeURL))
 	logics.SetUserMgmtAccess(user_mgmt.NewUserMgmtAccess(bknSafeURL))
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
-	logics.SetActionExecutionAccess(action_execution.NewActionExecutionAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
 	// Optional: only Enterprise deployments run kb-api. Without it, mounting a knowledge base is refused.
 	kbAPIURL, err := common.NormalizeKBAPIURL(os.Getenv("KB_API_URL"))
@@ -465,6 +464,16 @@ func Boot(_ Options) *Application {
 	logics.SetValueTypeAccess(value_type.NewValueTypeAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
 
+	if options.NewActionTypeService != nil {
+		logics.ATS = options.NewActionTypeService(appSetting)
+	}
+	if options.NewCapabilityBindingService != nil {
+		logics.CBS = options.NewCapabilityBindingService(appSetting)
+	}
+	if options.NewKNVersionService != nil {
+		logics.SetKNVersionService(options.NewKNVersionService(appSetting, knlogic.NewKNService(appSetting)))
+	}
+
 	// Create and start the service.
 	var auditRecorder interface {
 		Record(context.Context, operationaudit.Entry) error
@@ -484,17 +493,12 @@ func Boot(_ Options) *Application {
 		routeExtensions:  make(map[string]func(*gin.Engine)),
 		workerExtensions: make(map[string]func(context.Context) error),
 		conceptSyncer:    worker.NewConceptSyncer(appSetting),
-		scheduleWorker:   worker.NewScheduleWorker(appSetting),
 		proxySyncWorker: worker.NewProxySyncWorker(appSetting, proxyOutboxAccess, logics.MPA,
 			permission_service.NewPermissionService(appSetting)),
 	}
-	logicschedule.SetScheduleExecutor(server.scheduleWorker)
 	if publisherRuntime != nil {
 		server.evidenceRuntime = publisherRuntime.Runtime
 		server.evidenceProducer = publisherRuntime.Producer
-	}
-	if err := knevent.Setup(server); err != nil {
-		logger.Fatalf("Failed to assemble knowledge-network events: %v", err)
 	}
 	return server
 }

@@ -14,11 +14,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/licverify"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,9 +30,6 @@ import (
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_scheduler"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
@@ -54,33 +53,47 @@ type restHandler struct {
 	ots                   interfaces.ObjectTypeService
 	qas                   interfaces.QueryAuthorizationService
 	actionReadPermissions interfaces.ActionExecutionPermissionService
+	requireActionModeling gin.HandlerFunc
 	oma                   interfaces.OntologyManagerAccess
 }
 
 func NewRestHandler(appSetting *common.AppSetting) RestHandler {
-	return newRestHandler(appSetting, action_scheduler.NewActionSchedulerService(appSetting))
+	return NewRestHandlerWithActionModeling(appSetting, nil, nil, nil)
 }
 
-// NewRestHandlerWithGovernance injects the enterprise action gate into the
-// same scheduler used by public and internal execution routes.
-func NewRestHandlerWithGovernance(appSetting *common.AppSetting, gate interfaces.ActionGovernanceGate) RestHandler {
-	return newRestHandler(appSetting, action_scheduler.NewActionSchedulerServiceWithGovernance(appSetting, gate))
-}
-
-func newRestHandler(appSetting *common.AppSetting, scheduler interfaces.ActionSchedulerService) RestHandler {
+// NewRestHandlerWithActionModeling binds the action services supplied by the paid image.
+func NewRestHandlerWithActionModeling(appSetting *common.AppSetting, actions interfaces.ActionTypeService, scheduler interfaces.ActionSchedulerService, logs interfaces.ActionLogsService) RestHandler {
 	r := &restHandler{
 		appSetting:            appSetting,
-		als:                   action_logs.NewActionLogsService(appSetting),
 		as:                    auth.NewAuthService(appSetting),
 		ass:                   scheduler,
-		ats:                   action_type.NewActionTypeService(appSetting),
+		als:                   logs,
+		ats:                   actions,
 		kns:                   knowledge_network.NewKnowledgeNetworkService(appSetting),
 		ots:                   object_type.NewObjectTypeService(appSetting),
 		qas:                   queryauthorization.NewQueryAuthorizationService(appSetting),
 		actionReadPermissions: permission.NewPermissionService(appSetting),
 		oma:                   logics.OMA,
 	}
+	if scheduler != nil {
+		r.requireActionModeling = func(c *gin.Context) {
+			if !entitlement.AtLeast(licverify.EditionProfessional) {
+				c.Writer.Header().Del("Cache-Control")
+				c.Abort()
+				c.Data(http.StatusNotFound, gin.MIMEPlain, []byte("404 page not found"))
+				return
+			}
+			c.Next()
+		}
+	}
 	return r
+}
+
+func (r *restHandler) actionRouteHandlers(handlers ...gin.HandlerFunc) []gin.HandlerFunc {
+	if r.requireActionModeling == nil {
+		return handlers
+	}
+	return append([]gin.HandlerFunc{r.requireActionModeling}, handlers...)
 }
 
 func (r *restHandler) RegisterPublic(c *gin.Engine) {
@@ -103,20 +116,27 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// Get an object subgraph by start point, direction, and path length.
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph", r.verifyJsonContentType(), r.GetObjectsSubgraphByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph/objects", r.verifyJsonContentType(), r.GetObjectsSubgraphByObjectsByEx)
-		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByEx)
+		if r.ats != nil {
+			apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.actionRouteHandlers(r.verifyJsonContentType(), r.GetActionsInActionTypeByEx)...)
+		}
 
 		// Action execution APIs.
-		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_id/governance-digest", r.GetActionGovernanceDigestByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByEx)
-		apiV1.POST("/knowledge-networks/:kn_id/action-executions/:execution_id/index-sync/retry", r.RetryActionIndexSyncByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByEx)
-		apiV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByEx)
-		// Try an action type definition without saving or executing it.
-		apiV1.POST("/knowledge-networks/:kn_id/action-trial", r.verifyJsonContentType(), r.TrialActionByEx)
-
+		if r.ass != nil {
+			apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.actionRouteHandlers(r.verifyJsonContentType(), r.ExecuteActionByEx)...)
+			apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_id/governance-digest", r.actionRouteHandlers(r.GetActionGovernanceDigestByEx)...)
+			apiV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.actionRouteHandlers(r.GetActionExecutionByEx)...)
+			apiV1.POST("/knowledge-networks/:kn_id/action-executions/:execution_id/index-sync/retry", r.actionRouteHandlers(r.RetryActionIndexSyncByEx)...)
+		}
+		if r.als != nil {
+			apiV1.GET("/knowledge-networks/:kn_id/action-logs", r.actionRouteHandlers(r.QueryActionLogsByEx)...)
+			apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.actionRouteHandlers(r.GetActionLogByEx)...)
+			apiV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.actionRouteHandlers(r.QueryActionLogResultsByEx)...)
+			apiV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.actionRouteHandlers(r.CancelActionLogByEx)...)
+		}
+		if r.ass != nil {
+			// Try a definition without saving or executing it.
+			apiV1.POST("/knowledge-networks/:kn_id/action-trial", r.actionRouteHandlers(r.verifyJsonContentType(), r.TrialActionByEx)...)
+		}
 	}
 
 	apiInV1 := c.Group("/api/ontology-query/in/v1")
@@ -133,19 +153,27 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// Get an object subgraph by start point, direction, and path length.
 		apiInV1.POST("/knowledge-networks/:kn_id/subgraph", r.verifyJsonContentType(), r.GetObjectsSubgraphByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/subgraph/objects", r.verifyJsonContentType(), r.GetObjectsSubgraphByObjectsByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByIn)
+		if r.ats != nil {
+			apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.actionRouteHandlers(r.verifyJsonContentType(), r.GetActionsInActionTypeByIn)...)
+		}
 
 		// Action execution APIs (internal).
-		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/check", r.verifyJsonContentType(), r.CheckActionExecutionByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/facts/check", r.verifyJsonContentType(), r.CheckActionFactsByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-executions/:execution_id/index-sync/retry", r.RetryActionIndexSyncByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.GetActionLogByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.QueryActionLogResultsByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.CancelActionLogByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/action-trial", r.verifyJsonContentType(), r.TrialActionByIn)
+		if r.ass != nil {
+			apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/check", r.actionRouteHandlers(r.verifyJsonContentType(), r.CheckActionExecutionByIn)...)
+			apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute/facts/check", r.actionRouteHandlers(r.verifyJsonContentType(), r.CheckActionFactsByIn)...)
+			apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.actionRouteHandlers(r.verifyJsonContentType(), r.ExecuteActionByIn)...)
+			apiInV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.actionRouteHandlers(r.GetActionExecutionByIn)...)
+			apiInV1.POST("/knowledge-networks/:kn_id/action-executions/:execution_id/index-sync/retry", r.actionRouteHandlers(r.RetryActionIndexSyncByIn)...)
+		}
+		if r.als != nil {
+			apiInV1.GET("/knowledge-networks/:kn_id/action-logs", r.actionRouteHandlers(r.QueryActionLogsByIn)...)
+			apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id", r.actionRouteHandlers(r.GetActionLogByIn)...)
+			apiInV1.GET("/knowledge-networks/:kn_id/action-logs/:log_id/results", r.actionRouteHandlers(r.QueryActionLogResultsByIn)...)
+			apiInV1.POST("/knowledge-networks/:kn_id/action-logs/:log_id/cancel", r.actionRouteHandlers(r.CancelActionLogByIn)...)
+		}
+		if r.ass != nil {
+			apiInV1.POST("/knowledge-networks/:kn_id/action-trial", r.actionRouteHandlers(r.verifyJsonContentType(), r.TrialActionByIn)...)
+		}
 
 	}
 
