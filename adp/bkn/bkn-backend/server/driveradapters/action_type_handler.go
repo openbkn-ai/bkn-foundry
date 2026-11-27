@@ -8,8 +8,10 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -765,7 +768,6 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 	// if simpleInfo {
 	// Get authorization-filtered action type summaries from a storage page.
 	otList, total, err := r.ats.ListActionTypeSummaries(ctx, parameter)
-	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
 		httpErr := err.(*httperrors.HTTPError)
 
@@ -786,7 +788,7 @@ func (r *restHandler) ListActionTypes(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler ListActionTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	emitActionTypeSchemaRead(ctx, c, visitor, "bkn.schema.action_type.list", knID, branch, nil, otList, int64(total))
-	rest.ReplyOK(c, http.StatusOK, result)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": actionTypesForResponse(otList), "total_count": total})
 }
 
 // Get action type by ID (internal).
@@ -874,7 +876,7 @@ func (r *restHandler) GetActionTypes(c *gin.Context, visitor hydra.Visitor) {
 	if !replyWithRevisions(ctx, c, interfaces.RevisionKindActionType, knID, branch, actionTypes) {
 		return
 	}
-	httpResult := map[string]any{"entries": actionTypes}
+	httpResult := map[string]any{"entries": actionTypesForResponse(actionTypes)}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler GetActionTypes Success")
@@ -1015,5 +1017,35 @@ func (r *restHandler) SearchActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	logger.Debug("Handler SearchActionTypes Success")
+	result.Entries = actionTypesForResponse(result.Entries)
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// actionTypesForResponse makes nullable constants explicit in HTTP responses.
+// A raw JSON null survives Parameter.Value's omitzero tag. Use response copies
+// so the model passed to persistence, revision calculation, and BKN export keeps its nil values.
+func actionTypesForResponse(entries []*interfaces.ActionType) []*interfaces.ActionType {
+	response := slices.Clone(entries)
+	for i, action := range entries {
+		if action == nil {
+			continue
+		}
+		var parameters []interfaces.Parameter
+		for j, parameter := range action.Parameters {
+			if parameter.ValueFrom != interfaces.VALUE_FROM_CONST || parameter.Value != nil ||
+				bknsdk.ValidateActionConstantType(parameter.Type, nil) != nil {
+				continue
+			}
+			if parameters == nil {
+				parameters = slices.Clone(action.Parameters)
+			}
+			parameters[j].Value = jsontext.Value("null")
+		}
+		if parameters != nil {
+			item := *action
+			item.Parameters = parameters
+			response[i] = &item
+		}
+	}
+	return response
 }

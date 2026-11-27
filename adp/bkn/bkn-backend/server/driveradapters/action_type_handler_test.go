@@ -8,6 +8,9 @@ package driveradapters
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json/jsontext"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,11 +24,135 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
+
+func TestActionTypeNullConstantsReadback(t *testing.T) {
+	handler, _, engine, ats, kns := newActionTypeTestHandler(t)
+	handler.as.(*bmock.MockAuthService).EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+
+	const knID, actionID, branch = "kn1", "notify", "main"
+	const collection = "/api/bkn-backend/v1/knowledge-networks/" + knID + "/action-types"
+	const detail = collection + "/" + actionID
+	kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, branch).AnyTimes().Return(knID, true, nil)
+	ats.EXPECT().CheckActionTypeExistByID(gomock.Any(), knID, branch, actionID).Return("Notify", true, nil)
+
+	// Round-trip through the existing parameter storage representation in the service mock.
+	var saved *interfaces.ActionType
+	ats.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any(), false).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, action *interfaces.ActionType, _ bool) error {
+			data, err := jsoncodec.Marshal(action.Parameters)
+			if err != nil {
+				return err
+			}
+			stored := *action
+			stored.Parameters = nil
+			saved = &stored
+			return common.UnmarshalStoredJSON(data, &saved.Parameters)
+		})
+	payload := `{
+		"name":"Notify","action_type":"add","operation_config":{"type":"tool"},
+		"parameters":[
+			{"name":"nullable","type":"boolean","value_from":"const","value":null},
+			{"name":"legacy","type":"object","value_from":"const"},
+			{"name":"disabled","type":"boolean","value_from":"const","value":false},
+			{"name":"zero","type":"integer","value_from":"const","value":0},
+			{"name":"large","type":"integer","value_from":"const","value":9007199254740993},
+			{"name":"empty","type":"string","value_from":"const","value":""},
+			{"name":"literal","type":"string","value_from":"const","value":"null"},
+			{"name":"items","type":"array","value_from":"const","value":[1]},
+			{"name":"options","type":"object","value_from":"const","value":{"enabled":false}},
+			{"name":"recipient","type":"string","value_from":"input"}
+		]
+	}`
+	put := httptest.NewRequest(http.MethodPut, detail+"?branch=main&strict_mode=false", bytes.NewBufferString(payload))
+	put.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+	update := httptest.NewRecorder()
+	engine.ServeHTTP(update, put)
+	if update.Code != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, body = %s", update.Code, update.Body)
+	}
+
+	assertValues := func(t *testing.T, req *http.Request, expectedInput string) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, req)
+		if response.Code != http.StatusOK {
+			t.Fatalf("read status = %d, body = %s", response.Code, response.Body)
+		}
+		var result struct {
+			Entries []struct {
+				Parameters []struct {
+					Name  string         `json:"name"`
+					Value jsontext.Value `json:"value"`
+				} `json:"parameters"`
+			} `json:"entries"`
+		}
+		if err := jsoncodec.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]string{
+			"nullable": "null", "legacy": "null", "disabled": "false", "zero": "0",
+			"large": "9007199254740993", "empty": `""`, "literal": `"null"`,
+			"items": "[1]", "options": `{"enabled":false}`, "recipient": expectedInput,
+		}
+		if len(result.Entries) != 1 || len(result.Entries[0].Parameters) != len(want) {
+			t.Fatalf("unexpected response: %s", response.Body)
+		}
+		for _, parameter := range result.Entries[0].Parameters {
+			expected, exists := want[parameter.Name]
+			if !exists || string(parameter.Value) != expected {
+				t.Errorf("%s value = %q, want %q (empty means omitted)", parameter.Name, string(parameter.Value), expected)
+			}
+			delete(want, parameter.Name)
+		}
+	}
+
+	t.Run("detail after save", func(t *testing.T) {
+		ats.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, []string{actionID}).Return([]*interfaces.ActionType{saved}, nil)
+		assertValues(t, httptest.NewRequest(http.MethodGet, detail+"?branch=main", nil), "")
+	})
+	t.Run("list and search", func(t *testing.T) {
+		entries := []*interfaces.ActionType{saved}
+		ats.EXPECT().ListActionTypeSummaries(gomock.Any(), gomock.Any()).Return(entries, 1, nil)
+		assertValues(t, httptest.NewRequest(http.MethodGet, collection+"?branch=main", nil), "")
+
+		ats.EXPECT().SearchActionTypes(gomock.Any(), gomock.Any()).Return(interfaces.ActionTypes{Entries: entries}, nil)
+		search := httptest.NewRequest(http.MethodPost, collection+"?branch=main", bytes.NewBufferString("{}"))
+		search.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
+		search.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+		assertValues(t, search, "")
+	})
+	t.Run("detail after BKN archive round trip", func(t *testing.T) {
+		if saved.Parameters[0].Value != nil || saved.Parameters[1].Value != nil {
+			t.Fatal("HTTP read mutated the saved action parameters")
+		}
+		doc := &bknsdk.BknNetwork{
+			BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{Type: "network", ID: knID, Name: "Null constants"},
+			ActionTypes:           []*bknsdk.BknActionType{logics.ToBKNActionType(saved)},
+		}
+		var archive bytes.Buffer
+		if err := bknsdk.WriteNetworkToTar(doc, &archive); err != nil {
+			t.Fatal(err)
+		}
+		imported, err := bknsdk.LoadNetworkFromTar(&archive)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(imported.ActionTypes) != 1 {
+			t.Fatalf("imported %d action types, want 1", len(imported.ActionTypes))
+		}
+		restored := logics.ToADPActionType(knID, branch, imported.ActionTypes[0])
+		ats.EXPECT().GetActionTypesByIDs(gomock.Any(), knID, branch, []string{actionID}).Return([]*interfaces.ActionType{restored}, nil)
+		// BKN imports the blank input parameter cell as an empty string.
+		assertValues(t, httptest.NewRequest(http.MethodGet, detail+"?branch=main", nil), `""`)
+	})
+}
 
 func MockNewActionTypeRestHandler(appSetting *common.AppSetting,
 	as interfaces.AuthService,
