@@ -205,8 +205,10 @@ func (handler *ArchiveHandler) Retained(w http.ResponseWriter, r *http.Request) 
 
 func (handler *ArchiveHandler) writeRetainedPage(w http.ResponseWriter, r *http.Request, runID string) {
 	offset, offsetErr := optionalNonNegativeInt(r.URL.Query().Get("offset"))
-	limit, limitErr := optionalNonNegativeInt(r.URL.Query().Get("limit"))
-	if offsetErr != nil || limitErr != nil || limit > archivesvc.MaxRetainedPageSize {
+	rawLimit := r.URL.Query().Get("limit")
+	limit, limitErr := optionalNonNegativeInt(rawLimit)
+	// An omitted limit means the default page; an explicit 0 is invalid.
+	if offsetErr != nil || limitErr != nil || rawLimit != "" && limit == 0 || limit > archivesvc.MaxRetainedPageSize {
 		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_retained_page", "offset must be 0 or more and limit between 1 and 100")
 		return
 	}

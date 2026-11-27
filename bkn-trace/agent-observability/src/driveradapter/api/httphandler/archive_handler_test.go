@@ -145,7 +145,7 @@ func TestArchiveSubmitQueuesRunAndExposesProgressAndRetained(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"budget":8388608`) || !strings.Contains(rec.Body.String(), `"total":1`) {
 		t.Fatalf("retained list: %d %s", rec.Code, rec.Body.String())
 	}
-	for _, bad := range []string{"?limit=101", "?offset=-1", "?limit=x"} {
+	for _, bad := range []string{"?limit=101", "?limit=0", "?offset=-1", "?limit=x"} {
 		if rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained"+bad); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s accepted: %d", bad, rec.Code)
 		}
