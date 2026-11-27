@@ -39,7 +39,7 @@ func runState(t *testing.T, svc *Service, id string) RunView {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return result.RunView
+	return result
 }
 
 func TestBackgroundRunArchivesEveryBatchAndRecordsProgress(t *testing.T) {
@@ -80,10 +80,11 @@ func TestBackgroundRunRetainsOversizedInteractionAndContinues(t *testing.T) {
 			run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
 			svc.processDue(context.Background(), observabilityvo.ArchiveKindTrace)
 			result, err := svc.RunResult(context.Background(), run.ID)
-			if err != nil || result.Status != RunCompleted || result.ProcessedCount != 3 || result.RetainedCount != 1 || len(result.Retained) != 1 {
-				t.Fatalf("run did not continue past the oversized interaction: %+v %v", result, err)
+			page, pageErr := svc.RetainedInteractions(context.Background(), run.ID, 0, 0)
+			if err != nil || pageErr != nil || result.Status != RunCompleted || result.ProcessedCount != 3 || result.RetainedCount != 1 || page.Total != 1 || len(page.Items) != 1 {
+				t.Fatalf("run did not continue past the oversized interaction: %+v %+v %v %v", result, page, err, pageErr)
 			}
-			kept := result.Retained[0]
+			kept := page.Items[0]
 			if kept.InteractionID != blockedID || kept.RunID != run.ID || kept.PolicyVersion != TraceArchivePolicyVersion() || kept.Budget == 0 || kept.Measured <= kept.Budget {
 				t.Fatalf("retained record incomplete: %+v", kept)
 			}
@@ -386,5 +387,44 @@ func TestStopGraceCancelsAHungBatchAndKeepsTheRunForResume(t *testing.T) {
 	}
 	if view := runState(t, svc, run.ID); view.Status != RunRunning || view.RetryCount != 0 {
 		t.Fatalf("a stop must leave the run for the next start: %+v", view)
+	}
+}
+
+func TestRetainedInteractionsArePagedWithTotals(t *testing.T) {
+	s := newBatchSourceFixture(t, 1, 1)
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(s, s, &batchObjectFixture{s: s}, clock, Options{})
+	run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
+	runs := s.store.(RunStore)
+	for i := 0; i < 45; i++ {
+		item := RetainedInteraction{InteractionID: fmt.Sprintf("large-%02d", i), RunID: run.ID, PolicyVersion: TraceArchivePolicyVersion(), Budget: MaxTraceArchiveCandidateBytes, Unit: "bytes", RetainedAt: clock.now.Add(time.Duration(i) * time.Second)}
+		if i == 44 {
+			item.RunID, item.PolicyVersion = "older-run", "trace-v0"
+		}
+		if err := runs.RetainInteraction(context.Background(), item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := svc.RetainedInteractions(context.Background(), "", 0, 0)
+	if err != nil || first.Total != 44 || len(first.Items) != DefaultRetainedPageSize || first.Items[0].InteractionID != "large-43" {
+		t.Fatalf("first page of current-policy retention: %+v %v", first, err)
+	}
+	last, _ := svc.RetainedInteractions(context.Background(), "", 40, 20)
+	if last.Total != 44 || len(last.Items) != 4 || last.Items[3].InteractionID != "large-00" {
+		t.Fatalf("last page: %+v", last)
+	}
+	beyond, _ := svc.RetainedInteractions(context.Background(), "", 60, 20)
+	if beyond.Total != 44 || len(beyond.Items) != 0 {
+		t.Fatalf("page beyond the end: %+v", beyond)
+	}
+	capped, _ := svc.RetainedInteractions(context.Background(), run.ID, 0, 1000)
+	if capped.Total != 44 || len(capped.Items) != 44 {
+		t.Fatalf("run filter or page cap wrong: %+v", capped)
+	}
+	if view := runState(t, svc, run.ID); view.RetainedCount != 44 {
+		t.Fatalf("run retained count must be the database total: %+v", view)
+	}
+	if _, err := svc.RetainedInteractions(context.Background(), "missing", 0, 20); !errors.Is(err, ErrRunNotFound) {
+		t.Fatalf("unknown run: %v", err)
 	}
 }

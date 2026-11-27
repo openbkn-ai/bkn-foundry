@@ -188,7 +188,7 @@ func TestTraceArchiveBoundedMariaDB(t *testing.T) {
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	workerDone := make(chan struct{})
 	go func() { background.RunWorker(workerCtx, 50*time.Millisecond); close(workerDone) }()
-	var result archivesvc.RunResult
+	var result archivesvc.RunView
 	for deadline := time.Now().Add(30 * time.Second); ; {
 		if result, err = background.RunResult(ctx, run.ID); err != nil {
 			t.Fatal(err)
@@ -203,7 +203,11 @@ func TestTraceArchiveBoundedMariaDB(t *testing.T) {
 	}
 	stopWorker()
 	<-workerDone
-	if result.Status != archivesvc.RunCompleted || result.ProcessedCount != 1 || len(result.Retained) != 1 || result.Retained[0].InteractionID != "archive-i-102" || result.Retained[0].Stage != "sql_payload" || result.Retained[0].PolicyVersion != archivesvc.TraceArchivePolicyVersion() {
+	retained, err := background.RetainedInteractions(ctx, run.ID, 0, 20)
+	if err != nil || retained.Total != 1 || len(retained.Items) != 1 {
+		t.Fatalf("retained page: %+v %v", retained, err)
+	}
+	if result.Status != archivesvc.RunCompleted || result.ProcessedCount != 1 || result.RetainedCount != 1 || retained.Items[0].InteractionID != "archive-i-102" || retained.Items[0].Stage != "sql_payload" || retained.Items[0].PolicyVersion != archivesvc.TraceArchivePolicyVersion() {
 		t.Fatalf("background run result: %+v", result)
 	}
 	if len(objects.counts) != 2 || objects.counts[1] != 1 {

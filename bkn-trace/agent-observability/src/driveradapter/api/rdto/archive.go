@@ -52,9 +52,10 @@ type RetainedInteractionResponse struct {
 	RetainedAt    string `json:"retained_at"`
 }
 
-type ArchiveRunResultResponse struct {
-	ArchiveRunResponse
-	Retained []RetainedInteractionResponse `json:"retained"`
+// RetainedPageResponse is one page of retained interactions and their total.
+type RetainedPageResponse struct {
+	Items []RetainedInteractionResponse `json:"items"`
+	Total int                           `json:"total"`
 }
 
 func optionalTime(value time.Time) *string {
@@ -86,8 +87,8 @@ func NewRetainedInteractions(items []archivesvc.RetainedInteraction) []RetainedI
 	return response
 }
 
-func NewArchiveRunResult(result archivesvc.RunResult) ArchiveRunResultResponse {
-	return ArchiveRunResultResponse{ArchiveRunResponse: NewArchiveRun(result.RunView), Retained: NewRetainedInteractions(result.Retained)}
+func NewRetainedPage(page archivesvc.RetainedPage) RetainedPageResponse {
+	return RetainedPageResponse{Items: NewRetainedInteractions(page.Items), Total: page.Total}
 }
 
 type ArchiveJobResponse struct {
