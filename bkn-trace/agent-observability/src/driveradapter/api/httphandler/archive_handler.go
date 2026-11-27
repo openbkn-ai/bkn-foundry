@@ -6,10 +6,12 @@
 package httphandler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -102,6 +104,14 @@ func (handler *ArchiveHandler) ListOrCreate(kind observabilityvo.ArchiveKind) ht
 		}
 		jobs, err := handler.service.ListJobs(r.Context(), kind, 20)
 		if err != nil {
+			reason := "read_failed"
+			if errors.Is(err, context.DeadlineExceeded) {
+				reason = "timeout"
+			} else if errors.Is(err, context.Canceled) {
+				reason = "canceled"
+			}
+			// Log only the kind and error class: driver errors may carry connection details.
+			slog.WarnContext(r.Context(), "archive history unavailable", "archive_kind", kind, "dependency", "mariadb", "reason", reason, "error_type", fmt.Sprintf("%T", err))
 			writeObservabilityError(w, r, http.StatusServiceUnavailable, "archive_history_unavailable", "archive history is unavailable; refresh before starting another archive")
 			return
 		}
