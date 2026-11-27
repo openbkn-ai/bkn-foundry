@@ -1187,7 +1187,7 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	if r.kvs != nil && mode != interfaces.Mode_Export {
+	if r.kvs != nil && mode != interfaces.Mode_Export && (r.versioningEntitled == nil || r.versioningEntitled()) {
 		view, err := r.kvs.GetState(ctx, knID)
 		if err != nil {
 			replyKNVersionError(c, err)

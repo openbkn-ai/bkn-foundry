@@ -13,6 +13,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
+// CapabilitySkipUnreachable identifies an unavailable capability metadata provider in an import report.
+const CapabilitySkipUnreachable = "execution_factory_unreachable"
+
 // CapabilityBindingService owns the knowledge-network side of Skill and Function binding (#1257).
 //
 //go:generate mockgen -source ../interfaces/capability_binding_service.go -destination ../interfaces/mock/mock_capability_binding_service.go

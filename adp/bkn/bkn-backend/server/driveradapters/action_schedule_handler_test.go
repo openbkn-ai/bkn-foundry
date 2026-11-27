@@ -59,6 +59,7 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -161,6 +162,7 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -258,6 +260,7 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatus(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -331,6 +334,7 @@ func Test_ActionScheduleRestHandler_DeleteActionSchedules(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -412,6 +416,7 @@ func Test_ActionScheduleRestHandler_ListActionSchedules(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -483,6 +488,7 @@ func Test_ActionScheduleRestHandler_GetActionSchedule(t *testing.T) {
 
 		handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 		handler.RegisterPublic(engine)
+		handler.registerActionScheduleRoutes(engine, nil)
 
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
@@ -539,6 +545,7 @@ func newActionScheduleTestHandler(t *testing.T) (*restHandler, *gomock.Controlle
 	ass := bmock.NewMockActionScheduleService(mockCtrl)
 	handler := MockNewActionScheduleRestHandler(appSetting, as, kns, ass)
 	handler.RegisterPublic(engine)
+	handler.registerActionScheduleRoutes(engine, nil)
 	return handler, mockCtrl, engine, kns, ass
 }
 

@@ -256,7 +256,7 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newKN.ConceptGroups) }},
 		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newKN.ObjectTypes) }},
 		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newKN.RelationTypes) }},
-		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newKN.ActionTypes) }},
+		{"action types", func() error { return kns.indexActionTypes(ctx, newKN.ActionTypes) }},
 		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newKN.RiskTypes) }},
 		{"network", func() error { return kns.InsertDatasetData(ctx, newKN) }},
 	}
@@ -395,6 +395,13 @@ func (kns *knowledgeNetworkService) IndexVersion(ctx context.Context, knID, src,
 	return kns.writeConceptDocuments(ctx, kn)
 }
 
+func (kns *knowledgeNetworkService) indexActionTypes(ctx context.Context, actions []*interfaces.ActionType) error {
+	if kns.ats == nil {
+		return nil
+	}
+	return kns.ats.InsertDatasetData(ctx, actions)
+}
+
 // writeConceptDocuments writes the concept index document of every definition of kn and of the
 // network itself, on kn's branch, stopping at the first failure.
 func (kns *knowledgeNetworkService) writeConceptDocuments(ctx context.Context, kn *interfaces.KN) error {
@@ -402,7 +409,7 @@ func (kns *knowledgeNetworkService) writeConceptDocuments(ctx context.Context, k
 		func() error { return kns.cgs.InsertDatasetDatas(ctx, kn.ConceptGroups) },
 		func() error { return kns.ots.InsertDatasetData(ctx, kn.ObjectTypes) },
 		func() error { return kns.rts.InsertDatasetData(ctx, kn.RelationTypes) },
-		func() error { return kns.ats.InsertDatasetData(ctx, kn.ActionTypes) },
+		func() error { return kns.indexActionTypes(ctx, kn.ActionTypes) },
 		func() error { return kns.riskTypeS.InsertDatasetData(ctx, kn.RiskTypes) },
 		func() error { return kns.InsertDatasetData(ctx, kn) },
 	} {

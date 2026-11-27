@@ -33,6 +33,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
+// actionTypesForInternalCaller preserves concept search when the action model is absent.
+func (r *restHandler) actionTypesForInternalCaller(c *gin.Context) {
+	if r.ats != nil && r.dynamicModelAvailable() {
+		r.HandleActionTypeGetOverrideByIn(c)
+		return
+	}
+	if c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE) == http.MethodGet {
+		rest.ReplyOK(c, http.StatusOK, interfaces.ActionTypes{Entries: []*interfaces.ActionType{}})
+		return
+	}
+	c.Writer.Header().Del("Cache-Control")
+	c.Data(http.StatusNotFound, gin.MIMEPlain, []byte("404 page not found"))
+}
+
 func (r *restHandler) HandleActionTypeGetOverrideByIn(c *gin.Context) {
 	switch c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE) {
 	case "", http.MethodPost:

@@ -6,6 +6,7 @@ package driveradapters
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -217,5 +218,51 @@ func TestInternalVersioningReadsAsTheAccountHeaders(t *testing.T) {
 	engine.ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusOK || reader.asked != (interfaces.AccountInfo{ID: "user-1", Type: "user"}) {
 		t.Fatalf("code %d asked as %+v", recorder.Code, reader.asked)
+	}
+}
+
+type publishedBranchStateStub struct {
+	interfaces.KNVersionAccess
+}
+
+func (publishedBranchStateStub) GetState(context.Context, *sql.Tx, string, bool) (*interfaces.KNVersionState, error) {
+	return &interfaces.KNVersionState{RunningVersion: 4, PreviousVersion: 3}, nil
+}
+
+func TestPublishedBranchWithoutVersionManagement(t *testing.T) {
+	oldAccess := logics.KNVA
+	logics.KNVA = publishedBranchStateStub{}
+	t.Cleanup(func() { logics.KNVA = oldAccess })
+	cases := []struct {
+		query   string
+		write   bool
+		allowed bool
+	}{
+		{query: "", allowed: true},
+		{query: "kn_version=running", allowed: true},
+		{query: "kn_version=4", allowed: true},
+		{query: "kn_version=draft"},
+		{query: "kn_version=3"},
+		{query: "branch=v3"},
+		{query: "", write: true},
+	}
+	handler := &restHandler{versioningEntitled: func() bool { return false }}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/?"+tc.query, nil)
+			ctx := context.Background()
+			resolved, ok := handler.resolveRead(&ctx, c, "network", tc.write)
+			if ok != tc.allowed {
+				t.Fatalf("access = %v, want %v (status %d)", ok, tc.allowed, recorder.Code)
+			}
+			if tc.allowed && (resolved.Branch != "v4" || recorder.Header().Get("X-Kn-Version") != "4") {
+				t.Fatalf("running read = %+v, headers = %v", resolved, recorder.Header())
+			}
+			if !tc.allowed && recorder.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403", recorder.Code)
+			}
+		})
 	}
 }

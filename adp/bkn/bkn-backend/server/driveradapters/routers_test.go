@@ -19,6 +19,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
@@ -208,5 +209,41 @@ func TestLegacyMetricRoutesAreNotRegistered(t *testing.T) {
 		if strings.Contains(route.Path, "/knowledge-networks/:kn_id/metrics") {
 			t.Fatalf("legacy metric route remains registered: %s %s", route.Method, route.Path)
 		}
+	}
+}
+
+// The Community engine still answers the concept retrieval protocol with empty scopes.
+func TestCommunityDynamicModelRoutes(t *testing.T) {
+	engine := gin.New()
+	(&restHandler{}).RegisterPublic(engine)
+	const public = "/api/bkn-backend/v1/knowledge-networks/example"
+	const internal = "/api/bkn-backend/in/v1/knowledge-networks/example"
+	cases := []struct {
+		method   string
+		path     string
+		override string
+		status   int
+	}{
+		{http.MethodGet, public + "/action-types", "", http.StatusNotFound},
+		{http.MethodGet, public + "/capabilities", "", http.StatusNotFound},
+		{http.MethodGet, public + "/versions", "", http.StatusNotFound},
+		{http.MethodGet, internal + "/capabilities", "", http.StatusOK},
+		{http.MethodPost, internal + "/action-types", http.MethodGet, http.StatusOK},
+		{http.MethodPost, internal + "/action-types", "", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path+" "+tc.override, func(t *testing.T) {
+			request := httptest.NewRequest(tc.method, tc.path, nil)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, tc.override)
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d", response.Code, tc.status)
+			}
+			if tc.status == http.StatusOK && !strings.Contains(response.Body.String(), `"entries":[]`) {
+				t.Fatalf("expected an empty scope, got %s", response.Body.String())
+			}
+		})
 	}
 }

@@ -30,7 +30,6 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 )
 
 const (
@@ -319,32 +318,41 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		declaredCapabilities = nil
 	}
 	var capabilityReport *interfaces.CapabilityImportReport
-	importCapabilities := r.cbs.ImportCapabilitiesTx
-	// A replace drops every binding the package does not keep: all current ones are named as
-	// removed, and the ones it keeps come back as bound.
-	var removedBindingIDs []string
-	var capErr error
-	if replace && !kn.ImportSkipped {
-		importCapabilities = r.cbs.ReplaceCapabilitiesTx
-		removedBindingIDs, capErr = r.cbs.BindingIDs(ctx, knID, branch)
-	}
 	var capResult *interfaces.KNCapabilityMutationResult
-	if capErr == nil {
-		capResult, capErr = r.publishKNCapabilityMutation(ctx, knID, branch, removedBindingIDs,
-			func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
-				var bindings []*interfaces.CapabilityBinding
-				var importErr error
-				capabilityReport, bindings, importErr = importCapabilities(
-					mutationCtx, tx, knID, branch, declaredCapabilities)
-				return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, importErr
-			})
-	}
-	if capErr != nil {
-		logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
+	var capErr error
+	if r.cbs != nil && r.dynamicModelAvailable() {
+		importCapabilities := r.cbs.ImportCapabilitiesTx
+		// A replace drops every binding the package does not keep: all current ones are named as
+		// removed, and the ones it keeps come back as bound.
+		var removedBindingIDs []string
+		if replace && !kn.ImportSkipped {
+			importCapabilities = r.cbs.ReplaceCapabilitiesTx
+			removedBindingIDs, capErr = r.cbs.BindingIDs(ctx, knID, branch)
+		}
+		if capErr == nil {
+			capResult, capErr = r.publishKNCapabilityMutation(ctx, knID, branch, removedBindingIDs,
+				func(mutationCtx context.Context, tx *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+					var bindings []*interfaces.CapabilityBinding
+					var importErr error
+					capabilityReport, bindings, importErr = importCapabilities(
+						mutationCtx, tx, knID, branch, declaredCapabilities)
+					return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, importErr
+				})
+		}
+		if capErr != nil {
+			logger.Errorf("Upload BKN: capability import failed: kn_id=%s, err=%v", knID, capErr)
+			capabilityReport = &interfaces.CapabilityImportReport{
+				Skipped: []*interfaces.CapabilitySkip{{
+					Reason: interfaces.CapabilitySkipUnreachable,
+					Detail: capErr.Error(),
+				}},
+			}
+		}
+	} else if declaredCapabilities != nil {
 		capabilityReport = &interfaces.CapabilityImportReport{
 			Skipped: []*interfaces.CapabilitySkip{{
-				Reason: capability_binding.CapabilitySkipUnreachable,
-				Detail: capErr.Error(),
+				Reason: "edition_restricted",
+				Detail: "mounting knowledge network resources requires a Professional license",
 			}},
 		}
 	}
