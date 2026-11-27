@@ -1040,8 +1040,11 @@ components:
             - target_identity
           type: string
         value:
-          description: Literal constant, or an object property name for property. Omit for input
-            and endpoint identity sources.
+          description: |
+            Literal constant, or an object property name for property. Omit for input and endpoint
+            identity sources. In action type detail, list, and search responses, a const parameter
+            whose declared type permits null returns an explicit JSON null when its stored value
+            is null or absent. The same rule applies after BKN import.
     ActionTypeDetails:
       description: Action type details
       required:
