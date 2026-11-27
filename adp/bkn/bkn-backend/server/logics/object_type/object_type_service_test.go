@@ -9,6 +9,7 @@ package object_type
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -999,6 +1000,30 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 	})
 }
 
+func TestObjectTypeSampleDataPreservesOptionalTotalOnTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name, input string
+		wantTotal   bool
+	}{
+		{name: "unknown", input: `{"entries":[]}`},
+		{name: "known zero", input: `{"entries":[],"total_count":0}`, wantTotal: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var sample interfaces.ObjectTypeSampleData
+			require.NoError(t, json.Unmarshal([]byte(tc.input), &sample))
+			data, err := json.Marshal(sample)
+			require.NoError(t, err)
+			var wire map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(data, &wire))
+			total, present := wire["total_count"]
+			require.Equal(t, tc.wantTotal, present)
+			if present {
+				assert.Equal(t, "0", string(total))
+			}
+		})
+	}
+}
+
 func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 	Convey("Test GetObjectTypeSampleData\n", t, func() {
 		ctx := context.Background()
@@ -1074,7 +1099,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 						Entries: []map[string]any{
 							{"code": "M001", "material_name": "螺丝"},
 						},
-						TotalCount: 1,
+						TotalCount: new(int64(1)),
 					}, nil
 				},
 			)
@@ -1087,7 +1112,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(result.Name, ShouldEqual, "物料")
-			So(result.TotalCount, ShouldEqual, 1)
+			So(result.TotalCount, ShouldResemble, new(int64(1)))
 			So(result.Columns, ShouldResemble, []*interfaces.ObjectTypeSampleDataColumn{
 				{DataIndex: "material_code", Title: "物料编码"},
 				{DataIndex: "material_name", Title: "物料名称"},
@@ -1097,6 +1122,47 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 			})
 		})
 
+		Convey("Sample data query error", func() {
+			objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+				OTID:       "ot1",
+				DataSource: &interfaces.ResourceInfo{ID: "resource1", Type: interfaces.DATA_SOURCE_TYPE_RESOURCE},
+			}}
+			smock.ExpectBegin()
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).
+				Return([]*interfaces.ObjectType{objectType}, nil)
+			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+			vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"resource1"}).
+				Return([]*interfaces.VegaResource{{ID: "resource1"}}, nil)
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+			smock.ExpectCommit()
+
+			Convey("Known validation errors retain the public detail", func() {
+				detail := "API queries support only single paging without a cursor"
+				vbs.EXPECT().QueryResourceData(gomock.Any(), "resource1", gomock.Any()).
+					Return(nil, &interfaces.VegaResourceQueryParameterError{PublicDetails: detail})
+
+				result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{})
+				var httpErr *httperrors.HTTPError
+				So(result, ShouldBeNil)
+				So(errors.As(err, &httpErr), ShouldBeTrue)
+				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+				So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+				So(httpErr.ErrorDetails, ShouldEqual, detail)
+			})
+
+			Convey("Other errors keep a generic client-facing detail", func() {
+				vbs.EXPECT().QueryResourceData(gomock.Any(), "resource1", gomock.Any()).
+					Return(nil, errors.New("internal upstream failure"))
+
+				result, err := service.GetObjectTypeSampleData(ctx, "kn1", interfaces.MAIN_BRANCH, "ot1", interfaces.ObjectTypeSampleDataQueryParams{})
+				var httpErr *httperrors.HTTPError
+				So(result, ShouldBeNil)
+				So(errors.As(err, &httpErr), ShouldBeTrue)
+				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+				So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError)
+				So(httpErr.ErrorDetails, ShouldEqual, "object type sample data query failed")
+			})
+		})
 	})
 }
 
@@ -2529,14 +2595,14 @@ func Test_objectTypeService_GetTotal(t *testing.T) {
 				},
 			}
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 10,
+				TotalCount: new(int64(10)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 10)
+			So(total, ShouldResemble, new(int64(10)))
 		})
 
 		Convey("Failed when QueryResourceData fails\n", func() {
@@ -2546,7 +2612,7 @@ func Test_objectTypeService_GetTotal(t *testing.T) {
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 
 		Convey("Failed when QueryResourceData returns nil response\n", func() {
@@ -2556,7 +2622,7 @@ func Test_objectTypeService_GetTotal(t *testing.T) {
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -2585,13 +2651,13 @@ func Test_objectTypeService_GetTotalWithLargeOTIDs(t *testing.T) {
 
 			// Mock GetTotalWithOTIDs calls
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 5,
+				TotalCount: new(int64(5)),
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil).Times(1)
 
 			total, err := service.GetTotalWithLargeOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 5)
+			So(total, ShouldResemble, new(int64(5)))
 		})
 
 		Convey("Success with empty OTIDs\n", func() {
@@ -2604,7 +2670,21 @@ func Test_objectTypeService_GetTotalWithLargeOTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldResemble, new(int64(0)))
+		})
+
+		Convey("Omits the total when a batch has no count\n", func() {
+			otIDs := make([]string, interfaces.GET_TOTAL_CONCEPTID_BATCH_SIZE+1)
+			gomock.InOrder(
+				vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&interfaces.DatasetQueryResponse{TotalCount: new(int64(5))}, nil),
+				vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&interfaces.DatasetQueryResponse{}, nil),
+			)
+
+			total, err := service.GetTotalWithLargeOTIDs(ctx, nil, otIDs)
+			So(err, ShouldBeNil)
+			So(total, ShouldBeNil)
 		})
 
 		Convey("Failed when GetTotalWithOTIDs returns error\n", func() {
@@ -2619,7 +2699,7 @@ func Test_objectTypeService_GetTotalWithLargeOTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -2647,13 +2727,13 @@ func Test_objectTypeService_GetTotalWithOTIDs(t *testing.T) {
 			otIDs := []string{"ot1", "ot2"}
 
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 2,
+				TotalCount: new(int64(2)),
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotalWithOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 2)
+			So(total, ShouldResemble, new(int64(2)))
 		})
 
 		Convey("Failed when GetTotal returns error\n", func() {
@@ -2668,7 +2748,7 @@ func Test_objectTypeService_GetTotalWithOTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -2914,7 +2994,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			}
 
 			totalResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 5,
+				TotalCount: new(int64(5)),
 			}
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
@@ -2924,7 +3004,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 5)
+			So(result.TotalCount, ShouldResemble, new(int64(5)))
 			So(len(result.Entries), ShouldEqual, 0)
 		})
 
@@ -2940,7 +3020,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			totalResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 3,
+				TotalCount: new(int64(3)),
 			}
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
@@ -2950,7 +3030,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 3)
+			So(result.TotalCount, ShouldResemble, new(int64(3)))
 			So(len(result.Entries), ShouldEqual, 0)
 		})
 

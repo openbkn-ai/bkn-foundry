@@ -128,14 +128,14 @@ func TestResourceQueryPropagatesUnsupportedCapabilities(t *testing.T) {
 				case "detail":
 					_, err = service.GetObjectPropertyValue(resourcePagingContext(), &interfaces.ObjectPropertyValueQuery{KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", InstanceIdentities: []map[string]any{{"id": "customer-1"}}, Properties: []string{"notes"}})
 				case "scan":
-					_, err = service.GetObjectsByObjectTypeIDForScan(resourcePagingContext(), resourcePagingQuery(10))
+					_, err = service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(10), 10)
 				default:
 					_, err = service.GetObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(10))
 				}
 				var httpErr *httperrors.HTTPError
 				expectedCalls := 1
 				if mode == "scan" && status == http.StatusNotImplemented {
-					// Preserve the established generic cursor-to-offset fallback.
+					// A scan may fall back to one bounded read when cursor paging is unavailable.
 					expectedCalls = 2
 				}
 				if !errors.As(err, &httpErr) || vega.calls != expectedCalls {

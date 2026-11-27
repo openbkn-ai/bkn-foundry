@@ -325,10 +325,10 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		stored := []map[string]any{{"payload": map[string]any{"z": "<>&", "a": json.Number("9007199254740993")}}, {"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}
 		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
-		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: 5, SearchAfter: []any{"next"}}, nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: new(int64(5)), SearchAfter: []any{"next"}}, nil)
 		gotResult, err := manager.ListDocuments(context.Background(), "index", resource, params)
 		var got []map[string]any
-		var total int64
+		var total *int64
 		if gotResult != nil {
 			got = gotResult.Entries
 			total = gotResult.TotalCount
@@ -342,7 +342,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		assert.Equal(t, map[string]any{"a": json.Number("9007199254740993"), "z": "<>&"}, decoded)
 		assert.Contains(t, text, "<>&")
 		assert.Equal(t, []map[string]any{{"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}, got[1:])
-		assert.Equal(t, int64(5), total)
+		assert.Equal(t, new(int64(5)), total)
 		assert.Equal(t, []any{"next"}, gotResult.SearchAfter)
 		assert.Empty(t, params.SearchAfter)
 		projected, projectionErr := manager.SchemaForQuery(resource.SchemaDefinition)
@@ -364,11 +364,11 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), "dataset-index", queryResource, params).
-			Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: int64(len(stored)), SearchAfter: []any{"next"}}, nil)
+			Return(&interfaces.ResourceDataQueryResult{Entries: stored, TotalCount: new(int64(len(stored))), SearchAfter: []any{"next"}}, nil)
 
 		gotResult2, err := manager.ListDocuments(context.Background(), "dataset-index", resource, params)
 		var got []map[string]any
-		var total int64
+		var total *int64
 		if gotResult2 != nil {
 			got = gotResult2.Entries
 			total = gotResult2.TotalCount
@@ -380,7 +380,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			assert.Equal(t, value, got[i]["payload"])
 		}
 		assert.Empty(t, got[len(values)])
-		assert.Equal(t, int64(len(values)+1), total)
+		assert.Equal(t, new(int64(len(values)+1)), total)
 		assert.Equal(t, []any{"next"}, gotResult2.SearchAfter)
 		assert.Empty(t, params.SearchAfter)
 	})
@@ -392,7 +392,7 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "payload"}}
 		queryResource, prepErr := manager.resourceForQuery(resource)
 		require.NoError(t, prepErr)
-		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"payload": int64(5)}}, TotalCount: 5}, nil)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", queryResource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"payload": int64(5)}}, TotalCount: new(int64(5))}, nil)
 		gotResult3, err := manager.ListDocuments(context.Background(), "index", resource, params)
 		var got []map[string]any
 		if gotResult3 != nil {
@@ -416,18 +416,18 @@ func TestLocalIndexManagerListDocuments(t *testing.T) {
 			assert.Equal(t, "_score", actual.Sort[0].Field)
 			assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
 			assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
-			return &interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: 3, SearchAfter: []any{0.875, 2}}, nil
+			return &interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: new(int64(3)), SearchAfter: []any{0.875, 2}}, nil
 		})
 	entriesResult, err := (&localIndexManager{lic: connector}).ListDocuments(context.Background(), "table-index", resource, params)
 	var entries []map[string]any
-	var total int64
+	var total *int64
 	if entriesResult != nil {
 		entries = entriesResult.Entries
 		total = entriesResult.TotalCount
 	}
 	require.NoError(t, err)
 	assert.Equal(t, rows, entries)
-	assert.Equal(t, int64(3), total)
+	assert.Equal(t, new(int64(3)), total)
 	assert.Equal(t, []any{0.875, 2}, entriesResult.SearchAfter)
 	assert.Equal(t, []any{0.875, 1}, params.SearchAfter)
 	assert.Equal(t, "SOURCE_ID", resource.SchemaDefinition[0].OriginalName)
@@ -447,7 +447,7 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 		queryResult := &interfaces.ResourceDataQueryResult{
 			IsApproximate: true,
 			Entries:       []map[string]any{{"id": 1}},
-			TotalCount:    1,
+			TotalCount:    new(int64(1)),
 			SearchAfter:   []any{"sort-1"},
 		}
 		document := map[string]any{"id": 1}
@@ -480,14 +480,14 @@ func TestLocalIndexManagerDelegatesToIndexConnector(t *testing.T) {
 
 		rowsResult, err := manager.ListDocuments(ctx, "idx", resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult != nil {
 			rows = rowsResult.Entries
 			total = rowsResult.TotalCount
 		}
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"id": 1}}, rows)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 		assert.Same(t, queryResult, rowsResult)
 		assert.True(t, rowsResult.IsApproximate)
 		assert.Equal(t, []any{"sort-1"}, rowsResult.SearchAfter)
@@ -801,13 +801,13 @@ func TestLocalIndexManagerRejectsUnavailableQueryFields(t *testing.T) {
 				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: fieldType}}}
 				rowsResult, err := manager.ListDocuments(context.Background(), "idx", resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult != nil {
 					rows = rowsResult.Entries
 					total = rowsResult.TotalCount
 				}
 				assert.Nil(t, rows)
-				assert.Zero(t, total)
+				assert.Nil(t, total)
 				var conditionError *interfaces.ConditionBuildError
 				require.ErrorAs(t, err, &conditionError)
 				assert.ErrorContains(t, err, `field "payload" not found in schema`)

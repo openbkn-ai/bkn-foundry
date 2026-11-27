@@ -64,9 +64,6 @@ const (
 	DIRECTION_BACKWARD      = "backward"
 	DIRECTION_BIDIRECTIONAL = "bidirectional"
 
-	// Default limit for search_after queries.
-	SearchAfter_Limit = 10000
-
 	// Default use of cached persistent data for object-type queries.
 	DEFAULT_IGNORE_LOCAL_INDEX = "false"
 )
@@ -104,16 +101,7 @@ type PageQuery struct {
 	// Pagination information.
 	NeedTotal bool `json:"need_total"`
 	Limit     int  `json:"limit"`
-	// Offset pagination applies only to resource-backed Vega tables and is ignored when search_after is provided.
-	Offset int `json:"offset"`
-	// UseSearchAfter bool          `json:"use_search_after"` // Business knowledge networks only expose search_after, so this option is unnecessary.
-	Sort []*SortParams `json:"sort"`
-	// Cursor is the opaque, authenticated pagination position exposed by object queries.
-	Cursor string `json:"cursor,omitempty"`
-	// ResourceCursor is the opaque Vega continuation state restored from Cursor.
-	// It must never be accepted from or exposed to API callers directly.
-	ResourceCursor string `json:"-"`
-	// ResourceOffset is the stateless resource continuation restored from Cursor.
-	ResourceOffset int `json:"-"`
-	SearchAfterParams
+	// Offset selects the starting row for reads that support offsets.
+	Offset int           `json:"offset"`
+	Sort   []*SortParams `json:"sort"`
 }

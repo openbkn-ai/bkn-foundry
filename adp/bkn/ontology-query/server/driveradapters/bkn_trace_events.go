@@ -142,21 +142,20 @@ func safeObjectQueryShape(query *interfaces.ObjectQueryBaseOnObjectType) map[str
 		return nil
 	}
 	return map[string]any{
-		"kn_id":                   query.KNID,
-		"branch":                  query.Branch,
-		"object_type_id":          query.ObjectTypeID,
-		"condition_hash":          bkntrace.HashValue(query.Condition),
-		"properties_hash":         bkntrace.HashValue(query.Properties),
-		"offset":                  query.Offset,
-		"limit":                   query.Limit,
-		"include_type_info":       query.IncludeTypeInfo,
-		"include_logic_params":    query.IncludeLogicParams,
-		"ignore_local_index":      query.IgnoreLocalIndex,
-		"exclude_props_hash":      bkntrace.HashValue(query.ExcludeSystemProperties),
-		"has_actual_condition":    query.ActualCondition != nil,
-		"has_object_query_info":   query.ObjectQueryInfo != nil,
-		"has_cursor":              strings.TrimSpace(query.Cursor) != "",
-		"has_internal_page_state": len(query.SearchAfter) > 0,
+		"kn_id":                 query.KNID,
+		"branch":                query.Branch,
+		"object_type_id":        query.ObjectTypeID,
+		"condition_hash":        bkntrace.HashValue(query.Condition),
+		"properties_hash":       bkntrace.HashValue(query.Properties),
+		"offset":                query.Offset,
+		"limit":                 query.Limit,
+		"include_type_info":     query.IncludeTypeInfo,
+		"include_logic_params":  query.IncludeLogicParams,
+		"ignore_local_index":    query.IgnoreLocalIndex,
+		"exclude_props_hash":    bkntrace.HashValue(query.ExcludeSystemProperties),
+		"has_actual_condition":  query.ActualCondition != nil,
+		"has_object_query_info": query.ObjectQueryInfo != nil,
+		"has_cursor":            strings.TrimSpace(query.Cursor) != "",
 	}
 }
 

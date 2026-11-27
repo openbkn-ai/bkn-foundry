@@ -523,9 +523,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				if sourceTotal == nil {
 					sourceTotal = page.TotalCount
 				}
-				if sourceTotal != nil {
-					result.TotalCount = *sourceTotal
-				}
+				result.TotalCount = sourceTotal
 			}
 			hasMore = page.HasMore
 		}
@@ -533,12 +531,11 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			return fmt.Errorf("execute query failed: %w", err)
 		}
 
-		totalRows := result.TotalCount
 		readRows := len(result.Entries)
 		if firstQuery {
 			firstQuery = false
-			if totalRows > 0 || readRows > 0 {
-				totalCount := int64(totalRows)
+			if result.TotalCount != nil && (*result.TotalCount > 0 || readRows > 0) {
+				totalCount := *result.TotalCount
 				// 从已提交 checkpoint 恢复时，连接器返回的只有剩余范围；
 				// SyncedCount 则在同一任务生命周期内持续累计。全量任务未 reset
 				// 重启时同样会恢复 checkpoint，因此不能只按任务类型判断。

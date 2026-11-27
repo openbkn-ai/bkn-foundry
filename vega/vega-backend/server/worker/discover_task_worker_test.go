@@ -978,11 +978,11 @@ func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 				case "nil result":
 					return nil, nil //nolint:nilnil // 故意模拟视图服务返回无结果且无错误的异常响应。
 				case "missing total":
-					return &interfaces.ResourceDataQueryResult{TotalCount: 7}, nil
+					return &interfaces.ResourceDataQueryResult{}, nil
 				case "negative total":
-					return &interfaces.ResourceDataQueryResult{NeedTotal: true, TotalCount: -1}, nil
+					return &interfaces.ResourceDataQueryResult{TotalCount: new(int64(-1))}, nil
 				}
-				return &interfaces.ResourceDataQueryResult{NeedTotal: true, TotalCount: count}, nil
+				return &interfaces.ResourceDataQueryResult{TotalCount: new(count)}, nil
 			})
 			success := scenario == "exact zero" || scenario == "filtered table" || scenario == "filtered index" || scenario == "catalog"
 			if success || scenario == "save failure" {

@@ -12,12 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	. "github.com/smartystreets/goconvey/convey"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
-	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
@@ -1521,155 +1519,6 @@ func Test_TransferPropsToPropMap(t *testing.T) {
 
 			result := TransferPropsToPropMap(props)
 			So(len(result), ShouldEqual, 0)
-		})
-	})
-}
-
-func Test_BuildDslQuery(t *testing.T) {
-	Convey("Test BuildDslQuery", t, func() {
-		Convey("成功 - 基本查询", func() {
-			ctx := context.Background()
-			queryStr := `{"match_all":{}}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit: 10,
-					Sort: []*interfaces.SortParams{
-						{
-							Field:     "field1",
-							Direction: interfaces.ASC_DIRECTION,
-						},
-					},
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			So(result["size"], ShouldEqual, 10)
-			So(result["sort"], ShouldNotBeNil)
-		})
-
-		Convey("成功 - 带search_after", func() {
-			ctx := context.Background()
-			queryStr := `{"match_all":{}}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit:     10,
-					NeedTotal: true,
-					Sort: []*interfaces.SortParams{
-						{
-							Field:     "field1",
-							Direction: interfaces.ASC_DIRECTION,
-						},
-					},
-				},
-				// SearchAfter does not exist in ObjectQueryBaseOnObjectType and needs to be removed.
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			// SearchAfter does not exist in ObjectQueryBaseOnObjectType, so skip the check.
-			So(result["size"], ShouldEqual, 10)
-		})
-
-		Convey("成功 - search_after但limit为0", func() {
-			ctx := context.Background()
-			queryStr := `{"match_all":{}}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit: 0,
-					SearchAfterParams: interfaces.SearchAfterParams{
-						SearchAfter: []any{"value1"},
-					},
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			// Verify that limit is set to SearchAfter_Limit.
-			So(result["size"], ShouldNotBeNil)
-		})
-
-		Convey("失败 - 无效JSON", func() {
-			ctx := context.Background()
-			queryStr := `invalid json`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit: 10,
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldNotBeNil)
-			So(len(result), ShouldEqual, 0)
-			httpErr, ok := err.(*httperrors.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed)
-		})
-
-		Convey("成功 - 空查询字符串", func() {
-			ctx := context.Background()
-			queryStr := `{}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit: 10,
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			So(result["size"], ShouldEqual, 10)
-		})
-
-		Convey("成功 - 带search_after且NeedTotal为true", func() {
-			ctx := context.Background()
-			queryStr := `{"match_all":{}}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit:     10,
-					NeedTotal: true,
-					SearchAfterParams: interfaces.SearchAfterParams{
-						SearchAfter: []any{"value1", "value2"},
-					},
-					Sort: []*interfaces.SortParams{
-						{
-							Field:     "field1",
-							Direction: interfaces.ASC_DIRECTION,
-						},
-					},
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			So(result["size"], ShouldEqual, 10)
-			So(result["search_after"], ShouldNotBeNil)
-			So(query.NeedTotal, ShouldBeFalse) // Should be set to false.
-		})
-
-		Convey("成功 - 多个排序字段", func() {
-			ctx := context.Background()
-			queryStr := `{"match_all":{}}`
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				PageQuery: interfaces.PageQuery{
-					Limit: 10,
-					Sort: []*interfaces.SortParams{
-						{
-							Field:     "field1",
-							Direction: interfaces.ASC_DIRECTION,
-						},
-						{
-							Field:     "field2",
-							Direction: interfaces.DESC_DIRECTION,
-						},
-					},
-				},
-			}
-
-			result, err := BuildDslQuery(ctx, queryStr, query)
-			So(err, ShouldBeNil)
-			sort, ok := result["sort"].([]map[string]any)
-			So(ok, ShouldBeTrue)
-			So(len(sort), ShouldEqual, 2)
 		})
 	})
 }

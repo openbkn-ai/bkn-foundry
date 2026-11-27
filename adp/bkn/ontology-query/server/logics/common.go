@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/http"
 	"os"
 	"reflect"
 	"strconv"
@@ -20,14 +19,12 @@ import (
 	"time"
 
 	"github.com/dlclark/regexp2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
-	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 )
@@ -611,59 +608,6 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 	}
 
 	return propMap
-}
-
-// Build the DSL query.
-func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.ObjectQueryBaseOnObjectType) (map[string]any, error) {
-
-	var dslMap map[string]any
-	err := jsoncodec.Unmarshal([]byte(queryStr), &dslMap)
-	if err != nil {
-		return map[string]any{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
-			WithErrorDetails(fmt.Sprintf("failed to unMarshal dslStr to map, %s", err.Error()))
-	}
-
-	// Handle sort.
-	sort := []map[string]any{}
-	for _, sp := range query.Sort {
-		// Do not validate sort field parameters here. If the sort field does not exist, OpenSearch will return the error.
-		// _score is the field passed to views; because this queries OpenSearch directly, this _score must remain _score.
-		// if sp.Field == interfaces.SORT_FIELD_SCORE {
-		// 	sort = append(sort, map[string]any{
-		// 		"_score": sp.Direction,
-		// 	})
-		// } else {
-		sort = append(sort, map[string]any{
-			sp.Field: sp.Direction,
-		})
-		// }
-	}
-
-	if len(query.SearchAfter) > 0 {
-		query.NeedTotal = false
-	}
-
-	// If limit is omitted but search_after is provided, set the default limit to 10000.
-	if query.Limit == 0 && query.SearchAfter != nil && len(query.SearchAfter) > 0 {
-		query.Limit = interfaces.SearchAfter_Limit
-	}
-
-	dsl := map[string]any{
-		"size":         query.Limit,
-		"sort":         sort,
-		"track_scores": true,
-	}
-	if len(dslMap) > 0 {
-		dsl["query"] = dslMap
-	}
-
-	// Add search_after when search after exists.
-	if query.SearchAfter != nil {
-		dsl["search_after"] = query.SearchAfter
-	}
-
-	return dsl, nil
 }
 
 // shouldExcludeSystemProperty checks whether the specified system field should be excluded.

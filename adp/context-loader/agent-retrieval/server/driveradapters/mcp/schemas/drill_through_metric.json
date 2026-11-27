@@ -11,8 +11,8 @@
       "version": {"type": "integer", "minimum": 1},
       "query": {"type": "object", "description": "选中 bucket_key 时 query_metric 使用的完整 query；服务端会重新校验。"},
       "bucket_key": {"type": "string", "description": "query_metric 对应结果条目返回的不透明桶键。"},
-      "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
-      "cursor": {"type": "string", "description": "上一页返回的 next_cursor。"}
+      "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100, "description": "单页参与实例数上限。源数据可能返回短页，过滤后可能返回空页。"},
+      "cursor": {"type": "string", "description": "上一页返回的 next_cursor。续页时沿用原查询、桶键和 page_size。"}
     }
   },
   "output_schema": {
@@ -33,7 +33,7 @@
           }
         }
       },
-      "next_cursor": {"type": "string"},
+      "next_cursor": {"type": "string", "description": "有此字段时可继续翻页，包括 participants 为短页或空页的情况。省略时表示结束。"},
       "bucket_value": {},
       "evaluated_at": {"type": "integer"},
       "status": {"type": "string", "enum": ["ok", "partial"]},

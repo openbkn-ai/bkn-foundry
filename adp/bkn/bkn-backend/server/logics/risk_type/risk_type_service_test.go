@@ -408,7 +408,7 @@ func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPagi
 				if !reflect.DeepEqual(params.FilterCondition, wantFilter) || !params.NeedTotal {
 					t.Fatalf("total query params = %#v", params)
 				}
-				return &interfaces.DatasetQueryResponse{TotalCount: 2}, nil
+				return &interfaces.DatasetQueryResponse{TotalCount: new(int64(2))}, nil
 			}),
 		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
@@ -428,7 +428,7 @@ func TestRiskTypeServiceSearchRiskTypesFiltersTrustedCandidatesBeforeDatasetPagi
 	if err != nil {
 		t.Fatalf("SearchRiskTypes() error = %v", err)
 	}
-	if result.TotalCount != 2 || len(result.Entries) != 1 || result.Entries[0].RTID != "risk-1" ||
+	if result.TotalCount == nil || *result.TotalCount != 2 || len(result.Entries) != 1 || result.Entries[0].RTID != "risk-1" ||
 		result.NextCursor == nil || *result.NextCursor != nextCursor {
 		t.Fatalf("SearchRiskTypes() = %#v", result)
 	}

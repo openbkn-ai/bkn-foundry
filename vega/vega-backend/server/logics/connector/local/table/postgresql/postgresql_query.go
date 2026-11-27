@@ -16,6 +16,7 @@ import (
 
 	"github.com/lib/pq"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
@@ -74,8 +75,14 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		if err != nil {
 			return nil, err
 		}
-		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&result.TotalCount); err != nil {
-			return nil, fmt.Errorf("failed to scan total: %w", c.ClassifyQueryError(err))
+		var total *int64
+		if err := c.db.QueryRowContext(ctx, text, args...).Scan(&total); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			otellog.LogWarn(ctx, "Resource row count is unavailable")
+		} else {
+			result.TotalCount = total
 		}
 	}
 	table.NormalizeQueryResult(result, resource, params)

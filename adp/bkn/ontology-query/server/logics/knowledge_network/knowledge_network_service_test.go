@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -179,8 +181,10 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 				SourceObjecTypeId: sourceObjectTypeID,
 				Direction:         interfaces.DIRECTION_FORWARD,
 				PathLength:        2,
+				Condition:         map[string]any{"field": "id", "operation": "==", "value": "123"},
+				ActualCondition:   &cond.CondCfg{Name: "id", Operation: cond.OperationEq, Value: "123"},
 				PageQuery: interfaces.PageQuery{
-					Limit: 10,
+					Limit: 10, Offset: 20, NeedTotal: true,
 				},
 				PathQuotaManager: &interfaces.PathQuotaManager{
 					TotalLimit: 100,
@@ -212,7 +216,8 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 						interfaces.SYSTEM_PROPERTY_INSTANCE_IDENTITY: map[string]any{"id": "123"},
 					},
 				},
-				TotalCount: new(int64(1)),
+				TotalCount: new(int64(24)),
+				Warnings:   []string{"API Resource does not support sorting; sort was ignored"},
 				ObjectType: &interfaces.ObjectType{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 						OTID:        sourceObjectTypeID,
@@ -222,12 +227,22 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(startObjects, nil)
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Cond(func(q *interfaces.ObjectQueryBaseOnObjectType) bool {
+				return q.NeedTotal && q.Limit == 10 && q.Offset == 20 && q.Cursor == "" &&
+					q.PagingMode != nil && *q.PagingMode == interfaces.ResourceDataPagingModeSingle &&
+					q.Condition["value"] == "123" && q.ActualCondition == query.ActualCondition
+			})).Return(startObjects, nil)
 
 			result, err := service.SearchSubgraph(ctx, query)
 			So(err, ShouldBeNil)
 			So(result.TotalCount, ShouldNotBeNil)
-			So(*result.TotalCount, ShouldEqual, 1)
+			So(*result.TotalCount, ShouldEqual, 24)
+			wire, err := jsoncodec.Marshal(result)
+			So(err, ShouldBeNil)
+			So(string(wire), ShouldNotContainSubstring, `"cursor"`)
+			So(string(wire), ShouldContainSubstring, `"is_sorted":false`)
+			So(string(wire), ShouldContainSubstring, `"warnings":["API Resource does not support sorting; sort was ignored"]`)
+
 		})
 
 		Convey("成功 - limit为0时使用默认值", func() {
@@ -259,6 +274,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
 				So(q.Limit, ShouldEqual, interfaces.DEFAULT_LIMIT)
+				So(*q.PagingMode, ShouldEqual, interfaces.ResourceDataPagingModeSingle)
 				return startObjects, nil
 			})
 
@@ -422,6 +438,62 @@ func TestBuildSubgraphFromObjectsOmitsUncomputedPathCount(t *testing.T) {
 	}
 }
 
+func TestSearchSubgraphByTypePathCollectsParallelResultsInRequestOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	objects := omock.NewMockObjectTypeService(ctrl)
+	metadata := omock.NewMockOntologyManagerAccess(ctrl)
+	service := &knowledgeNetworkService{ots: objects, omAccess: metadata}
+	relation := interfaces.RelationType{RTID: "rt1", RTName: "relation1", SourceObjectTypeID: "ot1", TargetObjectTypeID: "ot2"}
+	metadata.EXPECT().GetRelationType(gomock.Any(), "kn", interfaces.MAIN_BRANCH, "rt1").
+		Return(relation, true, nil).Times(2)
+	const sortWarning = "API Resource does not support sorting; sort was ignored"
+	expectPage := func(offset, limit int, response interfaces.Objects) {
+		objects.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Cond(func(q *interfaces.ObjectQueryBaseOnObjectType) bool {
+			return q.Offset == offset && q.Limit == limit && q.Cursor == "" &&
+				q.PagingMode != nil && *q.PagingMode == interfaces.ResourceDataPagingModeSingle
+		})).Return(response, nil)
+	}
+	expectPage(10, 5, interfaces.Objects{TotalCount: new(int64(25)), Warnings: []string{sortWarning}})
+	expectPage(20, 10, interfaces.Objects{TotalCount: new(int64(42)), IsSorted: true})
+	makePath := func(offset, limit int) interfaces.QueryRelationTypePath {
+		return interfaces.QueryRelationTypePath{
+			ObjectTypes: []interfaces.ObjectTypeWithKeyField{
+				{OTID: "ot1", PageQuery: interfaces.PageQuery{Offset: offset, Limit: limit}},
+				{OTID: "ot2"},
+			},
+			Edges: []interfaces.TypeEdge{{RelationTypeId: "rt1", SourceObjectTypeId: "ot1", TargetObjectTypeId: "ot2"}},
+			Limit: 1,
+		}
+	}
+	result, err := service.SearchSubgraphByTypePath(t.Context(), &interfaces.SubGraphQueryBaseOnTypePath{
+		KNID: "kn", Branch: interfaces.MAIN_BRANCH,
+		Paths: interfaces.QueryRelationTypePaths{
+			TypePaths: []interfaces.QueryRelationTypePath{makePath(10, 5), makePath(20, 10)},
+		},
+	})
+	if err != nil || len(result.Entries) != 2 {
+		t.Fatalf("unexpected path results: %#v, error %v", result, err)
+	}
+	wire, err := jsoncodec.Marshal(result)
+	if err != nil || strings.Contains(string(wire), `"cursor"`) {
+		t.Fatalf("unexpected path response: %s, error %v", wire, err)
+	}
+	for index, want := range []struct {
+		total    int64
+		isSorted bool
+		warnings []string
+	}{
+		{total: 25, warnings: []string{sortWarning}},
+		{total: 42, isSorted: true},
+	} {
+		got := result.Entries[index]
+		if got.TotalCount == nil || *got.TotalCount != want.total ||
+			got.IsSorted == nil || *got.IsSorted != want.isSorted || !slices.Equal(got.Warnings, want.warnings) {
+			t.Errorf("path %d: wrong paging or sorting metadata in %#v", index, got)
+		}
+	}
+}
+
 func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 	Convey("Test knowledgeNetworkService SearchSubgraphByTypePath", t, func() {
 		mockCtrl := gomock.NewController(t)
@@ -491,7 +563,9 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(relationType, true, nil)
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(startObjects, nil)
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Cond(func(q *interfaces.ObjectQueryBaseOnObjectType) bool {
+				return q.PagingMode != nil && *q.PagingMode == interfaces.ResourceDataPagingModeSingle
+			})).Return(startObjects, nil)
 
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldBeNil)
@@ -2929,6 +3003,11 @@ func (v *vegaStubForKNQuery) QueryResourceData(ctx context.Context, resourceID s
 	v.lastParams = params
 	if v.err != nil {
 		return nil, v.err
+	}
+	if v.resp != nil && v.resp.Paging == nil {
+		response := *v.resp
+		response.Paging = &interfaces.ResourceDataPagingResponse{}
+		return &response, nil
 	}
 	return v.resp, nil
 }

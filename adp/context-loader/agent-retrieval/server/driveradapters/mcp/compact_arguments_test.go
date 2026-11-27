@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 var testContextArgument = map[string]any{"conversation_id": "conv-1", "interaction_id": "int-1"}
@@ -49,6 +51,30 @@ func TestCompactProfileLetsDeclaredArgumentsThrough(t *testing.T) {
 	}
 	if got := ensured(); !slices.Equal(got, []string{toolKeySearchNativeTools}) {
 		t.Fatalf("Operations = %v", got)
+	}
+}
+
+func TestCompactProfileIgnoresLegacyObjectPosition(t *testing.T) {
+	input, _ := loadToolSchemas(toolKeyQueryObjectInstance)
+	handler := compactArgumentsMiddleware(func(_ context.Context, name string) (mcp.Tool, bool) {
+		return mcp.Tool{Name: name, RawInputSchema: input}, true
+	})(func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		raw := string(req.Params.RawArguments)
+		if _, present := req.GetArguments()["search_after"]; present || strings.Contains(raw, `"search_after"`) ||
+			!strings.Contains(raw, "9007199254740993") || !strings.Contains(raw, `"cursor":"token"`) {
+			t.Fatalf("unexpected arguments: %s", raw)
+		}
+		return mcp.NewToolResultText("continued"), nil
+	})
+	req := mcp.CallToolRequest{}
+	req.Params.Name = toolKeyQueryObjectInstance
+	req.Params.RawArguments = json.RawMessage(`{"kn_id":"kn","ot_id":"ot","paging_mode":"cursor","cursor":"token","search_after":null,"condition":{"value":9007199254740993}}`)
+	if err := json.Unmarshal(req.Params.RawArguments, &req.Params.Arguments); err != nil {
+		t.Fatal(err)
+	}
+	result, err := handler(t.Context(), req)
+	if err != nil || result == nil || result.IsError || resultText(result) != "continued" {
+		t.Fatalf("result=%#v error=%v", result, err)
 	}
 }
 

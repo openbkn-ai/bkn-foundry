@@ -268,11 +268,16 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("失败 - 原始 search_after 不可作为分页状态", func() {
-			invalidQuery := subgraphQuery
-			invalidQuery.SearchAfter = []any{"raw-property-watermark-1342"}
-			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
-			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
+		Convey("Read a subgraph page by offset", func() {
+			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, query *interfaces.SubGraphQueryBaseOnSource) (interfaces.ObjectSubGraph, error) {
+					So(query.Offset, ShouldEqual, 10)
+					So(query.Limit, ShouldEqual, 5)
+					return interfaces.ObjectSubGraph{}, nil
+				})
+			body := `{"source_object_type_id":"ot1","direction":"forward","path_length":2,"offset":10,"limit":5,
+				"paging_mode":"cursor","cursor":{"unused":true},"search_after":["raw-position"]}`
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
 			w := httptest.NewRecorder()
@@ -282,7 +287,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 
 			handler.GetObjectsSubgraph(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User})
 
-			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
 		Convey("失败 - 起点对象类ID为空", func() {
@@ -436,14 +441,18 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("失败 - 路径对象不接受原始 search_after", func() {
-			invalidQuery := pathsQuery
-			invalidQuery.TypePaths = append([]interfaces.QueryRelationTypePath(nil), pathsQuery.TypePaths...)
-			invalidQuery.TypePaths[0].ObjectTypes = append([]interfaces.ObjectTypeWithKeyField(nil),
-				pathsQuery.TypePaths[0].ObjectTypes...)
-			invalidQuery.TypePaths[0].ObjectTypes[0].SearchAfter = []any{"raw-property-watermark-1342"}
-			reqParamByte, _ := jsoncodec.Marshal(invalidQuery)
-			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
+		Convey("Read a path's starting objects by offset", func() {
+			kns.EXPECT().SearchSubgraphByTypePath(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, query *interfaces.SubGraphQueryBaseOnTypePath) (interfaces.PathsEntries, error) {
+					node := query.Paths.TypePaths[0].ObjectTypes[0]
+					So(node.Offset, ShouldEqual, 20)
+					So(node.Limit, ShouldEqual, 10)
+					return interfaces.PathsEntries{}, nil
+				})
+			body := `{"paging_mode":"cursor","relation_type_paths":[
+				{"object_types":[{"id":"ot1","offset":20,"limit":10,"cursor":{"unused":true},"search_after":[]},{"id":"ot2"}],
+				"relation_types":[{"relation_type_id":"rt1","source_object_type_id":"ot1","target_object_type_id":"ot2"}]}]}`
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
 			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
 			w := httptest.NewRecorder()
@@ -453,7 +462,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 
 			handler.GetObjectsSubgraphByTypePath(c, hydra.Visitor{ID: "user1", Type: hydra.VisitorType_User})
 
-			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
 		Convey("失败 - Service返回错误", func() {

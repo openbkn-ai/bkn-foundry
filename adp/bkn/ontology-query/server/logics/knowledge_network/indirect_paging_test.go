@@ -67,11 +67,12 @@ func campaignCustomerMapping() *interfaces.InDirectMapping {
 // backingTableVega serves a resource table the way Vega does: it applies the
 // filter and sort, and pages by single offset or by cursor.
 type backingTableVega struct {
-	rows    []map[string]any
-	history []*interfaces.ResourceDataQueryParams
-	served  int
-	cursors map[string][]map[string]any
-	results map[string][]map[string]any
+	rows      []map[string]any
+	history   []*interfaces.ResourceDataQueryParams
+	served    int
+	cursors   map[string][]map[string]any
+	results   map[string][]map[string]any
+	batchSize int
 }
 
 func (v *backingTableVega) QueryResourceData(_ context.Context, _ string,
@@ -115,8 +116,11 @@ func (v *backingTableVega) QueryResourceData(_ context.Context, _ string,
 		}
 	}
 	limit := params.Paging.Limit
-	if params.Paging.Cursor != "" {
+	if params.Paging.Cursor != "" || limit == 0 {
 		limit = interfaces.MAX_LIMIT
+	}
+	if v.batchSize > 0 {
+		limit = min(limit, v.batchSize)
 	}
 	end := min(offset+limit, len(matched))
 	page := matched[min(offset, len(matched)):end]
@@ -357,6 +361,7 @@ func TestIndirectRelationFindsExactPairsAtTheBackingPageBoundary(t *testing.T) {
 // order until the matches run out, across the page boundary.
 func TestIndirectRelationPagesBackingRowsWhenTheConditionCannotBePushedDown(t *testing.T) {
 	fixture := newIndirectFixture(campaignCustomerPairs())
+	fixture.vega.batchSize = 6000
 	fixture.edge.Direction = interfaces.DIRECTION_FORWARD
 	// Matches customers 1..1000 and 10001: too many to resolve up front.
 	broad := interfaces.ObjectTypeWithKeyField{OTID: "customer", PageQuery: interfaces.PageQuery{Limit: 5000},
@@ -364,7 +369,9 @@ func TestIndirectRelationPagesBackingRowsWhenTheConditionCannotBePushedDown(t *t
 			{Name: "customer_id", Operation: "<=", Value: 1000},
 			{Name: "customer_id", Operation: ">=", Value: 10001},
 		}}}
-	result, err := fixture.service.getNextObjectsBatchByRelation(context.Background(), pathQuery(),
+	query := pathQuery()
+	query.NeedTotal = true
+	result, err := fixture.service.getNextObjectsBatchByRelation(context.Background(), query,
 		campaignObjects(102, 103, 104), fixture.edge, broad)
 	if err != nil {
 		t.Fatalf("expand: %v", err)
@@ -381,15 +388,17 @@ func TestIndirectRelationPagesBackingRowsWhenTheConditionCannotBePushedDown(t *t
 	if got := reachedIDs(result["campaign-103"], "customer_id"); got[len(got)-1] == 10001 {
 		t.Fatal("campaign 103 must not reach customer 10001")
 	}
-	// 30000 backing rows: a single first page, then a cursor reopened from the
-	// start and followed twice.
-	if fixture.vega.served != 40000 || len(fixture.vega.history) != 4 {
+	// Each of the 30000 backing rows is read once across five short pages.
+	if fixture.vega.served != 30000 || len(fixture.vega.history) != 5 {
 		t.Fatalf("served %d rows in %d requests", fixture.vega.served, len(fixture.vega.history))
 	}
-	first, reopened := fixture.vega.history[0], fixture.vega.history[1]
-	if first.Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
-		reopened.Paging.Mode != interfaces.ResourceDataPagingModeCursor || reopened.Paging.Offset != 0 {
-		t.Fatalf("paging = %#v then %#v", first.Paging, reopened.Paging)
+	first := fixture.vega.history[0]
+	if first.NeedTotal {
+		t.Fatal("the starting objects' total was requested from the backing resource")
+	}
+	if first.Paging.Mode != interfaces.ResourceDataPagingModeCursor || first.Paging.Limit != 0 ||
+		fixture.vega.history[1].Paging.Cursor == "" {
+		t.Fatalf("paging = %#v then %#v", first.Paging, fixture.vega.history[1].Paging)
 	}
 	if len(first.Sort) != 2 || first.Sort[0].Field != "campaign_id" || first.Sort[1].Field != "customer_id" {
 		t.Fatalf("backing sort is not a total order: %#v", first.Sort)
@@ -397,7 +406,7 @@ func TestIndirectRelationPagesBackingRowsWhenTheConditionCannotBePushedDown(t *t
 }
 
 // Reading stops once the path's object limit is filled, however large the
-// backing table is: the first page is enough and no cursor is opened.
+// backing table is: the first page is enough.
 func TestIndirectRelationStopsReadingOnceTheLimitIsFilled(t *testing.T) {
 	fixture := newIndirectFixture(campaignCustomerPairs())
 	fixture.edge.Direction = interfaces.DIRECTION_FORWARD
@@ -407,8 +416,8 @@ func TestIndirectRelationStopsReadingOnceTheLimitIsFilled(t *testing.T) {
 	if err != nil || len(result["campaign-104"].Datas) != 2 {
 		t.Fatalf("expand = %v, %v", result, err)
 	}
-	if len(fixture.vega.history) != 1 || fixture.vega.history[0].Paging.Mode != interfaces.ResourceDataPagingModeSingle {
-		t.Fatalf("read %d backing pages, want one stateless page", len(fixture.vega.history))
+	if len(fixture.vega.history) != 1 || fixture.vega.history[0].Paging.Mode != interfaces.ResourceDataPagingModeCursor {
+		t.Fatalf("read %d backing pages, want one cursor page", len(fixture.vega.history))
 	}
 }
 
@@ -579,8 +588,8 @@ func TestIndirectRelationMatchesKnownObjectsAcrossPagesWithACompositeKey(t *test
 		relations[0].TargetObjectId != "customer-15000" || relations[1].TargetObjectId != "customer-1" {
 		t.Fatalf("relations = %#v, %v", relations, err)
 	}
-	if len(fixture.vega.history) != 3 {
-		t.Fatalf("read the backing rows in %d requests, want a first page, a reopened cursor and its next page",
+	if len(fixture.vega.history) != 2 {
+		t.Fatalf("read the backing rows in %d requests, want an initial cursor page and its continuation",
 			len(fixture.vega.history))
 	}
 }

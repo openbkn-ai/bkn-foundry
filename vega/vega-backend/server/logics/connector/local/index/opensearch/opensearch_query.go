@@ -121,14 +121,14 @@ func hasExactSearchTotal(total int64, hasValue bool, relation string) bool {
 	return hasValue && total >= 0 && relation == "eq"
 }
 
-func readSearchTotal(hits map[string]any, exact bool) (int64, error) {
+func searchTotal(hits map[string]any) *int64 {
 	count, _ := hits["total"].(map[string]any)
 	total, valid := openSearchInt64(count["value"])
 	relation, _ := count["relation"].(string)
-	if exact && !hasExactSearchTotal(total, valid, relation) {
-		return 0, errors.New("index search has no exact total")
+	if !hasExactSearchTotal(total, valid, relation) {
+		return nil
 	}
-	return total, nil
+	return &total
 }
 
 func openSearchFloat64(value any) (float64, bool) {
@@ -181,9 +181,9 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resource 
 		return nil, fmt.Errorf("invalid search result format: missing hits")
 	}
 
-	total, err := readSearchTotal(hits, dslMap["track_total_hits"] == true)
-	if err != nil {
-		return nil, err
+	total := searchTotal(hits)
+	if total == nil && dslMap["track_total_hits"] == true {
+		return nil, errors.New("index search has no exact total")
 	}
 
 	hitsArray, ok := hits["hits"].([]any)
@@ -558,10 +558,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 
 		hits, _ := result["hits"].(map[string]any)
-		totalCount, err := readSearchTotal(hits, params.NeedTotal)
-		if err != nil {
-			return nil, err
-		}
+		totalCount := searchTotal(hits)
 
 		// Extract the aggregation results
 		aggregations, ok := result["aggregations"].(map[string]any)
@@ -721,17 +718,17 @@ func (c *OpenSearchConnector) executeDocumentQuery(ctx context.Context, indexNam
 		return nil, fmt.Errorf("invalid search result format: missing hits")
 	}
 
-	exactTotal := query["track_total_hits"] == true
-	total, err := readSearchTotal(hits, exactTotal)
-	if err != nil {
-		return nil, err
+	needTotal := query["track_total_hits"] == true
+	total := searchTotal(hits)
+	if snapshot && needTotal && total == nil {
+		return nil, errors.New("index search has no exact total")
 	}
 
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
 		return nil, errors.New("index search response has no document list")
 	}
-	if exactTotal && int64(len(hitsArray)) > total {
+	if needTotal && total != nil && int64(len(hitsArray)) > *total {
 		return nil, errors.New("index search returned more documents than its exact total")
 	}
 
@@ -770,7 +767,7 @@ func (c *OpenSearchConnector) executeDocumentQuery(ctx context.Context, indexNam
 
 	return &interfaces.ResourceDataQueryResult{
 		Entries:     documents,
-		TotalCount:  int64(total),
+		TotalCount:  total,
 		SearchAfter: searchAfter,
 	}, nil
 }
