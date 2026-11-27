@@ -1192,10 +1192,15 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		return nil, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dsType)
 	}
 	if err != nil {
-		logger.Errorf("Query object type sample data error: %s", err.Error())
+		common.LogSafeError(ctx, "Query object type sample data failed", err)
 		span.SetStatus(codes.Error, "query object type sample data failed")
+		var parameterErr *interfaces.VegaResourceQueryParameterError
+		if errors.As(err, &parameterErr) {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+				berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(parameterErr.PublicDetails)
+		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails("object type sample data query failed")
 	}
 	if datasetResp == nil {
 		return result, nil
@@ -2703,7 +2708,7 @@ func configuredIndexFeatures(resource *interfaces.VegaResource, indexState strin
 	return featuresByField
 }
 
-func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (total int64, err error) {
+func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (*int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "logic layer: search object type total ")
 	defer span.End()
 
@@ -2718,13 +2723,13 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[
 	datasetResp, err := ots.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
-		return total, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
 	if datasetResp == nil {
-		return 0, nil
+		return nil, nil
 	}
 	return datasetResp.TotalCount, nil
 }
@@ -3103,7 +3108,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 // Query in batches.
 func (ots *objectTypeService) GetTotalWithLargeOTIDs(ctx context.Context,
 	filterCondition map[string]any,
-	otIDs []string) (int64, error) {
+	otIDs []string) (*int64, error) {
 
 	total := int64(0)
 	for i := 0; i < len(otIDs); i += interfaces.GET_TOTAL_CONCEPTID_BATCH_SIZE {
@@ -3114,20 +3119,20 @@ func (ots *objectTypeService) GetTotalWithLargeOTIDs(ctx context.Context,
 
 		batchIDs := otIDs[i:end]
 		batchTotal, err := ots.GetTotalWithOTIDs(ctx, filterCondition, batchIDs)
-		if err != nil {
-			return 0, err
+		if err != nil || batchTotal == nil {
+			return nil, err
 		}
 
-		total += batchTotal
+		total += *batchTotal
 	}
 
-	return total, nil
+	return &total, nil
 }
 
 // Query the total count for specified object type IDs.
 func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 	filterCondition map[string]any,
-	otIDs []string) (int64, error) {
+	otIDs []string) (*int64, error) {
 
 	// Build a filter condition containing the object type ID filter.
 	otIDCondition := map[string]any{
@@ -3150,13 +3155,7 @@ func (ots *objectTypeService) GetTotalWithOTIDs(ctx context.Context,
 		}
 	}
 
-	// Execute the count query.
-	total, err := ots.GetTotal(ctx, combinedCondition)
-	if err != nil {
-		return total, err
-	}
-
-	return total, nil
+	return ots.GetTotal(ctx, combinedCondition)
 }
 
 // objectTypeUpdateError maps a failed object type UPDATE to its HTTP error: a row missing

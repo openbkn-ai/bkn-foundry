@@ -658,13 +658,13 @@ func (dtw *DiscoverTaskWorker) enrichResourceLogicalViewRowCount(ctx context.Con
 		logCountFailure(view.ID, err)
 		return nil
 	}
-	if counted == nil || !counted.NeedTotal || counted.TotalCount < 0 {
+	if counted == nil || counted.TotalCount == nil || *counted.TotalCount < 0 {
 		recordCountQueryFailure(result, view, errInvalidExactCount)
 		logCountFailure(view.ID, errInvalidExactCount)
 		return nil
 	}
 
-	if err := dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli()); err != nil {
+	if err := dtw.rs.InternalUpdateRowCount(ctx, nil, view, *counted.TotalCount, time.Now().UnixMilli()); err != nil {
 		recordCountSaveFailure(result, view)
 		logCountFailure(view.ID, err)
 		return nil

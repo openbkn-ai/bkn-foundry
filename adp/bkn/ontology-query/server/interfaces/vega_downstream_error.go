@@ -67,9 +67,17 @@ func (e *VegaDownstreamError) Message() string {
 	return truncated + "...(truncated)"
 }
 
+const vegaQueryCursorInUse = "VegaBackend.Query.CursorInUse"
+
 // ClientMessage returns only structured fields that are safe to pass to the caller. It never
 // falls back to the raw response body, which may be an infrastructure error page.
 func (e *VegaDownstreamError) ClientMessage() string {
+	if e.StatusCode == http.StatusConflict {
+		if e.ErrorCode == vegaQueryCursorInUse {
+			return "cursor is in use, please retry later"
+		}
+		return ""
+	}
 	if e.ErrorCode == "VegaBackend.Query.ExecutionBudgetExceeded" {
 		return "The query could not complete within its execution budget. Narrow the filters or allow approximate distinct counts."
 	}
@@ -123,15 +131,16 @@ func (e *VegaDownstreamError) ClientMetadata() map[string]any {
 	return map[string]any{"field": field, "limit": limit}
 }
 
-// CanExposeQueryClientMessage reports whether this is a known Vega query validation or
-// capacity response. Other proxy response bodies may contain resource or catalog identifiers
-// and stay redacted.
+// CanExposeQueryClientMessage recognizes Vega query validation and retry guidance.
+// Other proxy response bodies may contain resource or catalog identifiers and stay redacted.
 func (e *VegaDownstreamError) CanExposeQueryClientMessage() bool {
 	switch e.StatusCode {
 	case http.StatusBadRequest:
 		return e.ErrorCode == "VegaBackend.Resource.InvalidParameter" ||
 			e.ErrorCode == "VegaBackend.Query.InvalidParameter" ||
 			e.ErrorCode == "VegaBackend.Resource.QueryValueExceedsKeywordLimit"
+	case http.StatusConflict:
+		return e.ErrorCode == vegaQueryCursorInUse
 	case http.StatusTooManyRequests:
 		// A fixed message that tells the caller to retry rather than change the query.
 		return e.ErrorCode == "VegaBackend.Query.CursorSessionLimitExceeded"

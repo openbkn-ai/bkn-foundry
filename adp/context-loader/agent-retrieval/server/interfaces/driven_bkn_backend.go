@@ -352,14 +352,6 @@ type QueryConceptsReq struct {
 	ExcludeDeprecated bool `json:"exclude_deprecated,omitzero"`
 }
 
-// Concepts Retrieved concepts list
-type Concepts struct {
-	Entries     []any `json:"entries"`
-	TotalCount  int64 `json:"total_count,omitzero"`
-	SearchAfter []any `json:"search_after,omitempty"`
-	OverallMs   int64 `json:"overall_ms"`
-}
-
 // ObjectTypeConcepts Object type concepts list
 type ObjectTypeConcepts struct {
 	Entries    []*ObjectType `json:"entries"`              // Object type data

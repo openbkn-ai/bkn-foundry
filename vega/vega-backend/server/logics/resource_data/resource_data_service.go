@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -509,8 +510,16 @@ func shouldIncludeOutputField(params *interfaces.ResourceDataQueryParams, field 
 // QueryWithPaging is the sole public resource-data query entrypoint.
 func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	hasSort := len(params.Sort) > 0
 	result, err := rds.queryWithPaging(ctx, resource, params)
 	if err == nil {
+		// 续页由游标执行器根据首请求的排序配置设置。
+		if result != nil && params.Paging.Cursor == "" {
+			result.IsSorted = resource.Category != interfaces.ResourceCategoryAPI && hasSort
+			if !params.NeedTotal {
+				result.TotalCount = nil
+			}
+		}
 		return result, nil
 	}
 	if httpErr := MapQueryError(ctx, err, verrors.VegaBackend_Query_InvalidParameter); httpErr != nil {
@@ -518,6 +527,53 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 	}
 	return result, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 		WithErrorDetails("query execution failed")
+}
+
+// ValidateAPIResourcePagingMode 校验 API 单页和游标首请求的分页模式。
+func ValidateAPIResourcePagingMode(ctx context.Context, mode interfaces.PagingMode) error {
+	switch mode {
+	case "", interfaces.PagingModeSingle, interfaces.PagingModeCursor:
+		return nil
+	default:
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails("paging.mode must be either single or cursor")
+	}
+}
+
+// ValidateResourceCursorKeepAlive 校验游标首请求的租约时长。
+func ValidateResourceCursorKeepAlive(ctx context.Context, keepAlive int) error {
+	if keepAlive != 0 && (keepAlive < interfaces.MinCursorKeepAliveSec || keepAlive > interfaces.MaxCursorKeepAliveSec) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("paging.keep_alive_sec must be between %d and %d", interfaces.MinCursorKeepAliveSec, interfaces.MaxCursorKeepAliveSec))
+	}
+	return nil
+}
+
+func apiResourceCursorRequest(ctx context.Context, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryParams, error) {
+	if params.Paging.Cursor != "" || params.Paging.Mode != interfaces.PagingModeCursor {
+		return params, nil
+	}
+	if err := ValidateResourceCursorKeepAlive(ctx, params.Paging.KeepAliveSec); err != nil {
+		return nil, err
+	}
+	request := *params
+	var rule *interfaces.APIPagingRule
+	if resource.APIDefinition != nil {
+		rule = resource.APIDefinition.PagingRule
+	}
+	if rule == nil {
+		request.Paging.Mode = interfaces.PagingModeSingle
+		return &request, nil
+	}
+	if request.Paging.Limit == 0 {
+		if rule.DefaultLimit <= 0 || rule.DefaultLimit > int64(math.MaxInt) {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+				WithErrorDetails("invalid API paging rule")
+		}
+		request.Paging.Limit = int(rule.DefaultLimit)
+	}
+	return &request, nil
 }
 
 // queryWithPaging coordinates public paging and maps page errors using the actual execution options.
@@ -537,9 +593,18 @@ func (rds *resourceDataService) queryWithPaging(ctx context.Context, resource *i
 	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 		return nil, err
 	}
-	if resource.Category == interfaces.ResourceCategoryAPI && (params.Paging.Cursor != "" || params.Paging.Mode != "" && params.Paging.Mode != interfaces.PagingModeSingle) {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("API queries support only single paging without a cursor")
+	if resource.Category == interfaces.ResourceCategoryAPI {
+		if err := ValidateAPIResourcePagingMode(ctx, params.Paging.Mode); err != nil {
+			return nil, err
+		}
+		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
+			return nil, err
+		}
+		var err error
+		params, err = apiResourceCursorRequest(ctx, resource, params)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
 		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
@@ -608,7 +673,6 @@ func (rds *resourceDataService) queryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	page.Paging = &interfaces.PagingResponse{}
-	page.NeedTotal = params.NeedTotal
 	page.QuerySource = resourceQuerySource(resource, params)
 	return page, nil
 }
@@ -644,7 +708,8 @@ func resourceDataCursorSupported(category string) bool {
 	return category == interfaces.ResourceCategoryTable ||
 		category == interfaces.ResourceCategoryIndex ||
 		category == interfaces.ResourceCategoryDataset ||
-		category == interfaces.ResourceCategoryFileset
+		category == interfaces.ResourceCategoryFileset ||
+		category == interfaces.ResourceCategoryAPI
 }
 
 func accountIDFromContext(ctx context.Context) string {

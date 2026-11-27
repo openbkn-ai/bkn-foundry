@@ -3060,7 +3060,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove}},
 				{FeatureName: "fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext},
 			}}}}
-		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: int64(0)}, nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: new(int64(0))}, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
 		mockDS.EXPECT().Update(gomock.Any(), resource).DoAndReturn(func(_ context.Context, updated *interfaces.Resource) error {
 			assert.Equal(t, "dataset-index", updated.LocalIndexName)
@@ -3260,7 +3260,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, 1, params.Paging.Limit)
-				return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: 0}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: new(int64(0))}, nil
 			})
 		mockDS.EXPECT().Update(gomock.Any(), resource).Return(nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(0)).Return(int64(1), nil)
@@ -3330,7 +3330,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 				Config: map[string]any{"ignore_above": interfaces.DefaultTextKeywordIgnoreAbove},
 			}}}},
 		}
-		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: int64(0)}, nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: new(int64(0))}, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), resource, int64(42)).Return(int64(0), nil)
 
 		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
@@ -3360,7 +3360,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).
-			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "doc-1"}}, TotalCount: int64(1)}, nil)
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "doc-1"}}, TotalCount: new(int64(1))}, nil)
 
 		err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
 			CatalogID: "cat1",
@@ -4052,7 +4052,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: int64(0)}, nil)
+		mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: new(int64(0))}, nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
 		mockDS.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).

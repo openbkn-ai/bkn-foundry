@@ -108,12 +108,14 @@ type ResourceDataQueryParams struct {
 type ResourceDataQueryResult struct {
 	Columns       []string         `json:"columns,omitempty"`
 	Entries       []map[string]any `json:"entries"`
-	TotalCount    int64            `json:"total_count"`
+	TotalCount    *int64           `json:"total_count,omitempty"`
 	Paging        *PagingResponse  `json:"paging,omitempty"`
-	NeedTotal     bool             `json:"-"`
 	QuerySource   string           `json:"query_source,omitempty"`
 	IsApproximate bool             `json:"is_approximate"`
-	SearchAfter   []any            `json:"-"` // OpenSearch 下一页的查询位置。
+	IsSorted      bool             `json:"is_sorted"` // 非 API 资源配置了排序时为 true。
+	Warnings      []string         `json:"warnings,omitempty"`
+
+	SearchAfter []any `json:"-"` // OpenSearch 下一页的查询位置。
 }
 
 // ResourceValue is the JSON representation of a resource field that needs

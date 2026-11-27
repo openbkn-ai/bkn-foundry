@@ -114,16 +114,26 @@ func TestExecutorGuardsTheTargetOnceUnderItsOwnName(t *testing.T) {
 	}
 }
 
-func TestExecutorPassesWideIntegersThroughUnrounded(t *testing.T) {
+func TestExecutorIgnoresLegacySubgraphPositionAndPreservesWideIntegers(t *testing.T) {
 	h := newExecutorHarness(t)
-	h.call(t, `{"name":"explore_subgraph","bkn_context":`+testBKNContext+`,"arguments":{"kn_id":"kn_demo",
-		"source_object_type_id":"ot_order","direction":"forward","path_length":1,
+	result := h.call(t, `{"name":"explore_subgraph","bkn_context":`+testBKNContext+`,"arguments":{"kn_id":"kn_demo",
+		"source_object_type_id":"ot_order","direction":"forward","path_length":1,"offset":10,"search_after":[],
 		"condition":{"operation":"==","field":"order_no","value_from":"const","value":9007199254740993}}}`)
+	if result.IsError {
+		t.Fatalf("result = %s", resultText(result))
+	}
+	if result.Meta != nil {
+		if _, reported := result.Meta.AdditionalFields[normalizedArgumentsMetaKey]; reported {
+			t.Fatal("ignoring the retired field was reported as normalization")
+		}
+	}
 	if len(h.calls) != 1 {
 		t.Fatal("target did not run")
 	}
-	if !strings.Contains(string(h.calls[0].Params.RawArguments), "9007199254740993") {
-		t.Fatalf("wide integer was rewritten: %s", h.calls[0].Params.RawArguments)
+	raw := string(h.calls[0].Params.RawArguments)
+	if !strings.Contains(raw, "9007199254740993") || !strings.Contains(raw, `"offset":10`) ||
+		strings.Contains(raw, `"search_after"`) {
+		t.Fatalf("unexpected forwarded arguments: %s", raw)
 	}
 }
 

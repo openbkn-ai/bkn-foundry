@@ -120,7 +120,7 @@ paths:
         - name: cursor
           in: path
           required: true
-          description: 响应中的 paging.next_cursor
+          description: 最新响应中的 paging.next_cursor。使用已经消费的资源数据游标返回 404。
           schema:
             type: string
       responses:

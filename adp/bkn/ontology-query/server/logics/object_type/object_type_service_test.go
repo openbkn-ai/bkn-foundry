@@ -1426,7 +1426,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			// GetObjectsByObjectTypeID needs these dependencies.
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{{"id": "123", "prop1": "value1"}},
+				Entries:  []map[string]any{{"id": "123", "prop1": "value1"}},
+				IsSorted: true,
 			}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
@@ -1434,6 +1435,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 1)
 			So(result.Datas[0]["prop1"], ShouldEqual, "value1")
 			So(result.Datas[0]["id"], ShouldEqual, "123")
+			So(result.IsSorted, ShouldBeTrue)
 		})
 
 		Convey("失败 - 获取对象错误", func() {

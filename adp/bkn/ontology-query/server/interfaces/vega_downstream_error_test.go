@@ -80,6 +80,22 @@ func Test_VegaDownstreamError(t *testing.T) {
 		}
 	})
 
+	t.Run("a busy cursor exposes only fixed retry guidance", func(t *testing.T) {
+		const body = `{"error_code":"VegaBackend.Query.CursorInUse","metadata":{"reason":"untrusted","field":"private"}}`
+		err := NewVegaDownstreamError(http.StatusConflict, body)
+		if !err.CanExposeQueryClientMessage() || err.ClientMessage() != "cursor is in use, please retry later" || err.ClientMetadata() != nil {
+			t.Fatalf("unexpected busy cursor message or metadata: %q %v", err.ClientMessage(), err.ClientMetadata())
+		}
+		for _, other := range []*VegaDownstreamError{
+			NewVegaDownstreamError(http.StatusNotFound, body),
+			NewVegaDownstreamError(http.StatusConflict, `{"error_code":"VegaBackend.Catalog.Disabled","metadata":{"reason":"VegaBackend.Query.CursorInUse"}}`),
+		} {
+			if other.ClientMetadata() != nil {
+				t.Fatalf("unexpected reason metadata: %v", other.ClientMetadata())
+			}
+		}
+	})
+
 	t.Run("execution budgets retain only safe guidance", func(t *testing.T) {
 		for _, budget := range []string{"exact_distinct_time", "exact_distinct_group_memory", "exact_distinct_response_memory", "aggregation_time"} {
 			err := NewVegaDownstreamError(http.StatusUnprocessableEntity,

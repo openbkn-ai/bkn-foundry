@@ -23,6 +23,16 @@ const (
 	FieldFeatureType_Vector   = "vector"
 )
 
+// VegaResourceQueryParameterError carries a public Vega validation detail separately
+// from the error string used by existing resource-query callers.
+type VegaResourceQueryParameterError struct {
+	PublicDetails string
+}
+
+func (*VegaResourceQueryParameterError) Error() string {
+	return "QueryDatasetData returned HTTP 400"
+}
+
 // Property represents a field definition in vega-backend schema.
 type Property struct {
 	Name         string            `json:"name"`
@@ -120,7 +130,7 @@ type ResourcesListResponse struct {
 // DatasetQueryResponse represents dataset query response.
 type DatasetQueryResponse struct {
 	Entries    []map[string]any          `json:"entries"`
-	TotalCount int64                     `json:"total_count"`
+	TotalCount *int64                    `json:"total_count,omitempty"`
 	Paging     *ResourceDataPagingResult `json:"paging,omitzero"`
 }
 

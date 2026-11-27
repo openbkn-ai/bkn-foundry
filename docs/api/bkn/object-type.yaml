@@ -1495,7 +1495,7 @@ paths:
             default: 0
           in: query
         - name: need_total
-          description: Whether to return total_count. Defaults to true.
+          description: Whether to attempt to get the total count. Defaults to true.
           schema:
             type: boolean
             default: true
@@ -1544,11 +1544,13 @@ paths:
                       type: object
                       additionalProperties: true
                   total_count:
-                    description: Total count. Omitted when need_total is false.
+                    description: Total count when available. A known zero is returned as 0. Omitted when unrequested or unavailable.
                     type: integer
                     format: int64
         '400':
-          description: Invalid request parameters
+          description: |
+            Invalid request parameters or a resource query rejected by Vega with a known validation error.
+            `BknBackend.ObjectType.InvalidParameter` may include a diagnostic in `error_details`.
           content:
             application/json:
               schema:
@@ -1559,6 +1561,12 @@ paths:
           $ref: "../_shared/kn-version.yaml#/components/responses/ReadConflict"
         "410":
           $ref: "../_shared/kn-version.yaml#/components/responses/VersionPurged"
+        '500':
+          description: Sample data query failed.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ob_id}/data_properties/{property_names}:
     put:
       description: Requires effective `modify` on `object_type:{kn_id}/{ob_id}`. Before the write, `strict_mode` controls request validation for vector-index embedding-model dependencies; it never bypasses authorization.
@@ -2797,7 +2805,7 @@ components:
           items:
             $ref: "#/components/schemas/ObjectTypeDetail"
         total_count:
-          description: Total count
+          description: Total count when available. A known zero is returned as 0.
           type: integer
         next_cursor:
           description: Opaque continuation cursor. Return it as cursor on the next page.
@@ -3259,7 +3267,7 @@ components:
           description: Number of returned entries. Defaults to 10. Range is 1 to 10000.
           type: integer
         need_total:
-          description: Whether a total count is needed. Defaults to false.
+          description: Whether to attempt to get the total count. Defaults to false.
           type: boolean
         exclude_deprecated:
           description: |-
@@ -3291,7 +3299,7 @@ components:
           description: Number of returned entries. Defaults to 10. Range is 1 to 10000.
           type: integer
         need_total:
-          description: Whether a total count is needed. Defaults to false.
+          description: Whether to attempt to get the total count. Defaults to false.
           type: boolean
         exclude_deprecated:
           description: |-

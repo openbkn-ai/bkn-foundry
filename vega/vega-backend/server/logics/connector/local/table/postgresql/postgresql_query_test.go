@@ -65,7 +65,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		result, err := connector.ExecuteQuery(t.Context(), resource, &interfaces.ResourceDataQueryParams{ActualFilterCond: cond, Sort: []*interfaces.SortField{{Field: "amount", Direction: interfaces.ASC_DIRECTION}}, Paging: interfaces.PagingRequest{Limit: 10}, NeedTotal: true})
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"amount": "92233720368547758.07"}, {"amount": "-92233720368547758.08"}, {"amount": "0.00"}, {"amount": nil}}, result.Entries)
-		assert.Equal(t, int64(4), result.TotalCount)
+		assert.Equal(t, new(int64(4)), result.TotalCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -368,7 +368,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 	}{
 		{name: "select references removed column"},
 		{name: "row iteration returns unknown column", rowError: true},
-		{name: "count query returns unknown column", needTotal: true},
+		{name: "count failure leaves total absent after rows were read", needTotal: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
@@ -388,6 +388,14 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 			}
 
 			result, err := connector.ExecuteQuery(context.Background(), resource, params)
+
+			if tc.needTotal {
+				require.NoError(t, err)
+				require.Equal(t, []map[string]any{{"missing": "value"}}, result.Entries)
+				assert.Nil(t, result.TotalCount)
+				require.NoError(t, mock.ExpectationsWereMet())
+				return
+			}
 
 			assert.Nil(t, result)
 			var invalid *interfaces.SourceQueryInvalidParameterError
@@ -445,9 +453,9 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 				result, err := connector.ExecuteQuery(context.Background(), resource, params)
 				require.NoError(t, err)
 				assert.Empty(t, result.Entries)
-				wantTotal := int64(0)
+				var wantTotal *int64
 				if needTotal {
-					wantTotal = tc.total
+					wantTotal = &tc.total
 				}
 				assert.Equal(t, wantTotal, result.TotalCount)
 				require.NoError(t, mock.ExpectationsWereMet())
@@ -532,7 +540,7 @@ func TestPostgresqlConnectorExecuteQueryQuotesCalendarIntervalIdentifiers(t *tes
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"createdAt", "__value"}, result.Columns)
-	assert.Equal(t, int64(1), result.TotalCount)
+	assert.Equal(t, new(int64(1)), result.TotalCount)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -193,7 +193,7 @@ func TestVegaUsesPropertyProjection(t *testing.T) {
 	}}}
 	service := &objectTypeService{vba: vega}
 	var vegaResult interfaces.Objects
-	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan, false, nil, nil); err != nil {
+	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan, objectReadPage, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(vegaResult.Datas) != 1 || vegaResult.Datas[0]["id"] != "customer-1" ||
@@ -230,15 +230,11 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	objectType := accessPlanObjectType()
 	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
 	models := omock.NewMockOntologyManagerAccess(ctrl)
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(3).
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(2).
 		Return(objectType, true, nil)
 	nextCursor := "vega-secret-cursor"
 	vegaCursorExpiry := now.Add(5 * time.Minute).Unix()
 	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{
-		{
-			Entries: []map[string]any{{"customer_id": "customer-1", "phone": "13812345678"}},
-			Paging:  &interfaces.ResourceDataPagingResponse{},
-		},
 		{
 			Entries: []map[string]any{{"customer_id": "customer-2", "phone": "13812345679"}},
 			Paging:  &interfaces.ResourceDataPagingResponse{NextCursor: &nextCursor, ExpiresAtSec: &vegaCursorExpiry},
@@ -264,80 +260,59 @@ func TestObjectQueryCursorReauthorizesAndNeverExposesRawPosition(t *testing.T) {
 	newQuery := func() *interfaces.ObjectQueryBaseOnObjectType {
 		return &interfaces.ObjectQueryBaseOnObjectType{
 			KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"id", "mobile"},
-			PageQuery: interfaces.PageQuery{Limit: 1, Sort: []*interfaces.SortParams{{Field: "id", Direction: "asc"}}},
+			PagingMode: new(interfaces.ResourceDataPagingModeCursor),
+			PageQuery:  interfaces.PageQuery{Limit: 1, Sort: []*interfaces.SortParams{{Field: "id", Direction: "asc"}}},
 		}
 	}
 
-	// The first page is a stateless single read: nothing is left in Vega if
-	// the caller never continues.
 	first, err := service.GetObjectsByObjectTypeID(ctx, newQuery())
 	if err != nil || first.Cursor == "" || calls != 1 {
 		t.Fatalf("first page = %#v, %v, auth calls = %d", first, err, calls)
 	}
-	if len(vega.paramsHistory) != 1 || vega.paramsHistory[0].Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
-		vega.paramsHistory[0].Paging.Limit != 1 || vega.paramsHistory[0].Paging.KeepAliveSec != 0 {
+	if len(vega.paramsHistory) != 1 || vega.lastParams.Paging.Mode != interfaces.ResourceDataPagingModeCursor ||
+		vega.lastParams.Paging.Limit != 1 || vega.lastParams.Paging.KeepAliveSec != int(queryCursorTTL/time.Second) ||
+		len(vega.lastParams.Sort) == 0 {
 		t.Fatalf("Vega first-page request = %#v", vega.paramsHistory)
 	}
 	if first.Paging == nil || first.Paging.NextCursor == nil || *first.Paging.NextCursor != first.Cursor ||
-		first.Paging.ExpiresAtSec == nil || *first.Paging.ExpiresAtSec != now.Add(queryCursorTTL).Unix() {
+		first.Paging.ExpiresAtSec == nil || *first.Paging.ExpiresAtSec != vegaCursorExpiry {
 		t.Fatalf("object paging response = %#v", first.Paging)
 	}
-
-	// Continuing opens the Vega cursor at the next offset with a keep-alive
-	// that does not outlive the object cursor.
-	secondQuery := newQuery()
-	secondQuery.Cursor = first.Cursor
-	second, err := service.GetObjectsByObjectTypeID(ctx, secondQuery)
-	if err != nil || second.Cursor == "" || calls != 2 {
-		t.Fatalf("second page = %#v, %v, auth calls = %d", second, err, calls)
-	}
-	opened := vega.lastParams
-	if opened.Paging.Mode != interfaces.ResourceDataPagingModeCursor || opened.Paging.Offset != 1 ||
-		opened.Paging.Limit != 1 || opened.Paging.KeepAliveSec != int(queryCursorTTL/time.Second) ||
-		len(opened.Sort) == 0 {
-		t.Fatalf("Vega cursor start request = %#v", opened)
-	}
-	if second.Paging == nil || second.Paging.ExpiresAtSec == nil || *second.Paging.ExpiresAtSec != vegaCursorExpiry {
-		t.Fatalf("object paging response = %#v", second.Paging)
-	}
-	for _, page := range []interfaces.Objects{first, second} {
-		body, err := json.Marshal(page)
-		if err != nil || strings.Contains(string(body), "vega-secret-cursor") ||
-			strings.Contains(string(body), "search_after") || strings.Contains(string(body), "resource_offset") {
-			t.Fatalf("response leaked raw pagination position: %s, %v", body, err)
-		}
+	body, err := json.Marshal(first)
+	if err != nil || strings.Contains(string(body), "vega-secret-cursor") ||
+		strings.Contains(string(body), "search_after") || strings.Contains(string(body), "resource_offset") {
+		t.Fatalf("response leaked raw pagination position: %s, %v", body, err)
 	}
 
 	levels["mobile"] = interfaces.PropertyAccessSchema
-	thirdQuery := newQuery()
-	thirdQuery.Cursor = second.Cursor
-	third, err := service.GetObjectsByObjectTypeID(ctx, thirdQuery)
-	if err != nil || calls != 3 {
-		t.Fatalf("third page = %#v, %v, auth calls = %d", third, err, calls)
+	secondQuery := newQuery()
+	secondQuery.Cursor = first.Cursor
+	second, err := service.GetObjectsByObjectTypeID(ctx, secondQuery)
+	if err != nil || calls != 2 {
+		t.Fatalf("second page = %#v, %v, auth calls = %d", second, err, calls)
 	}
-	if third.Cursor != "" || third.Paging == nil || third.Paging.NextCursor != nil || third.Paging.ExpiresAtSec != nil {
-		t.Fatalf("terminal page must not return a cursor: %#v", third)
+	if second.Cursor != "" || second.Paging == nil || second.Paging.NextCursor != nil || second.Paging.ExpiresAtSec != nil {
+		t.Fatalf("terminal page must not return a cursor: %#v", second)
 	}
 	if vega.lastParams.Paging.Cursor != "vega-secret-cursor" || vega.lastParams.Paging.Mode != "" ||
 		len(vega.lastParams.SearchAfter) != 0 || vega.lastParams.FilterCondition != nil || len(vega.lastParams.Sort) != 0 {
 		t.Fatalf("Vega continuation request = %#v", vega.lastParams)
 	}
-	if _, exists := third.Datas[0]["mobile"]; exists {
-		t.Fatalf("permission downgrade was not applied: %#v", third.Datas[0])
+	if _, exists := second.Datas[0]["mobile"]; exists {
+		t.Fatalf("permission downgrade was not applied: %#v", second.Datas[0])
 	}
 }
 
-func TestObjectQueryUsesDefaultSortAndFallsBackToSingleForUnsupportedCursorPaging(t *testing.T) {
+func TestObjectQueryDefaultSingleUsesDefaultResourceSort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	now := time.Now()
 	objectType := accessPlanObjectType()
 	objectType.DataSource = &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"}
 	models := omock.NewMockOntologyManagerAccess(ctrl)
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Times(2).Return(objectType, true, nil)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-1", "main", "customer").Return(objectType, true, nil)
 	vega := &vegaStubForOTQuery{
 		responses: []*interfaces.DatasetQueryResponse{
 			{Entries: []map[string]any{{"customer_id": "customer-1"}}, Paging: &interfaces.ResourceDataPagingResponse{}},
-			{Entries: []map[string]any{{"customer_id": "customer-2"}}, Paging: &interfaces.ResourceDataPagingResponse{}},
 		},
 	}
 	service := &objectTypeService{
@@ -354,32 +329,13 @@ func TestObjectQueryUsesDefaultSortAndFallsBackToSingleForUnsupportedCursorPagin
 	}
 
 	first, err := service.GetObjectsByObjectTypeID(ctx, newQuery())
-	if err != nil || first.Cursor == "" {
+	if err != nil || first.Cursor != "" || len(vega.paramsHistory) != 1 {
 		t.Fatalf("first page = %#v, %v", first, err)
 	}
 	initial := vega.paramsHistory[0]
 	if initial.Paging.Mode != interfaces.ResourceDataPagingModeSingle || len(initial.Sort) < 2 ||
 		initial.Sort[1].Field != "customer_id" {
 		t.Fatalf("first page must use the default stable sort: %#v", initial)
-	}
-
-	vega.errors = []error{interfaces.NewVegaDownstreamError(http.StatusNotImplemented, "")}
-	secondQuery := newQuery()
-	secondQuery.Cursor = first.Cursor
-	second, err := service.GetObjectsByObjectTypeID(ctx, secondQuery)
-	if err != nil || len(second.Datas) != 1 || len(vega.paramsHistory) != 3 {
-		t.Fatalf("second page = %#v, %v, requests = %#v", second, err, vega.paramsHistory)
-	}
-	rejected, fallback := vega.paramsHistory[1], vega.paramsHistory[2]
-	if rejected.Paging.Mode != interfaces.ResourceDataPagingModeCursor || rejected.Paging.Offset != 1 {
-		t.Fatalf("continuation must first try a Vega cursor: %#v", rejected)
-	}
-	if fallback.Paging.Mode != interfaces.ResourceDataPagingModeSingle || fallback.Paging.Offset != 1 ||
-		fallback.Paging.Cursor != "" || len(fallback.Sort) != len(initial.Sort) {
-		t.Fatalf("single fallback request = %#v", fallback)
-	}
-	if second.Cursor == "" {
-		t.Fatal("a full fallback page must keep paging by offset")
 	}
 }
 

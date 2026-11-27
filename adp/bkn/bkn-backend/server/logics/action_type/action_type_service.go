@@ -1489,7 +1489,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 	return response, nil
 }
 
-func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (total int64, err error) {
+func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (*int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetTotal")
 	defer span.End()
 
@@ -1527,13 +1527,13 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 	datasetResp, err := ats.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
-		return total, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
 	if datasetResp == nil {
-		return 0, nil
+		return nil, nil
 	}
 	return datasetResp.TotalCount, nil
 }
@@ -1561,7 +1561,7 @@ func (ats *actionTypeService) GetActionTypeIDsByKnID(ctx context.Context, knID s
 // Query in batches.
 func (ats *actionTypeService) GetTotalWithLargeATIDs(ctx context.Context,
 	filterCondition map[string]any,
-	atIDs []string) (int64, error) {
+	atIDs []string) (*int64, error) {
 
 	total := int64(0)
 	for i := 0; i < len(atIDs); i += interfaces.GET_TOTAL_CONCEPTID_BATCH_SIZE {
@@ -1572,20 +1572,20 @@ func (ats *actionTypeService) GetTotalWithLargeATIDs(ctx context.Context,
 
 		batchIDs := atIDs[i:end]
 		batchTotal, err := ats.GetTotalWithATIDs(ctx, filterCondition, batchIDs)
-		if err != nil {
-			return 0, err
+		if err != nil || batchTotal == nil {
+			return nil, err
 		}
 
-		total += batchTotal
+		total += *batchTotal
 	}
 
-	return total, nil
+	return &total, nil
 }
 
 // Query the total count for specified action type IDs.
 func (ats *actionTypeService) GetTotalWithATIDs(ctx context.Context,
 	filterCondition map[string]any,
-	atIDs []string) (int64, error) {
+	atIDs []string) (*int64, error) {
 
 	// Build a filter condition containing the action type ID filter.
 	atIDCondition := map[string]any{
@@ -1608,11 +1608,5 @@ func (ats *actionTypeService) GetTotalWithATIDs(ctx context.Context,
 		}
 	}
 
-	// Execute the count query.
-	total, err := ats.GetTotal(ctx, combinedCondition)
-	if err != nil {
-		return total, err
-	}
-
-	return total, nil
+	return ats.GetTotal(ctx, combinedCondition)
 }

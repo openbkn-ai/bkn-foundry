@@ -148,7 +148,7 @@ func TestRestHandlerPostResourceDataByProxy(t *testing.T) {
 				assert.Equal(t, "caller-1", interfaces.CursorQuotaOwner(ctx))
 				assert.True(t, interfaces.IsTrustedProxyRead(ctx))
 				assert.Equal(t, 2, params.Paging.Limit)
-				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, TotalCount: 1}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": "row-1"}}, TotalCount: new(int64(1))}, nil
 			})
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/proxy/resources/resource-1/data", strings.NewReader(`{"paging":{"limit":2},"need_total":true}`))

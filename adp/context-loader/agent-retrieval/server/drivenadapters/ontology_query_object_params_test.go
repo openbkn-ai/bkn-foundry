@@ -30,6 +30,7 @@ func newObjectQueryClient(t *testing.T, ctrl *gomock.Controller) (*ontologyQuery
 	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
 	mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
 	mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
 	mockHTTP := mocks.NewMockHTTPClient(ctrl)
 
 	return &ontologyQueryClient{
@@ -39,8 +40,7 @@ func newObjectQueryClient(t *testing.T, ctrl *gomock.Controller) (*ontologyQuery
 	}, mockHTTP
 }
 
-// need_total is the request body field. If it is not set downstream, total_count will not be returned. The caller only knows "Is there a next page?".
-// The total number of hits is not known - this is not optional, so this layer is unconditionally set to true, and anything passed by the caller will be overwritten.
+// Context Loader requests an optional total on every object query.
 func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 	convey.Convey("need_total 无条件为 true", t, func() {
 		ctrl := gomock.NewController(t)
@@ -56,17 +56,17 @@ func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10}
-		_, err := client.QueryObjectInstances(context.Background(), req)
+		resp, err := client.QueryObjectInstances(context.Background(), req)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(body.NeedTotal, convey.ShouldBeTrue)
+		responseJSON, marshalErr := json.Marshal(resp)
+		convey.So(marshalErr, convey.ShouldBeNil)
+		convey.So(string(responseJSON), convey.ShouldContainSubstring, `"is_sorted":false`)
+		convey.So(string(responseJSON), convey.ShouldNotContainSubstring, `"warnings"`)
 	})
 }
 
-// total_count is three-state, and must be pinned in both directions:
-// - True zero hits must be serialized to 0 (omitempty on the pointer only swallows nil, not 0), otherwise the caller sees.
-// The field is missing, and the valid conclusion is regarded as service failure;
-// - Must be missing when the downstream does not calculate the total (from the second page of the cursor, the downstream is forced to NeedTotal=false), otherwise.
-// 0 is a false zero hit and is inconsistent with non-empty datas.
+// The optional total preserves a known zero.
 func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 	convey.Convey("零命中序列化成 0", t, func() {
 		zero := int64(0)
@@ -84,22 +84,19 @@ func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 	})
 }
 
-// The downstream Objects.TotalCount brings its own omitempty. The real 0 cannot be transmitted online at all. Just look at the response body.
-// Can't tell the difference between "zero hit" and "no count". The criteria are in the request: no cursor ⇒ calculated, missing is 0; there is a cursor ⇒ downstream.
-// The total calculation is forced to be turned off and must remain missing.
-func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
-	convey.Convey("无 cursor 时缺失的总数补成 0", t, func() {
+func TestQueryObjectInstances_PreservesOptionalTotal(t *testing.T) {
+	convey.Convey("普通查询保持缺失的总数", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, jsonBytes(map[string]any{"datas": []any{}}), nil)
+			Return(200, jsonBytes(map[string]any{"datas": []any{map[string]any{"id": "i1"}}}), nil)
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
-		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(0))
+		convey.So(resp.TotalCount, convey.ShouldBeNil)
+		convey.So(resp.Data, convey.ShouldHaveLength, 1)
 	})
 
 	convey.Convey("带 cursor 时保持缺失，不伪造 0", t, func() {
@@ -111,7 +108,7 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{
-				KnID: "kn1", OtID: "ot1", Limit: 10, Cursor: "opaque-cursor",
+				KnID: "kn1", OtID: "ot1", Limit: 10, PagingMode: new("cursor"), Cursor: "opaque-cursor",
 			})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.TotalCount, convey.ShouldBeNil)
@@ -130,6 +127,59 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
 		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(42))
 	})
+
+	convey.Convey("下游确认的零命中返回 0", t, func() {
+		client, mockHTTP := newObjectQueryClient(t, gomock.NewController(t))
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]any{"datas": []any{}, "total_count": 0}), nil)
+
+		resp, err := client.QueryObjectInstances(t.Context(),
+			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
+		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(0))
+	})
+}
+
+func TestQueryObjectInstances_ForwardsPagingMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		mode string
+	}{
+		{name: "default single", body: `{"offset":3}`},
+		{name: "explicit single", body: `{"paging_mode":"single","offset":3}`, mode: "single"},
+		{name: "cursor first page", body: `{"paging_mode":"cursor","offset":3}`, mode: "cursor"},
+		{name: "cursor continuation", body: `{"paging_mode":"cursor","offset":3,"cursor":"token"}`, mode: "cursor"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, httpClient := newObjectQueryClient(t, gomock.NewController(t))
+			httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
+					wire, err := json.Marshal(payload)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var sent map[string]any
+					if err := json.Unmarshal(wire, &sent); err != nil {
+						t.Fatal(err)
+					}
+					mode, sentMode := sent["paging_mode"]
+					if sentMode != (tc.mode != "") || sentMode && mode != tc.mode ||
+						sent["offset"] != float64(3) || sent["limit"] != float64(10) {
+						t.Errorf("unexpected Ontology Query body %s", wire)
+					}
+					return 200, []byte(`{"datas":[]}`), nil
+				})
+			req := &interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10}
+			if err := json.Unmarshal([]byte(tc.body), req); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.QueryObjectInstances(t.Context(), req); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestQueryObjectInstances_ForwardsOpaqueCursorWithoutRawSearchAfter(t *testing.T) {
@@ -143,13 +193,15 @@ func TestQueryObjectInstances_ForwardsOpaqueCursorWithoutRawSearchAfter(t *testi
 			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
 				bodyJSON, _ = json.Marshal(payload)
 				return 200, jsonBytes(map[string]any{
-					"datas":  []any{map[string]any{"id": "i1"}},
-					"cursor": "next-opaque-cursor",
+					"datas":     []any{map[string]any{"id": "i1"}},
+					"cursor":    "next-opaque-cursor",
+					"is_sorted": true,
+					"warnings":  []string{"read from the resource source"},
 				}), nil
 			})
 
 		resp, err := client.QueryObjectInstances(context.Background(), &interfaces.QueryObjectInstancesReq{
-			KnID: "kn1", OtID: "ot1", Limit: 10, Cursor: "opaque-cursor",
+			KnID: "kn1", OtID: "ot1", Limit: 10, PagingMode: new("cursor"), Cursor: "opaque-cursor",
 		})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"cursor":"opaque-cursor"`)
@@ -158,6 +210,8 @@ func TestQueryObjectInstances_ForwardsOpaqueCursorWithoutRawSearchAfter(t *testi
 		responseJSON, marshalErr := json.Marshal(resp)
 		convey.So(marshalErr, convey.ShouldBeNil)
 		convey.So(string(responseJSON), convey.ShouldNotContainSubstring, "search_after")
+		convey.So(string(responseJSON), convey.ShouldContainSubstring, `"is_sorted":true`)
+		convey.So(string(responseJSON), convey.ShouldContainSubstring, `"warnings":["read from the resource source"]`)
 	})
 }
 

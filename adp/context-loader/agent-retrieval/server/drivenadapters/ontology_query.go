@@ -202,9 +202,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	// Expand the flat `filters` sugar into a nested condition before forwarding.
 	expandFilters(req)
 
-	// need_total is a body field, not a query parameter, and it is not optional here:
-	// without it ontology-query omits total_count, leaving the caller able to tell
-	// "is there a next page" but not "how many matched at all".
+	// Ask for a total when the resource can provide one.
 	req.NeedTotal = true
 
 	uri := fmt.Sprintf(queryObjectInstancesURI, url.PathEscape(req.KnID), url.PathEscape(req.OtID))
@@ -235,7 +233,6 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	resolveTotalCount(req, resp)
 	return
 }
 
@@ -248,34 +245,6 @@ func ontologyQueryIdentity(target string, body any) string {
 		return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(target)))
 	}
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
-}
-
-// resolveTotalCount recovers the "zero hits" case that the wire format cannot carry.
-//
-// ontology-query's Objects.TotalCount is `json:"total_count,omitempty"`, so a real
-// total of 0 is dropped before it ever reaches us — indistinguishable, in the body
-// alone, from the total not having been computed. The request tells them apart:
-// need_total is forced on for every call, and the only thing downstream does with it
-// is turn it off when the cursor carries a downstream search position. So
-// with no cursor in the request, an absent total means the count ran and came back 0;
-// with a cursor, it means no count ran and the caller must not read it as 0.
-func resolveTotalCount(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) {
-	if resp == nil {
-		return
-	}
-	hasCursor := req != nil && req.Cursor != ""
-	resp.TotalCount = resolveAbsentTotal(hasCursor, resp.TotalCount)
-}
-
-// ResolveAbsentTotal is the reusable form of the inference above: subgraph exploration uses the same downstream path.
-// (The starting point object type also passes BuildDslQuery). The three-state semantics must be exactly the same as the object query, otherwise the same.
-// The same "missing" state must not have different meanings in the two tools; that would be worse than not handling it.
-func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
-	if total != nil || hasCursor {
-		return total
-	}
-	zero := int64(0)
-	return &zero
 }
 
 // classifyQueryError re-classifies a downstream client error (4xx) from
@@ -656,7 +625,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 		return nil, err
 	}
 
-	// Same as object query: need_total is not an option for the caller. Without it, the total number of starting object types cannot be obtained.
+	// Ask for the total of the starting objects when the resource can provide it.
 	req.NeedTotal = true
 
 	uri := fmt.Sprintf(queryInstanceSubgraphURI, url.PathEscape(req.KnID))
@@ -695,8 +664,6 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 		}
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
-	resp.TotalCount = resolveAbsentTotal(len(req.SearchAfter) > 0, resp.TotalCount)
-
 	return resp, nil
 }
 

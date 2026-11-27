@@ -326,7 +326,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 	}{
 		{name: "select references removed column", context: "failed to execute SQL builder query"},
 		{name: "row iteration returns unknown column", context: "failed to iterate result rows", rowError: true},
-		{name: "count query returns unknown column", context: "failed to scan total", needTotal: true},
+		{name: "count failure leaves total absent after rows were read", needTotal: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
@@ -346,6 +346,14 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			}
 
 			result, err := connector.ExecuteQuery(context.Background(), resource, params)
+
+			if tc.needTotal {
+				require.NoError(t, err)
+				require.Equal(t, []map[string]any{{"missing": "value"}}, result.Entries)
+				assert.Nil(t, result.TotalCount)
+				require.NoError(t, mock.ExpectationsWereMet())
+				return
+			}
 
 			assert.Nil(t, result)
 			var invalid *interfaces.SourceQueryInvalidParameterError
@@ -388,7 +396,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []string{"payload", "name"}, result.Columns)
 			assert.Equal(t, []map[string]any{{"payload": payload, "name": "text"}, {"payload": nil, "name": nil}}, result.Entries)
-			assert.Zero(t, result.TotalCount)
+			assert.Nil(t, result.TotalCount)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
@@ -420,7 +428,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 			mock.ExpectQuery("SELECT COUNT(*) FROM (" + statement + ") AS `_resource_total`").WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(8))
 			result, err := connector.ExecuteQuery(context.Background(), resource, params)
 			require.NoError(t, err)
-			assert.EqualValues(t, 8, result.TotalCount)
+			assert.Equal(t, new(int64(8)), result.TotalCount)
 			if emptyPage {
 				assert.Empty(t, result.Entries)
 			} else {
@@ -783,7 +791,7 @@ func TestMariaDBConnectorExecuteSQLResourceQuery(t *testing.T) {
 	mock.ExpectQuery("SELECT COUNT(*) FROM (SELECT `id` AS `id`, `name` AS `name` FROM `orders` WHERE (`id` > ?)) AS `_resource_total`").WithArgs(int64(3)).WillReturnRows(sqlmock.NewRows([]string{"total"}).AddRow(8))
 	result, err := connector.ExecuteQuery(context.Background(), resource, params)
 	require.NoError(t, err)
-	assert.Equal(t, int64(8), result.TotalCount)
+	assert.Equal(t, new(int64(8)), result.TotalCount)
 	assert.Equal(t, []map[string]any{{"id": int64(5), "name": "five"}}, result.Entries)
 }
 

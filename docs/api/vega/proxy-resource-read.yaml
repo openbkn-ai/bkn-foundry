@@ -116,7 +116,20 @@ paths:
         write overrides are rejected before authorization and physical access.
         API Resources validate and bind the full condition tree using their
         request definition. Conditions that cannot be represented fail before
-        upstream authentication or execution.
+        upstream authentication or execution. API Resources use the upstream order
+        and return `is_sorted: false`, with a warning for non-empty `sort`. API
+        Resources with a paging rule support Vega-issued cursors with
+        `paging.mode=cursor`. The initial cursor request can omit `paging.limit`
+        to use the API Resource default or 10000 for other categories. A
+        `single` request returns one page. Continue with the latest
+        `paging.next_cursor`. A concurrent continuation of the same active cursor
+        returns 409 `VegaBackend.Query.CursorInUse` and can be retried later.
+        A consumed cursor returns 404. If the new cursor
+        did not reach the caller, restart the query from the first page. For other
+        resources, `is_sorted` is true when `sort` is non-empty and false
+        otherwise. Cursor pages retain the initial request's sort status.
+        When `need_total=true`, `total_count` is returned if the total is known.
+        An absent field means the total was not requested or could not be obtained.
       parameters:
         - $ref: "#/components/parameters/ResourceID"
         - $ref: "#/components/parameters/AccountID"
@@ -169,6 +182,12 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "502":
+          description: The API upstream response failed validation, including when an empty cursor page contradicts the reported total.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
 components:

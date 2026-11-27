@@ -32,7 +32,7 @@ info:
     `VegaBackend.Dataset.DeleteIncomplete`。单条文档不存在
     与 resource 不存在共用 `VegaBackend.Resource.NotFound`，靠 `error_details` 区分。
 
-    支持 cursor 的非 API 资源可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
+    支持 cursor 的资源可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
     [raw-query.yaml](raw-query.yaml)。默认空闲租约为 1800 秒；单账号 cursor session
     默认上限 100，全局默认上限 1000。
   version: 0.1.0
@@ -64,16 +64,22 @@ paths:
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
-        `paging.next_cursor` 续页；`total_count` 仅在 `need_total=true` 时返回。
+        最新响应的 `paging.next_cursor` 续页。每次成功读取一页都会消费请求中的游标；
+        还有下一页时，响应签发新游标。重用已消费的游标返回 404，未收到新游标时须从首屏重新查询。
+        同一游标有续页请求正在执行时返回 409 `VegaBackend.Query.CursorInUse`，可以稍后重试。
+        `need_total=true` 时尝试取得总数。确知总数时返回 `total_count`，包括 `0`。未请求或未取得时省略该字段。
         PostgreSQL、MySQL/MariaDB 的 InnoDB 源表和 HANA 使用显式只读 REPEATABLE READ，
         Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SNAPSHOT（源数据库须启用 `ALLOW_SNAPSHOT_ISOLATION`）。
-        COUNT 和数据结果集共享同一个事务。后续页读取该结果集，末页、关闭、过期或源端读取失败释放会话。
+        COUNT 成功时与数据结果集共享同一个事务。独立计数失败时，另开只读数据会话并省略总数。
+        后续页读取该结果集，末页、关闭、过期或源端读取失败释放会话。
         如果续页在读取源端前遇到并发限流，客户端可用同一个 cursor 重试。
         EE Doris 使用单条 SELECT 的结果集续页，需要总数时在打开结果集前独立执行 COUNT。
         没有表读取会话的来源继续逐页执行查询。
         OpenSearch 搜索要求所有分片成功。分片失败或搜索超时时返回错误。
         OpenSearch 原生索引、托管本地索引及 Dataset 的 cursor 在同一个 PIT 快照上续页，
         排序应以稳定且唯一的字段打破并列。源端须支持 PIT 且查询账号须有相应权限。
+        Vega 在首次取页时使用同一快照的精确总数校验页长，仍只在请求 `need_total=true` 时返回总数。
+        续页返回的记录少于预期，或还有下一页但索引未返回排序值时，返回 400，提示在排序末尾加上唯一字段后重新查询。
         PIT 失效时返回 404，需重新发起查询。
         逻辑视图查询要求 EE 专业版及以上授权；未安装 EE 扩展返回 501，
         授权版本不足返回 403 `Public.Forbidden`。
@@ -97,26 +103,37 @@ paths:
 
         **API Resource（专业版）**：category=api 且 api_effect_type=read 时复用本入口。
         查询直接绑定公共 DTO；未知顶层/分页字段忽略，null 沿用公共绑定的零值语义，不做字段出现性检查。
-        接受公共 filter_condition、paging 和 need_total；binary_mode 对 API 无作用。排序、聚合、输出投影等已指定但不受支持的查询能力返回 400。
+        接受公共 filter_condition、output_fields、paging 和 need_total。binary_mode 对 API 无作用。
+        ignore_local_index 支持省略、null 或 false，均直查上游。true 返回 HTTP 400 `VegaBackend.Query.InvalidParameter`。
+        API Resource 使用上游既定顺序，返回 is_sorted=false。非空 sort 被忽略，并在 warnings 中提示。
+        聚合等其他不受支持的查询能力返回 400。
         过滤条件必须能由 Resource 请求定义完整绑定或转换，过滤字段、结构、类型及转换失败均在登录和业务请求前返回 400。
         直接绑定支持常量等值条件及不重复字段的 AND 组合。SQL 支持有限比较、集合、空值与 AND/OR，不支持 LIKE。
         Query 参数仅在必填且缺值时应用已配置的默认值。必填且没有默认值时报错，非必填且缺值时省略。
         公开位置统一为 offset + limit，上游 page 在 Connector 内换算。
         limit 缺省、0 或 null 均使用 Resource.paging_rule.default_limit，受资源 max_limit 约束，不注入 Table 默认值。
         page 规则在 Connector 内按 page_base + offset / limit 换算，offset 必须对齐 limit。
-        paging.mode 缺省或为空时使用 single；API 只支持无会话单页查询。
-        cursor 模式或非空 paging.cursor 在登录、业务 HTTP 及游标会话创建前拒绝；keep_alive_sec 在 single 下忽略。
-        不支持流式响应、索引构建或自动扫描/发现；请求独立提供下一页 offset，不维护续页 token 或租约。
+        paging.mode 缺省或为空时使用 single，返回一页且不建会话。已配置分页规则的 API Resource
+        可通过 paging.mode=cursor 开启 Vega 游标会话。未配置分页规则时，合法的 cursor 首请求只读取一次，返回空游标。
+        游标首请求的 keep_alive_sec 缺省或为 0 使用默认值，有效非零范围为 [60,3600]。
+        只有开启游标的请求使用该租约，single 请求忽略 keep_alive_sec。
+        续页只提交 paging.cursor。Vega 对每一页执行独立的上游请求，跨页连续性依赖上游的稳定顺序。
+        不支持流式响应、索引构建或自动扫描/发现。
         连接器先按 Catalog 配置验证一次登录，未配置登录时先做 TCP/TLS 探测，成功后发送一次业务请求。
         登录获得的 Cookie 用于该次业务请求。查询不重试、重定向或自动翻页。
         结果使用 APIResourceDataResult：entries 为按必需 schema_definition 映射的对象数组，
         保留精确 JSON number、JSON 原类型及日期时间原值；合法空结果为 []。
+        指定 output_fields 时在映射后裁剪输出列。字段使用 schema_definition 中的 name；未知字段在请求上游前返回
+        HTTP 400 `VegaBackend.Query.InvalidParameter.OutputField`。省略、null 或空列表均返回默认字段集。
         输入行的对象/数组格式由上游响应 Schema 校验；result_rows 仅定位行数据路径。
         对象行按 SchemaDefinition.original_name 映射，数组行按 SchemaDefinition 有序字段逐项映射；
         不配置或读取独立列元数据，不按上游 columns 重排字段。
-        不根据条数判断还有下一页，不生成下一位置；需要更多数据时使用新的 offset/limit 独立查询。
-        保留公共 single 分页响应，next_cursor 和 expires_at_sec 均为 null，不创建查询会话。
-        need_total=true 须配置 total 路径，响应才返回 total_count；不补造未知总数。
+        游标分页使用相同的有效 limit。上游声明的总数表明有剩余数据时，非空短页也会签发下一页 cursor。
+        offset 规则按实际返回条数推进，page 规则按有效页大小推进。page 规则从非零偏移开始时，实际跳过的行数可能少于偏移，
+        Vega 继续读取到上游返回空页或已读取总数所示的全部记录。上游返回空页且已读行数加上最多可跳过的行数仍少于已知总数时，查询返回 502。
+        总数未知时整页可以继续，最后一次续页可能为空。普通 single 可以用新的 offset/limit 独立查询，next_cursor 和 expires_at_sec 均为 null。
+        `need_total=true` 时，所选响应配置了 `result_total` 且成功提取才返回 `total_count`。
+        所选响应未配置 `result_total` 时照常返回数据。游标仍可利用已取得的总数判断续页。
         统一返回公共 query_source 和 is_approximate；API 默认分别为 source 和 false，不返回上游 page、columns 或内部执行状态。
         响应格式、业务成功条件、提取和字段类型任一步失败均不返回部分业务数据。
         请求/定义错误为 400；上游状态、响应契约、业务判定或映射错误为 502 VegaBackend.Query.ExecuteFailed，
@@ -513,23 +530,37 @@ components:
           items:
             $ref: "#/components/schemas/Document"
     APIResourceDataQueryParams:
-      description: API Resource 只读查询，直接绑定公共 DTO，未知字段忽略，null 沿用零值语义；默认条数及上限由资源规则决定；仅支持 single，不创建游标或流式查询。实际未支持的查询能力仍拒绝。
+      description: API Resource 只读查询，直接绑定公共 DTO。默认条数及上限由资源规则决定；配置分页规则时支持 Vega cursor，不支持流式查询。未知字段忽略，null 沿用零值语义。
       type: [object, "null"]
       additionalProperties: true
       properties:
         filter_condition:
           $ref: "#/components/schemas/APIResourceFilterCondition"
+        sort:
+          description: 非空排序列表被忽略，API Resource 使用上游顺序并返回提示。JSON 字段仍须符合 DTO 类型。
+          type: [array, "null"]
+          items:
+            type: [object, "null"]
+            properties:
+              field:
+                type: [string, "null"]
+              direction:
+                type: [string, "null"]
+        output_fields:
+          description: 按 schema_definition 的字段名选择返回列。省略、null 或空列表返回全部映射字段；未知字段返回 HTTP 400 VegaBackend.Query.InvalidParameter.OutputField。
+          type: [array, "null"]
+          items:
+            type: string
+        ignore_local_index:
+          description: 省略、null 或 false 时直查上游。true 返回 HTTP 400 VegaBackend.Query.InvalidParameter。
+          type: [boolean, "null"]
+          enum: [false, null]
+          default: false
         paging:
-          description: 复用公共分页字段，仅允许 single；limit 缺省/0/null 使用资源默认值，keep_alive_sec 忽略。非空 cursor 或 cursor 模式不支持。
-          allOf:
-            - $ref: "#/components/schemas/PagingRequest"
-            - properties:
-                mode:
-                  enum: [single, "", null]
-                cursor:
-                  enum: ["", null]
+          $ref: "#/components/schemas/PagingRequest"
+          description: 首次支持 single 及 cursor，limit 缺省、0 或 null 使用资源默认值。续页只传不透明的 paging.cursor。
         need_total:
-          description: 是否返回总数；null 按 false。为 true 时每个成功状态选中的响应须配置 result_total，调用前检查；每次独立查询重新计算。
+          description: 是否尝试返回总数。null 按 false。所选成功响应未配置 result_total 时省略总数。
           type: [boolean, "null"]
           default: false
         binary_mode:
@@ -545,10 +576,10 @@ components:
       type: [object, "null"]
       minProperties: 1
     APIResourceDataResult:
-      description: API Resource 复用公共响应字段；query_source 默认 source，is_approximate 默认 false。single 查询不创建会话，公共分页响应的 next_cursor/expires_at_sec 均为 null。
+      description: API Resource 复用公共响应字段；query_source 默认 source，is_approximate 默认 false。游标会话中有下一页时才返回非空 cursor。
       type: object
       additionalProperties: false
-      required: [entries, query_source, is_approximate]
+      required: [entries, query_source, is_approximate, is_sorted]
       properties:
         query_source:
           $ref: "#/components/schemas/ListResponse/properties/query_source"
@@ -556,6 +587,9 @@ components:
         is_approximate:
           $ref: "#/components/schemas/ListResponse/properties/is_approximate"
           default: false
+        is_sorted:
+          $ref: "#/components/schemas/ListResponse/properties/is_sorted"
+          description: API Resource 使用上游既定顺序，返回 false。
         entries:
           type: array
           description: 仅输出 schema_definition 声明字段的对象数组。保留精确 JSON 数字及 JSON 原类型；不套用 Table JSON 字符串化规则。
@@ -563,22 +597,14 @@ components:
             type: object
             additionalProperties: true
         paging:
-          allOf:
-            - $ref: "#/components/schemas/PagingResponse"
-            - properties:
-                next_cursor:
-                  const: null
-                expires_at_sec:
-                  const: null
+          $ref: "#/components/schemas/PagingResponse"
+        warnings:
+          $ref: "#/components/schemas/ListResponse/properties/warnings"
         total_count:
-          description: 仅 need_total=true 且所选响应的 result_total 配置有效时返回；每次调用独立提取。
+          description: 仅 need_total=true 且已取得总数时返回。游标会话取得总数后沿用该值。
           type: integer
           format: int64
           minimum: 0
-        warnings:
-          type: array
-          items:
-            type: string
     ResourceDataQueryParams:
       description: |
         查询 / 删除参数。`Override: GET` 用 filter+分页查询；`Override: DELETE` 用
@@ -666,11 +692,7 @@ components:
                   mode:
                     const: cursor
               then:
-                required: [limit]
                 properties:
-                  limit:
-                    type: integer
-                    minimum: 1
                   keep_alive_sec:
                     anyOf:
                       - type: "null"
@@ -720,11 +742,11 @@ components:
         ignore_local_index:
           description: |
             是否跳过可用的本地索引并查询表的原始数据源；默认 `false`。仅对 table resource
-            生效。cursor 续页不得重复传递。
+            生效。cursor 续页不得重复传递。API Resource 接受省略、null 或 `false`，`true` 返回 HTTP 400。
           type: boolean
           default: false
         need_total:
-          description: 是否在响应里携带 total_count。cursor 首次请求的值会被冻结；续页携带的值被忽略。
+          description: 是否尝试取得并返回 total_count。cursor 沿用首请求的设置，续页携带的值被忽略。
           type: boolean
           default: false
         aggregation:
@@ -840,14 +862,18 @@ components:
             普通 date_nanos 字段过滤仍保留纳秒输入精度。
     ListResponse:
       description: |
-        查询响应。`total_count` 仅在请求 `need_total=true` 时返回。
+        查询响应。`total_count` 表示已取得的总数。未请求或未取得总数时省略该字段。
       type: object
       required:
         - entries
+        - is_sorted
       properties:
         is_approximate:
           type: boolean
           description: 本次实际是否使用近似聚合；false 不代表源库与索引处于同一数据时点。
+        is_sorted:
+          type: boolean
+          description: 非 API 资源收到非空 sort 时为 true，游标续页沿用首请求。其余情况为 false，API Resource 始终为 false。
         query_source:
           description: 本次查询实际使用的数据路径。`local_index` 表示 table 的本地索引；`source` 表示未使用该本地索引。
           type: string
@@ -875,7 +901,7 @@ components:
             $ref: "#/components/schemas/Document"
         total_count:
           description: |
-            仅 need_total=true 时返回。SQL 表源查询返回分页前的结果行数：
+            仅 need_total=true 且已取得总数时返回，0 表示已确认零条。SQL 表源查询返回分页前的结果行数：
             明细查询为匹配行数，聚合查询为 GROUP BY、HAVING 后的结果行数。
             OpenSearch 查询（包括 local_index 路径）当前仍返回匹配文档数。
           type: integer
@@ -921,7 +947,7 @@ components:
           type: [integer, "null"]
           minimum: 0
         limit:
-          description: 单次最多返回条数；API 缺省/0/null 使用资源默认条数并受资源上限约束，其余类别 cursor 模式必须提供正数且最多 10000。
+          description: 单次最多返回条数。API 缺省、0 或 null 使用资源默认条数并受资源上限约束。其他类别的 cursor 首请求缺省、0 或 null 时使用 10000，显式值的范围为 1–10000。
           type: [integer, "null"]
           minimum: 0
         keep_alive_sec:

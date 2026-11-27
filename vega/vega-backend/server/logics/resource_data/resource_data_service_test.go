@@ -187,7 +187,7 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 			}
 			rowsResult, err := rds.QuerySourcePage(context.Background(), resource, params)
 			var rows []map[string]any
-			var total int64
+			var total *int64
 			if rowsResult != nil {
 				rows = rowsResult.Entries
 				total = rowsResult.TotalCount
@@ -307,7 +307,7 @@ func TestQuerySourcePageSearchPrerequisitesPrecedeOutputFields(t *testing.T) {
 					models := mock_interfaces.NewMockModelFactoryService(ctrl)
 					rowsResult, err := (&resourceDataService{cs: catalogs, mfs: models, lim: newResourceDataLocalIndexManagerMock(ctrl)}).QuerySourcePage(context.Background(), resource, params)
 					var rows []map[string]any
-					var total int64
+					var total *int64
 					if rowsResult != nil {
 						rows = rowsResult.Entries
 						total = rowsResult.TotalCount
@@ -344,7 +344,7 @@ func TestQuerySourcePageInvalidOutputFields(t *testing.T) {
 				params := &interfaces.ResourceDataQueryParams{OutputFields: fields}
 				page, err := rds.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if page != nil {
 					rows = page.Entries
 					total = page.TotalCount
@@ -391,7 +391,7 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			if tc.stored {
 				page, err := rds.QuerySourcePage(t.Context(), resource, &interfaces.ResourceDataQueryParams{})
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if page != nil {
 					rows = page.Entries
 					total = page.TotalCount
@@ -435,7 +435,7 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 
 		rowsResult5, err := service.QuerySourcePage(context.Background(), resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult5 != nil {
 			rows = rowsResult5.Entries
 			total = rowsResult5.TotalCount
@@ -465,17 +465,17 @@ func TestQuerySourcePagePreservesUnavailableIndexOutput(t *testing.T) {
 				if len(selected) == 0 || slices.Contains(selected, "id") {
 					stored["id"] = 1
 				}
-				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{stored}, TotalCount: int64(1)}, nil)
+				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{stored}, TotalCount: new(int64(1))}, nil)
 				rowsResult, err := (&resourceDataService{cs: catalogs, lim: index}).QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult != nil {
 					rows = rowsResult.Entries
 					total = rowsResult.TotalCount
 				}
 				require.NoError(t, err)
 				require.Len(t, rows, 1)
-				assert.Equal(t, int64(1), total)
+				assert.Equal(t, new(int64(1)), total)
 				if len(selected) == 0 || slices.Contains(selected, "value") {
 					assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["value"])
 				} else {
@@ -503,7 +503,7 @@ func TestQuerySourcePageProjectsAggregateOutput(t *testing.T) {
 					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 					index := newResourceDataLocalIndexManagerMock(ctrl)
 					rds.lim = index
-					index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: int64(42)}, nil)
+					index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: new(int64(42))}, nil)
 				} else {
 					factory := mock_interfaces.NewMockConnectorFactory(ctrl)
 					connector := mock_interfaces.NewMockTableConnector(ctrl)
@@ -511,18 +511,18 @@ func TestQuerySourcePageProjectsAggregateOutput(t *testing.T) {
 					factory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 					connector.EXPECT().Connect(gomock.Any()).Return(nil)
 					connector.EXPECT().Close(gomock.Any()).Return(nil)
-					connector.EXPECT().ExecuteQuery(gomock.Any(), resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: 42}, nil)
+					connector.EXPECT().ExecuteQuery(gomock.Any(), resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: original, TotalCount: new(int64(42))}, nil)
 				}
 				rowsResult, err := rds.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult != nil {
 					rows = rowsResult.Entries
 					total = rowsResult.TotalCount
 				}
 				require.NoError(t, err)
 				require.Len(t, rows, 2)
-				assert.Equal(t, int64(42), total)
+				assert.Equal(t, new(int64(42)), total)
 				fields := selected
 				if len(fields) == 0 {
 					fields = []string{"region", "total"}
@@ -638,7 +638,12 @@ func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 }
 
 func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
-	for _, scenario := range []string{"single", "requested total", "trusted proxy", "denied resource", "cursor mode", "cursor token", "extension failure", "unavailable", "cancelled context"} {
+	for _, scenario := range []string{
+		"single", "configured single", "sort ignored", "invalid cursor keep alive",
+		"requested total", "output fields", "unknown output field", "trusted proxy unknown output field",
+		"trusted proxy", "denied resource", "cursor without paging rule", "cursor token", "invalid paging mode",
+		"extension failure", "unavailable", "cancelled context",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			rs := mock_interfaces.NewMockResourceService(ctrl)
@@ -649,9 +654,25 @@ func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
 			resourcelogic.SetAPIResourceService(nil)
 			t.Cleanup(func() { resourcelogic.SetAPIResourceService(previous) })
 			candidate := &interfaces.Resource{ID: "api", CatalogID: "catalog", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive,
-				SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}},
+				SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "source_id", Type: interfaces.DataType_Integer}},
 				APIDefinition:    &interfaces.APIDefinition{Variables: map[string]interfaces.CatalogVariable{"credential": {Value: "ENC:stored-fixture", Sensitive: true}}}, LogicDefinitionStr: "stored-definition"}
 			params := &interfaces.ResourceDataQueryParams{NeedTotal: scenario == "requested total", BinaryMode: new(interfaces.BinaryModeMetadata)}
+			if scenario == "configured single" || scenario == "invalid cursor keep alive" {
+				candidate.APIDefinition.PagingRule = &interfaces.APIPagingRule{Mode: "page", DefaultLimit: 1, MaxLimit: 1}
+			}
+			if scenario == "invalid cursor keep alive" {
+				params.Paging.Mode = interfaces.PagingModeCursor
+				params.Paging.KeepAliveSec = -1
+			}
+			if scenario == "sort ignored" {
+				params.Sort = []*interfaces.SortField{{Field: "id", Direction: interfaces.ASC_DIRECTION}}
+			}
+			unknownOutputField := scenario == "unknown output field" || scenario == "trusted proxy unknown output field"
+			if unknownOutputField || scenario == "denied resource" {
+				params.OutputFields = []string{"id", "source_id"}
+			} else if scenario == "output fields" {
+				params.OutputFields = []string{"id"}
+			}
 			ctx, cancel := context.WithDeadline(t.Context(), time.Date(2100, time.January, 1, 0, 0, 0, 0, time.UTC))
 			defer cancel()
 			if scenario == "cancelled context" {
@@ -661,24 +682,27 @@ func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
 			if scenario == "denied resource" {
 				expectedErr = httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 			}
-			if scenario == "trusted proxy" {
+			if scenario == "trusted proxy" || scenario == "trusted proxy unknown output field" {
 				ctx = interfaces.WithTrustedProxyRead(ctx)
 				rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 			} else {
 				rs.EXPECT().CheckResourcePermission(gomock.Any(), candidate.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(expectedErr)
 			}
-			if scenario == "cursor mode" {
+			switch scenario {
+			case "cursor without paging rule":
 				params.Paging.Mode = interfaces.PagingModeCursor
-			}
-			if scenario == "cursor token" {
+			case "cursor token":
 				params.Paging.Cursor = "opaque"
+			case "invalid paging mode":
+				params.Paging.Mode = "invalid"
 			}
 			cs.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 			if scenario != "unavailable" {
 				extension := mock_interfaces.NewMockAPIResourceService(ctrl)
 				resourcelogic.SetAPIResourceService(extension)
-				if scenario == "denied resource" || scenario == "cursor mode" || scenario == "cursor token" {
+				if unknownOutputField || scenario == "denied resource" || scenario == "invalid cursor keep alive" ||
+					scenario == "cursor token" || scenario == "invalid paging mode" {
 					extension.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 				} else {
 					if scenario == "extension failure" {
@@ -687,9 +711,17 @@ func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
 					if scenario == "cancelled context" {
 						expectedErr = httperrors.NewHTTPError(ctx, http.StatusGatewayTimeout, verrors.VegaBackend_Query_ExecuteFailed)
 					}
-					extension.EXPECT().Query(gomock.Any(), candidate, params).DoAndReturn(func(received context.Context, resource *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+					request := params
+					if scenario == "cursor without paging rule" {
+						single := *params
+						single.Paging.Mode = interfaces.PagingModeSingle
+						request = &single
+					}
+					extension.EXPECT().Query(gomock.Any(), candidate, request).DoAndReturn(func(received context.Context, resource *interfaces.Resource, query *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 						assert.Same(t, candidate, resource)
-						assert.Same(t, params, query)
+						if scenario != "cursor without paging rule" {
+							assert.Same(t, params, query)
+						}
 						expectedDeadline, expectedOK := ctx.Deadline()
 						deadline, ok := received.Deadline()
 						assert.Equal(t, expectedOK, ok)
@@ -700,23 +732,50 @@ func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
 						if expectedErr != nil {
 							return nil, expectedErr
 						}
-						return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}}, TotalCount: 8}, nil
+						return &interfaces.ResourceDataQueryResult{
+							Entries: []map[string]any{{"id": 1}}, TotalCount: new(int64(8)), IsSorted: scenario == "sort ignored",
+						}, nil
 					})
 				}
 			}
 			result, err := service.QueryWithPaging(ctx, candidate, params)
 			switch scenario {
-			case "single", "requested total", "trusted proxy":
+			case "single", "configured single", "sort ignored", "requested total", "output fields", "trusted proxy", "cursor without paging rule":
 				require.NoError(t, err)
 				assert.Equal(t, []map[string]any{{"id": 1}}, result.Entries)
 				assert.Equal(t, interfaces.ResourceQuerySourceSource, result.QuerySource)
 				assert.False(t, result.IsApproximate)
-				assert.Equal(t, scenario == "requested total", result.NeedTotal)
-				assert.Equal(t, int64(8), result.TotalCount)
+				assert.False(t, result.IsSorted)
+				if scenario == "requested total" {
+					assert.Equal(t, new(int64(8)), result.TotalCount)
+				} else {
+					assert.Nil(t, result.TotalCount)
+				}
 				assert.Equal(t, &interfaces.PagingResponse{}, result.Paging)
+				if scenario == "cursor without paging rule" {
+					assert.Equal(t, interfaces.PagingModeCursor, params.Paging.Mode)
+				}
 			case "denied resource", "extension failure", "cancelled context":
 				assert.Nil(t, result)
 				assert.Same(t, expectedErr, err)
+			case "unknown output field", "trusted proxy unknown output field":
+				assert.Nil(t, result)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter_OutputField, failure.ErrorCode)
+				assert.Contains(t, failure.ErrorDetails, "source_id")
+			case "invalid paging mode", "invalid cursor keep alive":
+				assert.Nil(t, result)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, http.StatusBadRequest, failure.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, failure.ErrorCode)
+			case "cursor token":
+				assert.Nil(t, result)
+				var failure *httperrors.HTTPError
+				require.ErrorAs(t, err, &failure)
+				assert.Equal(t, http.StatusNotFound, failure.HTTPCode)
 			default:
 				assert.Nil(t, result)
 				var failure *httperrors.HTTPError
@@ -731,6 +790,61 @@ func TestResourceDataServiceQueryWithPagingAPI(t *testing.T) {
 			assert.Equal(t, "ENC:stored-fixture", candidate.APIDefinition.Variables["credential"].Value)
 		})
 	}
+}
+
+func TestResourceDataServiceQueryAPICursor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := mock_interfaces.NewMockResourceService(ctrl)
+	service := &resourceDataService{rs: rs}
+	previous := resourcelogic.GetAPIResourceService()
+	extension := mock_interfaces.NewMockAPIResourceService(ctrl)
+	resourcelogic.SetAPIResourceService(extension)
+	t.Cleanup(func() { resourcelogic.SetAPIResourceService(previous) })
+	resource := &interfaces.Resource{
+		ID: "api", CatalogID: "catalog", Category: interfaces.ResourceCategoryAPI,
+		APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive,
+		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+		APIDefinition: &interfaces.APIDefinition{PagingRule: &interfaces.APIPagingRule{
+			Mode: "page", DefaultLimit: 2, MaxLimit: 2,
+		}},
+	}
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "caller"})
+	sort := []*interfaces.SortField{{Field: "id", Direction: interfaces.ASC_DIRECTION}}
+	params := &interfaces.ResourceDataQueryParams{
+		Paging:    interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, KeepAliveSec: 60},
+		NeedTotal: true, OutputFields: []string{"id"}, Sort: sort,
+	}
+	initial := &interfaces.ResourceDataQueryParams{
+		Paging:    interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Limit: 2},
+		NeedTotal: true, OutputFields: []string{"id"}, Sort: sort,
+	}
+	continuation := &interfaces.ResourceDataQueryParams{
+		Paging:       interfaces.PagingRequest{Mode: interfaces.PagingModeSingle, Offset: 2, Limit: 2},
+		OutputFields: []string{"id"}, Sort: sort,
+	}
+	gomock.InOrder(
+		rs.EXPECT().CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil),
+		extension.EXPECT().Query(gomock.Any(), resource, initial).
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 1}, {"id": 2}}, TotalCount: new(int64(3))}, nil),
+		rs.EXPECT().CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil),
+		extension.EXPECT().Query(gomock.Any(), resource, continuation).
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 3}}}, nil),
+	)
+	first, err := service.QueryWithPaging(ctx, resource, params)
+	require.NoError(t, err)
+	require.NotNil(t, first.Paging.NextCursor)
+	assert.False(t, first.IsSorted)
+	assert.Zero(t, params.Paging.Limit)
+	assert.Equal(t, interfaces.PagingModeCursor, params.Paging.Mode)
+
+	second, err := service.QueryWithPaging(ctx, resource, &interfaces.ResourceDataQueryParams{
+		Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]any{{"id": 3}}, second.Entries)
+	assert.Equal(t, new(int64(3)), second.TotalCount)
+	assert.False(t, second.IsSorted)
+	assert.Nil(t, second.Paging.NextCursor)
 }
 
 func TestResourceDataServiceQueryWithPagingSharedConcurrency(t *testing.T) {
@@ -848,23 +962,35 @@ func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testin
 	require.ErrorIs(t, err, denied)
 }
 
-func TestResourceDataServiceQueryWithPagingPreservesLogicalViewQuerySource(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	rs := mock_interfaces.NewMockResourceService(ctrl)
-	lvs := mock_interfaces.NewMockLogicalViewService(ctrl)
-	registerMockLogicalViewService(t, lvs)
-	rds := &resourceDataService{rs: rs}
-	view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
-		Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "name"}}}
-	params := &interfaces.ResourceDataQueryParams{}
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), view.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
-	lvs.EXPECT().QueryWithPaging(gomock.Any(), view, params).Return(&interfaces.ResourceDataQueryResult{
-		Entries: []map[string]any{{"name": "alice"}}, QuerySource: interfaces.ResourceQuerySourceLocalIndex,
-	}, nil)
+func TestResourceDataServiceQueryWithPagingLogicalViewMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sort []*interfaces.SortField
+	}{
+		{name: "omitted sort"},
+		{name: "empty sort", sort: []*interfaces.SortField{}},
+		{name: "configured sort", sort: []*interfaces.SortField{{Field: "name", Direction: interfaces.ASC_DIRECTION}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rs := mock_interfaces.NewMockResourceService(ctrl)
+			lvs := mock_interfaces.NewMockLogicalViewService(ctrl)
+			registerMockLogicalViewService(t, lvs)
+			rds := &resourceDataService{rs: rs}
+			view := &interfaces.Resource{ID: "view-1", Category: interfaces.ResourceCategoryLogicalView,
+				Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "name"}}}
+			params := &interfaces.ResourceDataQueryParams{Sort: tc.sort}
+			rs.EXPECT().CheckResourcePermission(gomock.Any(), view.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
+			lvs.EXPECT().QueryWithPaging(gomock.Any(), view, params).Return(&interfaces.ResourceDataQueryResult{
+				Entries: []map[string]any{{"name": "alice"}}, QuerySource: interfaces.ResourceQuerySourceLocalIndex,
+			}, nil)
 
-	result, err := rds.QueryWithPaging(context.Background(), view, params)
-	require.NoError(t, err)
-	assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
+			result, err := rds.QueryWithPaging(t.Context(), view, params)
+			require.NoError(t, err)
+			assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
+			assert.Equal(t, len(tc.sort) > 0, result.IsSorted)
+		})
+	}
 }
 
 func TestResourceDataServiceQueryWithPagingProjectsAggregateOutput(t *testing.T) {
@@ -874,16 +1000,16 @@ func TestResourceDataServiceQueryWithPagingProjectsAggregateOutput(t *testing.T)
 	registerMockLogicalViewService(t, views)
 	rds := &resourceDataService{rs: resources}
 	view := &interfaces.Resource{ID: "view", Category: interfaces.ResourceCategoryLogicalView, Enabled: true, SchemaDefinition: []*interfaces.Property{{Name: "id"}, {Name: "region"}}}
-	params := &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "region"}}, Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, OutputFields: []string{"total"}}
+	params := &interfaces.ResourceDataQueryParams{NeedTotal: true, GroupBy: []*interfaces.GroupByItem{{Property: "region"}}, Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, OutputFields: []string{"total"}}
 	rows := []map[string]any{{"region": "east", "total": int64(2)}}
 	next := "cursor"
 	paging := &interfaces.PagingResponse{NextCursor: &next}
 	resources.EXPECT().CheckResourcePermission(gomock.Any(), view.ID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
-	views.EXPECT().QueryWithPaging(gomock.Any(), view, params).Return(&interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: 42, QuerySource: interfaces.ResourceQuerySourceLocalIndex, Paging: paging}, nil)
+	views.EXPECT().QueryWithPaging(gomock.Any(), view, params).Return(&interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: new(int64(42)), QuerySource: interfaces.ResourceQuerySourceLocalIndex, Paging: paging}, nil)
 	result, err := rds.QueryWithPaging(context.Background(), view, params)
 	require.NoError(t, err)
 	assert.Equal(t, []map[string]any{{"total": int64(2)}}, result.Entries)
-	assert.Equal(t, int64(42), result.TotalCount)
+	assert.Equal(t, new(int64(42)), result.TotalCount)
 	assert.Same(t, paging, result.Paging)
 	assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
 	assert.Equal(t, []map[string]any{{"region": "east", "total": int64(2)}}, rows)
@@ -1643,7 +1769,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			} else {
 				indexes.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, gomock.Any()).DoAndReturn(
 					func(_ context.Context, _ string, _ *interfaces.Resource, actual *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-						return &interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: 0, IsApproximate: true}, nil
+						return &interfaces.ResourceDataQueryResult{Entries: rows, TotalCount: new(int64(0)), IsApproximate: true}, nil
 					})
 			}
 			got, err := (&resourceDataService{rs: resources, cs: catalogs, lim: indexes, cf: connectors}).QueryWithPaging(context.Background(), resource, params)
@@ -1689,13 +1815,13 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				assert.Equal(t, []string{"id", "_score"}, actual.OutputFields)
 				assert.Equal(t, []any{0.875, 1}, actual.SearchAfter)
 				resultSearchAfter = []any{0.875, 2}
-				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 2, "_score": 0.875}}, TotalCount: 3, SearchAfter: resultSearchAfter}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": 2, "_score": 0.875}}, TotalCount: new(int64(3)), SearchAfter: resultSearchAfter}, nil
 			})
 		result, err := (&resourceDataService{rs: resources, cs: catalogs, lim: index}).QueryWithPaging(context.Background(), resource, params)
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.ResourceQuerySourceLocalIndex, result.QuerySource)
 		assert.Equal(t, []map[string]any{{"id": 2, "_score": 0.875}}, result.Entries)
-		assert.Equal(t, int64(3), result.TotalCount)
+		assert.Equal(t, new(int64(3)), result.TotalCount)
 		assert.Equal(t, []any{0.875, 1}, params.SearchAfter)
 	})
 	t.Run("query rejects disabled catalog", func(t *testing.T) {
@@ -1739,17 +1865,17 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).
-			Return(&interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: int64(1)}, nil)
+			Return(&interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: new(int64(1))}, nil)
 
 		rowsResult, err := rds.QuerySourcePage(context.Background(), resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult != nil {
 			rows = rowsResult.Entries
 			total = rowsResult.TotalCount
 		}
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 		assert.Equal(t, "openbkn", rows[0]["name"])
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["blob"])
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["native_value"])
@@ -1799,7 +1925,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, params).Return(nil, interfaces.NewStoredConditionBuildError(interfaces.NewConditionBuildError("text field has no keyword feature")))
 		rowsResult9, err := rds.QuerySourcePage(context.Background(), resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult9 != nil {
 			rows = rowsResult9.Entries
 			total = rowsResult9.TotalCount
@@ -1838,17 +1964,17 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).
-			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"blob": int64(12)}}, TotalCount: 1}, nil)
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"blob": int64(12)}}, TotalCount: new(int64(1))}, nil)
 
 		rowsResult10, err := rds.QuerySourcePage(context.Background(), resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult10 != nil {
 			rows = rowsResult10.Entries
 			total = rowsResult10.TotalCount
 		}
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 		length := int64(12)
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeMetadata, ByteLength: &length}, rows[0]["blob"])
 	})
@@ -1870,17 +1996,17 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).
-			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"blob": []byte{1, 2, 3}}}, TotalCount: 1}, nil)
+			Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"blob": []byte{1, 2, 3}}}, TotalCount: new(int64(1))}, nil)
 
 		rowsResult11, err := rds.QuerySourcePage(context.Background(), resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult11 != nil {
 			rows = rowsResult11.Entries
 			total = rowsResult11.TotalCount
 		}
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 		length := int64(3)
 		data := "AQID"
 		assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeContent,
@@ -1949,12 +2075,12 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				equal, ok := gotParams.ActualFilterCond.(*filter_condition.EqualCond)
 				require.True(t, ok)
 				assert.Equal(t, "name", equal.Lfield.OriginalName)
-				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: int64(1)}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: new(int64(1))}, nil
 			})
 
 		rowsResult12, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult12 != nil {
 			rows = rowsResult12.Entries
 			total = rowsResult12.TotalCount
@@ -1962,7 +2088,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 	})
 
 	t.Run("query logical view filters sort and preserves valid output fields before delegating", func(t *testing.T) {
@@ -1996,12 +2122,12 @@ func TestResourceDataServiceQuery(t *testing.T) {
 				gotParams *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.Equal(t, []*interfaces.SortField{{Field: "name", Direction: "asc"}}, gotParams.Sort)
 				assert.Equal(t, []string{"name"}, gotParams.OutputFields)
-				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1, Paging: &interfaces.PagingResponse{}}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: new(int64(1)), Paging: &interfaces.PagingResponse{}}, nil
 			})
 
 		rowsResult13, err := rds.queryWithCursor(context.Background(), resource, params, nil)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult13 != nil {
 			rows = rowsResult13.Entries
 			total = rowsResult13.TotalCount
@@ -2009,7 +2135,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, wantRows, rows)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 	})
 
 	t.Run("query logical view passes the logical view service HTTP error through", func(t *testing.T) {
@@ -2253,7 +2379,8 @@ func TestTableSourceCursorRetainsReadSession(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []map[string]any{{"id": int64(8)}}, first.Entries)
 			require.NotNil(t, first.Paging.NextCursor)
-			assert.EqualValues(t, 9, first.TotalCount)
+			assert.Equal(t, new(int64(9)), first.TotalCount)
+			assert.True(t, first.IsSorted)
 			cancel()
 			next := &interfaces.ResourceDataQueryParams{
 				Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor},
@@ -2291,7 +2418,8 @@ func TestTableSourceCursorRetainsReadSession(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, []map[string]any{{"id": int64(9)}}, second.Entries)
-			assert.EqualValues(t, 9, second.TotalCount)
+			assert.Equal(t, new(int64(9)), second.TotalCount)
+			assert.True(t, second.IsSorted)
 			assert.Nil(t, second.Paging.NextCursor)
 		})
 	}
@@ -2357,7 +2485,7 @@ func TestIndexCursorRetainsReadSession(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.NotNil(t, first.Paging.NextCursor)
-			assert.EqualValues(t, 2, first.TotalCount)
+			assert.Equal(t, new(int64(2)), first.TotalCount)
 			next := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}}
 			_, err = rds.QueryWithPaging(ctx, resource, next)
 			var httpErr *httperrors.HTTPError
@@ -2542,7 +2670,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 						}
 						page, err := service.QuerySourcePage(t.Context(), resource, params)
 						var rows []map[string]any
-						var total int64
+						var total *int64
 						if page != nil {
 							rows = page.Entries
 							total = page.TotalCount
@@ -2841,7 +2969,7 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 				}
 				rowsResult, err := service.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult != nil {
 					rows = rowsResult.Entries
 					total = rowsResult.TotalCount
@@ -2890,17 +3018,17 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 				require.NotNil(t, prepared.ActualFilterCond)
 				assert.Equal(t, op, prepared.ActualFilterCond.GetOperation())
 				assert.Equal(t, bounds, prepared.FilterCondCfg.Value)
-				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"wide": bounds[1]}}, TotalCount: 1}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"wide": bounds[1]}}, TotalCount: new(int64(1))}, nil
 			})
 			rowsResult, err := service.QuerySourcePage(context.Background(), resource, params)
 			var rows []map[string]any
-			var total int64
+			var total *int64
 			if rowsResult != nil {
 				rows = rowsResult.Entries
 				total = rowsResult.TotalCount
 			}
 			require.NoError(t, err)
-			assert.Equal(t, int64(1), total)
+			assert.Equal(t, new(int64(1)), total)
 			assert.Equal(t, bounds[1], rows[0]["wide"])
 		}
 	})
@@ -2942,7 +3070,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 
 						check(prepared)
 						resultSearchAfter3 = []any{"100"}
-						return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1, SearchAfter: resultSearchAfter3}, nil
+						return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: new(int64(1)), SearchAfter: resultSearchAfter3}, nil
 					})
 				} else {
 					conn := mock_interfaces.NewMockTableConnector(ctrl)
@@ -2951,18 +3079,18 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 					conn.EXPECT().Close(gomock.Any()).Return(nil)
 					conn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, prepared *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 						check(prepared)
-						return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: 1}, nil
+						return &interfaces.ResourceDataQueryResult{Entries: wantRows, TotalCount: new(int64(1))}, nil
 					})
 				}
 				rowsResult19, err := service.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult19 != nil {
 					rows = rowsResult19.Entries
 					total = rowsResult19.TotalCount
 				}
 				require.NoError(t, err)
-				assert.Equal(t, int64(1), total)
+				assert.Equal(t, new(int64(1)), total)
 				assert.Equal(t, wantRows, rows)
 				if connectorType == "doris" {
 					assert.Equal(t, "+00100", params.FilterCondCfg.Value)
@@ -2985,7 +3113,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: "doris"}, nil)
 			rowsResult20, err := service.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
 			var rows []map[string]any
-			var total int64
+			var total *int64
 			if rowsResult20 != nil {
 				rows = rowsResult20.Entries
 				total = rowsResult20.TotalCount
@@ -3015,7 +3143,7 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 				}
 				rowsResult, err := service.QuerySourcePage(context.Background(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if rowsResult != nil {
 					rows = rowsResult.Entries
 					total = rowsResult.TotalCount
@@ -3082,13 +3210,13 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 			params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
 			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", Enabled: true}, nil)
 			if tc.name != "raw mismatch" {
-				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"title": "example"}}, TotalCount: int64(1)}, tc.downstream)
+				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"title": "example"}}, TotalCount: new(int64(1))}, tc.downstream)
 			}
 			result, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
 			if tc.status == 0 {
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				assert.Equal(t, int64(1), result.TotalCount)
+				assert.Nil(t, result.TotalCount)
 				require.Len(t, result.Entries, 1)
 				assert.Equal(t, "title_vector", cfg.Field)
 				return
@@ -3136,14 +3264,14 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 			if tc.backendFailure {
 				backendErr = errors.New("search failed: [400 Bad Request] Query vector has invalid dimension: 3. Dimension should be: 1024")
 			}
-			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: expectedRows, TotalCount: 1}, backendErr)
+			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(&interfaces.ResourceDataQueryResult{Entries: expectedRows, TotalCount: new(int64(1))}, backendErr)
 			result, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QueryWithPaging(interfaces.WithTrustedProxyRead(t.Context()), resource, params)
 			if !tc.backendFailure {
 				require.NoError(t, err)
 				require.NotNil(t, result)
 				assert.Equal(t, expectedRows, result.Entries)
 				require.NotNil(t, result)
-				assert.Equal(t, int64(1), result.TotalCount)
+				assert.Nil(t, result.TotalCount)
 				return
 			}
 			var httpErr *httperrors.HTTPError
@@ -3171,7 +3299,7 @@ func TestQuerySourcePageTemporalConfigurationErrors(t *testing.T) {
 		}
 		rowsResult, err := svc.QuerySourcePage(context.Background(), source, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult != nil {
 			rows = rowsResult.Entries
 			total = rowsResult.TotalCount
@@ -3206,7 +3334,7 @@ func TestQuerySourcePageHavingTemporalErrors(t *testing.T) {
 			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: tc.value}}
 			rowsResult, err := svc.QuerySourcePage(context.Background(), source, params)
 			var rows []map[string]any
-			var total int64
+			var total *int64
 			if rowsResult != nil {
 				rows = rowsResult.Entries
 				total = rowsResult.TotalCount
@@ -3238,7 +3366,7 @@ func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
 			if stored {
 				page, err := service.QuerySourcePage(t.Context(), resource, params)
 				var rows []map[string]any
-				var total int64
+				var total *int64
 				if page != nil {
 					rows = page.Entries
 					total = page.TotalCount

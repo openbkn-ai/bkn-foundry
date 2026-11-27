@@ -7,6 +7,7 @@ package query
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"time"
 
@@ -66,6 +67,9 @@ func ExecuteInitialResourceDataCursorWithCategoryRunner(ctx context.Context, acc
 	session.ResourceDataCategory = paginationCategory
 	session.ResourceDataSource = cursorSourceBinding(source)
 	session.PageOffset = params.Paging.Offset
+	if paginationCategory == interfaces.ResourceCategoryAPI && resource.APIDefinition != nil && resource.APIDefinition.PagingRule != nil {
+		session.ResourceDataAPIPageMode = resource.APIDefinition.PagingRule.Mode == "page"
+	}
 	session.Lock()
 	defer session.Unlock()
 	result, err := executeResourceDataCursorPage(ctx, session, execute)
@@ -83,19 +87,25 @@ func ExecuteResourceDataCursorContinuation(ctx context.Context, accountID string
 // ExecuteResourceDataCursorContinuationWithRunner continues a cursor with a page runner.
 func ExecuteResourceDataCursorContinuationWithRunner(ctx context.Context, accountID string, resource, source *interfaces.Resource,
 	cursor string, execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
-	session, ok := rawQueryCursorSessions.acquire(cursor)
-	if !ok || session.ResourceDataParams == nil {
-		if ok {
-			rawQueryCursorSessions.release(session)
-		}
+	if resource == nil {
+		return nil, cursorNotFoundError(ctx)
+	}
+	session, err := rawQueryCursorSessions.acquireResourceData(cursor, accountID, resource.ID)
+	if errors.Is(err, errCursorSessionBusy) {
+		return nil, cursorInUseError(ctx)
+	}
+	if err != nil {
 		return nil, cursorNotFoundError(ctx)
 	}
 	defer rawQueryCursorSessions.release(session)
+	if session.ResourceDataParams == nil {
+		return nil, cursorNotFoundError(ctx)
+	}
 	if session.AccountID != accountID {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
-	if resource == nil || session.ResourceDataResourceID != resource.ID {
+	if session.ResourceDataResourceID != resource.ID {
 		return nil, cursorNotFoundError(ctx)
 	}
 	if session.ResourceDataUpdateTime != resource.UpdateTime || !sameCursorSource(session.ResourceDataSource, source) {
@@ -127,14 +137,16 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 	execute ResourceDataPageRunner) (*interfaces.ResourceDataQueryResult, error) {
 	offset := session.PageOffset
 	params := cloneResourceDataQueryParams(session.ResourceDataParams)
-	params.NeedTotal = session.ResourceDataParams.NeedTotal && !session.HasTotalCount
+	params.NeedTotal = session.ResourceDataParams.NeedTotal && session.TotalCount == nil
 	params.Paging = interfaces.PagingRequest{
 		Mode:   interfaces.PagingModeSingle,
 		Offset: offset,
 		Limit:  session.PageLimit,
 	}
-	// OpenSearch search_after uses the requested page size without lookahead.
-	if session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+	// 索引按 search_after 翻页，API 的 page 规则按 limit 换算页码。
+	isAPI := session.ResourceDataCategory == interfaces.ResourceCategoryAPI
+	usesLookahead := session.ResourceDataCategory != interfaces.ResourceCategoryIndex && !isAPI
+	if usesLookahead {
 		params.Paging.Limit++
 	}
 	params.SearchAfter = append([]any(nil), session.SearchAfter...)
@@ -154,26 +166,31 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		}
 		return nil, err
 	}
-	entries, total := page.Entries, page.TotalCount
-	if session.ResourceDataParams.NeedTotal && !session.HasTotalCount {
-		session.TotalCount = total
-		session.HasTotalCount = true
+	entries := page.Entries
+	if session.TotalCount == nil && (isAPI || session.ResourceDataParams.NeedTotal) {
+		session.TotalCount = page.TotalCount
 	}
-	responseTotal := total
-	if session.HasTotalCount {
-		responseTotal = session.TotalCount
+	page.TotalCount = nil
+	if session.ResourceDataParams.NeedTotal {
+		page.TotalCount = session.TotalCount
 	}
-	page.TotalCount = responseTotal
-	page.NeedTotal = session.ResourceDataParams.NeedTotal
+	page.IsSorted = !isAPI && len(session.ResourceDataParams.Sort) > 0
+	pageAdvance := len(entries)
 	hasNext := len(entries) > session.PageLimit
 	if session.ReadSession != nil {
 		hasNext = session.ReadHasMore
 	} else if session.ResourceDataCategory == interfaces.ResourceCategoryIndex {
-		if session.HasTotalCount {
+		if session.TotalCount != nil {
 			hasNext = len(entries) == session.PageLimit &&
-				int64(session.PageOffset+len(entries)) < session.TotalCount && len(page.SearchAfter) > 0
+				int64(session.PageOffset+len(entries)) < *session.TotalCount && len(page.SearchAfter) > 0
 		} else {
 			hasNext = len(entries) == session.PageLimit && len(page.SearchAfter) > 0
+		}
+	} else if isAPI {
+		pageAdvance, hasNext, err = nextAPIResourceCursorPage(ctx, session, len(entries))
+		if err != nil {
+			rawQueryCursorSessions.closeSession(session.ID)
+			return nil, err
 		}
 	}
 	if !hasNext {
@@ -181,19 +198,54 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 		page.Paging = &interfaces.PagingResponse{}
 		return page, nil
 	}
-	if session.ReadSession == nil && session.ResourceDataCategory != interfaces.ResourceCategoryIndex {
+	if session.ReadSession == nil && usesLookahead {
 		entries = entries[:session.PageLimit]
+		pageAdvance = len(entries)
 	}
 	page.Entries = entries
 	if session.ReadSession == nil {
-		session.PageOffset += len(entries)
+		session.PageOffset += pageAdvance
 	}
 	if len(page.SearchAfter) > 0 {
 		session.SearchAfter = append([]any(nil), page.SearchAfter...)
 	}
-	rawQueryCursorSessions.markPageSuccess(session)
+	rawQueryCursorSessions.renewResourceDataCursor(session)
 	page.Paging = cursorPagingResponse(session)
 	return page, nil
+}
+
+func nextAPIResourceCursorPage(ctx context.Context, session *interfaces.CursorSession, rows int) (int, bool, error) {
+	if int64(rows) > math.MaxInt64-session.ResourceDataAPIRowsRead {
+		return 0, false, httperrors.NewHTTPError(ctx, http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).
+			WithErrorDetails("API cursor row count exceeds its supported range")
+	}
+	session.ResourceDataAPIRowsRead += int64(rows)
+	hasNext := rows == session.PageLimit
+	if session.TotalCount != nil {
+		total := *session.TotalCount
+		startOffset := int64(session.ResourceDataParams.Paging.Offset)
+		hasNext = total > startOffset && session.ResourceDataAPIRowsRead < total-startOffset
+		if hasNext && rows == 0 {
+			return 0, false, httperrors.NewHTTPError(ctx, http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("upstream API returned an empty page before the reported total was reached")
+		}
+		if session.ResourceDataAPIPageMode && startOffset > 0 && rows > 0 {
+			// 前置页可能是短页，起始 offset 只是已跳过行数的上限。
+			hasNext = session.ResourceDataAPIRowsRead < total
+		}
+	}
+	advance := rows
+	if session.ResourceDataAPIPageMode {
+		advance = session.PageLimit
+	}
+	if hasNext && session.PageOffset > math.MaxInt-advance {
+		if session.TotalCount != nil {
+			return 0, false, httperrors.NewHTTPError(ctx, http.StatusBadGateway, verrors.VegaBackend_Query_ExecuteFailed).
+				WithErrorDetails("API cursor cannot verify the reported total because the next offset exceeds its supported range")
+		}
+		hasNext = false
+	}
+	return advance, hasNext, nil
 }
 
 // OpenResourceTableCursor opens a source stream that survives the first request.
@@ -208,22 +260,21 @@ func OpenResourceTableCursor(ctx context.Context, session *interfaces.CursorSess
 	if err != nil {
 		return err
 	}
-	if err := readTableCursorTotal(ctx, stream, params.NeedTotal); err != nil {
-		return err
+	if params.NeedTotal {
+		if _, countErr := stream.ReadTotal(ctx); countErr != nil {
+			// 计数失败可能使当前事务不可继续。重新打开结果集时只读数据。
+			if closeErr := stream.Close(); closeErr != nil {
+				return errors.Join(countErr, closeErr)
+			}
+			readParams.NeedTotal = false
+			stream, err = reader.OpenTableRead(ctx, resource, &readParams)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	session.ReadSession = stream
 	session.ReadConnector = connector
-	return nil
-}
-
-func readTableCursorTotal(ctx context.Context, stream interfaces.QueryPageSession, needTotal bool) error {
-	if needTotal {
-		// 后续页从会话取得已缓存的总数。
-		if _, err := stream.ReadTotal(ctx); err != nil {
-			_ = stream.Close()
-			return err
-		}
-	}
 	return nil
 }
 
@@ -247,12 +298,9 @@ func ReadResourceCursorPage(ctx context.Context, session *interfaces.CursorSessi
 		return nil, err
 	}
 	session.PageOffset += len(page.Entries)
-	result := &interfaces.ResourceDataQueryResult{Entries: page.Entries}
+	result := &interfaces.ResourceDataQueryResult{Entries: page.Entries, TotalCount: page.TotalCount}
 	for _, column := range page.Columns {
 		result.Columns = append(result.Columns, column.Name)
-	}
-	if page.TotalCount != nil {
-		result.TotalCount = *page.TotalCount
 	}
 	return result, nil
 }

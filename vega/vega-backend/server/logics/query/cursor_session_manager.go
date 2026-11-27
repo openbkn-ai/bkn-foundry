@@ -197,19 +197,46 @@ func (m *cursorSessionManager) requestReclaim() {
 // global limit and remains visible to the expiry reclaimer while in use.
 func (m *cursorSessionManager) acquire(cursor string) (*interfaces.CursorSession, bool) {
 	m.mu.Lock()
-	session, ok := m.sessions[cursor]
-	if !ok || !session.TryLock() {
-		m.mu.Unlock()
+	defer m.mu.Unlock()
+	session := m.sessions[cursor]
+	if err := m.lockActiveSession(session); err != nil {
 		return nil, false
+	}
+	return session, true
+}
+
+func (m *cursorSessionManager) acquireResourceData(cursor, accountID, resourceID string) (*interfaces.CursorSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	session := m.sessions[cursor]
+	err := m.lockActiveSession(session)
+	if errors.Is(err, errCursorSessionBusy) {
+		// 只向匹配账号和资源的调用方报告游标正在使用。
+		if session.ResourceDataParams == nil || session.AccountID != accountID || session.ResourceDataResourceID != resourceID ||
+			time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
+			err = errCursorSessionNotFound
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+// 调用方持有管理器锁。成功时由调用方释放会话锁。
+func (m *cursorSessionManager) lockActiveSession(session *interfaces.CursorSession) error {
+	if session == nil {
+		return errCursorSessionNotFound
+	}
+	if !session.TryLock() {
+		return errCursorSessionBusy
 	}
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		m.requestReclaim()
 		session.Unlock()
-		m.mu.Unlock()
-		return nil, false
+		return errCursorSessionNotFound
 	}
-	m.mu.Unlock()
-	return session, true
+	return nil
 }
 
 func (m *cursorSessionManager) release(session *interfaces.CursorSession) {
@@ -286,17 +313,32 @@ func CloseCursorSession(ctx context.Context, accountID, cursor string) error {
 		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	case errors.Is(err, errCursorSessionBusy):
-		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorInUse).
-			WithErrorDetails("cursor is in use, please retry later")
+		return cursorInUseError(ctx)
 	default:
 		return err
 	}
+}
+
+func cursorInUseError(ctx context.Context) error {
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorInUse).
+		WithErrorDetails("cursor is in use, please retry later")
 }
 
 func (m *cursorSessionManager) markPageSuccess(session *interfaces.CursorSession) {
 	now := time.Now().Unix()
 	session.LastSuccessfulPageAtSec = now
 	atomic.StoreInt64(&session.ExpiresAtSec, now+int64(session.KeepAliveSec))
+}
+
+// 调用方持有会话锁。换发游标使已经消费的页不能用旧游标再次推进。
+func (m *cursorSessionManager) renewResourceDataCursor(session *interfaces.CursorSession) {
+	nextCursor := uuid.NewV7().String()
+	m.mu.Lock()
+	delete(m.sessions, session.ID)
+	session.ID = nextCursor
+	m.sessions[nextCursor] = session
+	m.mu.Unlock()
+	m.markPageSuccess(session)
 }
 
 func (m *cursorSessionManager) removeLocked(cursor string) (*interfaces.CursorSession, bool) {

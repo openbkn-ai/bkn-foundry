@@ -384,8 +384,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 		Warnings: warnings,
 	}
 	if page.TotalCount != nil {
-		session.TotalCount = *page.TotalCount
-		session.HasTotalCount = true
+		session.TotalCount = page.TotalCount
 	}
 	if page.HasMore {
 		session.PageOffset += session.PageLimit
@@ -395,10 +394,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
-	if session.HasTotalCount {
-		totalCount := session.TotalCount
-		result.TotalCount = &totalCount
-	}
+	result.TotalCount = session.TotalCount
 	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }
 
@@ -575,7 +571,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		delete(query, "from")
 		query["search_after"] = session.SearchAfter
 	}
-	if session.NeedTotal && session.HasTotalCount {
+	if session.NeedTotal && session.TotalCount != nil {
 		delete(query, "track_total_hits")
 	}
 	pageCtx := ctx
@@ -621,17 +617,16 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
-	if session.NeedTotal && !session.HasTotalCount && result.TotalCount != nil {
-		session.TotalCount = *result.TotalCount
-		session.HasTotalCount = true
+	if session.NeedTotal && session.TotalCount == nil {
+		session.TotalCount = result.TotalCount
 	}
 
 	hasNext := false
 	if session.NeedTotal {
 		// Real OpenSearch responses provide an exact total on the first page.
 		// Retain the fallback for connector implementations that omit it.
-		hasMoreResults := !session.HasTotalCount ||
-			int64(session.PageOffset+len(result.Entries)) < session.TotalCount
+		hasMoreResults := session.TotalCount == nil ||
+			int64(session.PageOffset+len(result.Entries)) < *session.TotalCount
 		hasNext = len(result.Entries) == session.PageLimit && hasMoreResults && len(result.SearchAfter) > 0
 	} else {
 		// Without an exact total, a full page may be the final page. Preserve
@@ -648,12 +643,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 		result.Paging = &interfaces.PagingResponse{}
 		rawQueryCursorSessions.closeSession(session.ID)
 	}
-	if session.HasTotalCount {
-		totalCount := session.TotalCount
-		result.TotalCount = &totalCount
-	} else if !session.NeedTotal {
-		result.TotalCount = nil
-	}
+	result.TotalCount = session.TotalCount
 	result.Warnings = append(result.Warnings, warnings...)
 	return withExecutedResourceIDs(result, session.ResourceIDs), nil
 }

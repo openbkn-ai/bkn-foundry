@@ -27,20 +27,16 @@ type queryCursorCodec struct {
 }
 
 type queryCursorPayload struct {
-	Version                  string                      `json:"v"`
-	CallerID                 string                      `json:"caller_id"`
-	CallerType               string                      `json:"caller_type"`
-	KNID                     string                      `json:"kn_id"`
-	ObjectTypeID             string                      `json:"object_type_id"`
-	QueryDigest              string                      `json:"query_digest"`
-	EffectiveRowFilterDigest string                      `json:"effective_row_filter_digest"`
-	ModelVersion             string                      `json:"model_version"`
-	SearchAfter              interfaces.SearchAfterArray `json:"search_after"`
-	ResourceCursor           string                      `json:"resource_cursor,omitempty"`
-	// ResourceOffset is the next row offset of a resource query whose first
-	// page was read without a Vega cursor session.
-	ResourceOffset int       `json:"resource_offset,omitempty"`
-	ExpiresAt      time.Time `json:"expires_at"`
+	Version                  string    `json:"v"`
+	CallerID                 string    `json:"caller_id"`
+	CallerType               string    `json:"caller_type"`
+	KNID                     string    `json:"kn_id"`
+	ObjectTypeID             string    `json:"object_type_id"`
+	QueryDigest              string    `json:"query_digest"`
+	EffectiveRowFilterDigest string    `json:"effective_row_filter_digest"`
+	ModelVersion             string    `json:"model_version"`
+	ResourceCursor           string    `json:"resource_cursor"`
+	ExpiresAt                time.Time `json:"expires_at"`
 }
 
 func newQueryCursorCodec() *queryCursorCodec {
@@ -51,34 +47,39 @@ func newQueryCursorCodec() *queryCursorCodec {
 	return &queryCursorCodec{opaque: opaque, now: time.Now}
 }
 
-func (codec *queryCursorCodec) encode(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion string, searchAfter []any) (string, error) {
-	if len(searchAfter) == 0 {
-		return "", nil
-	}
-	return codec.encodePayload(ctx, query, modelVersion, interfaces.SearchAfterArray(searchAfter), "", 0, nil)
-}
-
 func (codec *queryCursorCodec) encodeResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	modelVersion, resourceCursor string, resourceCursorExpiry *int64) (string, error) {
 	if resourceCursor == "" {
 		return "", nil
 	}
+	account, ok := queryCursorAccount(ctx)
+	if !ok || codec == nil || codec.opaque == nil {
+		return "", fmt.Errorf("query cursor is unavailable")
+	}
+	digest, err := objectQueryDigest(query)
+	if err != nil {
+		return "", err
+	}
+	if query.EffectiveRowFilterDigest == "" {
+		return "", fmt.Errorf("effective row filter digest is unavailable")
+	}
 	expiresAt, err := codec.cursorExpiresAt(resourceCursorExpiry)
 	if err != nil {
 		return "", err
 	}
-	return codec.encodePayload(ctx, query, modelVersion, nil, resourceCursor, 0, &expiresAt)
-}
-
-// encodeResourceOffset encodes a stateless resource continuation. It holds no
-// Vega state, so a caller that never continues leaves nothing to reclaim.
-func (codec *queryCursorCodec) encodeResourceOffset(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion string, resourceOffset int) (string, error) {
-	if resourceOffset <= 0 {
-		return "", nil
+	payload := queryCursorPayload{
+		Version:                  queryCursorVersion,
+		CallerID:                 account.ID,
+		CallerType:               account.Type,
+		KNID:                     query.KNID,
+		ObjectTypeID:             query.ObjectTypeID,
+		QueryDigest:              digest,
+		EffectiveRowFilterDigest: query.EffectiveRowFilterDigest,
+		ModelVersion:             modelVersion,
+		ResourceCursor:           resourceCursor,
+		ExpiresAt:                expiresAt,
 	}
-	return codec.encodePayload(ctx, query, modelVersion, nil, "", resourceOffset, nil)
+	return codec.opaque.Encode(queryCursorVersion, payload)
 }
 
 func (codec *queryCursorCodec) cursorExpiresAt(resourceCursorExpiry *int64) (time.Time, error) {
@@ -96,76 +97,28 @@ func (codec *queryCursorCodec) cursorExpiresAt(resourceCursorExpiry *int64) (tim
 	return expiresAt.UTC(), nil
 }
 
-func (codec *queryCursorCodec) encodePayload(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion string, searchAfter interfaces.SearchAfterArray, resourceCursor string, resourceOffset int,
-	expiresAtOverride *time.Time) (string, error) {
+// decodeResource unwraps the authorized Vega continuation token.
+func (codec *queryCursorCodec) decodeResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
+	modelVersion, token string) (string, error) {
 	account, ok := queryCursorAccount(ctx)
 	if !ok || codec == nil || codec.opaque == nil {
 		return "", fmt.Errorf("query cursor is unavailable")
+	}
+	var payload queryCursorPayload
+	if err := codec.opaque.Decode(queryCursorVersion, token, &payload); err != nil {
+		return "", fmt.Errorf("query cursor is invalid")
 	}
 	digest, err := objectQueryDigest(query)
 	if err != nil {
 		return "", err
 	}
-	if query.EffectiveRowFilterDigest == "" {
-		return "", fmt.Errorf("effective row filter digest is unavailable")
-	}
-	expiresAt := codec.now().Add(queryCursorTTL).UTC()
-	if expiresAtOverride != nil {
-		expiresAt = expiresAtOverride.UTC()
-	}
-	payload := queryCursorPayload{
-		Version: queryCursorVersion, CallerID: account.ID, CallerType: account.Type,
-		KNID: query.KNID, ObjectTypeID: query.ObjectTypeID,
-		QueryDigest: digest, EffectiveRowFilterDigest: query.EffectiveRowFilterDigest, ModelVersion: modelVersion,
-		SearchAfter: searchAfter, ResourceCursor: resourceCursor, ResourceOffset: resourceOffset,
-		ExpiresAt: expiresAt,
-	}
-	return codec.opaque.Encode(queryCursorVersion, payload)
-}
-
-func (codec *queryCursorCodec) decode(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion, token string) (interfaces.SearchAfterArray, error) {
-	payload, err := codec.decodePayload(ctx, query, modelVersion, token)
-	if err != nil || len(payload.SearchAfter) == 0 {
-		return nil, fmt.Errorf("query cursor is invalid")
-	}
-	return payload.SearchAfter, nil
-}
-
-// decodeResource returns exactly one of a Vega cursor or a stateless next-row
-// offset.
-func (codec *queryCursorCodec) decodeResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion, token string) (string, int, error) {
-	payload, err := codec.decodePayload(ctx, query, modelVersion, token)
-	if err != nil || (payload.ResourceCursor == "") == (payload.ResourceOffset <= 0) {
-		return "", 0, fmt.Errorf("query cursor is invalid")
-	}
-	return payload.ResourceCursor, payload.ResourceOffset, nil
-}
-
-func (codec *queryCursorCodec) decodePayload(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
-	modelVersion, token string) (*queryCursorPayload, error) {
-	account, ok := queryCursorAccount(ctx)
-	if !ok || codec == nil || codec.opaque == nil {
-		return nil, fmt.Errorf("query cursor is unavailable")
-	}
-	var payload queryCursorPayload
-	if err := codec.opaque.Decode(queryCursorVersion, token, &payload); err != nil {
-		return nil, fmt.Errorf("query cursor is invalid")
-	}
-	digest, err := objectQueryDigest(query)
-	if err != nil {
-		return nil, err
-	}
 	if query.EffectiveRowFilterDigest == "" || payload.Version != queryCursorVersion || payload.CallerID != account.ID || payload.CallerType != account.Type ||
 		payload.KNID != query.KNID || payload.ObjectTypeID != query.ObjectTypeID || payload.QueryDigest != digest ||
 		payload.EffectiveRowFilterDigest != query.EffectiveRowFilterDigest ||
-		payload.ModelVersion != modelVersion || !codec.now().Before(payload.ExpiresAt) ||
-		(len(payload.SearchAfter) == 0 && payload.ResourceCursor == "" && payload.ResourceOffset <= 0) {
-		return nil, fmt.Errorf("query cursor is invalid")
+		payload.ModelVersion != modelVersion || !codec.now().Before(payload.ExpiresAt) || payload.ResourceCursor == "" {
+		return "", fmt.Errorf("query cursor is invalid")
 	}
-	return &payload, nil
+	return payload.ResourceCursor, nil
 }
 
 func objectQueryDigest(query *interfaces.ObjectQueryBaseOnObjectType) (string, error) {

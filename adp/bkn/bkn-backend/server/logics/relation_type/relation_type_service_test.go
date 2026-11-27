@@ -1545,12 +1545,12 @@ func Test_relationTypeService_GetTotal(t *testing.T) {
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				TotalCount: 10,
+				TotalCount: new(int64(10)),
 			}, nil)
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 10)
+			So(total, ShouldResemble, new(int64(10)))
 		})
 
 		Convey("Failed when QueryResourceData fails\n", func() {
@@ -1560,7 +1560,7 @@ func Test_relationTypeService_GetTotal(t *testing.T) {
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -1590,12 +1590,12 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 
 			// Mock GetTotalWithRTIDs calls
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				TotalCount: 5,
+				TotalCount: new(int64(5)),
 			}, nil).Times(1)
 
 			total, err := service.GetTotalWithLargeRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 5)
+			So(total, ShouldResemble, new(int64(5)))
 		})
 
 		Convey("Success with empty RTIDs\n", func() {
@@ -1604,7 +1604,7 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldResemble, new(int64(0)))
 		})
 
 		Convey("Failed when GetTotalWithRTIDs returns error\n", func() {
@@ -1615,7 +1615,7 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -1644,12 +1644,12 @@ func Test_relationTypeService_GetTotalWithRTIDs(t *testing.T) {
 			rtIDs := []string{"rt1", "rt2"}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				TotalCount: 2,
+				TotalCount: new(int64(2)),
 			}, nil)
 
 			total, err := service.GetTotalWithRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 2)
+			So(total, ShouldResemble, new(int64(2)))
 		})
 
 		Convey("Failed when GetTotal returns error\n", func() {
@@ -1660,7 +1660,7 @@ func Test_relationTypeService_GetTotalWithRTIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -1707,7 +1707,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1739,7 +1739,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil)
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -1837,7 +1837,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
-				TotalCount: 0,
+				TotalCount: new(int64(0)),
 			}, nil)
 
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -2358,7 +2358,7 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 			}
 			// NeedTotal block: QueryResourceData with Limit=1, NeedTotal=true
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{}, TotalCount: 5,
+				Entries: []map[string]any{}, TotalCount: new(int64(5)),
 			}, nil)
 			// Main loop: QueryResourceData returns empty → break
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
@@ -2366,7 +2366,7 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 			}, nil)
 			result, err := service.SearchRelationTypes(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 5)
+			So(result.TotalCount, ShouldResemble, new(int64(5)))
 		})
 
 		Convey("Success returning actual relation type entries\n", func() {

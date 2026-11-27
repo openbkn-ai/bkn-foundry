@@ -153,7 +153,7 @@ func (s *openSearchPointInTime) SearchPage(ctx context.Context, limit int, after
 	}
 	page := &interfaces.QueryPage{
 		Entries:    result.Entries,
-		TotalCount: &result.TotalCount,
+		TotalCount: result.TotalCount,
 	}
 	return page, result.SearchAfter, nil
 }
