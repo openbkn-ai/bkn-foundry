@@ -425,8 +425,8 @@ components:
       properties:
         query: { $ref: "#/components/schemas/ObjectMetricQuery" }
         bucket_key: { type: string }
-        page_size: { type: integer, minimum: 1, maximum: 100 }
-        cursor: { type: string }
+        page_size: { type: integer, minimum: 1, maximum: 100, description: "Maximum participants per page. A source batch can be short, and filtering can produce an empty page." }
+        cursor: { type: string, description: Opaque next_cursor from the previous page of the same request. Keep page_size unchanged. }
     ObjectMetricTrialDrillThroughRequest:
       type: object
       additionalProperties: false
@@ -434,8 +434,8 @@ components:
       properties:
         query: { $ref: "#/components/schemas/ObjectMetricQuery" }
         bucket_key: { type: string }
-        page_size: { type: integer, minimum: 1, maximum: 100 }
-        cursor: { type: string }
+        page_size: { type: integer, minimum: 1, maximum: 100, description: "Maximum participants per page. A source batch can be short, and filtering can produce an empty page." }
+        cursor: { type: string, description: Opaque next_cursor from the previous page of the same request. Keep page_size unchanged. }
         definition: { type: object, additionalProperties: true }
     ObjectMetricDrillThrough:
       type: object
@@ -449,7 +449,7 @@ components:
             properties:
               instance_identity: { type: object, additionalProperties: true }
               role: { type: string }
-        next_cursor: { type: string }
+        next_cursor: { type: string, description: "Continue with this cursor when present, even if participants is short or empty. Pagination ends when this field is absent." }
         bucket_value: {}
         evaluated_at: { type: integer, format: int64 }
         status: { type: string, enum: [ok, partial] }

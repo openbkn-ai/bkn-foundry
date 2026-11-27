@@ -78,7 +78,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByID(ctx context.Context, knID 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = ata.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -119,7 +119,7 @@ func (ata *actionTypeAccess) CheckActionTypeExistByName(ctx context.Context, knI
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var atID string
 	err = ata.db.QueryRow(sqlStr, vals...).Scan(
@@ -171,7 +171,7 @@ func (ata *actionTypeAccess) GetActionTypeIdentitiesByIDsOrNames(ctx context.Con
 			common.LogSafeError(ctx, "Failed to build action type identity query", err)
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := ata.db.Query(sqlStr, vals...)
 		if err != nil {
 			common.LogSafeError(ctx, "Query action type identities failed", err)
@@ -342,7 +342,7 @@ func (ata *actionTypeAccess) CreateActionType(ctx context.Context, tx *sql.Tx, a
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -385,7 +385,7 @@ func (ata *actionTypeAccess) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			common.LogSafeError(ctx, "Failed to build the sql of batch insert action types", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if _, err = tx.Exec(sqlStr, vals...); err != nil {
 			common.LogSafeError(ctx, "Batch insert action types failed", err)
 			return err
@@ -524,7 +524,7 @@ func (ata *actionTypeAccess) ListActionTypes(ctx context.Context, query interfac
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -692,7 +692,7 @@ func (ata *actionTypeAccess) ListActionTypeSummaries(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 	rows, err := ata.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		return nil, err
@@ -800,7 +800,7 @@ func (ata *actionTypeAccess) GetActionTypesTotal(ctx context.Context, query inte
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = ata.db.QueryRow(sqlStr, vals...).Scan(&total)
@@ -863,7 +863,7 @@ func (ata *actionTypeAccess) GetActionTypesByIDs(ctx context.Context, knID strin
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1087,7 +1087,7 @@ func (ata *actionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, a
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1181,7 +1181,7 @@ func (ata *actionTypeAccess) UpdateActionTypes(ctx context.Context, tx *sql.Tx,
 		}
 		statement.WriteByte(')')
 		sqlStr := statement.String()
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(args)))
 		if _, err := tx.Exec(sqlStr, args...); err != nil {
 			common.LogSafeError(ctx, "Batch update action types failed", err)
 			return err
@@ -1233,7 +1233,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByIDs(ctx context.Context, tx *sql
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1272,7 +1272,7 @@ func (ata *actionTypeAccess) DeleteActionTypesByKnID(ctx context.Context, tx *sq
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1314,7 +1314,7 @@ func (ata *actionTypeAccess) GetActionTypeIDsByKnID(ctx context.Context, knID st
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1442,7 +1442,7 @@ func (ata *actionTypeAccess) GetAllActionTypesByKnID(ctx context.Context, knID s
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ata.db.Query(sqlStr, vals...)
 	if err != nil {

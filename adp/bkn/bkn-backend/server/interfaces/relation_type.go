@@ -105,7 +105,7 @@ type RelationTypesQueryParams struct {
 // Relation type search list.
 type RelationTypes struct {
 	Entries    []*RelationType `json:"entries"`
-	TotalCount int64           `json:"total_count,omitzero"`
+	TotalCount *int64          `json:"total_count,omitempty"`
 	NextCursor *string         `json:"next_cursor,omitzero"`
 	OverallMs  int64           `json:"overall_ms"`
 }

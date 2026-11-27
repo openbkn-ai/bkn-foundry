@@ -301,7 +301,10 @@ func ptcCallSignature(tool MCPToolInfo, tolerated []string) string {
 	// object_input, relation_target and bkn_context slots unchanged.
 	var keywordOnly []string
 	keywordOnlySpecs := []string{"draft_revision: int = None", "kn_version: str = None"}
-	if tool.Name == toolKeyExecuteAction {
+	switch tool.Name {
+	case toolKeyQueryObjectInstance:
+		keywordOnlySpecs = append([]string{"paging_mode: str = None"}, keywordOnlySpecs...)
+	case toolKeyExecuteAction:
 		keywordOnlySpecs = append([]string{
 			"governance_plan_digest: str = None",
 			"governance_permit_id: str = None",

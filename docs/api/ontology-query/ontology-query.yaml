@@ -138,6 +138,7 @@ paths:
         Requires the caller's `object_type.query_data`. The target resource is
         resolved from the current published main model and Vega performs the
         final managed-proxy `resource.query_data` check before reading rows.
+        Reads a single page using limit and offset.
       operationId: getObjectTypeSampleDataViaProxy
       parameters:
         - $ref: "#/components/parameters/KnVersion"
@@ -162,12 +163,6 @@ paths:
         - name: need_total
           in: query
           schema: { type: boolean, default: true }
-        - name: cursor
-          in: query
-          description: >-
-            Opaque authenticated pagination cursor returned by the previous response.
-            Raw search_after values are rejected.
-          schema: { type: string }
       responses:
         "400":
           $ref: "#/components/responses/BadKnVersion"
@@ -181,7 +176,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [name, columns, entries]
+                required: [name, columns, entries, paging]
                 properties:
                   name: { type: string }
                   columns:
@@ -195,10 +190,10 @@ paths:
                   entries:
                     type: array
                     items: { type: object, additionalProperties: true }
-                  total_count: { type: integer, format: int64 }
-                  cursor:
-                    description: Compatibility field; equal to paging.next_cursor. New callers should use paging.next_cursor.
-                    type: string
+                  total_count:
+                    type: integer
+                    format: int64
+                    description: 已取得的总条数。已确认零命中时返回 0，未请求或未取得时省略。
                   paging:
                     $ref: '#/components/schemas/ObjectPagingResponse'
         '403': { description: "Caller query_data is denied, or the managed proxy lacks resource query_data (`OntologyQuery.Proxy.PermissionDenied`)." }
@@ -217,6 +212,7 @@ paths:
             examples:
               获取指定对象类的对象实例-第一次请求-含属性计算参数-含对象类信息:
                 value:
+                  paging_mode: cursor
                   condition:
                     operation: and
                     sub_conditions:
@@ -232,6 +228,7 @@ paths:
                   limit: 10
               获取指定对象类的对象实例-非第一次请求-含属性计算参数-含对象类信息:
                 value:
+                  paging_mode: cursor
                   cursor: opaque-authenticated-cursor
                   condition:
                     operation: and
@@ -307,7 +304,7 @@ paths:
         "404":
           $ref: "#/components/responses/KnVersionNotFound"
         "409":
-          $ref: "#/components/responses/KnVersionConflict"
+          $ref: "#/components/responses/CursorQueryConflict"
         "410":
           $ref: "#/components/responses/KnVersionPurged"
         "200":
@@ -318,6 +315,7 @@ paths:
               examples:
                 获取指定对象类的对象实例-第一次请求-含属性计算参数-含对象类信息:
                   value:
+                    is_sorted: false
                     object_type:
                       id: pod_has_metric_and_tool
                       name: pod_has_metric_and_tool
@@ -525,6 +523,7 @@ paths:
                     cursor: opaque-authenticated-cursor
                 获取指定对象类的对象实例-非第一次请求-含属性计算参数-含对象类信息:
                   value:
+                    is_sorted: false
                     object_type:
                       id: pod_has_metric_and_tool
                       name: pod_has_metric_and_tool
@@ -939,6 +938,7 @@ paths:
                   direction: forward
                   path_length: 2
                   need_total: true
+                  offset: 2
                   limit: 2
               基于路径获取对象子图-request:
                 value:
@@ -952,6 +952,7 @@ paths:
                           value: '%Firefox%'
                       id: comment
                       need_total: true
+                      offset: 10
                       limit: 10
                     - condition:
                         operation: and
@@ -1037,7 +1038,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadKnVersion"
         "404":
-          $ref: "#/components/responses/KnVersionNotFound"
+          $ref: "#/components/responses/SubgraphNotFound"
         "409":
           $ref: "#/components/responses/KnVersionConflict"
         "410":
@@ -1870,7 +1871,6 @@ paths:
                         target_object_id: comment-1.030792168521e+12
                       length: 2
                     total_count: 151043
-                    cursor: opaque-authenticated-cursor
                     current_path_number: 44
                     overall_ms: 4204
                 基于路径获取对象子图-response:
@@ -2039,7 +2039,6 @@ paths:
                           target_object_id: comment-32489
                         length: 2
                       total_count: 58415
-                      cursor: opaque-authenticated-cursor
                       current_path_number: 1
                       overall_ms: 0
           description: 对象子图
@@ -2050,7 +2049,11 @@ paths:
         "503":
           $ref: '#/components/responses/AuthorizationUnavailable'
       summary: 子图查询
-      description: 子图查询，可以是基于起点、方向和路径长度获取对象子图，有可以是基于路径获取对象子图，查询请求方式和返回体不同
+      description: |
+        支持按起点、方向和路径长度探索子图，也支持按关系路径查询子图。两种方式的请求和返回体各自定义。
+        两种方式都使用 single，每次独立读取一页起点。翻页时调整 offset 和 limit。
+        按起点查询使用请求顶层的 offset 和 limit。按关系路径查询时，在各路径的 object_types[0] 指定 offset 和 limit。
+        排序状态 is_sorted 和告警 warnings 描述起点对象批次，分别出现在按起点响应的顶层和各路径的 entries 项内。
     parameters:
     - name: query_type
       description: 查询类型，默认是子图探索，即基于起点、方向和路径长度获取对象子图；若是relation_path，则表示基于路径获取对象子图
@@ -2311,6 +2314,7 @@ paths:
               examples:
                 请求工具属性:
                   value:
+                    is_sorted: false
                     datas:
                     - id: 1479
                       pod_status: Succeeded
@@ -3045,6 +3049,26 @@ components:
         application/json:
           schema:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    CursorQueryConflict:
+      description: |
+        A cursor in use by another request returns `Public.Conflict` with
+        `cursor is in use, please retry later` in `error_details`. Wait for the other request to
+        finish. If it succeeds, read its results and continue with its new `paging.next_cursor`.
+        A null cursor ends the query. Retry the original cursor only if the other request fails
+        and the cursor remains valid. If the original cursor is invalid and the successful
+        response is unavailable, restart from the first page.
+        This status also covers knowledge network version conflicts.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    SubgraphNotFound:
+      description: |
+        A knowledge network, its definition or version, or a relation type in the requested path does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     KnVersionPurged:
       description: |
         `BknBackend.KNVersion.VersionPurged`. The requested version was purged and its content is gone.
@@ -3127,14 +3151,24 @@ components:
           description: 返回的数量，默认值 10。范围 1-10000
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: 为 true 时尝试获取总数。默认 false。
           type: boolean
     FirstObjectQuery:
-      description: 分页查询的第一次查询请求
+      description: 单页查询或游标查询的第一次请求
       required:
       - limit
       type: object
       properties:
+        paging_mode:
+          description: single 使用 offset 和 limit 查询一页。cursor 直接从 Vega 开启游标。
+          type: string
+          enum: [single, cursor]
+          default: single
+        cursor:
+          description: 首屏省略或留空。
+          type: string
+          nullable: true
+          maxLength: 0
         condition:
           $ref: '#/components/schemas/Condition'
           description: 过滤条件
@@ -3146,8 +3180,12 @@ components:
         limit:
           description: 返回的数量，默认值 10。范围 1-10000
           type: integer
+        offset:
+          description: 首屏偏移量，默认为 0。
+          type: integer
+          minimum: 0
         need_total:
-          description: 是否需要总数，默认false
+          description: 为 true 时尝试获取总数。默认 false。
           type: boolean
         properties:
           description: 指定需要输出的属性集。默认为全部数据属性
@@ -3432,12 +3470,17 @@ components:
         value:
           description: 参数值。value_from=property 时为对象类的数据属性名称；value_from=const 时为常量值（任意 JSON 类型）；value_from=input 时不设置此字段
     PageTurnQueryWithCursor:
-      description: 使用上一页返回的不透明游标继续分页查询
+      description: 使用上一页返回的不透明游标继续分页查询，并沿用首屏的查询参数。
       required:
       - limit
+      - paging_mode
       - cursor
       type: object
       properties:
+        paging_mode:
+          description: 使用游标续页时必须指定 cursor 模式。
+          type: string
+          enum: [cursor]
         condition:
           $ref: '#/components/schemas/Condition'
           description: 过滤条件
@@ -3449,12 +3492,19 @@ components:
         limit:
           description: 返回的数量，默认值 10。范围 1-10000
           type: integer
+        offset:
+          description: 沿用首页的偏移量，默认为 0。
+          type: integer
+          minimum: 0
         need_total:
-          description: 是否需要总数，默认false
+          description: 为 true 时尝试获取总数。默认 false。
           type: boolean
         cursor:
-          description: 上次查询返回的不透明且经过认证的分页游标；原始 search_after 不被接受
+          description: >-
+            上一页返回的不透明且经过认证的分页游标。被并发请求占用时返回 409，稍后沿用原游标重试。
+            Vega 游标已消费或过期时返回 404。
           type: string
+          minLength: 1
         properties:
           description: 指定需要输出的属性集。默认为全部数据属性
           type: array
@@ -3516,9 +3566,15 @@ components:
         limit:
           description: "对象类获取对象数量的限制,默认10"
           type: integer
-        cursor:
-          description: 上次查询返回的不透明且经过认证的对象分页游标；第一次查询不传此字段
-          type: string
+        offset:
+          description: 跳过的起点对象数，仅用于路径首个节点。
+          type: integer
+          minimum: 0
+          default: 0
+        need_total:
+          description: 为 true 时尝试获取符合条件的起点对象总数，仅用于路径首个节点。
+          type: boolean
+          default: false
     TypeEdge:
       description: |
         路径中的一条边，第 i 条边连接 object_types 的第 i 个和第 i+1 个节点。通过关系类 id 确定边；
@@ -3588,11 +3644,16 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
         total_count:
-          description: 起点对象类的已知总条数。未知时省略，已知为零时返回 0。
+          description: 起点对象类的已知总条数。未请求或未取得时省略，已知为零时返回 0。
           type: integer
-        cursor:
-          description: 不透明且经过认证的起点对象分页游标；后续请求应回传此值，原始 search_after 不被接受
-          type: string
+        is_sorted:
+          description: 起点查询的排序状态。API 资源或资源未报告排序时返回 false。按给定对象实例构建子图时省略。
+          type: boolean
+        warnings:
+          description: 起点对象查询的告警，例如 API 资源忽略了非空 sort。
+          type: array
+          items:
+            type: string
     ObjectSubGraphWithTypePathsResponse:
       description: 基于路径获取对象子图的返回体
       type: array
@@ -3739,6 +3800,7 @@ components:
       - groups
       - type
       - datas
+      - is_sorted
       type: object
       properties:
         query_source:
@@ -3754,8 +3816,17 @@ components:
           items:
             $ref: '#/components/schemas/ObjectInfo'
         total_count:
-          description: 已知总条数。未知时省略，已知为零时返回 0。
+          description: 已知总条数。未请求或未取得时省略，已知为零时返回 0。
           type: integer
+        is_sorted:
+          description: 非 API 资源收到非空 sort 时为 true，游标续页沿用首请求。API Resource 和未报告排序状态的资源均为 false。
+          type: boolean
+        warnings:
+          description: 资源查询告警。API 资源按配置中的上游顺序返回数据，忽略查询排序时在此说明。无告警时省略。
+          type: array
+          minItems: 1
+          items:
+            type: string
         cursor:
           description: 兼容字段；值等同于 paging.next_cursor。新调用方应使用 paging.next_cursor。
           type: string
@@ -3772,14 +3843,14 @@ components:
       - expires_at_sec
       properties:
         next_cursor:
-          type: [string, 'null']
+          type: string
+          nullable: true
           description: >-
             下一页使用的不透明且经过认证的对象查询游标；为空表示已到末页。
-            need_total 为 false 时，恰好取满 limit 的最后一页仍可能返回游标，续页得到空结果且不再返回游标。
-            资源型对象类的首页不占用下游分页会话，第二页按行偏移重新定位，从第二页起才在同一会话内续页。
-            因此在取第一页与第二页之间若数据有增删，这两页的边界处可能重复或遗漏行；之后的翻页不受影响。
+            省略 paging_mode 或指定 single 时始终为 null。指定 cursor 时采用 Vega 的续页位置，返回 null 表示游标查询结束。
         expires_at_sec:
-          type: [integer, 'null']
+          type: integer
+          nullable: true
           format: int64
           description: cursor 的 Unix 到期时间戳（秒），取 ontology-query 与下游分页租约中较早者。
     ObjectPropertiesValuesResponse:
@@ -3788,6 +3859,7 @@ components:
       - groups
       - type
       - datas
+      - is_sorted
       type: object
       properties:
         datas:
@@ -3795,6 +3867,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ObjectPropertyValue'
+        is_sorted:
+          description: 非 API 资源收到非空 sort 时为 true，游标续页沿用首请求。API Resource 和未报告排序状态的资源均为 false。
+          type: boolean
         paging:
           $ref: '#/components/schemas/ObjectPagingResponse'
         cursor:
@@ -3972,11 +4047,13 @@ components:
           description: 对起点类的对象数量的限制。默认是10
           type: integer
         need_total:
-          description: 是否需要(起点类)总数，默认false。
+          description: 为 true 时尝试获取起点对象总数。默认 false。
           type: boolean
-        cursor:
-          description: 上次查询返回的不透明且经过认证的起点对象分页游标；第一次查询不传此字段
-          type: string
+        offset:
+          description: 跳过的起点对象数。
+          type: integer
+          minimum: 0
+          default: 0
     SubGraphQueryBaseOnObjects:
       description: 基于一组对象实例探索关系子图的请求体
       required:

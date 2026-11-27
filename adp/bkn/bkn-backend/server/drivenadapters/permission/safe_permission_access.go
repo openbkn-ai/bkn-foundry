@@ -31,6 +31,7 @@ const (
 	defaultSafeTimeout            = 5 * time.Second
 	defaultResourceCleanupTimeout = 30 * time.Second
 	resourceCleanupTimeoutEnv     = "BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT"
+	maxErrorResponseDrainBytes    = 64 << 10
 )
 
 // safeHTTPStatusError preserves the response status as structured data so
@@ -44,6 +45,10 @@ type safeHTTPStatusError struct {
 
 func (e *safeHTTPStatusError) Error() string {
 	return fmt.Sprintf("bkn-safe %s %s returned status %d", e.method, e.path, e.statusCode)
+}
+
+func (e *safeHTTPStatusError) HTTPStatusCode() int {
+	return e.statusCode
 }
 
 // concreteResourceOperations is used only when talking to an older bkn-safe
@@ -286,12 +291,14 @@ func (c *safeClient) doWithClient(ctx context.Context, client *http.Client, meth
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		// Draining small error bodies allows connection reuse.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorResponseDrainBytes))
+		return &safeHTTPStatusError{method: method, path: path, statusCode: resp.StatusCode}
+	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read bkn-safe response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &safeHTTPStatusError{method: method, path: path, statusCode: resp.StatusCode}
 	}
 	if out != nil && len(data) > 0 {
 		return json.Unmarshal(data, out)

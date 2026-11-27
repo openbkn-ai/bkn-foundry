@@ -271,7 +271,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, cause)
 		page, err := ds.ListDocuments(ctx, resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if page != nil {
 			rows = page.Entries
 			total = page.TotalCount
@@ -296,12 +296,12 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 	t.Run("list documents", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		page := &interfaces.ResourceDataQueryResult{Entries: docs, TotalCount: 1, IsApproximate: true, SearchAfter: []any{"next"}}
+		page := &interfaces.ResourceDataQueryResult{Entries: docs, TotalCount: new(int64(1)), IsApproximate: true, SearchAfter: []any{"next"}}
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(page, nil)
 
 		gotResult, err := ds.ListDocuments(ctx, resource, params)
 		var got []map[string]any
-		var total int64
+		var total *int64
 		if gotResult != nil {
 			got = gotResult.Entries
 			total = gotResult.TotalCount
@@ -309,7 +309,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, docs, got)
-		assert.Equal(t, int64(1), total)
+		assert.Equal(t, new(int64(1)), total)
 		assert.Same(t, page, gotResult)
 		assert.True(t, gotResult.IsApproximate)
 		assert.Equal(t, []any{"next"}, gotResult.SearchAfter)
@@ -322,7 +322,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
 				assert.True(t, got.NeedTotal)
 				assert.Equal(t, 1, got.Paging.Limit)
-				return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: 42}, nil
+				return &interfaces.ResourceDataQueryResult{Entries: nil, TotalCount: new(int64(42))}, nil
 			})
 
 		total, err := ds.CountDocuments(ctx, resource)
@@ -336,7 +336,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, fmt.Errorf("build: %w", interfaces.NewKeywordLimitError("status", 256)))
 		rowsResult, err := ds.ListDocuments(ctx, resource, params)
 		var rows []map[string]any
-		var total int64
+		var total *int64
 		if rowsResult != nil {
 			rows = rowsResult.Entries
 			total = rowsResult.TotalCount

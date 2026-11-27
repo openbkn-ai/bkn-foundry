@@ -23,9 +23,6 @@ const (
 	LOGIC_PARAMS_VALUE_FROM_CONST = "const"
 	LOGIC_PARAMS_VALUE_FROM_PARAM = "param" // RiskFunction parameter value sourced from a RiskType parameter; value is ParamDef.name.
 
-	// USE_SEARCH_AFTER
-	USE_SEARCH_AFTER_TRUE = true
-
 	// System field constants.
 	SYSTEM_PROPERTY_INSTANCE_ID       = "_instance_id"
 	SYSTEM_PROPERTY_INSTANCE_IDENTITY = "_instance_identity"
@@ -35,10 +32,16 @@ const (
 // Object search request body.
 type ObjectQueryBaseOnObjectType struct {
 	// AggregateAllowApproximate is set by the metric executor for property aggregates.
-	AggregateAllowApproximate *bool          `json:"-"`
-	Condition                 map[string]any `json:"condition,omitempty"`
-	Properties                []string       `json:"properties,omitempty"`
+	AggregateAllowApproximate *bool                   `json:"-"`
+	Condition                 map[string]any          `json:"condition,omitempty"`
+	Properties                []string                `json:"properties,omitempty"`
+	PagingMode                *ResourceDataPagingMode `json:"paging_mode,omitempty"`
 	PageQuery
+	// Cursor is the opaque, authenticated pagination position exposed by object queries.
+	Cursor string `json:"cursor,omitempty"`
+	// ResourceCursor is the opaque Vega continuation state restored from Cursor.
+	// It must never be accepted from or exposed to API callers directly.
+	ResourceCursor string `json:"-"`
 
 	KNID            string        `json:"-"`
 	Branch          string        `json:"-"`
@@ -65,14 +68,14 @@ type Objects struct {
 	ObjectType           *ObjectType                    `json:"object_type,omitempty"`
 	Datas                []map[string]any               `json:"datas"`
 	TotalCount           *int64                         `json:"total_count,omitempty"`
-	SearchAfter          []any                          `json:"-"`
 	ResourceCursor       string                         `json:"-"`
 	ResourceCursorExpiry *int64                         `json:"-"`
-	ResourceNextOffset   int                            `json:"-"`
 	Paging               *ObjectPagingResponse          `json:"paging"`
 	Cursor               string                         `json:"cursor,omitempty"`
 	OverallMs            int64                          `json:"overall_ms"`
 	QuerySource          string                         `json:"query_source,omitempty"` // Actual Vega query channel: source or local_index.
+	IsSorted             bool                           `json:"is_sorted"`
+	Warnings             []string                       `json:"warnings,omitempty"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// RowFilterApplied reports that the caller's effective row filter narrowed
 	// this query. It never exposes the predicate itself, so callers can explain
@@ -117,9 +120,7 @@ type ObjectTypeSampleData struct {
 	Entries              []map[string]any               `json:"entries"`
 	Name                 string                         `json:"name"`
 	TotalCount           *int64                         `json:"total_count,omitempty"`
-	SearchAfter          []any                          `json:"-"`
 	Paging               *ObjectPagingResponse          `json:"paging"`
-	Cursor               string                         `json:"cursor,omitempty"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 }
 

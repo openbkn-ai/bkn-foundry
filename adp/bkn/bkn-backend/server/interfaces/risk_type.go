@@ -53,7 +53,7 @@ var (
 // RiskTypes is a list of risk types.
 type RiskTypes struct {
 	Entries    []*RiskType `json:"entries"`
-	TotalCount int64       `json:"total_count,omitzero"`
+	TotalCount *int64      `json:"total_count,omitempty"`
 	NextCursor *string     `json:"next_cursor,omitzero"`
 	OverallMs  int64       `json:"overall_ms"`
 }

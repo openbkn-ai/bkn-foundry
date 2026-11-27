@@ -11,14 +11,12 @@ info:
     `_instance_identity` 取标识 → 喂给 [action.yaml](action.yaml) 的 `get_action_info`
     或 [logic-property.yaml](logic-property.yaml) 的 `logic-property-resolver`。
 
-    **翻页两条路，互斥**：
+    **查询分页**：
 
-    - `cursor` 游标翻页：适用于对象索引 / 数据视图路径，只能顺翻，不能跳页；
-      把上一页响应里的 `cursor` 原样回传即可，响应里没有该字段就是没有下一页。
-      游标是不透明字符串，不要解析或自己拼。
-    - `offset` 偏移翻页：适用于资源（vega 表源）路径，可跳任意页。
-
-    旧的 `search_after` 数组游标已不再接受：传了会被**静默忽略**，于是每次都拿回第一页。
+    - 省略 `paging_mode` 或指定 `single` 时只查询一页，响应省略 `cursor`。
+    - 要使用游标翻页，首次查询就指定 `paging_mode: cursor`。续页保留该模式，
+      原样传回上一页的不透明 `cursor`，并沿用首屏的查询参数，包括 `limit` 和 `offset`。
+      游标模式结束时省略 `cursor`。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` AppKey）。
   version: 0.1.3
@@ -77,14 +75,9 @@ paths:
         `field` 是否属于该对象类由 ontology-query 校验，非法字段或非法 `direction`
         返回 400 并透传原因。
 
-        **总数**：响应的 `total_count` 为满足过滤条件的实例总数，不受 `limit` 限制，
-        无需请求方开启。判断「一共多少条」读它即可，不必翻页累加。三态要分清：
-
-        - 有值且大于 0：真实总数。
-        - 值为 `0`：真实零命中（字段存在）。
-        - **字段缺失**：本次没有计算总数，不能推断为 0。用 `cursor` 翻页时
-          第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带
-          `cursor` 的首次查询。
+        **总数**：Context Loader 会尝试获取满足过滤条件的实例总数，不受 `limit` 限制。
+        取得总数时返回 `total_count`，已确认零命中时返回 `0`。
+        首次查询和续页都可能省略该字段，表示本次查询未取得总数。
       parameters:
         - name: kn_id
           in: query
@@ -144,8 +137,13 @@ paths:
                         value: Unknown
                         value_from: const
                   limit: 10
+              首次游标查询:
+                value:
+                  paging_mode: cursor
+                  limit: 20
               游标翻下一页:
                 value:
+                  paging_mode: cursor
                   cursor: opaque-cursor-from-previous-page
                   limit: 20
       responses:
@@ -407,15 +405,19 @@ components:
           description: |
             排序字段，按数组顺序依次比较。不传时默认序不保证语义，需要「最新 /
             最大 / 最小的前 N 条」时必须显式指定。
+        paging_mode:
+          type: string
+          enum: [single, cursor]
+          default: single
+          description: 省略时默认 single，只查询一页。使用游标时首屏和续页均指定 cursor。
         cursor:
           type: string
-          description: |
-            游标翻页：上一页响应返回的 `cursor` 原样回传，不透明字符串。首次查询留空。
-            与 `offset` 互斥。
+          description: 续页时原样回传上一页的不透明游标，并指定 paging_mode=cursor。首屏留空。
         offset:
           type: integer
-          description: |
-            偏移翻页：适用于资源（vega 表源）路径，可跳页。与 `cursor` 互斥。
+          default: 0
+          minimum: 0
+          description: 首屏读取的起始行偏移。游标续页时沿用首屏的值。
 
     SortSpec:
       type: object
@@ -493,6 +495,7 @@ components:
 
     ObjectDataResponse:
       type: object
+      required: [is_sorted]
       description: |
         对象实例查询结果。本接口固定不返回对象类定义（`object_type`）——需要定义
         请走 [kn-explore.yaml](kn-explore.yaml) 的 `get_object_types`。
@@ -501,6 +504,14 @@ components:
           type: string
           enum: [local_index, source]
           description: Vega 实际查询来源；未执行资源查询时省略。不会据此改变分页方式。
+        is_sorted:
+          type: boolean
+          description: 资源报告已排序时为 true。未报告排序状态或绑定 API 资源时为 false。
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Vega 返回的查询警告。API 资源收到非空 sort 时会说明排序请求已被忽略。
         datas:
           type: array
           items:
@@ -510,14 +521,13 @@ components:
           type: integer
           format: int64
           description: |
-            满足过滤条件的实例总数，不受 `limit` 限制。零命中时为 `0`（字段存在）。
-            字段缺失表示本次未计算总数——`cursor` 翻页第二页起如此——
-            不可推断为 0。
+            满足过滤条件的实例总数，不受 `limit` 限制。已确认零命中时返回 `0`。
+            首次查询和续页都可能省略该字段，表示本次查询未取得总数。
         cursor:
           type: string
           description: |
-            下一页游标，不透明字符串。非空时把它作为下次请求的 `cursor` 传入；
-            字段不存在或为空表示没有更多数据。
+            游标模式的下一页不透明游标。续页保持 `paging_mode: cursor` 并原样传回。
+            单页模式或游标查询结束时省略该字段。
         effective_permissions:
           type: object
           additionalProperties:

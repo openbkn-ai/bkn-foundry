@@ -1355,7 +1355,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 	return response, nil
 }
 
-func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (total int64, err error) {
+func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition map[string]any) (*int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "logic layer: search relation type total ")
 	defer span.End()
 
@@ -1370,14 +1370,14 @@ func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition ma
 	datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
-		return total, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_RelationType_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_RelationType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
 	span.SetStatus(codes.Ok, "")
 
 	if datasetResp == nil {
-		return 0, nil
+		return nil, nil
 	}
 	return datasetResp.TotalCount, nil
 }
@@ -1431,7 +1431,7 @@ func (rts *relationTypeService) GetAllRelationTypesByKnID(ctx context.Context, k
 // Query in batches.
 func (rts *relationTypeService) GetTotalWithLargeRTIDs(ctx context.Context,
 	filterCondition map[string]any,
-	rtIDs []string) (int64, error) {
+	rtIDs []string) (*int64, error) {
 
 	total := int64(0)
 	for i := 0; i < len(rtIDs); i += interfaces.GET_TOTAL_CONCEPTID_BATCH_SIZE {
@@ -1442,20 +1442,20 @@ func (rts *relationTypeService) GetTotalWithLargeRTIDs(ctx context.Context,
 
 		batchIDs := rtIDs[i:end]
 		batchTotal, err := rts.GetTotalWithRTIDs(ctx, filterCondition, batchIDs)
-		if err != nil {
-			return 0, err
+		if err != nil || batchTotal == nil {
+			return nil, err
 		}
 
-		total += batchTotal
+		total += *batchTotal
 	}
 
-	return total, nil
+	return &total, nil
 }
 
 // Query the total count for specified relation type IDs.
 func (rts *relationTypeService) GetTotalWithRTIDs(ctx context.Context,
 	filterCondition map[string]any,
-	rtIDs []string) (int64, error) {
+	rtIDs []string) (*int64, error) {
 
 	// Build a filter condition containing the relation type ID filter.
 	rtIDCondition := map[string]any{
@@ -1478,13 +1478,7 @@ func (rts *relationTypeService) GetTotalWithRTIDs(ctx context.Context,
 		}
 	}
 
-	// Execute the count query.
-	total, err := rts.GetTotal(ctx, combinedCondition)
-	if err != nil {
-		return total, err
-	}
-
-	return total, nil
+	return rts.GetTotal(ctx, combinedCondition)
 }
 
 // Validate object types and data views referenced by relation types.

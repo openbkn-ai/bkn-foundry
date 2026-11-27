@@ -7,11 +7,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/toon-format/toon-go"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -31,13 +34,19 @@ func toolResultText(result *mcp.CallToolResult) string {
 }
 
 type stubSubgraphService struct {
+	queryReq    *interfaces.QueryInstanceSubgraphReq
+	queryResp   *interfaces.QueryInstanceSubgraphResp
 	exploreReq  *interfaces.ExploreSubgraphReq
 	exploreResp *interfaces.ExploreSubgraphResp
 	called      bool
 }
 
-func (s *stubSubgraphService) QueryInstanceSubgraph(_ context.Context, _ *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
-	return nil, nil
+func (s *stubSubgraphService) QueryInstanceSubgraph(_ context.Context, req *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
+	s.queryReq = req
+	if s.queryResp != nil {
+		return s.queryResp, nil
+	}
+	return &interfaces.QueryInstanceSubgraphResp{Entries: []any{}}, nil
 }
 
 func (s *stubSubgraphService) ExploreSubgraph(_ context.Context, req *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
@@ -51,10 +60,12 @@ func (s *stubSubgraphService) ExploreSubgraph(_ context.Context, req *interfaces
 
 func TestHandleExploreSubgraph_ForwardsExplorationParams(t *testing.T) {
 	convey.Convey("探索参数原样透传", t, func() {
-		stub := &stubSubgraphService{}
+		stub := &stubSubgraphService{exploreResp: &interfaces.ExploreSubgraphResp{
+			Objects: map[string]any{},
+		}}
 		handler := handleExploreSubgraph(stub)
 
-		_, err := handler(context.Background(), mcpReq(map[string]any{
+		result, err := handler(context.Background(), mcpReq(map[string]any{
 			"kn_id":                   "kn-001",
 			"source_object_type_id":   "purchase_order",
 			"direction":               "bidirectional",
@@ -62,6 +73,7 @@ func TestHandleExploreSubgraph_ForwardsExplorationParams(t *testing.T) {
 			"concept_groups":          []any{"cg-1"},
 			"include_incomplete_path": true,
 			"limit":                   25,
+			"offset":                  3,
 			"sort":                    []any{map[string]any{"field": "created_at", "direction": "desc"}},
 			"response_format":         "json",
 		}))
@@ -75,9 +87,110 @@ func TestHandleExploreSubgraph_ForwardsExplorationParams(t *testing.T) {
 		convey.So(req.ConceptGroups, convey.ShouldResemble, []string{"cg-1"})
 		convey.So(req.IncludeIncompletePath, convey.ShouldBeTrue)
 		convey.So(req.Limit, convey.ShouldEqual, 25)
+		convey.So(req.Offset, convey.ShouldEqual, 3)
+		convey.So(toolResultText(result), convey.ShouldNotContainSubstring, `"cursor"`)
 		convey.So(len(req.Sort), convey.ShouldEqual, 1)
 		convey.So(req.Sort[0].Field, convey.ShouldEqual, "created_at")
 	})
+}
+
+func TestSubgraphMCPPreservesStartingBatchSortingMetadata(t *testing.T) {
+	const warning = "API resource uses its configured order"
+	stub := &stubSubgraphService{
+		exploreResp: &interfaces.ExploreSubgraphResp{
+			Objects: map[string]any{}, RelationPaths: []any{}, IsSorted: false, Warnings: []string{warning},
+		},
+		queryResp: &interfaces.QueryInstanceSubgraphResp{Entries: []any{
+			map[string]any{"is_sorted": false, "warnings": []string{warning}},
+		}},
+	}
+	for _, mode := range []string{"json", "toon"} {
+		t.Run(mode, func(t *testing.T) {
+			for _, tc := range []struct {
+				name    string
+				handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+				args    map[string]any
+			}{
+				{toolKeyExploreSubgraph, handleExploreSubgraph(stub), map[string]any{
+					"kn_id": "kn", "source_object_type_id": "ot", "direction": "forward", "path_length": 1, "response_format": mode,
+				}},
+				{toolKeyQueryInstanceSubgraph, handleQueryInstanceSubgraph(stub), map[string]any{
+					"kn_id": "kn", "relation_type_paths": []any{}, "response_format": mode,
+				}},
+			} {
+				result, err := tc.handler(t.Context(), mcpReq(tc.args))
+				if err != nil || result == nil || result.IsError {
+					t.Fatalf("%s result=%#v error=%v", tc.name, result, err)
+				}
+				var text map[string]any
+				if mode == "json" {
+					err = json.Unmarshal([]byte(toolResultText(result)), &text)
+				} else {
+					err = toon.Unmarshal([]byte(toolResultText(result)), &text)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, payload := range []map[string]any{resultToMap(t, result), text} {
+					if err := compileOutputSchema(t, "en-US", tc.name).Validate(payload); err != nil {
+						t.Fatalf("%s response does not match schema: %v", tc.name, err)
+					}
+					if tc.name == toolKeyQueryInstanceSubgraph {
+						payload = payload["entries"].([]any)[0].(map[string]any)
+					}
+					if payload["is_sorted"] != false || !reflect.DeepEqual(payload["warnings"], []any{warning}) {
+						t.Fatalf("%s metadata=%#v", tc.name, payload)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestHandleExploreSubgraph_IgnoresLegacySearchAfter(t *testing.T) {
+	stub := &stubSubgraphService{}
+	result, err := handleExploreSubgraph(stub)(t.Context(), mcpReq(map[string]any{
+		"kn_id":                 "kn-001",
+		"source_object_type_id": "ot-1",
+		"direction":             "forward",
+		"path_length":           1,
+		"search_after":          []any{"raw-position"},
+	}))
+	if err != nil || result == nil || result.IsError || !stub.called {
+		t.Fatalf("result=%#v called=%v error=%v", result, stub.called, err)
+	}
+}
+
+func TestPathSubgraphMCPAcceptsOffsetOnStartingNode(t *testing.T) {
+	input, _ := loadToolSchemas(toolKeyQueryInstanceSubgraph)
+	schema, err := executableSchema(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const raw = `{"kn_id":"kn","relation_type_paths":[{"object_types":[
+		{"id":"ot1","condition":{"operation":"and"},"limit":10,"offset":20},
+		{"id":"ot2","condition":{"operation":"and"},"limit":10}
+	],"relation_types":[{"relation_type_id":"rel1"}]}]}`
+	var arguments map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &arguments); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateTargetArguments(toolKeyQueryInstanceSubgraph, schema, arguments); err != nil {
+		t.Fatalf("published path schema rejected nested offset: %v", err)
+	}
+
+	var args map[string]any
+	if err := jsoncodec.Unmarshal([]byte(raw), &args); err != nil {
+		t.Fatal(err)
+	}
+	stub := &stubSubgraphService{}
+	result, err := handleQueryInstanceSubgraph(stub)(t.Context(), mcpReq(args))
+	if err != nil || result == nil || result.IsError || stub.queryReq == nil {
+		t.Fatalf("response=%#v error=%v", result, err)
+	}
+	if !reflect.DeepEqual(stub.queryReq.RelationTypePaths, args["relation_type_paths"]) {
+		t.Fatalf("forwarded paths = %#v", stub.queryReq.RelationTypePaths)
+	}
 }
 
 // If the required fields are missing, please name them. A general "required" will let the model guess which one is missing and then fill it in at will.
@@ -135,12 +248,12 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 		convey.So(json.Unmarshal(input, &in), convey.ShouldBeNil)
 
 		for _, key := range []string{"source_object_type_id", "direction", "path_length",
-			"condition", "concept_groups", "include_incomplete_path", "limit", "sort", "search_after"} {
+			"condition", "concept_groups", "include_incomplete_path", "limit", "sort", "offset"} {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeTrue)
 		}
 		for _, key := range []string{"exclude_system_properties", "ignore_local_index", "need_total",
-			"relation_type_paths"} {
+			"relation_type_paths", "search_after", "cursor", "paging_mode"} {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeFalse)
 		}
@@ -152,10 +265,12 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 			Properties map[string]json.RawMessage `json:"properties"`
 		}
 		convey.So(json.Unmarshal(output, &out), convey.ShouldBeNil)
-		for _, key := range []string{"objects", "isolated_objects", "relation_paths", "total_count"} {
+		for _, key := range []string{"objects", "isolated_objects", "relation_paths", "total_count", "is_sorted", "warnings"} {
 			_, ok := out.Properties[key]
 			convey.So(ok, convey.ShouldBeTrue)
 		}
+		convey.So(out.Properties["search_after"], convey.ShouldBeNil)
+		convey.So(out.Properties["cursor"], convey.ShouldBeNil)
 	})
 }
 

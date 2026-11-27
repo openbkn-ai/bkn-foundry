@@ -52,20 +52,29 @@ func TestDisplayOutputSchemaAcceptsEveryDisplayKeyType(t *testing.T) {
 		"object": map[string]any{"name": "x"}, "array": []any{"x"},
 	}
 	for tool, listKey := range displayBearingTools {
+		wireWithDisplay := func(value any) map[string]any {
+			entry := map[string]any{"_display": value, "_instance_id": "ot:1"}
+			wire := map[string]any{listKey: []any{entry}}
+			switch tool {
+			case toolKeyQueryObjectInstance:
+				wire["is_sorted"] = false
+			case toolKeyQueryInstanceSubgraph:
+				entry["is_sorted"] = false
+			}
+			return wire
+		}
 		for _, locale := range []string{"zh-CN", "en-US"} {
 			schema := compileOutputSchema(t, locale, tool)
 			for name, value := range accepted {
 				t.Run(tool+"/"+locale+"/"+name, func(t *testing.T) {
-					wire := map[string]any{listKey: []any{map[string]any{"_display": value, "_instance_id": "ot:1"}}}
-					if err := schema.Validate(wire); err != nil {
+					if err := schema.Validate(wireWithDisplay(value)); err != nil {
 						t.Errorf("a %s display value fails the published schema: %v", name, err)
 					}
 				})
 			}
 			for name, value := range rejected {
 				t.Run(tool+"/"+locale+"/rejects-"+name, func(t *testing.T) {
-					wire := map[string]any{listKey: []any{map[string]any{"_display": value}}}
-					if err := schema.Validate(wire); err == nil {
+					if err := schema.Validate(wireWithDisplay(value)); err == nil {
 						t.Errorf("schema accepted a %s _display; the loosening must stop at scalars", name)
 					}
 				})
@@ -78,6 +87,7 @@ func TestDisplayOutputSchemaAcceptsEveryDisplayKeyType(t *testing.T) {
 // exactly the display property's own type.
 func TestHandleQueryObjectInstanceNumericDisplayMatchesSchema(t *testing.T) {
 	stub := &stubOntologyQuery{resp: &interfaces.QueryObjectInstancesResp{
+		Warnings: []string{"API Resource does not support sorting; sort was ignored"},
 		Data: []any{
 			map[string]any{"seq": 0, "_display": 0, "_instance_id": "block:0", "_instance_identity": map[string]any{"id": "b0"}},
 			map[string]any{"seq": 1, "_display": nil, "_instance_id": "block:1", "_instance_identity": map[string]any{"id": "b1"}},
@@ -91,6 +101,13 @@ func TestHandleQueryObjectInstanceNumericDisplayMatchesSchema(t *testing.T) {
 		t.Fatalf("unexpected result: err=%v result=%+v", err, result)
 	}
 	wire := resultToMap(t, result)
+	if wire["is_sorted"] != false {
+		t.Fatalf("is_sorted = %#v, want false", wire["is_sorted"])
+	}
+	warnings, ok := wire["warnings"].([]any)
+	if !ok || len(warnings) != 1 || warnings[0] != stub.resp.Warnings[0] {
+		t.Fatalf("warnings = %#v", wire["warnings"])
+	}
 	rows := wire["datas"].([]any)
 	if got := rows[0].(map[string]any)["_display"]; got != float64(0) {
 		t.Fatalf("numeric _display must reach the client unchanged, got %#v", got)

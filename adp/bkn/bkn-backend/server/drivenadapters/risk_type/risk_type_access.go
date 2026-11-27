@@ -141,7 +141,7 @@ func (rta *riskTypeAccess) GetRiskTypeIdentitiesByIDsOrNames(ctx context.Context
 			span.SetStatus(codes.Error, "Build sql failed")
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := rta.db.Query(sqlStr, vals...)
 		if err != nil {
 			span.SetStatus(codes.Error, "Query data failed")
@@ -250,7 +250,7 @@ func (rta *riskTypeAccess) CreateRiskTypes(ctx context.Context, tx *sql.Tx,
 			span.SetStatus(codes.Error, "Build sql failed")
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if _, err = tx.Exec(sqlStr, vals...); err != nil {
 			span.SetStatus(codes.Error, "Insert data failed")
 			return err
@@ -557,7 +557,7 @@ func (rta *riskTypeAccess) UpdateRiskTypes(ctx context.Context, tx *sql.Tx,
 		}
 		statement.WriteByte(')')
 		sqlStr := statement.String()
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(args)))
 		if _, err := tx.Exec(sqlStr, args...); err != nil {
 			span.SetStatus(codes.Error, "Update data failed")
 			return err

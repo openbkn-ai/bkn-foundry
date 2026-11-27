@@ -164,7 +164,7 @@ func TestOpenSearchConnectorExecuteGroupedQuery(t *testing.T) {
 						want[2]["value"] = nil
 					}
 					assert.Equal(t, want, result.Entries)
-					assert.Equal(t, int64(6), result.TotalCount)
+					assert.Equal(t, new(int64(6)), result.TotalCount)
 					assert.Equal(t, operation == "count_distinct", result.IsApproximate)
 					assert.Equal(t, 3, *searches)
 					assert.True(t, *closed)
@@ -189,7 +189,7 @@ func TestOpenSearchConnectorExecuteGroupedQuery(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []map[string]any{{"group_key": nil, "value": int64(2)}, {"group_key": json.Number("1"), "value": int64(1)}, {"group_key": json.Number("2"), "value": int64(0)}}, result.Entries)
 		assert.False(t, result.IsApproximate)
-		assert.Equal(t, int64(6), result.TotalCount)
+		assert.Equal(t, new(int64(6)), result.TotalCount)
 		assert.True(t, *closed)
 	})
 
@@ -428,10 +428,22 @@ func TestOpenSearchConnectorExecuteGroupedQueryFailures(t *testing.T) {
 
 	valid := groupedPage(`[{"key":{"0":null},"doc_count":1,"__vega_metric":{"value":0},"__vega_nonnull":{"value":0}}]`, `{"0":null}`)
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "key", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Integer}}}
+	t.Run("inexact document total is omitted", func(t *testing.T) {
+		page := strings.Replace(valid, `"relation":"eq"`, `"relation":"gte"`, 1)
+		conn, _, closed := groupedQueryConnector(t, []string{page, groupedPage(`[]`, "")}, nil)
+		result, err := conn.ExecuteQuery(t.Context(), "orders", resource, &interfaces.ResourceDataQueryParams{
+			NeedTotal:   true,
+			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},
+			Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"},
+		})
+		require.NoError(t, err)
+		assert.Nil(t, result.TotalCount)
+		assert.Len(t, result.Entries, 1)
+		assert.True(t, *closed)
+	})
 	for _, tc := range []struct {
-		name      string
-		pages     []string
-		needTotal bool
+		name  string
+		pages []string
 	}{
 		{name: "timed out", pages: []string{strings.Replace(valid, `"timed_out":false`, `"timed_out":true`, 1)}},
 		{name: "failed shard", pages: []string{strings.Replace(valid, `"successful":1,"failed":0`, `"successful":0,"failed":1`, 1)}},
@@ -444,11 +456,10 @@ func TestOpenSearchConnectorExecuteGroupedQueryFailures(t *testing.T) {
 		{name: "duplicate page", pages: []string{valid, valid}},
 		{name: "continuation did not advance", pages: []string{valid, groupedPage(`[{"key":{"0":1},"doc_count":1,"__vega_metric":{"value":1},"__vega_nonnull":{"value":1}}]`, `{"0":null}`)}},
 		{name: "later page failure discards prior rows", pages: []string{valid, `{"timed_out":false,"_shards":{"total":1,"successful":0,"failed":1}}`}},
-		{name: "inexact total", pages: []string{strings.Replace(valid, `"relation":"eq"`, `"relation":"gte"`, 1)}, needTotal: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			conn, _, closed := groupedQueryConnector(t, tc.pages, nil)
-			result, err := conn.ExecuteQuery(t.Context(), "orders", resource, &interfaces.ResourceDataQueryParams{NeedTotal: tc.needTotal, GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}})
+			result, err := conn.ExecuteQuery(t.Context(), "orders", resource, &interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "key"}}, Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "sum"}})
 			require.Error(t, err)
 			assert.Nil(t, result)
 			assert.True(t, *closed)

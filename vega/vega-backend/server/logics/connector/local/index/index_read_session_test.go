@@ -92,6 +92,9 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 		assert.Nil(t, page)
 		page, err = session.ReadPage(ctx, 1)
 		require.ErrorContains(t, err, "index cursor page is missing its sort values")
+		var invalid *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &invalid)
+		assert.Contains(t, invalid.Reason, "use a unique field as the last sort key and restart the query")
 		assert.Nil(t, page)
 
 		first, err := session.ReadPage(ctx, 1)
@@ -118,9 +121,9 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 		require.ErrorIs(t, err, interfaces.ErrQueryPageSessionExpired)
 	})
 	t.Run("omits total count when it was not requested", func(t *testing.T) {
-		total := int64(6)
+		total := int64(1)
 		snapshot := &indexSessionSnapshotStub{searchPage: func(_ context.Context, _ int, _ []any, trackTotal bool) (*interfaces.QueryPage, []any, error) {
-			assert.False(t, trackTotal)
+			assert.True(t, trackTotal)
 			return &interfaces.QueryPage{Entries: []map[string]any{{"id": 1}}, TotalCount: &total}, nil, nil
 		}}
 		session := NewIndexReadSession(snapshot, 0, false, true)
@@ -131,6 +134,13 @@ func TestIndexReadSessionReadPage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, page.TotalCount)
 		assert.False(t, page.HasMore)
+		count, err = session.ReadTotal(t.Context())
+		require.NoError(t, err)
+		assert.Nil(t, count)
+		last, err := session.ReadPage(t.Context(), 2)
+		require.NoError(t, err)
+		assert.Empty(t, last.Entries)
+		assert.Nil(t, last.TotalCount)
 		require.NoError(t, session.Close())
 	})
 	t.Run("checks continuation pages against the frozen total", func(t *testing.T) {
@@ -187,4 +197,35 @@ func TestIndexReadSessionClose(t *testing.T) {
 	page, err := session.ReadPage(t.Context(), 1)
 	require.ErrorIs(t, err, interfaces.ErrQueryPageSessionExpired)
 	assert.Nil(t, page)
+}
+
+func TestIndexReadSessionRejectsSkippedRowsWithoutRequestedTotal(t *testing.T) {
+	total := int64(2)
+	var calls int
+	snapshot := &indexSessionSnapshotStub{searchPage: func(_ context.Context, limit int, after []any, trackTotal bool) (*interfaces.QueryPage, []any, error) {
+		assert.Equal(t, 1, limit)
+		calls++
+		if calls == 1 {
+			assert.Empty(t, after)
+			page := &interfaces.QueryPage{Entries: []map[string]any{{"id": "a"}}}
+			if trackTotal {
+				page.TotalCount = &total
+			}
+			return page, []any{1}, nil
+		}
+		assert.Equal(t, []any{1}, after)
+		assert.False(t, trackTotal)
+		// Both documents have score 1. The search_after tuple skips the second one.
+		return &interfaces.QueryPage{Entries: []map[string]any{}}, nil, nil
+	}}
+	session := NewIndexReadSession(snapshot, 0, false, true)
+	t.Cleanup(func() { assert.NoError(t, session.Close()) })
+
+	first, err := session.ReadPage(t.Context(), 1)
+	require.NoError(t, err)
+	assert.True(t, first.HasMore)
+	assert.Nil(t, first.TotalCount)
+	last, err := session.ReadPage(t.Context(), 1)
+	require.ErrorContains(t, err, "use a unique field as the last sort key and restart the query")
+	assert.Nil(t, last)
 }

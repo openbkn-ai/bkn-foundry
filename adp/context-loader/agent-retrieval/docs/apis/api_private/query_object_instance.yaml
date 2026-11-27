@@ -270,7 +270,7 @@ components:
           type: integer
           default: 10
         need_total:
-          description: 是否需要总数，默认false
+          description: 是否尝试获取总数，默认 false。
           type: boolean
         cursor:
           description: 上一页返回的不透明游标；原样传回以获取下一页，首次查询不传。
@@ -405,6 +405,7 @@ components:
       - groups
       - type
       - datas
+      - is_sorted
       type: object
       properties:
         object_type:
@@ -416,8 +417,16 @@ components:
           items:
             type: object
         total_count:
-          description: 总条数
+          description: 已取得的总条数。已确认零命中时返回 0，未请求或未取得时省略。
           type: integer
+        is_sorted:
+          type: boolean
+          description: 资源报告已排序时为 true。未报告排序状态或绑定 API 资源时为 false。
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Vega 返回的查询警告。API 资源收到非空 sort 时会说明排序请求已被忽略。
         cursor:
           description: 下一页不透明游标；原样传回下一次请求以继续翻页。
           type: string

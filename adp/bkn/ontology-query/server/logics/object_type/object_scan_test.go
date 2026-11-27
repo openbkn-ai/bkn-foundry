@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"go.uber.org/mock/gomock"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -66,7 +68,7 @@ func TestScanObjectsReadsEveryPageAtBoundaries(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprint(tc.total), func(t *testing.T) {
-			vega := &vegaStubForOTQuery{responses: scanPages(tc.total, tc.pages...)}
+			vega := &closingScanVega{vegaStubForOTQuery: vegaStubForOTQuery{responses: scanPages(tc.total, tc.pages...)}}
 			service := resourcePagingService(t, vega, len(tc.pages))
 			result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 30000)
 			if err != nil {
@@ -88,7 +90,7 @@ func TestScanObjectsReadsEveryPageAtBoundaries(t *testing.T) {
 			}
 			first := vega.paramsHistory[0].Paging
 			if len(vega.paramsHistory) != len(tc.pages) || first.Mode != interfaces.ResourceDataPagingModeCursor ||
-				first.Limit != interfaces.MAX_LIMIT {
+				first.Limit != 0 || !vega.paramsHistory[0].NeedTotal {
 				t.Fatalf("requests = %d, first paging = %#v", len(vega.paramsHistory), first)
 			}
 			for index, params := range vega.paramsHistory[1:] {
@@ -96,14 +98,78 @@ func TestScanObjectsReadsEveryPageAtBoundaries(t *testing.T) {
 					t.Fatalf("page %d continued from %#v", index+2, params.Paging)
 				}
 			}
+			if vega.closes != 0 {
+				t.Fatalf("completed scan closed %d extra cursors", vega.closes)
+			}
 		})
+	}
+}
+
+func TestScanObjectsUsesResourcePageSizeWithoutRequestingTotal(t *testing.T) {
+	pages := scanPages(5, 2, 2, 1)
+	for _, page := range pages {
+		page.TotalCount = nil
+	}
+	vega := &vegaStubForOTQuery{responses: pages}
+	service := resourcePagingService(t, vega, 3)
+	query := resourcePagingQuery(1)
+	query.NeedTotal = false
+	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), query, 10)
+	if err != nil || result.Incomplete || result.TotalCount != nil || len(result.Datas) != 5 {
+		t.Fatalf("scan rows=%d total=%v incomplete=%t err=%v", len(result.Datas), result.TotalCount, result.Incomplete, err)
+	}
+	requests := vega.paramsHistory
+	if len(requests) != 3 || requests[0].NeedTotal ||
+		requests[0].Paging.Mode != interfaces.ResourceDataPagingModeCursor {
+		t.Fatalf("unexpected Vega requests: %#v", requests)
+	}
+	initial, err := jsoncodec.MarshalString(requests[0])
+	if err != nil || strings.Contains(initial, `"limit"`) || strings.Contains(initial, `"need_total"`) {
+		t.Fatalf("unexpected initial scan JSON %s, err=%v", initial, err)
+	}
+	for index, request := range requests[1:] {
+		body, err := jsoncodec.MarshalString(request)
+		want := fmt.Sprintf(`{"paging":{"cursor":"session-%d"}}`, index+1)
+		if err != nil || body != want {
+			t.Fatalf("continuation JSON %s, want %s, err=%v", body, want, err)
+		}
+	}
+}
+
+func TestScanObjectsAcceptsFullTerminalCursorPageWithoutTotal(t *testing.T) {
+	page := scanPages(10000, 10000)[0]
+	page.TotalCount = nil
+	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{page}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(1)
+	query.NeedTotal = false
+	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), query, 20000)
+	if err != nil || result.Incomplete || len(result.Datas) != 10000 {
+		t.Fatalf("terminal cursor page: rows=%d incomplete=%t error=%v", len(result.Datas), result.Incomplete, err)
+	}
+}
+
+func TestScanObjectsFlagsEmptyLegacyPageWithRemainingTotal(t *testing.T) {
+	page := scanPages(2, 0)[0]
+	vega := &vegaStubForOTQuery{
+		errors: []error{interfaces.NewVegaDownstreamError(http.StatusNotImplemented,
+			`{"error_code":"VegaBackend.Query.InvalidParameter"}`)},
+		responses: []*interfaces.DatasetQueryResponse{page},
+	}
+	service := resourcePagingService(t, vega, 1)
+	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 10)
+	if err != nil || !result.Incomplete || len(result.Datas) != 0 || len(vega.paramsHistory) != 2 ||
+		vega.paramsHistory[1].Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
+		vega.paramsHistory[1].Paging.Limit != interfaces.MAX_LIMIT {
+		t.Fatalf("inconsistent legacy page: rows=%d incomplete=%t requests=%d error=%v",
+			len(result.Datas), result.Incomplete, len(vega.paramsHistory), err)
 	}
 }
 
 // The scan stops one object past the limit: that object proves the match set
 // is too large, and nothing beyond it is loaded.
 func TestScanObjectsStopsOnePastTheLimit(t *testing.T) {
-	vega := &vegaStubForOTQuery{responses: scanPages(18989, 10000, 8000, 989)}
+	vega := &closingScanVega{vegaStubForOTQuery: vegaStubForOTQuery{responses: scanPages(18989, 10000, 8000, 989)}}
 	service := resourcePagingService(t, vega, 2)
 	result, err := service.ScanObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(1), 10000)
 	if err != nil {
@@ -116,6 +182,7 @@ func TestScanObjectsStopsOnePastTheLimit(t *testing.T) {
 	if len(vega.paramsHistory) != 2 {
 		t.Fatalf("read %d pages, want 2", len(vega.paramsHistory))
 	}
+	vega.assertClosed(t, "session-2")
 }
 
 func TestScanObjectsWithNoMatches(t *testing.T) {
@@ -141,9 +208,43 @@ func TestScanObjectsFailsWhenAContinuationFails(t *testing.T) {
 	if !errors.As(err, &httpErr) || len(result.Datas) != 0 {
 		t.Fatalf("scan = %d objects, err %v", len(result.Datas), err)
 	}
+	vega.assertClosed(t, "session-1")
+}
+
+type scanCursorCloser struct {
+	closes     int
+	resourceID string
+	cursor     string
+	proxy      *interfaces.TrustedProxyContext
+}
+
+func (v *scanCursorCloser) CloseResourceDataCursor(ctx context.Context, resourceID, cursor string) error {
+	v.closes++
+	v.resourceID = resourceID
+	v.cursor = cursor
+	v.proxy, _ = interfaces.TrustedProxyContextFromContext(ctx)
+	return ctx.Err()
+}
+
+func (v *scanCursorCloser) assertClosed(t *testing.T, cursor string) {
+	t.Helper()
+	if v.closes != 1 {
+		t.Fatalf("close requests = %d, want 1", v.closes)
+	}
+	if v.resourceID != "resource-1" || v.cursor != cursor || v.proxy == nil ||
+		v.proxy.Binding.TargetID != v.resourceID || v.proxy.Proxy.ID != "test-proxy" {
+		t.Fatalf("closed %q on %q with proxy %#v, want %q on resource-1 under its query proxy",
+			v.cursor, v.resourceID, v.proxy, cursor)
+	}
+}
+
+type closingScanVega struct {
+	vegaStubForOTQuery
+	scanCursorCloser
 }
 
 type failingContinuationVega struct {
+	scanCursorCloser
 	first *interfaces.DatasetQueryResponse
 	err   error
 	calls int

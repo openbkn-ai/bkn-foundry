@@ -97,7 +97,7 @@ func TestOpenSearchConnectorDistinctAccuracy(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result.Entries, 1)
 		assert.Equal(t, int64(2), result.Entries[0]["__value"])
-		assert.Equal(t, int64(8), result.TotalCount)
+		assert.Equal(t, new(int64(8)), result.TotalCount)
 		assert.Equal(t, 2, searches)
 		assert.Equal(t, 1, closes)
 	})

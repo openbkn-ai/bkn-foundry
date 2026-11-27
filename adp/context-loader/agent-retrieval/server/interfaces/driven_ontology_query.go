@@ -63,13 +63,13 @@ type QueryObjectInstancesReq struct {
 	// If not passed, the downstream will sort by default (object index path is _score + primary key, resource path is @timestamp desc).
 	// Whether the field exists in the object type is verified by the downstream, and it is only transparently transmitted here.
 	Sort []*SortSpec `json:"sort,omitempty"`
-	// NeedTotal lets the downstream backfill total_count. Set true unconditionally by driven adapter and not open to the public:
-	// Without it, the caller only knows "Is there a next page?" but does not know the total number of hits and cannot judge the scale of the result.
+	// The driven adapter always requests the total. The downstream may omit it.
 	NeedTotal bool `json:"need_total"`
-	// Cursor is the opaque cursor returned by the previous page response. Leave it
-	// blank for the first query and pass it back unchanged to fetch the next page.
-	Cursor string `json:"cursor,omitempty"`
-	// Offset offset paging: applicable to resource (vega table source) path, supports jumping to any page; mutually exclusive with cursor.
+	// PagingMode defaults to a single page. Cursor paging is explicit on every request.
+	PagingMode *string `json:"paging_mode,omitempty" validate:"omitempty,oneof=single cursor"`
+	// Cursor is the opaque token returned by the previous page in cursor mode.
+	Cursor string `json:"cursor,omitempty" validate:"excluded_unless=PagingMode cursor"`
+	// Offset is the first page's starting row and stays unchanged on continuations.
 	Offset int `json:"offset,omitempty"`
 
 	// The following two items are downstream query parameters rather than request body fields, so they are marked json: "-": the entire req structure will be.
@@ -112,22 +112,14 @@ type QueryObjectInstancesResp struct {
 	// from overlooking it while summarizing the business data.
 	PermissionGuidance   *PermissionGuidance            `json:"permission_guidance,omitempty" toon:"permission_guidance,omitempty"`
 	QuerySource          string                         `json:"query_source,omitempty" toon:"query_source,omitempty"`
+	IsSorted             bool                           `json:"is_sorted" toon:"is_sorted"`
+	Warnings             []string                       `json:"warnings,omitempty" toon:"warnings,omitempty"`
 	Data                 []any                          `json:"datas" toon:"datas"`                                 // List of object instances
 	ObjectConcept        map[string]any                 `json:"object_type,omitempty" toon:"object_type,omitempty"` // Object type definition, controlled by req.include_type_info whether to return.
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty" toon:"effective_permissions,omitempty"`
-	// TotalCount The total number of instances that meet the filter conditions, not limited by limit.
-	//
-	// Pointer + omitempty, three-state:
-	// Valid and > 0 - true total.
-	// Has value and = 0 - true zero hit (omitempty only swallows nil for pointers, not 0)
-	// Missing field - not counted downstream, not a zero hit.
-	//
-	// The third state must be retained: although driven adapter is fixed with need_total, the downstream.
-	// (BuildDslQuery of ontology-query logics/common.go) when the decoded cursor contains a search position.
-	// Will force NeedTotal=false, that is, the total will not be calculated at all from the second page of the cursor. At this time, if according to the value type.
-	// Serializing to 0 is to use "uncalculated" as "zero hit", and it will be inconsistent with non-empty datas.
+	// TotalCount is the number of matching instances, when available. A known zero is reported.
 	TotalCount *int64 `json:"total_count,omitempty" toon:"total_count,omitempty"`
-	// Cursor is an opaque next-page token. Pass it back unchanged; an empty value means there is no more data.
+	// Cursor is omitted in single mode and at the end of a cursor query.
 	Cursor string `json:"cursor,omitempty" toon:"cursor,omitempty"`
 	// RowFilterApplied is ontology-query's report that the caller's row filter
 	// narrowed this query. It is consumed into PermissionGuidance and not echoed.
@@ -158,6 +150,8 @@ func (r *QueryObjectInstancesResp) TOONValue() any {
 	return &queryObjectInstancesTOON{
 		PermissionGuidance:   permissionGuidanceTOONValue(r.PermissionGuidance),
 		QuerySource:          r.QuerySource,
+		IsSorted:             r.IsSorted,
+		Warnings:             r.Warnings,
 		Data:                 data,
 		ObjectConcept:        objectConcept,
 		EffectivePermissions: effective,
@@ -170,6 +164,8 @@ func (r *QueryObjectInstancesResp) TOONValue() any {
 type queryObjectInstancesTOON struct {
 	PermissionGuidance   *permissionGuidanceTOON `toon:"permission_guidance,omitempty"`
 	QuerySource          string                  `toon:"query_source,omitempty"`
+	IsSorted             bool                    `toon:"is_sorted"`
+	Warnings             []string                `toon:"warnings,omitempty"`
 	Data                 []any                   `toon:"datas"`
 	ObjectConcept        map[string]any          `toon:"object_type,omitempty"`
 	EffectivePermissions map[string]string       `toon:"effective_permissions,omitempty"`
@@ -341,13 +337,11 @@ type ExploreSubgraphReq struct {
 	// Default false. Zero-edge paths are not returned under any circumstances.
 	IncludeIncompletePath bool `json:"include_incomplete_path,omitempty"`
 
-	// The following four items act on the **starting object type**, not the entire subgraph: downstream SubGraphQueryBaseOnSource.
-	// Embedded PageQuery, paging and sorting only touch the starting point collection.
-	Sort        []*SortSpec `json:"sort,omitempty"`
-	Limit       int         `json:"limit" validate:"min=1,max=10000" default:"10"`
-	Offset      int         `json:"offset,omitempty"`
-	SearchAfter []any       `json:"search_after,omitempty"`
-	// NeedTotal is set to true unconditionally by the driven adapter and is not open to the public. The reason is the same as object query.
+	// Paging and sorting apply to the starting object type.
+	Sort   []*SortSpec `json:"sort,omitempty"`
+	Limit  int         `json:"limit" validate:"min=1,max=10000" default:"10"`
+	Offset int         `json:"offset,omitempty"`
+	// The driven adapter always requests the starting object total. The downstream may omit it.
 	NeedTotal bool `json:"need_total"`
 }
 
@@ -364,11 +358,11 @@ type ExploreSubgraphResp struct {
 	IsolatedObjects map[string]any `json:"isolated_objects,omitempty"`
 	// RelationPaths A specific collection of relationship paths.
 	RelationPaths []any `json:"relation_paths"`
-	// TotalCount The total number of hits for the starting object type, three-state semantics and QueryObjectInstancesResp.TotalCount.
-	// Completely consistent (value >0 / value =0 / missing means not counted), see resolveAbsentTotal.
+	// TotalCount is the number of matching starting objects, when available.
 	TotalCount *int64 `json:"total_count,omitempty"`
-	// SearchAfter The next page cursor of the starting point object type.
-	SearchAfter []any `json:"search_after,omitempty"`
+	// IsSorted and Warnings describe only the query for the current starting batch.
+	IsSorted bool     `json:"is_sorted"`
+	Warnings []string `json:"warnings,omitempty"`
 	// CurrentPathNumber The current path number of downstream backfill.
 	CurrentPathNumber int `json:"current_path_number,omitempty"`
 }

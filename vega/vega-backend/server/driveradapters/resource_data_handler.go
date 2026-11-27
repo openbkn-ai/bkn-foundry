@@ -181,15 +181,20 @@ func (r *restHandler) executeResourceDataQuery(c *gin.Context, ctx context.Conte
 		"query_source":   result.QuerySource,
 		"entries":        result.Entries,
 		"is_approximate": result.IsApproximate,
+		"is_sorted":      result.IsSorted,
 	}
-	if params.NeedTotal || result.NeedTotal {
-		resultData["total_count"] = result.TotalCount
+	if result.TotalCount != nil {
+		resultData["total_count"] = *result.TotalCount
 	}
 	if result.Paging != nil {
 		resultData["paging"] = result.Paging
 	}
+	warnings := result.Warnings
 	if warning != "" {
-		resultData["warnings"] = []string{warning}
+		warnings = append([]string{warning}, warnings...)
+	}
+	if len(warnings) > 0 {
+		resultData["warnings"] = warnings
 	}
 
 	logger.Debug("Handler queryResourceData Success")

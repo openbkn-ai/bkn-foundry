@@ -84,7 +84,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByID(ctx context.Context, knID 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = ota.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -124,7 +124,7 @@ func (ota *objectTypeAccess) CheckObjectTypeExistByName(ctx context.Context, knI
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var otID string
 	err = ota.db.QueryRow(sqlStr, vals...).Scan(
@@ -176,7 +176,7 @@ func (ota *objectTypeAccess) GetObjectTypeIdentitiesByIDsOrNames(ctx context.Con
 			common.LogSafeError(ctx, "Failed to build object type identity query", err)
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := ota.db.Query(sqlStr, vals...)
 		if err != nil {
 			common.LogSafeError(ctx, "Query object type identities failed", err)
@@ -324,7 +324,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.Exec(sqlStr, vals...)
@@ -371,7 +371,7 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			common.LogSafeError(ctx, "Failed to build the sql of batch insert object types", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if tx != nil {
 			_, err = tx.Exec(sqlStr, vals...)
 		} else {
@@ -478,7 +478,7 @@ func (ota *objectTypeAccess) CreateObjectTypeStatus(ctx context.Context, tx *sql
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	if tx != nil {
 		_, err = tx.Exec(sqlStr, vals...)
@@ -520,7 +520,7 @@ func (ota *objectTypeAccess) CreateObjectTypeStatuses(ctx context.Context, tx *s
 			common.LogSafeError(ctx, "Failed to build the sql of batch insert object type statuses", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if tx != nil {
 			_, err = tx.Exec(sqlStr, vals...)
 		} else {
@@ -607,7 +607,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var rows *sql.Rows
 	if tx != nil {
@@ -777,7 +777,7 @@ func (ota *objectTypeAccess) ListObjectTypeSummaries(ctx context.Context, tx *sq
 	if err != nil {
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 	var rows *sql.Rows
 	if tx != nil {
 		rows, err = tx.QueryContext(ctx, sqlStr, vals...)
@@ -870,7 +870,7 @@ func (ota *objectTypeAccess) ListObjectTypeLogicProperties(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 	rows, err := ota.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		return nil, err
@@ -922,7 +922,7 @@ func (ota *objectTypeAccess) GetObjectTypesTotal(ctx context.Context, query inte
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = ota.db.QueryRow(sqlStr, vals...).Scan(&total)
@@ -992,7 +992,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	objectType := interfaces.ObjectType{
 		ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE,
@@ -1184,7 +1184,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var rows *sql.Rows
 	if tx != nil {
@@ -1385,7 +1385,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var (
 		ret     sql.Result
@@ -1493,7 +1493,7 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 		statement.WriteByte(')')
 
 		sqlStr := statement.String()
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(args)))
 		var err error
 		if tx != nil {
 			_, err = tx.Exec(sqlStr, args...)
@@ -1583,7 +1583,7 @@ func (ota *objectTypeAccess) UpdateDataProperties(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1624,7 +1624,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByIDs(ctx context.Context, tx *sql
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
 	if tx != nil {
@@ -1680,7 +1680,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByIDs(ctx context.Context, tx
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
 	if tx != nil {
@@ -1730,7 +1730,7 @@ func (ota *objectTypeAccess) DeleteObjectTypesByKnID(ctx context.Context, tx *sq
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
 	if tx != nil {
@@ -1774,7 +1774,7 @@ func (ota *objectTypeAccess) DeleteObjectTypeStatusByKnID(ctx context.Context, t
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var ret sql.Result
 	if tx != nil {
@@ -1821,7 +1821,7 @@ func (ota *objectTypeAccess) GetObjectTypeIDsByKnID(ctx context.Context, knID st
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ota.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1971,7 +1971,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := ota.db.Query(sqlStr, vals...)
 	if err != nil {

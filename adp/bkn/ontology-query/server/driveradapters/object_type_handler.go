@@ -104,9 +104,9 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid sample pagination"))
 		return
 	}
-	if c.Query("search_after") != "" {
+	if c.Query("cursor") != "" {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("raw search_after is not accepted; use cursor"))
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("sample data does not support cursor"))
 		return
 	}
 	if !r.authorizeQuery(c, ctx, func() error {
@@ -115,10 +115,14 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 		return
 	}
 	result, err := r.ots.GetObjectTypeSampleData(ctx, &interfaces.ObjectQueryBaseOnObjectType{
-		KNID: knID, Branch: branch, ObjectTypeID: objectTypeID,
+		KNID:         knID,
+		Branch:       branch,
+		ObjectTypeID: objectTypeID,
+		PagingMode:   new(interfaces.ResourceDataPagingModeSingle),
 		PageQuery: interfaces.PageQuery{
-			Limit: limit, Offset: offset, NeedTotal: needTotal,
-			Cursor: c.Query("cursor"),
+			Limit:     limit,
+			Offset:    offset,
+			NeedTotal: needTotal,
 		},
 	})
 	if err != nil {
@@ -244,13 +248,6 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 
 		return
 	}
-	if len(query.SearchAfter) > 0 {
-		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails("raw search_after is not accepted; use cursor"))
-		return
-	}
-
 	query.KNID = knID
 	query.Branch = branch
 	query.ObjectTypeID = otID

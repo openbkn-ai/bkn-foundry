@@ -42,7 +42,7 @@ func TestScanRows(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"id", "name"}, got.Columns)
-		assert.Equal(t, int64(2), got.TotalCount)
+		assert.Equal(t, new(int64(2)), got.TotalCount)
 		assert.Equal(t, []map[string]any{
 			{"id": int64(1), "name": "alice"},
 			{"id": int64(2), "name": "bob"},
@@ -124,7 +124,7 @@ func TestNormalizeQueryResult(t *testing.T) {
 		{name: "having", params: interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result := &interfaces.ResourceDataQueryResult{Columns: []string{"id", "blob", "other"}, TotalCount: 3, Entries: []map[string]any{
+			result := &interfaces.ResourceDataQueryResult{Columns: []string{"id", "blob", "other"}, TotalCount: new(int64(3)), Entries: []map[string]any{
 				{"id": 1, "blob": nil, "other": []any{1, 2}},
 				{"id": 2, "blob": nil, "other": []any{}},
 				{"id": 3, "blob": nil, "other": nil},
@@ -142,7 +142,7 @@ func TestNormalizeQueryResult(t *testing.T) {
 			assert.Equal(t, []any{}, result.Entries[1]["other"])
 			assert.Contains(t, result.Entries[2], "other")
 			assert.Nil(t, result.Entries[2]["other"])
-			assert.Equal(t, int64(3), result.TotalCount)
+			assert.Equal(t, new(int64(3)), result.TotalCount)
 		})
 	}
 	t.Run("missing Binary fields are not manufactured", func(t *testing.T) {

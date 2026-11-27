@@ -87,6 +87,24 @@ func Test_RestHandler_GetObjectsInObjectTypeByIn(t *testing.T) {
 			},
 		}
 
+		Convey("Ignore the removed search_after field", func() {
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+					So(query.Cursor, ShouldBeEmpty)
+					So(query.PagingMode, ShouldBeNil)
+					return interfaces.Objects{}, nil
+				})
+			req := httptest.NewRequest(http.MethodPost, url, bytes.NewBufferString(`{"limit":10,"search_after":["old-position"]}`))
+			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, "GET")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Code, ShouldEqual, http.StatusOK)
+		})
+
 		Convey("成功 - 获取对象数据", func() {
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{
 				Datas: []map[string]any{
@@ -193,7 +211,7 @@ func TestObjectTypeSchemaIgnoresForgedProxyHeaders(t *testing.T) {
 	}
 }
 
-func TestObjectTypeSampleDataAcceptsOpaqueCursor(t *testing.T) {
+func TestObjectTypeSampleDataOnlyAcceptsSinglePage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctrl := gomock.NewController(t)
 	objectService := omock.NewMockObjectTypeService(ctrl)
@@ -204,21 +222,30 @@ func TestObjectTypeSampleDataAcceptsOpaqueCursor(t *testing.T) {
 
 	objectService.EXPECT().GetObjectTypeSampleData(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (*interfaces.ObjectTypeSampleData, error) {
-			if query.Cursor != "opaque-cursor" || len(query.SearchAfter) != 0 {
-				t.Fatalf("cursor = %q, search_after = %#v", query.Cursor, query.SearchAfter)
+			if query.PagingMode == nil || *query.PagingMode != interfaces.ResourceDataPagingModeSingle ||
+				query.Cursor != "" || query.Offset != 3 || query.Limit != 5 || query.NeedTotal {
+				t.Fatalf("sample query = %#v", query)
 			}
-			return &interfaces.ObjectTypeSampleData{}, nil
+			return &interfaces.ObjectTypeSampleData{Paging: &interfaces.ObjectPagingResponse{}}, nil
 		})
-
-	req := httptest.NewRequest(http.MethodGet,
-		"/api/ontology-query/in/v1/knowledge-networks/kn-1/object-types/ot-1/sample-data?"+
-			"cursor=opaque-cursor", nil)
-	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user-1")
-	req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
-	recorder := httptest.NewRecorder()
-	engine.ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	for _, tc := range []struct {
+		query string
+		code  int
+	}{
+		{"limit=5&offset=3&need_total=false&search_after=raw-position", http.StatusOK},
+		{"cursor=opaque-cursor", http.StatusBadRequest},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet,
+				"/api/ontology-query/in/v1/knowledge-networks/kn-1/object-types/ot-1/sample-data?"+tc.query, nil)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user-1")
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, req)
+			if recorder.Code != tc.code {
+				t.Fatalf("status = %d, want %d, body = %s", recorder.Code, tc.code, recorder.Body.String())
+			}
+		})
 	}
 }
 
