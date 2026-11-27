@@ -122,11 +122,13 @@ paths:
         `paging.mode=cursor`. The initial cursor request can omit `paging.limit`
         to use the API Resource default or 10000 for other categories. A
         `single` request returns one page. Continue with the latest
-        `paging.next_cursor`. A concurrent continuation of the same active cursor
-        returns 409 `VegaBackend.Query.CursorInUse` and can be retried later.
-        A consumed cursor returns 404. If the new cursor
-        did not reach the caller, restart the query from the first page. For other
-        resources, `is_sorted` is true when `sort` is non-empty and false
+        `paging.next_cursor`. A null cursor ends the query. A concurrent
+        continuation using the same cursor returns 409 `VegaBackend.Query.CursorInUse`.
+        Wait for the other request to finish. If it succeeds, read its results and use
+        the cursor it returns. Retry the original cursor only if the other request fails
+        and the cursor remains valid. A consumed cursor returns 404. If the original
+        cursor is invalid and the successful response is unavailable, restart from the
+        first page. For other resources, `is_sorted` is true when `sort` is non-empty and false
         otherwise. Cursor pages retain the initial request's sort status.
         When `need_total=true`, `total_count` is returned if the total is known.
         An absent field means the total was not requested or could not be obtained.

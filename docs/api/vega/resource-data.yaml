@@ -64,9 +64,11 @@ paths:
         | `DELETE` | 按 filter 删除文档 | **dataset 强制** | `ResourceDataQueryParams`（`filter_condition` 必填非空） |
 
         **`Override: GET` 响应**：200 + `{ entries, total_count, paging }`。cursor 模式通过
-        最新响应的 `paging.next_cursor` 续页。每次成功读取一页都会消费请求中的游标；
-        还有下一页时，响应签发新游标。重用已消费的游标返回 404，未收到新游标时须从首屏重新查询。
-        同一游标有续页请求正在执行时返回 409 `VegaBackend.Query.CursorInUse`，可以稍后重试。
+        最新响应的 `paging.next_cursor` 续页。每次成功读取一页都会消费请求中的游标。
+        还有下一页时，响应签发新游标。末页的 `paging.next_cursor` 为 null。重用已消费的游标返回 404。
+        同一游标已有续页请求正在执行时返回 409 `VegaBackend.Query.CursorInUse`。先等待该请求完成。
+        该请求成功时，读取它返回的结果并用新游标继续。该请求失败且原游标仍有效时，可用原游标重试。
+        原游标已失效且拿不到成功响应时，从首屏重新查询。
         `need_total=true` 时尝试取得总数。确知总数时返回 `total_count`，包括 `0`。未请求或未取得时省略该字段。
         PostgreSQL、MySQL/MariaDB 的 InnoDB 源表和 HANA 使用显式只读 REPEATABLE READ，
         Oracle 使用 READ ONLY（要求非 SYS 账号），SQL Server 使用 SNAPSHOT（源数据库须启用 `ALLOW_SNAPSHOT_ISOLATION`）。

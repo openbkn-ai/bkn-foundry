@@ -3052,7 +3052,11 @@ components:
     CursorQueryConflict:
       description: |
         A cursor in use by another request returns `Public.Conflict` with
-        `cursor is in use, please retry later` in `error_details`. Retry with the same cursor.
+        `cursor is in use, please retry later` in `error_details`. Wait for the other request to
+        finish. If it succeeds, read its results and continue with its new `paging.next_cursor`.
+        A null cursor ends the query. Retry the original cursor only if the other request fails
+        and the cursor remains valid. If the original cursor is invalid and the successful
+        response is unavailable, restart from the first page.
         This status also covers knowledge network version conflicts.
       content:
         application/json:
