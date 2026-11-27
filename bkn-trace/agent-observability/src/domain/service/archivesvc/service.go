@@ -516,6 +516,21 @@ func (service *Service) List(kind observabilityvo.ArchiveKind, limit int) []Job 
 	return service.store.List(kind, limit)
 }
 
+// ListJobs preserves read failures and includes unfinished cleanup even when
+// newer history has pushed it beyond the recent-job limit. Custom stores keep
+// the original Store contract; production stores implement the contextual read.
+func (service *Service) ListJobs(ctx context.Context, kind observabilityvo.ArchiveKind, limit int) ([]Job, error) {
+	if !kind.Valid() || limit <= 0 {
+		return nil, fmt.Errorf("invalid archive history request")
+	}
+	if reader, ok := service.store.(interface {
+		ListJobs(context.Context, observabilityvo.ArchiveKind, int) ([]Job, error)
+	}); ok {
+		return reader.ListJobs(ctx, kind, limit)
+	}
+	return service.store.List(kind, limit), nil
+}
+
 func newJob(kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange, candidates []Candidate, now time.Time) Job {
 	ids := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -599,6 +614,32 @@ func (store *memoryStore) List(kind observabilityvo.ArchiveKind, limit int) []Jo
 		jobs = jobs[:limit]
 	}
 	return jobs
+}
+
+func (store *memoryStore) ListJobs(ctx context.Context, kind observabilityvo.ArchiveKind, limit int) ([]Job, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Read and select under the same mutex so pending jobs cannot disappear
+	// between a recent-history read and a separate recovery read.
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	jobs := make([]Job, 0)
+	for _, job := range store.jobs {
+		if job.Kind == kind {
+			jobs = append(jobs, storedJob(job))
+		}
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.After(jobs[j].CreatedAt) || jobs[i].CreatedAt.Equal(jobs[j].CreatedAt) && jobs[i].ID > jobs[j].ID
+	})
+	result := make([]Job, 0)
+	for i, job := range jobs {
+		if i < limit || job.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
+			result = append(result, job)
+		}
+	}
+	return result, nil
 }
 
 func (store *memoryStore) WithKindLock(ctx context.Context, kind observabilityvo.ArchiveKind, fn func() error) error {

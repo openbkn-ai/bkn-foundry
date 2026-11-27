@@ -181,6 +181,14 @@ protocol; this fix deliberately keeps ordering and source-version deletion check
 Earlier completed batches remain independently recorded and downloadable. SQL
 cleanup still verifies frozen metadata under its parent lock, as described below.
 
+Log and Trace job lists each return their latest 20 jobs plus any older
+`cleanup_incomplete` jobs, without duplicates. This keeps a job blocking new
+same-kind archives available for recovery. History query, scan or metadata errors
+return HTTP 503 `archive_history_unavailable`; an empty HTTP 200 means the read
+succeeded. These read-only operations do not acquire archive execution locks or
+create audit events. Creation and cleanup retry remain synchronous; a lost HTTP
+response does not prove that no batches completed. Refresh history before retrying.
+
 ## Technical Trace archive cleanup safety (#1724)
 
 Technical Trace enrichment requires a complete OpenSearch result: no timeout,
