@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
@@ -62,7 +63,9 @@ func (source *TraceArchiveSource) FreezeBatch(ctx context.Context, kind observab
 	if count == 0 {
 		return batch, nil
 	}
-	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<? ORDER BY terminal_at ASC, interaction_id ASC LIMIT ?`, sessionvo.InteractionActive, archiveRange.To.UTC(), archivesvc.MaxTraceArchiveCandidates)
+	excluded, excludedArgs := excludedInteractions(ctx)
+	args := append([]any{sessionvo.InteractionActive, archiveRange.To.UTC()}, excludedArgs...)
+	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<?`+excluded+` ORDER BY terminal_at ASC, interaction_id ASC LIMIT ?`, append(args, archivesvc.MaxTraceArchiveCandidates)...)
 	if err != nil {
 		return batch, err
 	}
@@ -116,8 +119,24 @@ func (source *TraceArchiveSource) Count(ctx context.Context, kind observabilityv
 		return 0, nil
 	}
 	var count int
-	err := source.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<?`, sessionvo.InteractionActive, archiveRange.To.UTC()).Scan(&count)
+	excluded, excludedArgs := excludedInteractions(ctx)
+	args := append([]any{sessionvo.InteractionActive, archiveRange.To.UTC()}, excludedArgs...)
+	err := source.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<?`+excluded, args...).Scan(&count)
 	return count, err
+}
+
+// excludedInteractions keeps retained oversized interactions out of both the
+// selection and the count, so the eligible-count check stays consistent.
+func excludedInteractions(ctx context.Context) (string, []any) {
+	ids := archivesvc.ExcludedCandidates(ctx)
+	if len(ids) == 0 {
+		return "", nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	return " AND interaction_id NOT IN (?" + strings.Repeat(",?", len(ids)-1) + ")", args
 }
 
 func (source *TraceArchiveSource) packageInteraction(ctx context.Context, interactionID string) ([]byte, time.Time, error) {
