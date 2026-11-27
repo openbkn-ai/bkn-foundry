@@ -25,8 +25,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/kn_version"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 )
 
@@ -44,6 +44,7 @@ func RegisterObjectMetricRoutes(
 		appSetting: appSetting,
 		as:         auth.NewAuthService(appSetting),
 		oms:        service,
+		kvs:        logics.KNVS,
 	}
 	public := engine.Group("/api/bkn-backend/v1")
 	internal := engine.Group("/api/bkn-backend/in/v1")
@@ -102,21 +103,10 @@ func objectMetricContext(c *gin.Context, vis hydra.Visitor) context.Context {
 	return context.WithValue(c.Request.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: vis.ID, Type: string(vis.Type)})
 }
 
-// useKNVersionService shares the version service of the main handler. It is looked up on first
-// use because the paid routes are installed before that handler exists.
-func (r *restHandler) useKNVersionService() {
-	r.kvsOnce.Do(func() {
-		if r.kvs == nil {
-			r.kvs = kn_version.Current()
-		}
-	})
-}
-
 // objectMetricWrite resolves the branch of a metric write like any definition write: a versioned
 // network writes its draft and needs the preconditions of the method (428 without them), and
 // kn_version is refused. The returned context carries the preconditions for the write transaction.
 func (r *restHandler) objectMetricWrite(c *gin.Context, vis hydra.Visitor) (context.Context, string, bool) {
-	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
 	branch, ok := r.writeBranch(&ctx, c, c.Param("kn_id"))
 	return ctx, branch, ok
@@ -291,7 +281,6 @@ func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	if !ok {
 		return
 	}
-	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
 	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
 	if !ok {
@@ -337,7 +326,6 @@ func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor, inclu
 	}
 	ctx := objectMetricContext(c, vis)
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
-	r.useKNVersionService()
 	if includeOwnerNames { // the public list resolves kn_version; the internal one reads the branch it is given
 		var ok bool
 		if branch, ok = r.readBranch(&ctx, c, c.Param("kn_id")); !ok {
@@ -378,7 +366,6 @@ func (r *restHandler) checkObjectMetricVersionDeletion(c *gin.Context, vis hydra
 	}
 	// A read like any other: kn_version selects the network version checked, while version is
 	// the metric's own version.
-	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
 	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
 	if !ok {
@@ -425,8 +412,6 @@ func (r *restHandler) ListObjectMetricVersionsByEx(c *gin.Context) {
 }
 
 func (r *restHandler) listObjectMetricVersions(c *gin.Context, vis hydra.Visitor) {
-	r.useKNVersionService()
-	r.useKNVersionService()
 	ctx := objectMetricContext(c, vis)
 	branch, ok := r.readBranch(&ctx, c, c.Param("kn_id"))
 	if !ok {

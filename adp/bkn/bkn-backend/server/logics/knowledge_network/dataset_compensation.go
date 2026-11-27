@@ -107,7 +107,7 @@ func (kns *knowledgeNetworkService) compensateDatasetDocuments(ctx context.Conte
 		}
 	}
 	if len(actions) > 0 {
-		if err := kns.ats.InsertDatasetData(ctx, actions); err != nil {
+		if err := kns.indexActionTypes(ctx, actions); err != nil {
 			return fmt.Errorf("restore action type index: %w", err)
 		}
 	}

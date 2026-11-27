@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/licverify"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -181,4 +183,23 @@ func ProxyCoversBranch(ctx context.Context, knID, branch string) bool {
 	}
 	state, err := KNVA.GetState(ctx, nil, knID, false)
 	return err == nil && state != nil && branch == interfaces.VersionBranch(state.RunningVersion)
+}
+
+// KNVersioningAvailable reports whether draft management is assembled and licensed.
+func KNVersioningAvailable() bool {
+	return KNVS != nil && ProfessionalModelingLicensed()
+}
+
+func ProfessionalModelingLicensed() bool {
+	return entitlement.AtLeast(licverify.EditionProfessional)
+}
+
+func DynamicModelEditionError(ctx context.Context) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+		WithErrorDetails("dynamic modeling requires a Professional license")
+}
+
+func KNVersionEditionError(ctx context.Context) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KNVersion_EditionRestricted).
+		WithErrorDetails(map[string]any{"edition": string(entitlement.Current())})
 }

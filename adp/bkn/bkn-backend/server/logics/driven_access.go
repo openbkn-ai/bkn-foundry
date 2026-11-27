@@ -16,13 +16,15 @@ var (
 	DB             *sql.DB
 	AA             interfaces.AuthAccess
 	AOA            interfaces.AgentOperatorAccess
-	AEA            interfaces.ActionExecutionAccess
 	ASA            interfaces.ActionScheduleAccess
+	ATS            interfaces.ActionTypeService
+	CBS            interfaces.CapabilityBindingService
 	ATA            interfaces.ActionTypeAccess
 	CBA            interfaces.CapabilityBindingAccess
 	CGA            interfaces.ConceptGroupAccess
 	KBA            interfaces.KnowledgeBaseAccess
 	KNA            interfaces.KNAccess
+	KNVS           interfaces.KNVersionService
 	KNVA           interfaces.KNVersionAccess
 	BC             interfaces.BranchCopier
 	KECA           interfaces.KnEventCleanupAccess
@@ -54,10 +56,6 @@ func SetActionScheduleAccess(asa interfaces.ActionScheduleAccess) {
 	ASA = asa
 }
 
-func SetActionExecutionAccess(aea interfaces.ActionExecutionAccess) {
-	AEA = aea
-}
-
 func SetActionTypeAccess(ata interfaces.ActionTypeAccess) {
 	ATA = ata
 }
@@ -72,6 +70,10 @@ func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {
 
 func SetKNAccess(kna interfaces.KNAccess) {
 	KNA = kna
+}
+
+func SetKNVersionService(service interfaces.KNVersionService) {
+	KNVS = service
 }
 
 func SetKNVersionAccess(knva interfaces.KNVersionAccess, bc interfaces.BranchCopier) {

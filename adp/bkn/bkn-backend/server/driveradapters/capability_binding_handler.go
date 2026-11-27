@@ -63,6 +63,15 @@ func (r *restHandler) ListCapabilitiesByEx(c *gin.Context) {
 // bindings. Context Loader calls this on every recall to learn what is in scope, and it goes to
 // the execution factory for names itself — backfilling here would add a service hop per recall to
 // produce data the caller is about to fetch.
+// capabilitiesForInternalCaller keeps an unavailable feature's retrieval scope empty.
+func (r *restHandler) capabilitiesForInternalCaller(c *gin.Context) {
+	if r.cbs != nil && r.dynamicModelAvailable() {
+		r.ListCapabilitiesByIn(c)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, interfaces.CapabilityReferenceList{Entries: []*interfaces.CapabilityReference{}})
+}
+
 func (r *restHandler) ListCapabilitiesByIn(c *gin.Context) {
 	r.ResolveCapabilities(c, visitor.GenerateVisitor(c))
 }

@@ -28,7 +28,6 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/batchindex"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
@@ -138,7 +137,7 @@ func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGro
 			nr:         logics.NewNetworkRelations(),
 			appSetting: appSetting,
 			ata:        logics.ATA,
-			ats:        action_type.NewActionTypeService(appSetting),
+			ats:        logics.ATS,
 			db:         logics.DB,
 			cga:        logics.CGA,
 			kna:        logics.KNA,
@@ -582,6 +581,9 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}
 
 		if len(conceptGroup.ActionTypes) > 0 {
+			if cgs.ats == nil {
+				return "", logics.DynamicModelEditionError(ctx)
+			}
 			_, err = cgs.ats.CreateActionTypes(ctx, tx, conceptGroup.ActionTypes, mode, strictMode)
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
@@ -635,6 +637,9 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}
 
 		if len(conceptGroup.ActionTypes) > 0 {
+			if cgs.ats == nil {
+				return "", logics.DynamicModelEditionError(ctx)
+			}
 			_, err = cgs.ats.CreateActionTypes(ctx, tx, conceptGroup.ActionTypes, mode, strictMode)
 			if err != nil {
 				logger.Errorf("CreateActionTypes error: %s", err.Error())
@@ -755,6 +760,9 @@ func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Con
 				}
 			}
 			if len(cg.ActionTypes) > 0 {
+				if cgs.ats == nil {
+					return logics.DynamicModelEditionError(ctx)
+				}
 				if err := cgs.ats.ValidateActionTypes(ctx, knID, branch, cg.ActionTypes, strictMode, effectiveBatch, mode); err != nil {
 					return err
 				}
@@ -945,18 +953,20 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		}
 		conceptGroup.RelationTypes = relationTypes
 
-		actionTypes, _, err := cgs.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:          conceptGroup.KNID,
-			Branch:        conceptGroup.Branch,
-			ObjectTypeIDs: otIDs,
-		})
-		if err != nil {
-			return nil, err
+		if cgs.ats != nil {
+			actionTypes, _, err := cgs.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
+				PaginationQueryParameters: interfaces.PaginationQueryParameters{
+					Limit: -1,
+				},
+				KNID:          conceptGroup.KNID,
+				Branch:        conceptGroup.Branch,
+				ObjectTypeIDs: otIDs,
+			})
+			if err != nil {
+				return nil, err
+			}
+			conceptGroup.ActionTypes = actionTypes
 		}
-		conceptGroup.ActionTypes = actionTypes
 	}
 
 	span.SetStatus(codes.Ok, "")

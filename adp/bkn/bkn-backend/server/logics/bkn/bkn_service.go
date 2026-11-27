@@ -25,7 +25,6 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
@@ -49,7 +48,7 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 		bService = &bknService{
 			appSetting: appSetting,
 			kns:        knowledge_network.NewKNService(appSetting),
-			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
+			cbs:        logics.CBS,
 			ps:         permission.NewPermissionService(appSetting),
 		}
 	})
@@ -328,6 +327,9 @@ func (bs *bknService) DiffNetworks(ctx context.Context, req interfaces.KNDiffReq
 // home; names are the sole thing an import elsewhere can resolve against, and a section carrying
 // ids alone would be decoration everywhere but the environment that produced it.
 func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch string) (*bknsdk.BknCapabilities, error) {
+	if bs.cbs == nil {
+		return nil, nil
+	}
 	// No paging: the export is the whole model, and a page of the bindings would quietly ship a
 	// subset of what the network depends on.
 	list, err := bs.cbs.ListCapabilities(ctx, interfaces.CapabilityBindingsQueryParams{

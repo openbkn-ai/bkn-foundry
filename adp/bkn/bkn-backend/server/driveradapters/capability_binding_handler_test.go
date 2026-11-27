@@ -34,7 +34,7 @@ func Test_CapabilityRoutes_CanonicalPrefixes(t *testing.T) {
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
-		handler := &restHandler{appSetting: &common.AppSetting{}}
+		handler := &restHandler{appSetting: &common.AppSetting{}, cbs: bmock.NewMockCapabilityBindingService(gomock.NewController(t))}
 		// RegisterPublic wires both the public and internal groups.
 		handler.RegisterPublic(engine)
 

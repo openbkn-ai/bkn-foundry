@@ -45,19 +45,23 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_index_sync"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	proxycontext "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/proxy_context"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-// Options controls application bootstrapping. It is intentionally empty today
-// so callers do not need to change when injectable boot dependencies are added.
-type Options struct{}
+// Options supplies features assembled by the distribution at boot.
+type Options struct {
+	NewActionLogsService  func(*common.AppSetting) interfaces.ActionLogsService
+	RunActionIndexSync    func(context.Context, *common.AppSetting)
+	RunActionLogRetention func(*common.AppSetting)
+	NewActionTypeService  func(*common.AppSetting) interfaces.ActionTypeService
+	NewActionScheduler    func(*common.AppSetting, interfaces.ActionGovernanceGate) interfaces.ActionSchedulerService
+}
 
 // Application is a booted ontology-query process that has not started serving yet.
 // Extension assembly belongs between Boot and Run.
 type Application struct {
+	actionOptions           Options
 	appSetting              *common.AppSetting
 	otelProviders           *otel.Providers
 	restHandler             driveradapters.RestHandler
@@ -88,9 +92,19 @@ func (server *Application) InstallActionGovernanceGate(gate interfaces.ActionGov
 	if gate == nil || server.retentionOnly || server.governanceGateInstalled {
 		return errors.New("ontology-query app: action governance gate cannot be installed")
 	}
-	server.restHandler = driveradapters.NewRestHandlerWithGovernance(server.appSetting, gate)
+	server.restHandler = server.newRestHandler(gate)
 	server.governanceGateInstalled = true
 	return nil
+}
+
+func (server *Application) newRestHandler(gate interfaces.ActionGovernanceGate) driveradapters.RestHandler {
+	options := server.actionOptions
+	if options.NewActionTypeService == nil || options.NewActionScheduler == nil || options.NewActionLogsService == nil {
+		return driveradapters.NewRestHandler(server.appSetting)
+	}
+	return driveradapters.NewRestHandlerWithActionModeling(server.appSetting,
+		options.NewActionTypeService(server.appSetting), options.NewActionScheduler(server.appSetting, gate),
+		options.NewActionLogsService(server.appSetting))
 }
 
 // RegisterRoutes adds one explicitly named route extension. Registration is
@@ -137,7 +151,11 @@ func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
 // Run freezes the assembled process shape and serves until shutdown.
 func (server *Application) Run() {
 	if server.retentionOnly {
-		runActionLogRetention(server.appSetting)
+		if server.actionOptions.RunActionLogRetention == nil {
+			logger.Info("Skipping action execution log retention because this distribution does not include it")
+		} else {
+			server.actionOptions.RunActionLogRetention(server.appSetting)
+		}
 		server.otelProviders.Shutdown(context.Background())
 		return
 	}
@@ -164,10 +182,11 @@ func (server *Application) Run() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Receiving a signal triggers ctx.Done. stop stops receiving registered signals and releases those resources.
 	defer stop()
-	syncService := action_index_sync.New(action_logs.NewIndexSyncStore(server.appSetting), vega_backend.NewIndexSyncAccess(server.appSetting))
-	syncDone := make(chan struct{})
-	go func() { defer close(syncDone); syncService.Run(ctx) }()
-	defer func() { stop(); <-syncDone }()
+	if run := server.actionOptions.RunActionIndexSync; run != nil {
+		syncDone := make(chan struct{})
+		go func() { defer close(syncDone); run(ctx, server.appSetting) }()
+		defer func() { stop(); <-syncDone }()
+	}
 	var runtimeDone <-chan error
 	var flusher evidenceFlusher
 	if server.evidenceRuntime != nil {
@@ -230,7 +249,7 @@ func (server *Application) Run() {
 
 // Boot initializes shared infrastructure without opening the HTTP listener.
 // Paid entry points may register extensions after Boot returns and before Run.
-func Boot(_ Options) *Application {
+func Boot(options Options) *Application {
 
 	// Enable pprof.
 	// go func() {
@@ -274,8 +293,9 @@ func Boot(_ Options) *Application {
 	} else {
 		logger.Warn("BKN Trace Evidence Kafka publisher is disabled; workload is not 0.2-ready and evidence events will be dropped")
 	}
-	if action_logs.RetentionCleanupOnly() {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("ACTION_EXECUTION_LOG_CLEANUP_ONLY")), "true") {
 		return &Application{
+			actionOptions:   options,
 			appSetting:      appSetting,
 			otelProviders:   otelProviders,
 			retentionOnly:   true,
@@ -297,11 +317,12 @@ func Boot(_ Options) *Application {
 	server := &Application{
 		appSetting:      appSetting,
 		otelProviders:   otelProviders,
-		restHandler:     driveradapters.NewRestHandler(appSetting),
+		actionOptions:   options,
 		refresh:         refresh,
 		stop:            make(chan struct{}),
 		routeExtensions: make(map[string]func(*gin.Engine)),
 	}
+	server.restHandler = server.newRestHandler(nil)
 	if publisherRuntime != nil {
 		server.evidenceRuntime = publisherRuntime.Runtime
 		server.evidenceProducer = publisherRuntime.Producer
@@ -333,40 +354,4 @@ func startEvidenceFlushLoop(ctx context.Context, publisher evidenceFlusher, inte
 		}
 	}()
 	return done
-}
-
-// runActionLogRetention runs one retention cleanup of action execution logs, as the retention
-// CronJob does, and exits the process on failure so the Job is retried.
-func runActionLogRetention(appSetting *common.AppSetting) {
-	cfg, err := action_logs.LoadRetentionConfig()
-	if err != nil {
-		logger.Fatalf("Invalid action execution log retention configuration: %v", err)
-	}
-	if cfg.RetentionDays == 0 {
-		logger.Info("Action execution log retention is disabled: ACTION_EXECUTION_LOG_RETENTION_DAYS is 0")
-		return
-	}
-
-	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	started := time.Now()
-	result, err := action_logs.CleanupExpiredExecutions(ctx, appSetting, cfg)
-	if err != nil {
-		deletedExecutions, deletedResults := int64(0), int64(0)
-		if result != nil {
-			deletedExecutions, deletedResults = result.Executions, result.Results
-		}
-		logger.Fatalf("Action execution log retention failed after executions=%d results=%d: %v",
-			deletedExecutions, deletedResults, err)
-	}
-	logger.Infof("Action execution log retention complete: dry_run=%t retention_days=%d cutoff=%s executions=%d results=%d batches=%d more_remaining=%t took=%s",
-		cfg.DryRun, cfg.RetentionDays, time.UnixMilli(result.Cutoff).UTC().Format(time.RFC3339),
-		result.Executions, result.Results, result.Batches, result.Truncated, time.Since(started).Round(time.Millisecond))
-	if result.Truncated {
-		logger.Warnf("Action execution log retention stopped at its per-run limit of %d executions (batch size %d x %d batches) "+
-			"with more expired executions left; if this repeats, raise the batch count or run the CronJob more often",
-			cfg.BatchSize*cfg.MaxBatches, cfg.BatchSize, cfg.MaxBatches)
-	}
 }
