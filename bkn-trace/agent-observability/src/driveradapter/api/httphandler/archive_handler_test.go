@@ -134,12 +134,24 @@ func TestArchiveSubmitQueuesRunAndExposesProgressAndRetained(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/"+run.RunID)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"interaction_id":"large"`) || !strings.Contains(rec.Body.String(), `"retained_count":1`) {
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"interaction_id"`) || !strings.Contains(rec.Body.String(), `"retained_count":1`) {
 		t.Fatalf("run result: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"budget":8388608`) {
+	rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/"+run.RunID+"/retained?offset=0&limit=20")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"interaction_id":"large"`) || !strings.Contains(rec.Body.String(), `"total":1`) {
+		t.Fatalf("run retained page: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained?limit=20")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"budget":8388608`) || !strings.Contains(rec.Body.String(), `"total":1`) {
 		t.Fatalf("retained list: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, bad := range []string{"?limit=101", "?limit=0", "?offset=-1", "?limit=x"} {
+		if rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained"+bad); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s accepted: %d", bad, rec.Code)
+		}
+	}
+	if rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/missing/retained"); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing run retained page: %d", rec.Code)
 	}
 	rec = serveArchive(h.Overview(observabilityvo.ArchiveKindTrace), http.MethodGet, "/overview")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"retained_count":1`) || !strings.Contains(rec.Body.String(), `"run_id":"`+run.RunID+`"`) {

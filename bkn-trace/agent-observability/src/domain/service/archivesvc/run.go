@@ -54,10 +54,12 @@ const (
 	// After a stop request the current batch gets this long before it is
 	// cancelled, inside the process's 30 s shutdown budget. A cancelled batch
 	// stays recoverable and the run resumes on the next start.
-	runStopGrace                    = 20 * time.Second
-	MaxRunRetries                   = 3
-	defaultRunWorkerInterval        = 5 * time.Second
-	maxRetainedListed               = 500
+	runStopGrace             = 20 * time.Second
+	MaxRunRetries            = 3
+	defaultRunWorkerInterval = 5 * time.Second
+	// Retained pages default to 20 rows and never exceed 100.
+	DefaultRetainedPageSize         = 20
+	MaxRetainedPageSize             = 100
 	traceArchivePolicyVersionFormat = "trace-v1-%d-%d-%d"
 )
 
@@ -123,8 +125,9 @@ type RunStore interface {
 	LatestBatchProgress(context.Context, string) (*BatchProgress, error)
 	RetainInteraction(context.Context, RetainedInteraction) error
 	RetainedIDs(context.Context, string) ([]string, error)
-	// ListRetained filters by run and/or policy; empty filters match all.
-	ListRetained(ctx context.Context, runID, policyVersion string, limit int) ([]RetainedInteraction, error)
+	// ListRetained returns one page and the total matching the query; a
+	// non-positive Limit returns only the total.
+	ListRetained(context.Context, RetainedQuery) (RetainedPage, error)
 }
 
 // RunView is a run with progress derived from its latest batch.
@@ -135,9 +138,17 @@ type RunView struct {
 	BatchCount     int
 }
 
-type RunResult struct {
-	RunView
-	Retained []RetainedInteraction
+// RetainedQuery filters by run and/or policy; empty filters match all.
+type RetainedQuery struct {
+	RunID         string
+	PolicyVersion string
+	Offset        int
+	Limit         int
+}
+
+type RetainedPage struct {
+	Items []RetainedInteraction
+	Total int
 }
 
 type excludedCandidatesKey struct{}
@@ -536,44 +547,50 @@ func (service *Service) view(ctx context.Context, runs RunStore, run Run) (RunVi
 		}
 	}
 	if run.Kind == observabilityvo.ArchiveKindTrace {
-		retained, err := runs.ListRetained(ctx, run.ID, "", maxRetainedListed)
+		retained, err := runs.ListRetained(ctx, RetainedQuery{RunID: run.ID})
 		if err != nil {
 			return view, err
 		}
-		view.RetainedCount = len(retained)
+		view.RetainedCount = retained.Total
 	}
 	return view, nil
 }
 
-// RunResult returns one run with its retained interactions.
-func (service *Service) RunResult(ctx context.Context, runID string) (RunResult, error) {
+// RunResult returns one run's summary; its retained interactions are paged
+// through RetainedInteractions.
+func (service *Service) RunResult(ctx context.Context, runID string) (RunView, error) {
 	runs, ok := service.runStore()
 	if !ok {
-		return RunResult{}, ErrRunNotFound
+		return RunView{}, ErrRunNotFound
 	}
 	run, found, err := runs.GetRun(ctx, runID)
 	if err != nil {
-		return RunResult{}, err
+		return RunView{}, err
 	}
 	if !found {
-		return RunResult{}, ErrRunNotFound
+		return RunView{}, ErrRunNotFound
 	}
-	view, err := service.view(ctx, runs, run)
-	if err != nil {
-		return RunResult{}, err
-	}
-	result := RunResult{RunView: view}
-	if run.Kind == observabilityvo.ArchiveKindTrace {
-		result.Retained, err = runs.ListRetained(ctx, run.ID, "", maxRetainedListed)
-	}
-	return result, err
+	return service.view(ctx, runs, run)
 }
 
-// RetainedInteractions lists every interaction excluded under the current policy.
-func (service *Service) RetainedInteractions(ctx context.Context) ([]RetainedInteraction, error) {
+// RetainedInteractions returns one page of retained interactions: those a run
+// met when runID is set, otherwise every one excluded under the current policy.
+func (service *Service) RetainedInteractions(ctx context.Context, runID string, offset, limit int) (RetainedPage, error) {
+	if limit <= 0 {
+		limit = DefaultRetainedPageSize
+	}
+	limit, offset = min(limit, MaxRetainedPageSize), max(offset, 0)
 	runs, ok := service.runStore()
 	if !ok {
-		return []RetainedInteraction{}, nil
+		return RetainedPage{Items: []RetainedInteraction{}}, nil
 	}
-	return runs.ListRetained(ctx, "", TraceArchivePolicyVersion(), maxRetainedListed)
+	query := RetainedQuery{RunID: runID, Offset: offset, Limit: limit}
+	if runID == "" {
+		query.PolicyVersion = TraceArchivePolicyVersion()
+	} else if _, found, err := runs.GetRun(ctx, runID); err != nil {
+		return RetainedPage{}, err
+	} else if !found {
+		return RetainedPage{}, ErrRunNotFound
+	}
+	return runs.ListRetained(ctx, query)
 }

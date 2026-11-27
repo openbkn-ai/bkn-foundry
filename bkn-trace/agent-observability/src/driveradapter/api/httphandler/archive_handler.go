@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
@@ -166,17 +167,22 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	writeJSON(w, r, http.StatusAccepted, rdto.NewArchiveRun(run))
 }
 
-// RunResult returns one background run with the interactions it kept online.
+// RunResult returns one background run, or one page of the interactions it
+// kept online at /archive-runs/{run_id}/retained.
 func (handler *ArchiveHandler) RunResult(w http.ResponseWriter, r *http.Request) {
-	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/observability/v1/archive-runs/"), "/")
-	if id == "" || strings.Contains(id, "/") {
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/observability/v1/archive-runs/"), "/"), "/")
+	if parts[0] == "" || len(parts) > 2 || len(parts) == 2 && parts[1] != "retained" {
 		http.NotFound(w, r)
 		return
 	}
 	if _, ok := handler.authorize(w, r, http.MethodGet); !ok {
 		return
 	}
-	result, err := handler.service.RunResult(r.Context(), id)
+	if len(parts) == 2 {
+		handler.writeRetainedPage(w, r, parts[0])
+		return
+	}
+	run, err := handler.service.RunResult(r.Context(), parts[0])
 	if errors.Is(err, archivesvc.ErrRunNotFound) {
 		writeObservabilityError(w, r, http.StatusNotFound, "archive_run_not_found", "archive run was not found")
 		return
@@ -186,21 +192,48 @@ func (handler *ArchiveHandler) RunResult(w http.ResponseWriter, r *http.Request)
 		writeObservabilityError(w, r, http.StatusServiceUnavailable, "archive_run_unavailable", "archive run is unavailable")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, rdto.NewArchiveRunResult(result))
+	writeJSON(w, r, http.StatusOK, rdto.NewArchiveRun(run))
 }
 
-// Retained lists Trace interactions kept online under the current budget.
+// Retained pages Trace interactions kept online under the current budget.
 func (handler *ArchiveHandler) Retained(w http.ResponseWriter, r *http.Request) {
 	if _, ok := handler.authorize(w, r, http.MethodGet); !ok {
 		return
 	}
-	items, err := handler.service.RetainedInteractions(r.Context())
+	handler.writeRetainedPage(w, r, "")
+}
+
+func (handler *ArchiveHandler) writeRetainedPage(w http.ResponseWriter, r *http.Request, runID string) {
+	offset, offsetErr := optionalNonNegativeInt(r.URL.Query().Get("offset"))
+	rawLimit := r.URL.Query().Get("limit")
+	limit, limitErr := optionalNonNegativeInt(rawLimit)
+	// An omitted limit means the default page; an explicit 0 is invalid.
+	if offsetErr != nil || limitErr != nil || rawLimit != "" && limit == 0 || limit > archivesvc.MaxRetainedPageSize {
+		writeObservabilityError(w, r, http.StatusBadRequest, "invalid_retained_page", "offset must be 0 or more and limit between 1 and 100")
+		return
+	}
+	page, err := handler.service.RetainedInteractions(r.Context(), runID, offset, limit)
+	if errors.Is(err, archivesvc.ErrRunNotFound) {
+		writeObservabilityError(w, r, http.StatusNotFound, "archive_run_not_found", "archive run was not found")
+		return
+	}
 	if err != nil {
 		slog.WarnContext(r.Context(), "retained archive interactions unavailable", "error_type", fmt.Sprintf("%T", err))
 		writeObservabilityError(w, r, http.StatusServiceUnavailable, "archive_retained_unavailable", "retained interactions are unavailable")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, rdto.NewRetainedInteractions(items))
+	writeJSON(w, r, http.StatusOK, rdto.NewRetainedPage(page))
+}
+
+func optionalNonNegativeInt(value string) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("invalid non-negative integer")
+	}
+	return parsed, nil
 }
 
 func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID string) {

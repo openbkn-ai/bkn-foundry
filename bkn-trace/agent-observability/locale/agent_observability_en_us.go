@@ -65,6 +65,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.archive job was not found":                                                   "archive job was not found",
 		"AgentObservability.Message.archive did not start":                                                       "archive did not start",
 		"AgentObservability.Message.archive run was not found":                                                   "archive run was not found",
+		"AgentObservability.Message.offset must be 0 or more and limit between 1 and 100":                        "offset must be 0 or more and limit between 1 and 100",
 		"AgentObservability.Message.archive run is unavailable":                                                  "archive run is unavailable",
 		"AgentObservability.Message.retained interactions are unavailable":                                       "retained interactions are unavailable",
 		"AgentObservability.Message.archive management is not allowed":                                           "archive management is not allowed",

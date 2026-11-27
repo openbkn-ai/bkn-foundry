@@ -55,6 +55,7 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.archive job was not found":                                                   "归档任务不存在",
 		"AgentObservability.Message.archive did not start":                                                       "归档未能开始",
 		"AgentObservability.Message.archive run was not found":                                                   "归档轮次不存在",
+		"AgentObservability.Message.offset must be 0 or more and limit between 1 and 100":                        "分页参数无效：offset 不能小于 0，limit 取值 1 到 100",
 		"AgentObservability.Message.archive run is unavailable":                                                  "归档轮次暂时不可用",
 		"AgentObservability.Message.retained interactions are unavailable":                                       "保留的交互列表暂时不可用",
 		"AgentObservability.Message.archive management is not allowed":                                           "不允许管理归档",

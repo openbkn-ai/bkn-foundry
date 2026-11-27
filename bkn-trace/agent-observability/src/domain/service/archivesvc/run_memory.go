@@ -127,33 +127,34 @@ func (store *memoryStore) RetainInteraction(ctx context.Context, item RetainedIn
 }
 
 func (store *memoryStore) RetainedIDs(ctx context.Context, policy string) ([]string, error) {
-	items, err := store.ListRetained(ctx, "", policy, 0)
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
+	page, err := store.ListRetained(ctx, RetainedQuery{PolicyVersion: policy, Limit: len(store.retained) + 1})
+	ids := make([]string, 0, len(page.Items))
+	for _, item := range page.Items {
 		ids = append(ids, item.InteractionID)
 	}
 	return ids, err
 }
 
-func (store *memoryStore) ListRetained(ctx context.Context, runID, policy string, limit int) ([]RetainedInteraction, error) {
+func (store *memoryStore) ListRetained(ctx context.Context, query RetainedQuery) (RetainedPage, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return RetainedPage{}, err
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	items := make([]RetainedInteraction, 0)
 	for _, item := range store.retained {
-		if (runID == "" || item.RunID == runID) && (policy == "" || item.PolicyVersion == policy) {
+		if (query.RunID == "" || item.RunID == query.RunID) && (query.PolicyVersion == "" || item.PolicyVersion == query.PolicyVersion) {
 			items = append(items, item)
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].RetainedAt.After(items[j].RetainedAt) || items[i].RetainedAt.Equal(items[j].RetainedAt) && items[i].InteractionID < items[j].InteractionID
 	})
-	if limit > 0 && len(items) > limit {
-		items = items[:limit]
+	page := RetainedPage{Items: []RetainedInteraction{}, Total: len(items)}
+	if query.Limit > 0 && query.Offset < len(items) {
+		page.Items = items[max(query.Offset, 0):min(max(query.Offset, 0)+query.Limit, len(items))]
 	}
-	return items, nil
+	return page, nil
 }
 
 var _ RunStore = (*memoryStore)(nil)

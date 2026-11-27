@@ -203,9 +203,12 @@ run fails. Invalid configuration, capacity limits, cleanup verification failure
 or another run's unfinished cleanup fail at once. Every run keeps its result:
 start/end, candidates at submission, archived-and-cleaned count, batches, retry
 count and last reason (`last_failure_code`), and retained Interactions.
-`GET /archive-runs/{run_id}` returns it; the overview carries the latest run as
-`current_run` and `retained_count`; `GET /trace-archive-retained` lists all
-Interactions retained under the current budgets (at most 500).
+`GET /archive-runs/{run_id}` returns the summary and
+`GET /archive-runs/{run_id}/retained` pages the Interactions that run retained;
+the overview carries the latest run as `current_run` and `retained_count`;
+`GET /trace-archive-retained` pages all Interactions retained under the current
+budgets. Retained pages take `offset` and `limit` (default 20, at most 100) and
+return `{items, total}`.
 
 ### v041 upgrade and rollback
 

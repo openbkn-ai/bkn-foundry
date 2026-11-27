@@ -115,28 +115,30 @@ func (store *Store) RetainedIDs(ctx context.Context, policy string) ([]string, e
 	return ids, rows.Err()
 }
 
-func (store *Store) ListRetained(ctx context.Context, runID, policy string, limit int) ([]archivesvc.RetainedInteraction, error) {
-	query := `SELECT interaction_id, run_id, policy_version, stage, measured, measured_at_least, budget, unit, retained_at FROM bkn_trace_archive_retained WHERE (?='' OR run_id=?) AND (?='' OR policy_version=?) ORDER BY retained_at DESC, interaction_id ASC`
-	args := []any{runID, runID, policy, policy}
-	if limit > 0 {
-		query += ` LIMIT ?`
-		args = append(args, limit)
+func (store *Store) ListRetained(ctx context.Context, query archivesvc.RetainedQuery) (archivesvc.RetainedPage, error) {
+	const filter = ` FROM bkn_trace_archive_retained WHERE (?='' OR run_id=?) AND (?='' OR policy_version=?)`
+	args := []any{query.RunID, query.RunID, query.PolicyVersion, query.PolicyVersion}
+	page := archivesvc.RetainedPage{Items: []archivesvc.RetainedInteraction{}}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*)`+filter, args...).Scan(&page.Total); err != nil {
+		return archivesvc.RetainedPage{}, err
 	}
-	rows, err := store.db.QueryContext(ctx, query, args...)
+	if query.Limit <= 0 || query.Offset >= page.Total {
+		return page, nil
+	}
+	rows, err := store.db.QueryContext(ctx, `SELECT interaction_id, run_id, policy_version, stage, measured, measured_at_least, budget, unit, retained_at`+filter+` ORDER BY retained_at DESC, interaction_id ASC LIMIT ? OFFSET ?`, append(args, query.Limit, max(query.Offset, 0))...)
 	if err != nil {
-		return nil, err
+		return archivesvc.RetainedPage{}, err
 	}
 	defer func() { _ = rows.Close() }()
-	items := make([]archivesvc.RetainedInteraction, 0)
 	for rows.Next() {
 		var item archivesvc.RetainedInteraction
 		if err := rows.Scan(&item.InteractionID, &item.RunID, &item.PolicyVersion, &item.Stage, &item.Measured, &item.AtLeast, &item.Budget, &item.Unit, &item.RetainedAt); err != nil {
-			return nil, err
+			return archivesvc.RetainedPage{}, err
 		}
 		item.RetainedAt = item.RetainedAt.UTC()
-		items = append(items, item)
+		page.Items = append(page.Items, item)
 	}
-	return items, rows.Err()
+	return page, rows.Err()
 }
 
 func scanRun(row *sql.Row) (archivesvc.Run, bool, error) {

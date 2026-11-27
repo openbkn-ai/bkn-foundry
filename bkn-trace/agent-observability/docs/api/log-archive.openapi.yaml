@@ -78,19 +78,37 @@ paths:
     parameters: [{ name: run_id, in: path, required: true, schema: { type: string } }]
     get:
       summary: Read one run's result
-      description: Summary, retry record and the Trace interactions this run retained online.
+      description: Summary and retry record; retained interactions are paged at /archive-runs/{run_id}/retained.
       responses:
-        '200': { description: Run result, content: { application/json: { schema: { $ref: '#/components/schemas/RunResult' } } } }
+        '200': { description: Run summary, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /archive-runs/{run_id}/retained:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+      - { $ref: '#/components/parameters/RetainedOffset' }
+      - { $ref: '#/components/parameters/RetainedLimit' }
+    get:
+      summary: Page the Trace interactions one run kept online
+      responses:
+        '200': { description: One page and the total, content: { application/json: { schema: { $ref: '#/components/schemas/RetainedPage' } } } }
+        '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
   /trace-archive-retained:
+    parameters:
+      - { $ref: '#/components/parameters/RetainedOffset' }
+      - { $ref: '#/components/parameters/RetainedLimit' }
     get:
-      summary: List Trace interactions retained under the current budget
-      description: At most 500, newest first; independent of the 20-job history.
+      summary: Page Trace interactions retained under the current budget
+      description: Newest first; independent of the 20-job history.
       responses:
-        '200': { description: Retained interactions, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RetainedInteraction' } } } } }
+        '200': { description: One page and the total, content: { application/json: { schema: { $ref: '#/components/schemas/RetainedPage' } } } }
+        '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
@@ -132,6 +150,9 @@ paths:
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer }
+  parameters:
+    RetainedOffset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    RetainedLimit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
   responses:
     Error:
       description: Existing observability error envelope; no credentials or signed URLs
@@ -170,13 +191,12 @@ components:
         budget: { type: integer, format: int64 }
         unit: { type: string, enum: [bytes, rows] }
         retained_at: { type: string, format: date-time }
-    RunResult:
-      allOf:
-        - $ref: '#/components/schemas/Run'
-        - type: object
-          required: [retained]
-          properties:
-            retained: { type: array, items: { $ref: '#/components/schemas/RetainedInteraction' } }
+    RetainedPage:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/RetainedInteraction' } }
+        total: { type: integer }
     Overview:
       type: object
       required: [archive_kind, retention_days, cutoff_at, candidate_count, storage, retained_count]
