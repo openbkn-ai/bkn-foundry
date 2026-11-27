@@ -152,9 +152,10 @@ func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
 func (server *Application) Run() {
 	if server.retentionOnly {
 		if server.actionOptions.RunActionLogRetention == nil {
-			logger.Fatalf("Action execution log retention is unavailable in this distribution")
+			logger.Info("Skipping action execution log retention because this distribution does not include it")
+		} else {
+			server.actionOptions.RunActionLogRetention(server.appSetting)
 		}
-		server.actionOptions.RunActionLogRetention(server.appSetting)
 		server.otelProviders.Shutdown(context.Background())
 		return
 	}

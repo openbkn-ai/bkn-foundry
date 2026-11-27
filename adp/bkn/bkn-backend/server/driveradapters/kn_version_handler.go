@@ -491,7 +491,7 @@ func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID str
 
 // resolvePublishedBranch tracks a network's running branch when version management is unavailable.
 func resolvePublishedBranch(ctx context.Context, c *gin.Context, knID string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, bool) {
-	if interfaces.IsReservedBranch(req.Branch) || req.KNVersion == interfaces.DRAFT_BRANCH || req.DraftRevision != nil {
+	if interfaces.IsReservedBranch(req.Branch) || req.DraftRevision != nil {
 		replyKNVersionError(c, logics.KNVersionEditionError(ctx))
 		return nil, false
 	}
@@ -507,18 +507,33 @@ func resolvePublishedBranch(ctx context.Context, c *gin.Context, knID string, re
 			return nil, false
 		}
 		if state != nil {
-			if req.Write || branch != interfaces.MAIN_BRANCH {
+			if req.Write || branch != interfaces.MAIN_BRANCH || req.KNVersion == interfaces.DRAFT_BRANCH {
 				replyKNVersionError(c, logics.KNVersionEditionError(ctx))
 				return nil, false
 			}
+			resolved.Versioned = true
 			if state.RunningVersion > 0 {
 				resolved.Branch = interfaces.VersionBranch(state.RunningVersion)
 				resolved.Version = strconv.Itoa(state.RunningVersion)
 				resolved.Running = true
 				resolved.RunningVersion = state.RunningVersion
-				resolved.Versioned = true
 			}
 		}
+	}
+	if !resolved.Versioned {
+		switch req.KNVersion {
+		case "":
+		case "running", interfaces.DRAFT_BRANCH, "1":
+			if branch != interfaces.MAIN_BRANCH {
+				replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_KNVersion_InvalidVersion).WithErrorDetails("use either kn_version or branch, not both"))
+				return nil, false
+			}
+		default:
+			replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned))
+			return nil, false
+		}
+		return resolved, true
 	}
 	if req.KNVersion != "" && req.KNVersion != "running" && req.KNVersion != resolved.Version {
 		replyKNVersionError(c, logics.KNVersionEditionError(ctx))

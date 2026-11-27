@@ -266,3 +266,34 @@ func TestPublishedBranchWithoutVersionManagement(t *testing.T) {
 		})
 	}
 }
+
+func TestUnversionedBranchWithoutVersionManagement(t *testing.T) {
+	oldAccess := logics.KNVA
+	logics.KNVA = nil
+	t.Cleanup(func() { logics.KNVA = oldAccess })
+	handler := &restHandler{versioningEntitled: func() bool { return false }}
+	for _, tc := range []struct {
+		target string
+		status int
+	}{
+		{target: "", status: http.StatusOK},
+		{target: "running", status: http.StatusOK},
+		{target: "draft", status: http.StatusOK},
+		{target: "1", status: http.StatusOK},
+		{target: "2", status: http.StatusBadRequest},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/?kn_version="+tc.target, nil)
+			ctx := context.Background()
+			resolved, ok := handler.resolveRead(&ctx, c, "network", false)
+			if ok != (tc.status == http.StatusOK) || recorder.Code != tc.status {
+				t.Fatalf("resolved = %+v, allowed = %v, status = %d, want %d", resolved, ok, recorder.Code, tc.status)
+			}
+			if ok && (resolved.Branch != interfaces.MAIN_BRANCH || resolved.Versioned) {
+				t.Fatalf("resolved branch = %+v, want an unversioned main branch", resolved)
+			}
+		})
+	}
+}

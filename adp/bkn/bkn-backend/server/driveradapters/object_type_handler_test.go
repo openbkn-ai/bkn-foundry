@@ -366,6 +366,21 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNoContent)
 		})
 
+		Convey("Success without an action type service", func() {
+			handler.ats = nil
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
+			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot1").Return("object1", true, nil)
+			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), knID, gomock.Any(), "ot2").Return("object2", true, nil)
+			ots.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
+
+			req := httptest.NewRequest(http.MethodDelete, url, nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Code, ShouldEqual, http.StatusNoContent)
+		})
+
 		Convey("KN not found\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, nil)
 

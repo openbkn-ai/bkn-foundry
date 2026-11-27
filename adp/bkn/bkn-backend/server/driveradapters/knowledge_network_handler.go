@@ -957,6 +957,9 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 		}
 		total, err = count, listErr
 	case "action_type":
+		if r.ats == nil || !r.dynamicModelAvailable() {
+			break
+		}
 		items, count, listErr := r.ats.ListActionTypeSummaries(ctx, interfaces.ActionTypesQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
 		for _, item := range items {
 			entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.ATID, Name: item.ATName})

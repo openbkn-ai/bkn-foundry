@@ -814,7 +814,9 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			rest.ReplyError(c, httpErr)
 			return
 		}
+	}
 
+	if !forceDelete && r.ats != nil && r.dynamicModelAvailable() {
 		// Verify that no action type references the object type.
 		actionTypes, _, err := r.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
 			KNID:          knID,
