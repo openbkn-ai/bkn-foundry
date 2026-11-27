@@ -7,7 +7,8 @@ JSON Schema from the conversation messages:
 2. Fallback: when the native path errors because the model does not support it
    — a thinking-mode qwen rejects tool_choice=required, for instance — the
    schema is folded into the prompt so the model emits JSON only, the result is
-   validated with jsonschema, and an invalid one is fed back for a single retry.
+   validated with jsonschema, and an invalid one is regenerated from the
+   original conversation with a short hint, up to FALLBACK_ATTEMPTS answers.
 The fallback is not guaranteed to succeed, but it works with any model that can
 hold a conversation.
 
@@ -51,6 +52,17 @@ _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 # TRUNCATED marks a StructuredOutputError whose last reply was cut off at the
 # output cap; callers match it to ask for less per call.
 TRUNCATED = "output truncated"
+# Prompt-fallback attempts. Each invalid answer is regenerated from the original
+# conversation, so the attempts are independent draws rather than repairs.
+FALLBACK_ATTEMPTS = 3
+# Bound on the validation message quoted in the regeneration hint; jsonschema
+# quotes the offending instance, which can be a long list.
+_HINT_DETAIL_CHARS = 300
+_SHORTER = (
+    "Your previous answer was cut off at the output length limit. "
+    "Answer again with valid JSON only, matching the schema, and keep "
+    "it shorter: fewer items, and shorter texts and quotes."
+)
 
 
 def _extract_json(text: str) -> Any:
@@ -241,14 +253,15 @@ async def _native_extract(model, messages: list, schema: dict, system_prompt: st
 
 
 async def _fallback_extract(model, messages: list, schema: dict, system_prompt: str | None) -> dict:
-    """The prompt fallback: JSON forced by the prompt, validated, one retry."""
-    # 2. Prompt-forced JSON, validated, with a single retry
+    """The prompt fallback: JSON forced by the prompt, validated, regenerated
+    up to FALLBACK_ATTEMPTS times."""
+    # 2. Prompt-forced JSON, validated, regenerated when invalid
     # Stating that no tools are available for this call is necessary: the
     # system_prompt may contain skill sections, and the body load_skills injects
     # always says to call read_skill_file when needed. Extraction uses a bare
     # model with no tools bound, so a model that follows that instruction answers
-    # in natural language instead of JSON and burns the single retry; if it does
-    # so twice the whole task fails.
+    # in natural language instead of JSON and burns an attempt; if it does so on
+    # every attempt the whole task fails.
     # An instruction about how to answer, so it follows the system-prompt
     # boundary rather than the tool-description one; see the note in
     # core/skills.py and #826 ("Agent / LLM output language").
@@ -258,13 +271,14 @@ async def _fallback_extract(model, messages: list, schema: dict, system_prompt: 
         "不要 markdown 代码块，不要任何多余文字或解释：\n"
         + json.dumps(schema, ensure_ascii=False)
     )
-    msgs = list(messages) + [("user", instr)]
+    base = list(messages) + [("user", instr)]
+    msgs = base
     last_err: Any = None
     truncated = False
     # json_object keeps the reply syntactically JSON on providers that lack
     # json_schema; the instruction names JSON, as such providers require.
     json_mode = hasattr(model, "bind")
-    for attempt in range(1, 3):
+    for attempt in range(1, FALLBACK_ATTEMPTS + 1):
         resp = None
         if json_mode:
             try:
@@ -294,18 +308,34 @@ async def _fallback_extract(model, messages: list, schema: dict, system_prompt: 
             if truncated:
                 # The cut-off text is not repeated: the model writes it whole
                 # again, shorter.
-                msgs = msgs + [(
-                    "user",
-                    "Your previous answer was cut off at the output length limit. "
-                    "Answer again with valid JSON only, matching the schema, and keep "
-                    "it shorter: fewer items, and shorter texts and quotes.",
-                )]
+                msgs = msgs + [("user", _SHORTER)]
+                if ("user", _SHORTER) not in base:
+                    base = base + [("user", _SHORTER)]
             else:
-                msgs = msgs + [
-                    ("assistant", text),
-                    ("user", f"上面的输出不合法（{e}）。请重新只输出严格符合 schema 的 JSON。"),
-                ]
+                # Regenerate from the original conversation with a short hint.
+                # Repairing the invalid answer either fixes it or gets stuck:
+                # jsonschema names only the first violation, and an answer with
+                # another one fails again on every repair. A fresh answer has
+                # the model's usual odds each time. str(e) would also repeat a
+                # schema excerpt. A shorter-answer note from an earlier
+                # truncation is kept.
+                msgs = base + [("user", _regeneration_hint(e))]
     raise StructuredOutputError(
         "structured output failed: not supported natively and the prompt "
         f"fallback was still invalid ({last_err})"
+    )
+
+
+def _regeneration_hint(e: Exception) -> str:
+    """One short line naming what the previous answer got wrong: the JSON path
+    and the validator message, without the schema excerpt str(e) carries."""
+    if isinstance(e, ValidationError):
+        detail = f"{e.json_path}: {e.message}"
+    else:
+        detail = str(e)
+    if len(detail) > _HINT_DETAIL_CHARS:
+        detail = detail[:_HINT_DETAIL_CHARS] + "..."
+    return (
+        f"The previous answer did not match the schema ({detail}). "
+        "Output only one JSON object that strictly matches the schema."
     )

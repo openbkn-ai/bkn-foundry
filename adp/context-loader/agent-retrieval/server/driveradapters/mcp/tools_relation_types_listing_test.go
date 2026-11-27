@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 )
 
 // relationListingBackend answers relation type listings and reads, and records what
@@ -346,5 +347,59 @@ func TestGetRelationTypesPageBoundHoldsForTheStructuredCopy(t *testing.T) {
 	}
 	if n := utf8.RuneCountInString(resultText(result)); n > 6000 {
 		t.Fatalf("text is %d characters, past the bound", n)
+	}
+}
+
+// assertListingTotalZero checks a listing that found nothing: an empty array, total_count 0
+// said outright in both copies, and no next_offset (#3414).
+func assertListingTotalZero(t *testing.T, label, key string, result *mcp.CallToolResult) {
+	t.Helper()
+	if result.IsError {
+		t.Fatalf("%s: listing failed: %+v", label, result)
+	}
+	m := resultToMap(t, result)
+	if entries, ok := m[key].([]any); !ok || len(entries) != 0 {
+		t.Fatalf("%s: %s = %#v, want an empty array", label, key, m[key])
+	}
+	if total, present := m["total_count"]; !present || total != float64(0) {
+		t.Fatalf("%s: total_count = %#v (present %v), want 0", label, total, present)
+	}
+	if _, present := m["next_offset"]; present {
+		t.Fatalf("%s: an empty listing has no next page: %v", label, m["next_offset"])
+	}
+	if !strings.Contains(resultText(result), "total_count") {
+		t.Fatalf("%s: the text copy omits total_count: %s", label, resultText(result))
+	}
+}
+
+// A listing that found nothing -- an empty network, or an object type filter no relation type
+// matches -- says total_count 0 instead of leaving it out, in JSON and TOON; the omitzero on
+// the field dropped the 0 (#3414). Named by id, no total is given, as before.
+func TestListingThatFindsNothingSaysTotalCountZero(t *testing.T) {
+	for _, format := range []string{"json", "toon"} {
+		relations := &relationListingBackend{total: 0}
+		result, err := handleGetRelationTypes(relations)(context.Background(), mcpReq(map[string]any{
+			"kn_id": "kn-1", "branch": "main", "object_type_ids": []any{"ot003"}, "offset": 0, "limit": 50,
+			"response_format": format,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertListingTotalZero(t, "relation types/"+format, "relation_types", result)
+
+		objects := &listingBknBackend{total: 0}
+		handler := handleGetObjectTypes(objects, knmetrics.NewKnMetricsServiceWith(nil, objects, nil), nil)
+		result, err = handler(context.Background(), mcpReq(map[string]any{
+			"kn_id": "kn-1", "branch": "main", "response_format": format,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertListingTotalZero(t, "object types/"+format, "object_types", result)
+	}
+
+	byID := callRelationTypes(t, &relationListingBackend{}, map[string]any{"kn_id": "kn-1", "ids": []any{"rt-0001"}})
+	if _, present := resultToMap(t, byID)["total_count"]; present {
+		t.Fatalf("named by id the answer carries no total: %v", resultToMap(t, byID))
 	}
 }

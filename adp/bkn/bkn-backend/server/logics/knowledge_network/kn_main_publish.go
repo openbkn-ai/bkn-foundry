@@ -66,6 +66,8 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "load capability proxy bindings")
 		}
 	}
+	// Like the content, the bindings become main's: the copy keeps their ids.
+	bindings = rebranchBindings(bindings, interfaces.MAIN_BRANCH)
 	sources, _, err := kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, candidate, bindings)
 	if err != nil {
 		return invalidProxyTargetError(ctx, err)
@@ -220,6 +222,21 @@ func rebranch(kn *interfaces.KN, branch string) {
 	for _, item := range kn.RiskTypes {
 		item.Branch = branch
 	}
+}
+
+// rebranchBindings returns copies of bindings on branch, so that grant sources built from them
+// name that branch; the listed rows themselves are left as read.
+func rebranchBindings(bindings []*interfaces.CapabilityBinding, branch string) []*interfaces.CapabilityBinding {
+	moved := make([]*interfaces.CapabilityBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding == nil {
+			continue
+		}
+		copied := *binding
+		copied.Branch = branch
+		moved = append(moved, &copied)
+	}
+	return moved
 }
 
 // refreshConceptIndex rewrites the concept index of a branch after its content was replaced

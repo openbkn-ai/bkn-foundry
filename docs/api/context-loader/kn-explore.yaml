@@ -336,6 +336,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RelationTypesResponse'
+              examples:
+                列举没有符合条件的关系类:
+                  description: |
+                    `object_type_ids` 里的对象类不参与任何关系：返回空数组，`total_count` 为 `0`，
+                    没有 `next_offset`（已到末页）。
+                  value:
+                    kn_id: kn_medical
+                    relation_types: []
+                    total_count: 0
             application/toon:
               schema:
                 type: string
@@ -657,7 +666,8 @@ components:
         total_count:
           type: integer
           description: |
-            该网络中当前账号可见的对象类总数。**仅列举模式返回**，用来判断这一页在
+            该网络中当前账号可见的对象类总数。**仅列举模式返回，且列举时总会返回**，
+            一个也没有时为 `0`，不会省略；按 `ids` 取时不返回。用来判断这一页在
             全量里的位置。授权过滤发生在分页之前，所以这个数是「你能看到多少」，
             不是「这张网有多少」。
         next_offset:
@@ -693,7 +703,8 @@ components:
         total_count:
           type: integer
           description: |
-            当前账号可见、且符合 `object_type_ids` 条件的关系类总数。**仅列举模式返回**。
+            当前账号可见、且符合 `object_type_ids` 条件的关系类总数。**仅列举模式返回，且列举时
+            总会返回**，没有符合条件的关系类时为 `0`，不会省略；按 `ids` 取时不返回。
             授权过滤发生在分页之前，所以这个数是「你能看到多少」。
         next_offset:
           type: integer

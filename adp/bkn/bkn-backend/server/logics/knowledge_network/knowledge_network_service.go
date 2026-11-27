@@ -1524,6 +1524,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 			WithErrorDetails(err.Error())
 	}
 
+	kns.keepCreationInfo(ctx, kn)
 	err = kns.InsertDatasetData(ctx, kn)
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
@@ -1988,6 +1989,21 @@ func (kns *knowledgeNetworkService) rewriteOtherBranchDocuments(ctx context.Cont
 		if err := kns.writeNetworkDocument(ctx, doc); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Rewrite the network concept document on %s failed", doc.Branch), err)
 		}
+	}
+}
+
+// keepCreationInfo gives kn the creator and create time stored on its branch. An update does not
+// change them and its request does not carry them, so the branch's concept document, built from
+// the request, would otherwise lose them (#3433). The other branches' documents are built from
+// their stored rows and keep them already.
+func (kns *knowledgeNetworkService) keepCreationInfo(ctx context.Context, kn *interfaces.KN) {
+	row, err := kns.kna.GetKNByID(ctx, kn.KNID, kn.Branch)
+	if err != nil {
+		otellog.LogError(ctx, fmt.Sprintf("Read the creation info of the network on %s failed", kn.Branch), err)
+		return
+	}
+	if row != nil {
+		kn.Creator, kn.CreateTime = row.Creator, row.CreateTime
 	}
 }
 

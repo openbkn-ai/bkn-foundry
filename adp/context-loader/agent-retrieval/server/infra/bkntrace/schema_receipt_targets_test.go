@@ -76,3 +76,27 @@ func TestSchemaSnapshotTargetRetentionPreservesAttemptBoundary(t *testing.T) {
 		}
 	})
 }
+
+// A call repeated against a newer draft drops what its first run retained; a frozen attempt
+// keeps what it froze.
+func TestDiscardSchemaSnapshotTargetsDropsTheFirstRun(t *testing.T) {
+	previous := currentEvidencePublisher()
+	SetEvidencePublisher(nil)
+	t.Cleanup(func() { SetEvidencePublisher(previous) })
+
+	ctx := withEvidenceOutcome(context.Background())
+	EmitSchemaSnapshotEvents(ctx, nil, "object", "kn-demo", []string{"first-a", "first-b"}, nil, true)
+	DiscardSchemaSnapshotTargets(ctx)
+	EmitSchemaSnapshotEvents(ctx, nil, "object", "kn-demo", []string{"second"}, nil, true)
+	want := []BusinessRef{{RefType: "object_type", RefID: "object:kn-demo:second", Version: "unversioned"}}
+	if got := retainedBusinessRefs(ctx); !reflect.DeepEqual(got, want) {
+		t.Fatalf("retained %+v, want only the second run's %+v", got, want)
+	}
+
+	freezeEvidenceExpectation(ctx)
+	DiscardSchemaSnapshotTargets(ctx)
+	if got := retainedBusinessRefs(ctx); !reflect.DeepEqual(got, want) {
+		t.Fatalf("a frozen attempt lost its targets: %+v", got)
+	}
+	DiscardSchemaSnapshotTargets(context.Background())
+}
