@@ -5,13 +5,18 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Observability log archive
+  title: BKN Observability archive
   version: 0.2.2
   description: >-
-    Log-specific archive contract. The lifecycle and object format are unchanged.
-    Complete frozen checkpoints are saved before upload. Only a verified manifest
-    committed to the job permits source cleanup. Runtime limits are owner-managed,
-    never supplied by an archive request. Trace archival is a separate population.
+    Log and Trace archive contract. Archiving runs in the background: a POST
+    records a run and returns 202, and a worker executes its batches under the
+    per-kind lock, independent of the request. The batch lifecycle and object
+    format are unchanged. Complete frozen checkpoints are saved before upload.
+    Only a verified manifest committed to the job permits source cleanup.
+    Runtime limits are owner-managed, never supplied by an archive request.
+    Trace interactions over the per-interaction budget are retained online
+    automatically, excluded from selection under the current budget, and listed
+    with the run that met them.
 servers:
   - url: /api/observability/v1
 security:
@@ -19,38 +24,30 @@ security:
 paths:
   /log-archive-jobs:
     post:
-      summary: Archive eligible logs in successive bounded batches
+      summary: Submit a background log archive run
       description: >-
         Requires observability archive management capability. The 30-day cutoff
-        is server-selected and fixed for this run. A completed prefix remains
-        recorded when a later batch stops. A 201 job may require cleanup; check
-        status and batch_progress.run_complete rather than assuming full success.
+        is server-selected when the run is submitted and fixed for the run. The
+        response returns before any batch runs; progress and the outcome are
+        read from the overview (current_run) or GET /archive-runs/{run_id}.
+        /trace-archive-jobs has the same contract for Trace (7-day cutoff).
       requestBody:
         required: true
         content:
           application/json:
             schema: { type: object, maxProperties: 0 }
       responses:
-        '201': { description: Last completed or cleanup-incomplete batch, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '202': { description: Queued run, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '409':
           description: >-
-            Includes archive_capacity_exceeded (retryable=false) with stage,
-            candidate identity, measured bytes, effective limit and optional
-            at_least=true. No source is deleted for an unprepared candidate.
+            archive_busy (a run of this kind is queued, running or waiting to
+            retry), archive_cleanup_required, or archive_nothing_to_do.
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
         '500':
-          description: >-
-            archive_failed. Details identify the recorded job and failure stage
-            when available. An object may already exist; inspect the job before
-            retrying. Source cleanup is forbidden until verification is durable.
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
-        '503':
-          description: >-
-            archive_configuration_invalid (retryable=false) requires the deployment
-            owner to fix limits. Previously completed batches remain recorded.
+          description: archive_failed; the run was not recorded
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
     get:
       summary: List the latest 20 log archive jobs plus unfinished cleanup
@@ -65,6 +62,38 @@ paths:
         '503':
           description: archive_history_unavailable; refresh before starting another archive
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+  /log-archive-overview:
+    get:
+      summary: Archive overview with the latest run
+      description: >-
+        candidate_count excludes retained Trace interactions. current_run is the
+        latest run of this kind and stays after it ends until the next one
+        starts. /trace-archive-overview has the same shape.
+      responses:
+        '200': { description: Overview, content: { application/json: { schema: { $ref: '#/components/schemas/Overview' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /archive-runs/{run_id}:
+    parameters: [{ name: run_id, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Read one run's result
+      description: Summary, retry record and the Trace interactions this run retained online.
+      responses:
+        '200': { description: Run result, content: { application/json: { schema: { $ref: '#/components/schemas/RunResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /trace-archive-retained:
+    get:
+      summary: List Trace interactions retained under the current budget
+      description: At most 500, newest first; independent of the 20-job history.
+      responses:
+        '200': { description: Retained interactions, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RetainedInteraction' } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /archive-jobs/{job_id}:
     parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
     get:
@@ -77,20 +106,20 @@ paths:
   /archive-jobs/{job_id}/retry-cleanup:
     parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
     post:
-      summary: Reverify a cleanup-incomplete batch and resume frozen cleanup
+      summary: Submit a background run that reverifies a cleanup-incomplete batch and resumes its run
       description: >-
-        Failed/unverified jobs cannot authorize cleanup. The stored batch keeps its
+        Returns 202 with the queued run (trigger retry_cleanup). Failed/unverified jobs cannot authorize cleanup. The stored batch keeps its
         frozen limits and identities; new limits apply only to subsequent batches.
         Legacy log checkpoints first match archived content, then delete with the
         current verified document version. Changed sources remain hot for review.
       responses:
-        '200': { description: Current job state, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '202': { description: Queued run, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
-        '503': { $ref: '#/components/responses/Error' }
   /archive-jobs/{job_id}/download:
     parameters: [{ name: job_id, in: path, required: true, schema: { type: string } }]
     get:
@@ -108,6 +137,57 @@ components:
       description: Existing observability error envelope; no credentials or signed URLs
       content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
   schemas:
+    Run:
+      type: object
+      required: [run_id, archive_kind, trigger, status, eligible_at_start, processed_count, retained_count, batch_count, retry_count, created_at]
+      properties:
+        run_id: { type: string }
+        archive_kind: { type: string, enum: [log, trace] }
+        trigger: { type: string, enum: [archive, retry_cleanup] }
+        status: { type: string, enum: [queued, running, retry_wait, completed, failed] }
+        eligible_at_start: { type: integer, description: Candidates when the run was submitted, excluding retained interactions }
+        processed_count: { type: integer, description: Records archived and cleaned so far }
+        retained_count: { type: integer, description: Trace interactions this run kept online }
+        batch_count: { type: integer }
+        retry_count: { type: integer, maximum: 3, description: Automatic retries after transient failures (1, 5, 15 minutes) }
+        next_attempt_at: { type: string, format: date-time }
+        last_failure_code:
+          type: string
+          description: Reason of the last retry, or of failure when status is failed
+          enum: [temporarily_unavailable, records_not_ready, cleanup_pending, cleanup_required, cleanup_verification_failed, capacity_exceeded, configuration_invalid, oversized_interaction, unexpected_error]
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+    RetainedInteraction:
+      type: object
+      required: [interaction_id, run_id, stage, measured, budget, unit, retained_at]
+      properties:
+        interaction_id: { type: string }
+        run_id: { type: string }
+        stage: { type: string, example: sql_payload }
+        measured: { type: integer, format: int64 }
+        at_least: { type: boolean, description: measured is a lower bound from a bounded read }
+        budget: { type: integer, format: int64 }
+        unit: { type: string, enum: [bytes, rows] }
+        retained_at: { type: string, format: date-time }
+    RunResult:
+      allOf:
+        - $ref: '#/components/schemas/Run'
+        - type: object
+          required: [retained]
+          properties:
+            retained: { type: array, items: { $ref: '#/components/schemas/RetainedInteraction' } }
+    Overview:
+      type: object
+      required: [archive_kind, retention_days, cutoff_at, candidate_count, storage, retained_count]
+      properties:
+        archive_kind: { type: string, enum: [log, trace] }
+        retention_days: { type: integer }
+        cutoff_at: { type: string, format: date-time }
+        candidate_count: { type: integer }
+        storage: { type: object, properties: { status: { type: string, enum: [ready, unavailable] } } }
+        retained_count: { type: integer }
+        current_run: { $ref: '#/components/schemas/Run' }
     Failure:
       type: object
       required: [stage]

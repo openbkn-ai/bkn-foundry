@@ -57,7 +57,26 @@ func (s *batchSourceFixture) FreezeBatch(ctx context.Context, k observabilityvo.
 	} else if s.window != w {
 		s.t.Fatal("cutoff changed between batches")
 	}
-	return Batch{Candidates: append([]Candidate(nil), s.rows[:min(s.size, len(s.rows))]...), EligibleCount: len(s.rows), Batched: true}, nil
+	rows := s.eligible(ctx)
+	return Batch{Candidates: append([]Candidate(nil), rows[:min(s.size, len(rows))]...), EligibleCount: len(rows), Batched: true}, nil
+}
+
+// eligible honors retained-interaction exclusion like the MariaDB source.
+func (s *batchSourceFixture) eligible(ctx context.Context) []Candidate {
+	excluded := map[string]bool{}
+	for _, id := range ExcludedCandidates(ctx) {
+		excluded[id] = true
+	}
+	rows := []Candidate{}
+	for _, row := range s.rows {
+		if !excluded[row.ID] {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+func (s *batchSourceFixture) Count(ctx context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) (int, error) {
+	return len(s.eligible(ctx)), nil
 }
 func (s *batchSourceFixture) Purge(_ context.Context, _ observabilityvo.ArchiveKind, c []Candidate) error {
 	s.purges++

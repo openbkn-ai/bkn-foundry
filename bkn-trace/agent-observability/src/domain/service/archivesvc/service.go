@@ -140,6 +140,11 @@ type Service struct {
 	objectStore ObjectStore
 	now         func() time.Time
 	location    *time.Location
+	wake        map[observabilityvo.ArchiveKind]chan struct{}
+	// batchTimeout bounds each background batch; tests shorten it.
+	batchTimeout time.Duration
+	// stopGrace bounds the current batch after a stop request; tests shorten it.
+	stopGrace time.Duration
 }
 
 func New(store Store, source Source, objectStore ObjectStore, options Options) *Service {
@@ -149,7 +154,11 @@ func New(store Store, source Source, objectStore ObjectStore, options Options) *
 	if options.Location == nil {
 		options.Location = time.Local
 	}
-	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location}
+	wake := map[observabilityvo.ArchiveKind]chan struct{}{
+		observabilityvo.ArchiveKindLog:   make(chan struct{}, 1),
+		observabilityvo.ArchiveKindTrace: make(chan struct{}, 1),
+	}
+	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location, wake: wake, batchTimeout: runBatchTimeout, stopGrace: runStopGrace}
 }
 
 func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (job Job, err error) {
@@ -189,9 +198,15 @@ func (service *Service) withKindLock(ctx context.Context, kind observabilityvo.A
 }
 
 func (service *Service) createBatches(ctx context.Context, kind observabilityvo.ArchiveKind, window observabilityvo.ArchiveRange, runID string, number, cleaned int) (last Job, err error) {
+	cancelBatch := context.CancelFunc(func() {})
+	defer func() { cancelBatch() }()
 	for {
+		cancelBatch()
 		if err := ctx.Err(); err != nil {
 			return last, err
+		}
+		if stopRequested(ctx) {
+			return last, errRunStopped
 		}
 		if kind == observabilityvo.ArchiveKindLog {
 			limits := DefaultLogLimits()
@@ -206,16 +221,26 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 			}
 			ctx = WithLogLimits(ctx, limits)
 		}
+		// Background runs bound each batch; a timed-out batch stays recoverable.
+		var batchCtx context.Context
+		batchCtx, cancelBatch = withBatchDeadline(ctx)
 		var batch Batch
 		if source, ok := service.source.(BatchSource); ok {
-			batch, err = source.FreezeBatch(ctx, kind, window)
+			batch, err = source.FreezeBatch(batchCtx, kind, window)
 		} else {
-			batch.Candidates, err = service.source.Freeze(ctx, kind, window)
+			batch.Candidates, err = service.source.Freeze(batchCtx, kind, window)
 			batch.EligibleCount = len(batch.Candidates)
 		}
 		if err != nil {
 			var blocked *PayloadBudgetError
 			if kind == observabilityvo.ArchiveKindTrace && errors.As(err, &blocked) {
+				// Background runs keep an oversized interaction online and move past it.
+				if retained, retainErr := service.retainOversized(ctx, blocked); retainErr != nil {
+					return last, fmt.Errorf("retain oversized interaction: %w", retainErr)
+				} else if retained {
+					ctx = WithExcludedCandidates(ctx, append(ExcludedCandidates(ctx), blocked.InteractionID))
+					continue
+				}
 				// A retry with no new completed prefix can reuse the exact
 				// blocked selection, preserving useful history in the bounded list.
 				if runID == "" {
@@ -262,7 +287,7 @@ func (service *Service) createBatches(ctx context.Context, kind observabilityvo.
 			job.ID = fmt.Sprintf("%s_%06d", runID, number)
 			job.BatchProgress = &BatchProgress{RunID: runID, BatchNumber: number, EligibleAtSelection: batch.EligibleCount, CleanedInRun: cleaned, RemainingAtSelection: batch.EligibleCount - len(batch.Candidates)}
 		}
-		last, err = service.writeAndCleanBatch(ctx, job, batch.Candidates)
+		last, err = service.writeAndCleanBatch(batchCtx, job, batch.Candidates)
 		if err != nil || last.Status != observabilityvo.ArchiveStatusCompleted {
 			return last, err
 		}
@@ -398,6 +423,9 @@ type Overview struct {
 	Range          observabilityvo.ArchiveRange
 	CandidateCount int
 	StorageReady   bool
+	// CurrentRun is the latest background run of this kind, active or finished.
+	CurrentRun    *RunView
+	RetainedCount int
 }
 
 func (service *Service) Overview(ctx context.Context, kind observabilityvo.ArchiveKind) (Overview, error) {
@@ -405,15 +433,11 @@ func (service *Service) Overview(ctx context.Context, kind observabilityvo.Archi
 		return Overview{}, fmt.Errorf("invalid archive overview")
 	}
 	archiveRange := observabilityvo.NewArchiveRange(kind, service.now().UTC(), service.location)
-	var count int
-	var err error
-	if counter, ok := service.source.(CandidateCounter); ok {
-		count, err = counter.Count(ctx, kind, archiveRange)
-	} else {
-		var candidates []Candidate
-		candidates, err = service.source.Freeze(ctx, kind, archiveRange)
-		count = len(candidates)
+	countCtx, retained, err := service.withRetainedExcluded(ctx, kind)
+	if err != nil {
+		return Overview{}, err
 	}
+	count, err := service.count(countCtx, kind, archiveRange)
 	if err != nil {
 		return Overview{}, err
 	}
@@ -425,7 +449,21 @@ func (service *Service) Overview(ctx context.Context, kind observabilityvo.Archi
 	} else if store, ok := service.objectStore.(interface{ Ready() bool }); ok {
 		ready = store.Ready()
 	}
-	return Overview{Kind: kind, RetentionDays: kind.RetentionDays(), Range: archiveRange, CandidateCount: count, StorageReady: ready}, nil
+	overview := Overview{Kind: kind, RetentionDays: kind.RetentionDays(), Range: archiveRange, CandidateCount: count, StorageReady: ready, RetainedCount: retained}
+	if runs, ok := service.runStore(); ok {
+		run, found, err := runs.LatestRun(ctx, kind)
+		if err != nil {
+			return Overview{}, err
+		}
+		if found {
+			view, err := service.view(ctx, runs, run)
+			if err != nil {
+				return Overview{}, err
+			}
+			overview.CurrentRun = &view
+		}
+	}
+	return overview, nil
 }
 
 func (service *Service) RetryCleanup(ctx context.Context, jobID string) (job Job, err error) {
@@ -438,17 +476,11 @@ func (service *Service) RetryCleanup(ctx context.Context, jobID string) (job Job
 		if !ok || current.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 			return fmt.Errorf("archive cleanup cannot be retried")
 		}
-		reader, _ := service.objectStore.(ReadStore)
-		if err := verifyCleanupArchive(ctx, reader, current); err != nil {
-			verificationErr := fmt.Errorf("archive cleanup verification failed: %w", err)
-			// Read errors can contain signed object URLs; expose only a safe hint.
-			current.ErrorMessage = cleanupVerificationHint(err)
-			current.UpdatedAt = service.now().UTC()
-			job = current
-			return errors.Join(verificationErr, service.store.Update(current))
-		}
 		var e error
-		job, e = service.cleanBatch(ctx, current)
+		job, e = service.reverifyAndClean(ctx, current)
+		if errors.Is(e, ErrCleanupVerificationFailed) {
+			return e
+		}
 		if e != nil || job.Status != observabilityvo.ArchiveStatusCompleted || job.BatchProgress == nil || job.BatchProgress.RunComplete {
 			return e
 		}
@@ -541,13 +573,15 @@ func newJob(kind observabilityvo.ArchiveKind, archiveRange observabilityvo.Archi
 }
 
 type memoryStore struct {
-	active map[observabilityvo.ArchiveKind]bool
-	mu     sync.Mutex
-	jobs   map[string]Job
+	active   map[observabilityvo.ArchiveKind]bool
+	mu       sync.Mutex
+	jobs     map[string]Job
+	runs     map[string]Run
+	retained map[string]RetainedInteraction
 }
 
 func NewMemoryStore() Store {
-	return &memoryStore{jobs: map[string]Job{}, active: map[observabilityvo.ArchiveKind]bool{}}
+	return &memoryStore{jobs: map[string]Job{}, active: map[observabilityvo.ArchiveKind]bool{}, runs: map[string]Run{}, retained: map[string]RetainedInteraction{}}
 }
 func (store *memoryStore) Create(job Job) error {
 	store.mu.Lock()
