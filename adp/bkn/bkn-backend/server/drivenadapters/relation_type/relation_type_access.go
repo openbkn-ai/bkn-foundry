@@ -79,7 +79,7 @@ func (rta *relationTypeAccess) CheckRelationTypeExistByID(ctx context.Context, k
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = rta.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -118,7 +118,7 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByIDs(ctx context.Context, knID
 			common.LogSafeError(ctx, "Failed to build relation type identity query", err)
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := rta.db.Query(sqlStr, vals...)
 		if err != nil {
 			common.LogSafeError(ctx, "Query relation type identities failed", err)
@@ -192,7 +192,7 @@ func (rta *relationTypeAccess) CreateRelationType(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -235,7 +235,7 @@ func (rta *relationTypeAccess) CreateRelationTypes(ctx context.Context, tx *sql.
 			common.LogSafeError(ctx, "Failed to build the sql of batch insert relation types", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if _, err = tx.Exec(sqlStr, vals...); err != nil {
 			common.LogSafeError(ctx, "Batch insert relation types failed", err)
 			return err
@@ -321,7 +321,7 @@ func (rta *relationTypeAccess) ListRelationTypes(ctx context.Context, query inte
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -450,7 +450,7 @@ func (rta *relationTypeAccess) ListRelationTypeSummaries(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 	rows, err := rta.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		return nil, err
@@ -536,7 +536,7 @@ func (rta *relationTypeAccess) GetRelationTypesTotal(ctx context.Context, query 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = rta.db.QueryRow(sqlStr, vals...).Scan(&total)
@@ -594,7 +594,7 @@ func (rta *relationTypeAccess) GetRelationTypeByIDInTx(ctx context.Context, tx *
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	relationType := interfaces.RelationType{
 		ModuleType: interfaces.MODULE_TYPE_RELATION_TYPE,
@@ -714,7 +714,7 @@ func (rta *relationTypeAccess) GetRelationTypesByIDs(ctx context.Context, knID s
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -855,7 +855,7 @@ func (rta *relationTypeAccess) UpdateRelationType(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -949,7 +949,7 @@ func (rta *relationTypeAccess) UpdateRelationTypes(ctx context.Context, tx *sql.
 		}
 		statement.WriteByte(')')
 		sqlStr := statement.String()
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(args)))
 		if _, err := tx.Exec(sqlStr, args...); err != nil {
 			common.LogSafeError(ctx, "Batch update relation types failed", err)
 			return err
@@ -1002,7 +1002,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByIDs(ctx context.Context, tx 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1046,7 +1046,7 @@ func (rta *relationTypeAccess) DeleteRelationTypesByKnID(ctx context.Context, tx
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1087,7 +1087,7 @@ func (rta *relationTypeAccess) GetRelationTypeIDsByKnID(ctx context.Context, knI
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1206,7 +1206,7 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := rta.db.Query(sqlStr, vals...)
 	if err != nil {
