@@ -31,6 +31,7 @@ const (
 	defaultSafeTimeout            = 5 * time.Second
 	defaultResourceCleanupTimeout = 30 * time.Second
 	resourceCleanupTimeoutEnv     = "BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT"
+	maxErrorResponseDrainBytes    = 64 << 10
 )
 
 // safeHTTPStatusError preserves the response status as structured data so
@@ -291,8 +292,8 @@ func (c *safeClient) doWithClient(ctx context.Context, client *http.Client, meth
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		// Draining allows connection reuse when the response is complete.
-		_, _ = io.Copy(io.Discard, resp.Body)
+		// Draining small error bodies allows connection reuse.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorResponseDrainBytes))
 		return &safeHTTPStatusError{method: method, path: path, statusCode: resp.StatusCode}
 	}
 	data, err := io.ReadAll(resp.Body)

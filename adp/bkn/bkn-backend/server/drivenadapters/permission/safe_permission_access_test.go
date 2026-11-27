@@ -7,6 +7,7 @@ package permission
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -82,6 +83,57 @@ func TestSafeClientUsesDedicatedResourceCleanupTimeout(t *testing.T) {
 	if got := newSafeClient("http://bkn-safe:3000").cleanupHTTP.Timeout; got != defaultResourceCleanupTimeout {
 		t.Fatalf("invalid cleanup timeout fallback = %s, want %s", got, defaultResourceCleanupTimeout)
 	}
+}
+
+func TestSafeClientBoundsErrorResponseDrain(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		bodySize int
+		wantRead int
+	}{
+		{name: "small body is fully drained", bodySize: 1024, wantRead: 1024},
+		{name: "large body is partially drained", bodySize: 256 << 10, wantRead: 64 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := &safeTestResponseBody{Reader: strings.NewReader(strings.Repeat("x", tc.bodySize))}
+			client := newSafeClient("http://authz.example.invalid")
+			client.http.Transport = safeTestRoundTripper(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode:    http.StatusServiceUnavailable,
+					Body:          body,
+					ContentLength: int64(tc.bodySize),
+				}, nil
+			})
+
+			err := client.do(t.Context(), http.MethodPost, "/api/safe/v1/authz/resource-filter", nil, nil)
+			var statusErr *safeHTTPStatusError
+			if !errors.As(err, &statusErr) || statusErr.HTTPStatusCode() != http.StatusServiceUnavailable {
+				t.Fatalf("expected HTTP 503 error, got %v", err)
+			}
+			if read := tc.bodySize - body.Len(); read != tc.wantRead {
+				t.Errorf("read %d bytes, want %d", read, tc.wantRead)
+			}
+			if !body.closed {
+				t.Error("expected response body to be closed")
+			}
+		})
+	}
+}
+
+type safeTestRoundTripper func(*http.Request) (*http.Response, error)
+
+func (rt safeTestRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return rt(r)
+}
+
+type safeTestResponseBody struct {
+	*strings.Reader
+	closed bool
+}
+
+func (b *safeTestResponseBody) Close() error {
+	b.closed = true
+	return nil
 }
 
 func TestSafeCheckUsesDefaultEffectiveDecision(t *testing.T) {
