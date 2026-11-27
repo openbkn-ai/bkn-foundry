@@ -183,7 +183,6 @@ func validateSugraphQueryParameters(ctx context.Context,
 
 // validateSubgraphSearchRequest validates a source-based subgraph query.
 func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGraphQueryBaseOnSource) error {
-
 	// Decode the untyped filter condition into CondCfg.
 	var actualCond *cond.CondCfg
 	err := mapstructure.Decode(query.Condition, &actualCond)
@@ -274,7 +273,6 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 
 // validateSubgraphQueryByPathRequest validates a path-based subgraph query.
 func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.SubGraphQueryBaseOnTypePath) error {
-
 	for i := range query.Paths.TypePaths {
 		if len(query.Paths.TypePaths[i].Edges) > 10 {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PathDegreeLimit", map[string]any{"limit": 10})

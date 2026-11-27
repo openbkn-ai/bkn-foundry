@@ -18,16 +18,13 @@ import (
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource_data"
 )
 
 // Parameter verification for resource data query
 func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams, category string) error {
 	if err := validateBinaryMode(ctx, params.BinaryMode); err != nil {
 		return err
-	}
-	if category == interfaces.ResourceCategoryAPI && (params.Paging.Cursor != "" || params.Paging.Mode != "" && params.Paging.Mode != interfaces.PagingModeSingle) {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-			WithErrorDetails("API queries support only single paging without a cursor")
 	}
 	if params.Paging.Cursor != "" {
 		return validateResourceDataCursorContinuation(ctx, params)
@@ -53,9 +50,10 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	}
 
 	// Verify the sorting parameter
-	err = validateSortFields(ctx, params.Sort)
-	if err != nil {
-		return err
+	if category != interfaces.ResourceCategoryAPI {
+		if err := validateSortFields(ctx, params.Sort); err != nil {
+			return err
+		}
 	}
 
 	// Parameter verification in Aggregation mode: It is performed when any of the parameters Aggregation, GroupBy, or Having exists
@@ -99,6 +97,14 @@ func validateBinaryMode(ctx context.Context, mode *string) error {
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams, category string) error {
 	if category == interfaces.ResourceCategoryAPI {
+		if err := resource_data.ValidateAPIResourcePagingMode(ctx, params.Paging.Mode); err != nil {
+			return err
+		}
+		if params.Paging.Mode == interfaces.PagingModeCursor {
+			if err := resource_data.ValidateResourceCursorKeepAlive(ctx, params.Paging.KeepAliveSec); err != nil {
+				return err
+			}
+		}
 		if params.Paging.Mode == "" {
 			params.Paging.Mode = interfaces.PagingModeSingle
 		}
@@ -114,8 +120,7 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 	}
 	paging := params.Paging
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
-			WithErrorDetails("paging.limit is required for cursor paging")
+		paging.Limit = interfaces.MaxPageLimit
 	}
 	params.Paging = paging.Normalized()
 	if params.Paging.Mode == interfaces.PagingModeCursor {
@@ -127,9 +132,8 @@ func validateResourceDataPaging(ctx context.Context, params *interfaces.Resource
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
 		}
-		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
-				WithErrorDetails(fmt.Sprintf("paging.keep_alive_sec must be between %d and %d", interfaces.MinCursorKeepAliveSec, interfaces.MaxCursorKeepAliveSec))
+		if err := resource_data.ValidateResourceCursorKeepAlive(ctx, params.Paging.KeepAliveSec); err != nil {
+			return err
 		}
 		return nil
 	}

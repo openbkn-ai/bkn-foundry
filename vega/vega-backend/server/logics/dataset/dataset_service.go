@@ -187,7 +187,10 @@ func (ds *datasetService) CountDocuments(ctx context.Context, res *interfaces.Re
 	if err != nil {
 		return 0, err
 	}
-	return result.TotalCount, nil
+	if result == nil || result.TotalCount == nil {
+		return 0, errors.New("dataset document count is unavailable")
+	}
+	return *result.TotalCount, nil
 }
 
 // GetDocuments retrieves documents in input order. With ignoreMissing enabled,

@@ -171,16 +171,6 @@ func TestSubgraphProjectionUsesOnlySanitizedSystemFields(t *testing.T) {
 	}
 }
 
-func TestSubgraphResponseExposesOpaqueCursorOnly(t *testing.T) {
-	body, err := json.Marshal(interfaces.ObjectSubGraph{Cursor: "opaque-cursor"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(body), "search_after") || !strings.Contains(string(body), "opaque-cursor") {
-		t.Fatalf("subgraph pagination response = %s", body)
-	}
-}
-
 func relationAccessObjectType(id string, properties ...string) *interfaces.ObjectType {
 	result := &interfaces.ObjectType{KNID: "kn-1", ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: id}}
 	for _, property := range properties {

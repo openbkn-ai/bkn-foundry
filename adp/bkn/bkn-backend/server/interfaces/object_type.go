@@ -479,7 +479,7 @@ type ObjectTypesQueryParams struct {
 // Object search list.
 type ObjectTypes struct {
 	Entries    []*ObjectType `json:"entries"`
-	TotalCount int64         `json:"total_count,omitzero"`
+	TotalCount *int64        `json:"total_count,omitempty"`
 	NextCursor *string       `json:"next_cursor,omitzero"`
 	OverallMs  int64         `json:"overall_ms"`
 }
@@ -500,7 +500,7 @@ type ObjectTypeSampleData struct {
 	Columns     []*ObjectTypeSampleDataColumn `json:"columns"`
 	Entries     []map[string]any              `json:"entries"`
 	Name        string                        `json:"name"`
-	TotalCount  int64                         `json:"total_count,omitzero"`
+	TotalCount  *int64                        `json:"total_count,omitempty"`
 	SearchAfter []any                         `json:"search_after,omitempty"`
 }
 

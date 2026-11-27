@@ -145,13 +145,6 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 
 		return
 	}
-	if len(query.SearchAfter) > 0 {
-		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("raw search_after is not accepted; use cursor"))
-		return
-	}
-
 	query.KNID = knID
 	query.Branch = branch
 	query.CommonQueryParameters = queryParams
@@ -277,16 +270,6 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 		rest.ReplyError(c, httpErr)
 
 		return
-	}
-	for _, path := range paths.TypePaths {
-		for _, objectType := range path.ObjectTypes {
-			if len(objectType.SearchAfter) > 0 {
-				rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
-					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-					WithErrorDetails("raw search_after is not accepted; use cursor"))
-				return
-			}
-		}
 	}
 	query := interfaces.SubGraphQueryBaseOnTypePath{
 		Paths:                 paths,

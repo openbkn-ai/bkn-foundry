@@ -170,12 +170,16 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 	}
 	if respCode != http.StatusOK {
 		// Restricted proxy responses may contain resource or catalog identifiers.
-		// Only known query-validation envelopes may carry their structured guidance upward.
 		downstream := interfaces.NewVegaDownstreamError(respCode, string(respData))
-		if downstream.CanExposeQueryClientMessage() {
-			return nil, downstream
+		if !downstream.CanExposeQueryClientMessage() {
+			return nil, interfaces.NewVegaDownstreamError(respCode, "")
 		}
-		return nil, interfaces.NewVegaDownstreamError(respCode, "")
+		if respCode == http.StatusConflict {
+			return nil, &interfaces.VegaDownstreamError{
+				StatusCode: respCode, ErrorCode: downstream.ErrorCode, Details: downstream.ClientMessage(),
+			}
+		}
+		return nil, downstream
 	}
 	var response interfaces.DatasetQueryResponse
 	// Dynamic resource fields must keep their original JSON number representation.
@@ -183,6 +187,29 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 		return nil, fmt.Errorf("unmarshal QueryResourceData response: %w", err)
 	}
 	return &response, nil
+}
+
+// CloseResourceDataCursor releases a scan session using the identity that opened it.
+func (v *vegaBackendAccess) CloseResourceDataCursor(ctx context.Context, resourceID, cursor string) error {
+	var headers map[string]string
+	var err error
+	if readsAsCaller(ctx) {
+		headers, err = callerHeaders(ctx)
+	} else {
+		headers, err = v.buildProxyHeaders(ctx, resourceID, interfaces.PermissionOperationQueryData)
+	}
+	if err != nil {
+		return err
+	}
+	httpURL := fmt.Sprintf("%s/resources/cursors/%s", v.baseURL, url.PathEscape(cursor))
+	status, _, err := v.httpClient.DeleteNoUnmarshal(ctx, httpURL, headers)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusNoContent && status != http.StatusNotFound {
+		return fmt.Errorf("close Vega resource cursor returned HTTP %d", status)
+	}
+	return nil
 }
 
 // normalizeResourceDataQueryParams applies the default paging mode without

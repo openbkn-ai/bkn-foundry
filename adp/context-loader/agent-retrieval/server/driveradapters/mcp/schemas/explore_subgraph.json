@@ -140,12 +140,7 @@
       },
       "offset": {
         "type": "integer",
-        "description": "**起点对象类**的偏移翻页：跳过前 N 个起点。与 search_after 互斥。"
-      },
-      "search_after": {
-        "type": "array",
-        "items": {},
-        "description": "**起点对象类**的游标翻页：传上一次响应返回的 search_after 取下一批起点；首次不传。与 offset 互斥。"
+        "description": "本次读取跳过的起点实例数。翻页时调整此值。"
       },
       "include_logic_params": {
         "type": "boolean",
@@ -161,6 +156,7 @@
   },
   "output_schema": {
     "type": "object",
+    "required": ["is_sorted"],
     "properties": {
       "objects": {
         "type": "object",
@@ -182,12 +178,17 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "**起点对象类**的命中总数，不受 limit 限制，与路径条数或对象总数无关。零命中时是 0（有值）。字段缺失表示本次没有计算总数——用 search_after 翻页时第二页起即如此——不能推断为 0。"
+        "description": "取得总数时返回**起点对象类**的命中总数，不受 limit 限制，与路径条数或对象总数无关。已确认零命中时返回 0，未取得时省略。"
       },
-      "search_after": {
+      "is_sorted": {
+        "type": "boolean",
+        "description": "起点批次的排序状态，仅适用于本批起点实例。API 资源或 Vega 未报告排序状态时返回 false。"
+      },
+      "warnings": {
         "type": "array",
-        "items": {},
-        "description": "起点对象类的下一页游标：非空时作为下次请求的 search_after 传入以取下一批起点；为空表示起点已取完。"
+        "minItems": 1,
+        "items": {"type": "string"},
+        "description": "起点查询产生的告警。没有告警时省略。"
       }
     }
   }

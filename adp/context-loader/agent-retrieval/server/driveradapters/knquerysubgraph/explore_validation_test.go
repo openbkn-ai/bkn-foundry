@@ -18,14 +18,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-type recordingSubgraphService struct{ called bool }
+type recordingSubgraphService struct {
+	called bool
+	req    *interfaces.ExploreSubgraphReq
+}
 
-func (s *recordingSubgraphService) QueryInstanceSubgraph(_ context.Context, _ *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
+func (s *recordingSubgraphService) QueryInstanceSubgraph(context.Context, *interfaces.QueryInstanceSubgraphReq) (*interfaces.QueryInstanceSubgraphResp, error) {
 	return &interfaces.QueryInstanceSubgraphResp{}, nil
 }
 
-func (s *recordingSubgraphService) ExploreSubgraph(_ context.Context, _ *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
+func (s *recordingSubgraphService) ExploreSubgraph(_ context.Context, req *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
 	s.called = true
+	s.req = req
 	return &interfaces.ExploreSubgraphResp{Objects: map[string]any{}}, nil
 }
 
@@ -74,4 +78,23 @@ func TestExploreSubgraph_RESTAcceptsValidPathLength(t *testing.T) {
 		convey.So(w.Code, convey.ShouldEqual, http.StatusOK)
 		convey.So(service.called, convey.ShouldBeTrue)
 	})
+}
+
+func TestExploreSubgraph_RESTIgnoresLegacySearchAfter(t *testing.T) {
+	for _, value := range []string{`["raw-position"]`, `[]`, `null`} {
+		t.Run(value, func(t *testing.T) {
+			w, service := exploreRequest(t, `{"source_object_type_id":"ot1","direction":"forward","path_length":2,"search_after":`+value+`}`)
+			if w.Code != http.StatusOK || !service.called {
+				t.Fatalf("status=%d called=%v body=%s", w.Code, service.called, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestExploreSubgraph_RESTForwardsOffsetPage(t *testing.T) {
+	w, service := exploreRequest(t, `{"source_object_type_id":"ot1","direction":"forward","path_length":2,"limit":10,"offset":3}`)
+	if w.Code != http.StatusOK || service.req == nil || service.req.Limit != 10 || service.req.Offset != 3 ||
+		bytes.Contains(w.Body.Bytes(), []byte(`"cursor"`)) {
+		t.Fatalf("status=%d request=%#v body=%s", w.Code, service.req, w.Body.String())
+	}
 }

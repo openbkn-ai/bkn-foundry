@@ -628,14 +628,14 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 				},
 			}
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 10,
+				TotalCount: new(int64(10)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 10)
+			So(total, ShouldResemble, new(int64(10)))
 		})
 
 		Convey("Failed when QueryResourceData returns error\n", func() {
@@ -649,7 +649,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 
 		Convey("Failed when QueryResourceData returns nil response\n", func() {
@@ -663,7 +663,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -688,14 +688,14 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1", "at2"}
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 2,
+				TotalCount: new(int64(2)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotalWithATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 2)
+			So(total, ShouldResemble, new(int64(2)))
 		})
 
 		Convey("Failed when GetTotal returns error\n", func() {
@@ -708,7 +708,7 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -733,14 +733,14 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1", "at2", "at3"}
 			datasetResp := &interfaces.DatasetQueryResponse{
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil).AnyTimes()
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldBeGreaterThanOrEqualTo, 0)
+			So(total, ShouldResemble, new(int64(1)))
 		})
 
 		Convey("Success with empty ATIDs\n", func() {
@@ -751,7 +751,7 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldResemble, new(int64(0)))
 		})
 
 		Convey("Failed when GetTotalWithATIDs returns error\n", func() {
@@ -764,7 +764,7 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
-			So(total, ShouldEqual, 0)
+			So(total, ShouldBeNil)
 		})
 	})
 }
@@ -1770,7 +1770,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 			}
 			// NeedTotal block: QueryResourceData with Limit=1
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
-				Entries: []map[string]any{}, TotalCount: 3,
+				Entries: []map[string]any{}, TotalCount: new(int64(3)),
 			}, nil)
 			// Main loop: empty response → break
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
@@ -1778,7 +1778,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 			}, nil)
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldBeNil)
-			So(result.TotalCount, ShouldEqual, 3)
+			So(result.TotalCount, ShouldResemble, new(int64(3)))
 		})
 
 		Convey("Success returning actual action type entries\n", func() {

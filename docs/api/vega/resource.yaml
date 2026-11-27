@@ -1134,8 +1134,8 @@ components:
         登录和 Resource 的定义校验均检查每个成功状态。如果按精确状态码、范围、default 顺序选中 false Schema，定义校验失败。
         Resource 的成功状态必须配置 result_rows；result_total 按所选状态提取总数，Catalog 登录禁止配置这两个业务提取字段。
         Schema 校验完整原始正文，响应 Schema 不执行请求构造注解或模板。
-        need_total 要求每个成功状态选中的响应配置 result_total，调用前检查；API 仅支持无会话单页查询。
-        所选响应显式声明的总数路径始终校验正文；无 paging_rule 时仍不开放 need_total，不生成续页位置或游标。
+        need_total=true 时仅在所选成功响应提供总数的情况下输出 total_count。所选响应显式声明的总数路径始终校验正文。
+        无 paging_rule 时只读取单页，可以请求总数。
       type: object
       required: [description, schema]
       properties:

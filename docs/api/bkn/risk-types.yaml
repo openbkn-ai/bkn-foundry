@@ -493,7 +493,7 @@ components:
         total_count:
           type: integer
           format: int64
-          description: Returned only when need_total is requested
+          description: Total count when requested and available. A known zero is returned as 0.
         next_cursor:
           type: string
           description: Opaque continuation cursor. Send it back as cursor for the next page.
@@ -512,7 +512,7 @@ components:
           $ref: "#/components/schemas/Condition"
         need_total:
           type: boolean
-          description: When true, the response includes total_count
+          description: When true, the service attempts to get the total count.
         limit:
           type: integer
           description: Defaults to 10

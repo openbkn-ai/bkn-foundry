@@ -45,11 +45,57 @@ func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 	})
 }
 
-// The tool surface only opens sort. exclude_system_properties and ignore_local_index are internal parameters:
+func TestHandleQueryObjectInstance_PagingMode(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		mode        string
+		cursor      string
+		searchAfter bool
+		valid       bool
+	}{
+		{name: "default single", valid: true},
+		{name: "explicit first page", mode: "cursor", valid: true},
+		{name: "explicit continuation", mode: "cursor", cursor: "token", valid: true},
+		{name: "continuation needs explicit mode", cursor: "token"},
+		{name: "single cannot continue", mode: "single", cursor: "token"},
+		{name: "retired search_after", searchAfter: true, valid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubOntologyQuery{resp: &interfaces.QueryObjectInstancesResp{Data: []any{}}}
+			args := map[string]any{"kn_id": "kn-001", "ot_id": "ot-001", "offset": 3, "response_format": "json"}
+			if tc.mode != "" {
+				args["paging_mode"] = tc.mode
+			}
+			if tc.cursor != "" {
+				args["cursor"] = tc.cursor
+			}
+			if tc.searchAfter {
+				args["search_after"] = []any{"raw-position"}
+			}
+			result, err := handleQueryObjectInstance(stub, nil)(t.Context(), mcpReq(args))
+			if err != nil || result == nil || result.IsError == tc.valid {
+				t.Fatalf("result = %#v, error = %v", result, err)
+			}
+			if !tc.valid {
+				if stub.req != nil {
+					t.Fatal("invalid paging reached Ontology Query")
+				}
+				return
+			}
+			if stub.req == nil || stub.req.Cursor != tc.cursor || stub.req.Offset != 3 ||
+				(stub.req.PagingMode == nil) != (tc.mode == "") ||
+				stub.req.PagingMode != nil && *stub.req.PagingMode != tc.mode {
+				t.Fatalf("downstream request = %#v", stub.req)
+			}
+		})
+	}
+}
+
+// exclude_system_properties and ignore_local_index are internal parameters:
 // Which system fields are lost in the former depends on whether the caller wants to drill down later, while the latter is an escape channel when the index is abnormal (a bit slower)
 // order of magnitude), it will be misused if left to model judgment.
-func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T) {
-	convey.Convey("query_object_instance schema 只开放 sort", t, func() {
+func TestQueryObjectInstanceSchema_ExposesSortAndPagingButNotInternalParams(t *testing.T) {
+	convey.Convey("query_object_instance schema 开放 sort 和 paging_mode", t, func() {
 		input, _ := loadToolSchemas("query_object_instance")
 
 		var schema struct {
@@ -59,6 +105,11 @@ func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T)
 
 		_, hasSort := schema.Properties["sort"]
 		convey.So(hasSort, convey.ShouldBeTrue)
+		var paging struct {
+			Enum []string `json:"enum"`
+		}
+		convey.So(json.Unmarshal(schema.Properties["paging_mode"], &paging), convey.ShouldBeNil)
+		convey.So(paging.Enum, convey.ShouldResemble, []string{"single", "cursor"})
 
 		_, hasExclude := schema.Properties["exclude_system_properties"]
 		convey.So(hasExclude, convey.ShouldBeFalse)
@@ -79,6 +130,7 @@ func TestQueryObjectInstanceSchema_SortDescriptionsAreLocalized(t *testing.T) {
 
 		replacements := bundle.schemaDescriptions["query_object_instance"]
 		for _, path := range []string{
+			"input_schema.properties.paging_mode.description",
 			"input_schema.properties.sort.description",
 			"input_schema.properties.sort.items.properties.field.description",
 			"input_schema.properties.sort.items.properties.direction.description",

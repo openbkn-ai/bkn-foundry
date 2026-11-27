@@ -75,6 +75,9 @@ paths:
         起）、哪个关系类、路径要求的起止节点与实际填写或关系类定义的起止节点，例如
         `OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath: 第 2 条边 rel_order_user 与路径节点不一致：路径要求 user → order，当前填写 order → user。…`。
 
+        每次请求为每条路径独立读取一页起点，再沿该路径展开。翻页时设置对应路径的
+        `object_types[0].offset`（跳过的起点数）和 `object_types[0].limit`（起点上限）。
+
         **取主键**：子图对象的主键在 `_instance_identity` 里，与
         `query_object_instance` 同名同义。要把子图结果喂给
         [action.yaml](action.yaml) 或 [logic-property.yaml](logic-property.yaml) 时，
@@ -164,11 +167,13 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
-          description: 知识网络、对象类或关系类不存在
+          description: 知识网络、对象类或关系类不存在。
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '409':
+          $ref: '#/components/responses/SubgraphQueryConflict'
         '500':
           description: 服务内部错误，或下游依赖故障
           content:
@@ -196,9 +201,9 @@ paths:
         不需要预先知道拓扑：给起点对象类、方向与最大跳数，引擎沿概念定义的关系散开，
         返回命中的对象与它们之间的路径。
 
-        **分页与排序只切起点**：`limit` / `sort` / `offset` / `search_after` 全部作用于
-        **起点对象类**的实例集合，不是路径条数、也不是返回对象总数。`limit: 10` 的含义
-        是「从至多 10 个起点出发」，每个起点散出多少条路径由拓扑决定。
+        **分页与排序作用于起点**：`limit: 10` 表示从至多 10 个起点出发。每个起点散出
+        多少条路径由拓扑决定。每次请求独立读取一页起点，翻页时调整 `offset`。
+        Context Loader 会尝试获取起点总数。取得总数时返回 `total_count`，已确认零命中时返回 `0`。
 
         **`path_length` 必填，取 1-3**，缺失或越界都在 Context Loader 侧返回 400。
         下界必须拦在这里：`path_length` 为 0 时下游不报错，只返回空子图，会被读成
@@ -287,11 +292,13 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
         '404':
-          description: 知识网络或起点对象类不存在
+          description: 知识网络或起点对象类不存在。
           content:
             application/json:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '409':
+          $ref: '#/components/responses/SubgraphQueryConflict'
         '500':
           description: 服务内部错误，或下游依赖故障
           content:
@@ -300,6 +307,13 @@ paths:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
 components:
+  responses:
+    SubgraphQueryConflict:
+      description: 子图查询发生冲突。
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
   securitySchemes:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
@@ -375,6 +389,9 @@ components:
         limit:
           type: integer
           description: 该节点取回的对象数量上限。
+        offset:
+          type: integer
+          description: 本次读取跳过的起点实例数，仅用于首个节点。
 
     TypeEdge:
       type: object
@@ -461,11 +478,7 @@ components:
             起点出发」，不影响路径本身的顺序。元素不可为 `null`。
         offset:
           type: integer
-          description: 起点对象类的偏移翻页。与 `search_after` 互斥。
-        search_after:
-          type: array
-          items: {}
-          description: 起点对象类的游标翻页。与 `offset` 互斥。
+          description: 本次读取跳过的起点实例数。
 
     SortSpec:
       type: object
@@ -496,6 +509,7 @@ components:
     ObjectSubGraphResponse:
       type: object
       description: 一条路径查出的子图。
+      required: [is_sorted]
       properties:
         objects:
           type: object
@@ -527,19 +541,16 @@ components:
           type: integer
           description: |
             **起点对象类**的命中总数，与路径条数、返回对象数都无关。
-
-            两个入口行为不同：
-
-            - `explore_subgraph`：零命中时为 `0`（字段存在）；字段缺失表示本次未计算
-              总数——用 `search_after` 翻页时第二页起如此——不可推断为 0。
-            - `query_instance_subgraph`：由下游决定是否返回，0.1.3 实测未返回，
-              不要当作必有字段。
-        search_after:
+            已确认零命中时返回 `0`，未请求或未取得总数时省略。
+        is_sorted:
+          type: boolean
+          description: 起点批次的排序状态，仅适用于本批起点实例。API 资源或 Vega 未报告排序状态时返回 false。
+        warnings:
           type: array
-          items: {}
-          description: |
-            起点对象的翻页游标。`query_instance_subgraph` 上由下游决定是否返回，
-            0.1.3 实测未返回。
+          minItems: 1
+          items:
+            type: string
+          description: 起点查询产生的告警。没有告警时省略。
 
     ObjectInfoInSubgraph:
       type: object

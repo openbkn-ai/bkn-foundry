@@ -146,6 +146,27 @@ func TestVegaBackendAccessRejectsMissingOrMismatchedProxyContextBeforeIO(t *test
 	}
 }
 
+func TestVegaBackendAccessClosesResourceCursorAsProxy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	httpClient := rmock.NewMockHTTPClient(ctrl)
+	access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+	ctx := trustedResourceProxyContext(t.Context(), "resource-1")
+	httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega/resources/cursors/vega-cursor", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, headers map[string]string) (int, []byte, error) {
+			if headers[interfaces.HTTP_HEADER_ACCOUNT_ID] != "proxy-1" ||
+				headers[interfaces.HTTPHeaderBKNCallerID] != "user-1" {
+				t.Fatalf("unexpected cursor owner headers: %#v", headers)
+			}
+			return http.StatusNoContent, nil, nil
+		})
+	if err := access.CloseResourceDataCursor(ctx, "resource-1", "vega-cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.CloseResourceDataCursor(ctx, "resource-2", "vega-cursor"); err == nil {
+		t.Fatal("mismatched resource binding accepted")
+	}
+}
+
 func TestVegaBackendAccessGetResourceSchemaUsesViewDetailProxyEndpoint(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	httpClient := rmock.NewMockHTTPClient(ctrl)
@@ -293,6 +314,39 @@ func TestVegaBackendAccessQueryResourceDataErrorDetails(t *testing.T) {
 	})
 }
 
+func TestVegaBackendAccessQueryResourceDataCursorInUse(t *testing.T) {
+	for _, tc := range []struct {
+		name, code, message string
+		status              int
+	}{
+		{name: "busy cursor", code: "VegaBackend.Query.CursorInUse", message: "cursor is in use, please retry later", status: http.StatusConflict},
+		{name: "ordinary conflict", code: "VegaBackend.Catalog.Disabled", status: http.StatusConflict},
+		{name: "unexpected status", code: "VegaBackend.Query.CursorInUse", status: http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			httpClient := rmock.NewMockHTTPClient(gomock.NewController(t))
+			body := fmt.Appendf(nil, `{"error_code":%q,"description":"private-catalog","error_details":"private-token","metadata":{"cursor":"private-token"}}`, tc.code)
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.status, body, nil)
+			access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+			_, err := access.QueryResourceData(trustedResourceProxyContext(t.Context(), "resource-1"), "resource-1",
+				&interfaces.ResourceDataQueryParams{Paging: interfaces.ResourceDataPagingRequest{Cursor: "opaque"}})
+			downstream, ok := interfaces.AsVegaDownstreamError(err)
+			if !ok || downstream.StatusCode != tc.status || downstream.ClientMessage() != tc.message {
+				t.Fatalf("downstream = %#v, err = %v", downstream, err)
+			}
+			if strings.Contains(downstream.Error(), "private-") || downstream.Metadata != nil {
+				t.Fatalf("the downstream body leaked: %#v", downstream)
+			}
+			if metadata := downstream.ClientMetadata(); metadata != nil {
+				t.Fatalf("public metadata = %v", metadata)
+			}
+			if tc.message != "" && downstream.ErrorCode != tc.code || tc.message == "" && downstream.ErrorCode != "" {
+				t.Fatalf("downstream code = %q", downstream.ErrorCode)
+			}
+		})
+	}
+}
+
 func trustedResourceProxyContext(ctx context.Context, resourceID string) context.Context {
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "user-1", Type: "user"})
 	return interfaces.WithTrustedProxyContext(ctx, &interfaces.TrustedProxyContext{
@@ -309,6 +363,42 @@ func trustedResourceProxyContext(ctx context.Context, resourceID string) context
 			Operation:  interfaces.PermissionOperationQueryData,
 		},
 	})
+}
+
+func TestResourceQueryCursorContinuationEncoding(t *testing.T) {
+	continuation := normalizeResourceDataQueryParams(&interfaces.ResourceDataQueryParams{
+		Paging: interfaces.ResourceDataPagingRequest{Cursor: "opaque-token"},
+	})
+	body, err := jsoncodec.MarshalString(continuation)
+	if err != nil || body != `{"paging":{"cursor":"opaque-token"}}` {
+		t.Fatalf("cursor continuation included fields other than paging.cursor: %s, %v", body, err)
+	}
+}
+
+func TestQueryResourceDataDecodesSortStatusAndWarnings(t *testing.T) {
+	const warning = "The API resource uses its configured order."
+	for _, tc := range []struct {
+		name       string
+		sortField  string
+		wantSorted bool
+	}{
+		{name: "unreported"},
+		{name: "false", sortField: `,"is_sorted":false`},
+		{name: "true", sortField: `,"is_sorted":true`, wantSorted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := rmock.NewMockHTTPClient(gomock.NewController(t))
+			client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, fmt.Appendf(nil, `{"entries":[],"warnings":[%q]%s}`, warning, tc.sortField), nil)
+
+			access := &vegaBackendAccess{baseURL: "http://vega", httpClient: client}
+			result, err := access.QueryResourceData(trustedResourceProxyContext(t.Context(), "resource-1"), "resource-1", nil)
+			if err != nil || result == nil || result.IsSorted != tc.wantSorted ||
+				len(result.Warnings) != 1 || result.Warnings[0] != warning {
+				t.Fatalf("resource result = %#v, error = %v", result, err)
+			}
+		})
+	}
 }
 
 func TestQueryResourceDataLocalIndexContract(t *testing.T) {

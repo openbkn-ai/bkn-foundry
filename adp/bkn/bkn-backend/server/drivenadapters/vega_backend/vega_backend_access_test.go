@@ -17,9 +17,14 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -285,6 +290,67 @@ func TestGetResourceSchemaRejectsVerifiedSourcesWithoutExactBindingScope(t *test
 	assert.Equal(t, interfaces.DependencyInvalidResponse, dependencyErr.Kind)
 }
 
+func TestQueryResourceDataClassifiesValidationErrors(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		status     int
+		body       string
+		validation bool
+		details    string
+		traceCode  string
+	}{
+		{"known query parameter error", http.StatusBadRequest,
+			`{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"API queries support only single paging without a cursor"}`,
+			true, "API queries support only single paging without a cursor", "VegaBackend.Query.InvalidParameter"},
+		{"unknown output field", http.StatusBadRequest,
+			`{"error_code":"VegaBackend.Query.InvalidParameter.OutputField","error_details":"unknown output field: title"}`,
+			true, "unknown output field: title", "VegaBackend.Query.InvalidParameter.OutputField"},
+		{"known code without a string detail", http.StatusBadRequest,
+			`{"error_code":"VegaBackend.Query.InvalidParameter","error_details":{"internal":"private"}}`,
+			true, "", "VegaBackend.Query.InvalidParameter"},
+		{"unknown query error", http.StatusBadRequest,
+			`{"error_code":"VegaBackend.Query.OtherError","error_details":"internal details"}`, false, "", "InternalError"},
+		{"gateway page", http.StatusBadRequest, "<html>gateway details</html>", false, "", "InternalError"},
+		{"server failure", http.StatusBadGateway,
+			`{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"internal details"}`, false, "", "InternalError"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := tracetest.NewSpanRecorder()
+			originalProvider := otel.GetTracerProvider()
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+			otel.SetTracerProvider(provider)
+			t.Cleanup(func() {
+				otel.SetTracerProvider(originalProvider)
+				require.NoError(t, provider.Shutdown(context.Background()))
+			})
+
+			client := rmock.NewMockHTTPClient(gomock.NewController(t))
+			client.EXPECT().
+				PostNoUnmarshal(gomock.Any(), "http://vega/resources/resource-1/data", gomock.Any(), gomock.Any()).
+				Return(test.status, []byte(test.body), nil)
+			access := &vegaBackendAccess{httpClient: client, baseUrl: "http://vega"}
+
+			response, err := access.QueryResourceData(t.Context(), "resource-1", &interfaces.ResourceDataQueryParams{
+				Paging: interfaces.ResourceDataPagingRequest{Mode: "single"},
+			})
+			require.Error(t, err)
+			assert.Nil(t, response)
+			spans := recorder.Ended()
+			require.Len(t, spans, 1)
+			assert.Contains(t, spans[0].Attributes(), attribute.String(oteltrace.KEY_HTTP_ERROR_CODE, test.traceCode))
+			var validationErr *interfaces.VegaResourceQueryParameterError
+			if test.validation {
+				require.ErrorAs(t, err, &validationErr)
+				assert.Equal(t, test.details, validationErr.PublicDetails)
+				assert.EqualError(t, err, "QueryDatasetData returned HTTP 400")
+			} else {
+				assert.NotErrorAs(t, err, &validationErr)
+				assert.NotContains(t, err.Error(), "details")
+			}
+		})
+	}
+}
+
 func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
@@ -315,7 +381,7 @@ func TestQueryResourceDataPreservesLargeIntegers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Entries, 1)
-	assert.EqualValues(t, 1, response.TotalCount)
+	assert.Equal(t, new(int64(1)), response.TotalCount)
 
 	expected := map[string]string{
 		"int64_max":  "9223372036854775807",

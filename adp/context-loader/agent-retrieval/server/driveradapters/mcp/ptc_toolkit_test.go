@@ -647,7 +647,7 @@ print(json.dumps(_calls[-1]["arguments"]["bkn_context"], sort_keys=True))
 	}
 }
 
-func TestPTCBranchKeepsExistingPositionalArguments(t *testing.T) {
+func TestPTCKeepsExistingPositionalArguments(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		want string
@@ -656,6 +656,9 @@ func TestPTCBranchKeepsExistingPositionalArguments(t *testing.T) {
 		{toolKeyDrillThroughMetric, "def drill_through_metric(bucket_key: str, kn_id: str, metric_id: str, query: dict, version: int, cursor: str = None, page_size: int = 100, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main', kn_version: str = None, draft_revision: int = None) -> dict:"},
 		{toolKeyGetKnDetail, "def get_kn_detail(kn_id: str, detail_level: str = 'summary', response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main', kn_version: str = None, draft_revision: int = None) -> dict:"},
 		{toolKeyGetObjectTypes, "def get_object_types(kn_id: str, ids: list = None, limit: int = 50, offset: int = 0, response_format: str = 'json', bkn_context: dict = None, *, branch: str = 'main', kn_version: str = None, draft_revision: int = None) -> dict:"},
+		{toolKeyQueryObjectInstance, "def query_object_instance(kn_id: str, ot_id: str, condition: dict = None, cursor: str = None, filters: list = None, include_logic_params: bool = None, limit: int = None, offset: int = None, properties: list = None, response_format: str = 'json', sort: list = None, bkn_context: dict = None, *, kn_version: str = None, draft_revision: int = None, paging_mode: str = None) -> dict:"},
+		{toolKeyExploreSubgraph, "def explore_subgraph(direction: str, kn_id: str, path_length: int, source_object_type_id: str, concept_groups: list = None, condition: dict = None, include_incomplete_path: bool = False, include_logic_params: bool = None, limit: int = None, offset: int = None, response_format: str = 'json', sort: list = None, bkn_context: dict = None, *, kn_version: str = None, draft_revision: int = None) -> dict:"},
+		{toolKeyQueryInstanceSubgraph, "def query_instance_subgraph(kn_id: str, relation_type_paths: list, include_logic_params: bool = None, response_format: str = 'json', bkn_context: dict = None, *, kn_version: str = None, draft_revision: int = None) -> dict:"},
 	} {
 		input, _ := loadToolSchemas(tc.name)
 		tool := MCPToolInfo{Name: tc.name, InputSchema: input}
@@ -689,6 +692,7 @@ func TestPTCDigestMatchesStubKeywordOnlyArguments(t *testing.T) {
 		{toolKeyGetKnDetail, "get_kn_detail(kn_id: str, detail_level: str = 'summary', response_format: str = 'json', *, branch: str = 'main', kn_version: str = None, draft_revision: int = None)"},
 		{toolKeyGetObjectTypes, "get_object_types(kn_id: str, ids: list = None, limit: int = 50, offset: int = 0, response_format: str = 'json', *, branch: str = 'main', kn_version: str = None, draft_revision: int = None)"},
 		{toolKeyGetRelationTypes, "get_relation_types(kn_id: str, branch: str = 'main', ids: list = None, limit: int = 50, object_type_ids: list = None, offset: int = 0, response_format: str = 'json', *, kn_version: str = None, draft_revision: int = None)"},
+		{toolKeyQueryObjectInstance, "query_object_instance(kn_id: str, ot_id: str, condition: dict = None, cursor: str = None, filters: list = None, include_logic_params: bool = None, limit: int = None, offset: int = None, properties: list = None, response_format: str = 'json', sort: list = None, *, kn_version: str = None, draft_revision: int = None, paging_mode: str = None)"},
 	} {
 		input, _ := loadToolSchemas(tc.name)
 		tool := MCPToolInfo{Name: tc.name, InputSchema: input}

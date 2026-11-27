@@ -1600,8 +1600,7 @@ func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfa
 	if resp.Cursor != "" {
 		return true
 	}
-	// Missing TotalCount means that the downstream has not calculated the total (this is true from the second page of the cursor), and it is not a zero hit;
-	// This path has been picked up upstream by the Cursor branch, so just don't treat nil as 0.
+	// Without a reported total, the page size does not establish whether more rows exist.
 	if req == nil || resp.TotalCount == nil || *resp.TotalCount <= 0 {
 		return false
 	}

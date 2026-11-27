@@ -34,13 +34,28 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			}
 		}
 	})
-	t.Run("API rejects cursor while Table retains binary continuation restrictions", func(t *testing.T) {
-		for _, category := range []string{interfaces.ResourceCategoryAPI, interfaces.ResourceCategoryTable} {
-			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque"}, BinaryMode: new(interfaces.BinaryModeContent), NeedTotal: true}
-			require.Error(t, ValidateResourceDataQueryParams(ctx, params, category))
-		}
+	t.Run("API accepts native cursor paging and an opaque continuation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+		assert.Zero(t, params.Paging.Limit)
+		params = &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque"}, NeedTotal: true}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+		assert.False(t, params.NeedTotal)
+		params.Paging.Limit = 1
 		require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+		params = &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: "invalid"}}
+		var httpErr *httperrors.HTTPError
+		require.ErrorAs(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI), &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+	})
+
+	t.Run("API preserves all sort fields for the ignored-sort warning", func(t *testing.T) {
+		sorts := []*interfaces.SortField{nil, {Field: "id", Direction: "invalid"}}
+		params := &interfaces.ResourceDataQueryParams{Sort: sorts}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryAPI))
+		assert.Equal(t, sorts, params.Sort)
+		require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable))
 	})
 
 	t.Run("sets defaults for minimal query", func(t *testing.T) {
@@ -134,6 +149,24 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		require.Error(t, ValidateResourceDataQueryParams(ctx, params, interfaces.ResourceCategoryTable))
 	})
 
+	t.Run("accepts cursor without an explicit limit", func(t *testing.T) {
+		for _, tc := range []struct {
+			category string
+			limit    int
+		}{
+			{category: interfaces.ResourceCategoryTable, limit: interfaces.MaxPageLimit},
+			{category: interfaces.ResourceCategoryAPI},
+		} {
+			t.Run(tc.category, func(t *testing.T) {
+				params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
+					Mode: interfaces.PagingModeCursor,
+				}}
+				require.NoError(t, ValidateResourceDataQueryParams(ctx, params, tc.category))
+				assert.Equal(t, tc.limit, params.Paging.Limit)
+			})
+		}
+	})
+
 	t.Run("ignores keep alive below minimum for single paging", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{
 			Mode: interfaces.PagingModeSingle, KeepAliveSec: 1,
@@ -178,7 +211,7 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 			{name: "invalid format", params: &interfaces.ResourceDataQueryParams{Format: "csv", Paging: interfaces.PagingRequest{Limit: 10}}},
 			{name: "negative offset", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: -1, Limit: 10}}},
 			{name: "cursor continuation has first-page fields", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Cursor: "opaque-cursor", Limit: 10}}},
-			{name: "cursor size is zero", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}}},
+			{name: "cursor size is negative", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: -1}}},
 			{name: "invalid sort direction", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, Sort: []*interfaces.SortField{{Field: "name", Direction: "up"}}}},
 			{name: "missing filter operation", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name"}}},
 			{name: "unsupported filter operation", params: &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, FilterCondition: map[string]any{"field": "name", "operation": "bad"}}},

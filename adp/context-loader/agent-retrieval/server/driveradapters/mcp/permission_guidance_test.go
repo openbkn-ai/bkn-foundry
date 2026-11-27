@@ -120,7 +120,8 @@ func TestQueryObjectInstanceMaskedResultCarriesPermissionGuidance(t *testing.T) 
 
 func TestQueryObjectInstanceMaskedTOONLeadsWithActionableGuidance(t *testing.T) {
 	stub := &stubOntologyQuery{resp: &interfaces.QueryObjectInstancesResp{
-		Data: []any{map[string]any{"customer_name": "郑********司"}},
+		Data:     []any{map[string]any{"customer_name": "郑********司"}},
+		Warnings: []string{"API Resource does not support sorting; sort was ignored"},
 		EffectivePermissions: map[string]interfaces.PropertyAccessLevel{
 			"customer_name": interfaces.PropertyAccessMasked,
 		},
@@ -139,6 +140,9 @@ func TestQueryObjectInstanceMaskedTOONLeadsWithActionableGuidance(t *testing.T) 
 	if !strings.Contains(text, "申请字段原值权限") ||
 		!strings.Contains(text, "request_permission_url") {
 		t.Fatalf("TOON guidance is not directly actionable:\n%s", text)
+	}
+	if !strings.Contains(text, "is_sorted: false") || !strings.Contains(text, "sort was ignored") {
+		t.Fatalf("TOON output lost the sorting status or warning:\n%s", text)
 	}
 }
 

@@ -18,6 +18,8 @@ type DatasetQueryResponse struct {
 	TotalCount    *int64                      `json:"total_count,omitempty"`
 	SearchAfter   []any                       `json:"search_after"`
 	Paging        *ResourceDataPagingResponse `json:"paging"`
+	IsSorted      bool                        `json:"is_sorted"`
+	Warnings      []string                    `json:"warnings,omitempty"`
 }
 
 // ResourceDataPagingResponse is the cursor envelope returned by Vega resource data queries.
@@ -36,9 +38,9 @@ type ResourceSchemaResponse struct {
 // ResourceDataPagingRequest matches vega-backend paging contract for resource data.
 type ResourceDataPagingRequest struct {
 	Mode         ResourceDataPagingMode `json:"mode,omitempty"`
-	Offset       int                    `json:"offset,omitempty"`
-	Limit        int                    `json:"limit,omitempty"`
-	KeepAliveSec int                    `json:"keep_alive_sec,omitempty"`
+	Offset       int                    `json:"offset,omitzero"`
+	Limit        int                    `json:"limit,omitzero"`
+	KeepAliveSec int                    `json:"keep_alive_sec,omitzero"`
 	Cursor       string                 `json:"cursor,omitempty"`
 }
 
@@ -59,7 +61,7 @@ type ResourceDataQueryParams struct {
 	FilterCondition  map[string]any            `json:"filter_condition,omitempty"`
 	SearchAfter      []any                     `json:"search_after,omitempty"`
 	Paging           ResourceDataPagingRequest `json:"paging,omitempty"`
-	NeedTotal        bool                      `json:"need_total,omitempty"`
+	NeedTotal        bool                      `json:"need_total,omitzero"`
 	Sort             []*SortParams             `json:"sort,omitempty"`
 	OutputFields     []string                  `json:"output_fields,omitempty"`
 

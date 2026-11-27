@@ -103,8 +103,10 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 
 	// 2. Retrieve source object type instances.
 	startObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
+		Condition:       query.Condition,
 		ActualCondition: query.ActualCondition,
 		PageQuery:       query.PageQuery,
+		PagingMode:      new(interfaces.ResourceDataPagingModeSingle),
 		KNID:            query.KNID,
 		Branch:          query.Branch,
 		ObjectTypeID:    query.SourceObjecTypeId,
@@ -142,7 +144,8 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 
 	// 4. Assemble the final result.
 	objectGraph.TotalCount = startObjects.TotalCount
-	objectGraph.Cursor = startObjects.Cursor
+	objectGraph.IsSorted = &startObjects.IsSorted
+	objectGraph.Warnings = startObjects.Warnings
 	objectGraph.CuurentPathNumber = new(len(objectGraph.RelationPaths))
 
 	span.SetStatus(codes.Ok, "")
@@ -164,39 +167,25 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 	errCh := make(chan error, len(query.Paths.TypePaths))
 
 	typePathsObjectCtx := &typePathsObjectsContext{
-		ctx:               ctx,
-		objectSubGraphMap: map[int]interfaces.ObjectSubGraph{},
-		errCh:             errCh,
-		wg:                &sync.WaitGroup{},
+		ctx:    ctx,
+		graphs: make([]interfaces.ObjectSubGraph, len(query.Paths.TypePaths)),
+		errCh:  errCh,
+		wg:     &sync.WaitGroup{},
 	}
 
 	for i, path := range query.Paths.TypePaths {
 		typePathsObjectCtx.wg.Add(1)
 		go kns.buildObjectSubgraphByTypePaths(typePathsObjectCtx, query, path, i)
-		// kns.buildObjectSubgraphByTypePaths(typePathsObjectCtx, typePathsObjectCtx.wg, query, path, i)
 	}
 
 	// Wait for all goroutines to complete.
 	typePathsObjectCtx.wg.Wait()
-	if len(typePathsObjectCtx.errCh) > 0 {
-		err := <-typePathsObjectCtx.errCh
-		if err != nil {
-			return interfaces.PathsEntries{}, err
-		}
+	close(errCh)
+	if err := <-errCh; err != nil {
+		return interfaces.PathsEntries{}, err
 	}
 
-	// Assemble results.
-	graphs := make([]interfaces.ObjectSubGraph, len(query.Paths.TypePaths))
-	for i := range query.Paths.TypePaths {
-		if grahp, exist := typePathsObjectCtx.objectSubGraphMap[i]; exist {
-			graphs[i] = grahp
-		} else {
-			graphs[i] = interfaces.ObjectSubGraph{}
-		}
-
-	}
-
-	return interfaces.PathsEntries{Entries: graphs}, nil
+	return interfaces.PathsEntries{Entries: typePathsObjectCtx.graphs}, nil
 }
 
 func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
@@ -259,8 +248,10 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 
 	// 2. Retrieve source object type instances.
 	startObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
+		Condition:       path.ObjectTypes[0].Condition,
 		ActualCondition: path.ObjectTypes[0].ActualCondition,
 		PageQuery:       path.ObjectTypes[0].PageQuery,
+		PagingMode:      new(interfaces.ResourceDataPagingModeSingle),
 		KNID:            query.KNID,
 		Branch:          query.Branch,
 		ObjectTypeID:    path.Edges[0].SourceObjectTypeId,
@@ -318,24 +309,23 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 
 	kns.buildSingleTypePathObjects(typePathObjectCtx, typePath, subGraphquery, startObjects)
 
-	// Assemble the context for the current point.
-	typePathsObjectCtx.objectSubGraphMap[pathIndex] = interfaces.ObjectSubGraph{
+	// Each path writes to its own result slot.
+	typePathsObjectCtx.graphs[pathIndex] = interfaces.ObjectSubGraph{
 		RelationPaths:     typePathObjectCtx.relationPaths,
 		Objects:           typePathObjectCtx.objectsMap,
 		TotalCount:        startObjects.TotalCount,
-		Cursor:            startObjects.Cursor,
+		IsSorted:          &startObjects.IsSorted,
+		Warnings:          startObjects.Warnings,
 		CuurentPathNumber: new(len(typePathObjectCtx.relationPaths)),
 	}
 }
 
 // Data query across multiple paths.
 type typePathsObjectsContext struct {
-	ctx               context.Context
-	objectSubGraphMap map[int]interfaces.ObjectSubGraph // The key is the typePath index.
-	// relationPathsMap  map[int][]interfaces.RelationPath
-	// objectsMap        map[int]map[string]interfaces.ObjectInfoInSubgraph
-	errCh chan error
-	wg    *sync.WaitGroup
+	ctx    context.Context
+	graphs []interfaces.ObjectSubGraph
+	errCh  chan error
+	wg     *sync.WaitGroup
 }
 
 type typePathObjectsContext struct {
@@ -1025,10 +1015,9 @@ func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []in
 	// Filter next-layer objects that belong to each object according to mapping rules.
 	for _, levelObj := range currentLevelObjects {
 		filteredObjects := interfaces.Objects{
-			Datas:       []map[string]any{},
-			ObjectType:  nextObjects.ObjectType,
-			TotalCount:  new(int64(0)),
-			SearchAfter: nextObjects.SearchAfter,
+			Datas:      []map[string]any{},
+			ObjectType: nextObjects.ObjectType,
+			TotalCount: new(int64(0)),
 		}
 
 		var viewIndex logics.IndirectViewIndex
@@ -1444,13 +1433,12 @@ func (kns *knowledgeNetworkService) scanBackingRows(ctx context.Context,
 
 		params := interfaces.ResourceDataQueryParams{
 			IgnoreLocalIndex: &query.IgnoreLocalIndex,
-			NeedTotal:        query.NeedTotal,
 			Sort:             backingSort,
 			FilterCondition:  logics.CondCfgToFilterMap(filters),
 		}
 		stopped := false
 		var visitErr error
-		err := logics.ScanResourceData(ctx, kns.vba, mappingRules.BackingDataSource.ID, params, interfaces.MAX_LIMIT,
+		err := logics.ScanResourceData(ctx, kns.vba, mappingRules.BackingDataSource.ID, params,
 			func(rows []map[string]any) (bool, error) {
 				rowsRead += len(rows)
 				if rowsRead > maxIndirectBackingRows {

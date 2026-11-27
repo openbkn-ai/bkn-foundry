@@ -57,7 +57,7 @@ func ScanRows(rows *sql.Rows) (*interfaces.ResourceDataQueryResult, error) {
 		return nil, err
 	}
 
-	result.TotalCount = int64(len(result.Entries))
+	result.TotalCount = new(int64(len(result.Entries)))
 	return result, nil
 }
 
