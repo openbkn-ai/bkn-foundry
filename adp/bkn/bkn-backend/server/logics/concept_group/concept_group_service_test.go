@@ -9,6 +9,7 @@ package concept_group
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -988,6 +989,25 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Returns an HTTPError when Vega answers the concept document delete with a plain error\n", func() {
+			knID := "kn1"
+			branch := interfaces.MAIN_BRANCH
+			cgID := "cg1"
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("DeleteDatasetDocumentByID returned HTTP 500"))
+			smock.ExpectRollback()
+
+			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
+			httpErr, ok := err.(*httperrors.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError)
 		})
 
 		Convey("Success with rowsAffect != 1\n", func() {

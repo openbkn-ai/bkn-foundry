@@ -1050,6 +1050,22 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 
+		Convey("Returns an HTTPError when Vega answers the concept document delete with a plain error\n", func() {
+			knID := "kn1"
+			branch := interfaces.MAIN_BRANCH
+			atIDs := []string{"at1"}
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("DeleteDatasetDocumentByID returned HTTP 500"))
+			smock.ExpectRollback()
+			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
+			httpErr, ok := err.(*httperrors.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError)
+		})
+
 		Convey("Success with rowsAffect != len(atIDs)\n", func() {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
