@@ -143,6 +143,8 @@ type Service struct {
 	wake        map[observabilityvo.ArchiveKind]chan struct{}
 	// batchTimeout bounds each background batch; tests shorten it.
 	batchTimeout time.Duration
+	// stopGrace bounds the current batch after a stop request; tests shorten it.
+	stopGrace time.Duration
 }
 
 func New(store Store, source Source, objectStore ObjectStore, options Options) *Service {
@@ -156,7 +158,7 @@ func New(store Store, source Source, objectStore ObjectStore, options Options) *
 		observabilityvo.ArchiveKindLog:   make(chan struct{}, 1),
 		observabilityvo.ArchiveKindTrace: make(chan struct{}, 1),
 	}
-	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location, wake: wake, batchTimeout: runBatchTimeout}
+	return &Service{logLimits: options.LogLimits, store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location, wake: wake, batchTimeout: runBatchTimeout, stopGrace: runStopGrace}
 }
 
 func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (job Job, err error) {

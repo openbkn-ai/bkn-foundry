@@ -189,13 +189,13 @@ every 5 s). A run executes only while its instance holds the existing per-kind
 MariaDB named lock, so instances never run the same kind at once; the lock is
 released with the session if a process dies, and any instance then resumes the
 run from its latest batch (re-verifying a `cleanup_incomplete` batch first). On
-shutdown the worker finishes the current batch and leaves the run `running`.
+shutdown the current batch gets up to 20 s (inside the 30 s shutdown budget) and
+is then cancelled; the run stays `running` and resumes on the next start.
 Each batch is bounded to 15 minutes; a hung dependency call becomes an ordinary
 retry instead of holding the lock. A defect that panics inside a run fails that
 run (`unexpected_error`) rather than the process. The lock lives on one pooled
-connection that stays idle during a batch; the chart runs one replica by
-default, and deployments that scale out must keep proxy and server idle
-timeouts above the batch bound.
+connection, pinged every minute while a run holds it so server and proxy idle
+timeouts do not drop it and silently release the lock.
 
 Transient failures (`temporarily_unavailable`: object storage, OpenSearch or
 database errors and timeouts; records not yet settled; interrupted cleanup) retry after 1, 5 and 15 minutes, then the

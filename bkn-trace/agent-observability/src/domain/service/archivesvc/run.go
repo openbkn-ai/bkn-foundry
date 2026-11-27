@@ -50,7 +50,11 @@ const (
 	RunFailureUnexpected           = "unexpected_error"
 	// A batch moves at most a few tens of MiB; a call hung beyond this frees
 	// the kind lock through an ordinary retry instead of blocking every run.
-	runBatchTimeout                 = 15 * time.Minute
+	runBatchTimeout = 15 * time.Minute
+	// After a stop request the current batch gets this long before it is
+	// cancelled, inside the process's 30 s shutdown budget. A cancelled batch
+	// stays recoverable and the run resumes on the next start.
+	runStopGrace                    = 20 * time.Second
 	MaxRunRetries                   = 3
 	defaultRunWorkerInterval        = 5 * time.Second
 	maxRetainedListed               = 500
@@ -330,8 +334,16 @@ func (service *Service) processDue(ctx context.Context, kind observabilityvo.Arc
 	if err != nil || !found || run.Status == RunRetryWait && run.NextAttemptAt.After(service.now()) {
 		return
 	}
-	// Work continues past a stop request until the current batch ends.
-	work := context.WithValue(context.WithoutCancel(ctx), stopSignalKey{}, ctx.Done())
+	// Work continues past a stop request until the current batch ends or the
+	// stop grace elapses, whichever comes first.
+	base, cancelWork := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelWork()
+	stopGrace := context.AfterFunc(ctx, func() {
+		timer := time.AfterFunc(service.stopGrace, cancelWork)
+		context.AfterFunc(base, func() { timer.Stop() })
+	})
+	defer stopGrace()
+	work := context.WithValue(base, stopSignalKey{}, ctx.Done())
 	work = context.WithValue(work, batchTimeoutKey{}, service.batchTimeout)
 	err = service.withKindLock(work, kind, func() error { return service.executeGuarded(work, runs, run.ID) })
 	if err != nil && !errors.Is(err, ErrArchiveBusy) {
@@ -374,7 +386,9 @@ func (service *Service) execute(ctx context.Context, runs RunStore, runID string
 		return err
 	}
 	last, err := service.continueRun(context.WithValue(ctx, runRowKey{}, run.ID), runs, run)
-	if errors.Is(err, errRunStopped) || err != nil && stopRequested(ctx) && errors.Is(err, context.Canceled) {
+	// Any failure after a stop request (typically the grace cancellation) leaves
+	// the run running for the next start instead of counting as an attempt.
+	if errors.Is(err, errRunStopped) || err != nil && stopRequested(ctx) {
 		return nil
 	}
 	code, retry := classifyRunOutcome(last, err)

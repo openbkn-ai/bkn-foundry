@@ -380,8 +380,33 @@ func (store *Store) WithKindLock(ctx context.Context, kind observabilityvo.Archi
 			log.Printf("archive kind lock release failed; database session discarded")
 		}
 	}()
+	// A background run can hold the lock for a long time while this session is
+	// otherwise idle; pinging keeps server and proxy idle timeouts from dropping
+	// it and silently releasing the lock. sql.Conn serializes the pings.
+	stopKeepAlive := make(chan struct{})
+	keepAliveDone := make(chan struct{})
+	go func() {
+		defer close(keepAliveDone)
+		ticker := time.NewTicker(lockKeepAliveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopKeepAlive:
+				return
+			case <-ticker.C:
+				ping, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := conn.PingContext(ping); err != nil {
+					log.Printf("archive kind lock keepalive failed")
+				}
+				cancel()
+			}
+		}
+	}()
+	defer func() { close(stopKeepAlive); <-keepAliveDone }()
 	return fn()
 }
+
+const lockKeepAliveInterval = time.Minute
 
 func archiveLockName(schema string, kind observabilityvo.ArchiveKind) string {
 	sum := sha256.Sum256([]byte(schema + "\x00" + string(kind)))

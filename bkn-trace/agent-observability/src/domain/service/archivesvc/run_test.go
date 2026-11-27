@@ -367,3 +367,24 @@ func TestHungBatchTimesOutAndReleasesTheKind(t *testing.T) {
 		t.Fatalf("timed-out batch should wait for a retry: %+v", view)
 	}
 }
+
+func TestStopGraceCancelsAHungBatchAndKeepsTheRunForResume(t *testing.T) {
+	s := newBatchSourceFixture(t, 2, 2)
+	clock := &runClock{now: time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)}
+	svc := runService(&hangingSource{batchSourceFixture: *s}, s, &batchObjectFixture{s: s}, clock, Options{})
+	svc.stopGrace = 20 * time.Millisecond
+	run := mustSubmit(t, svc, observabilityvo.ArchiveKindTrace)
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { svc.processDue(ctx, observabilityvo.ArchiveKindTrace); close(done) }()
+	time.Sleep(20 * time.Millisecond)
+	stop()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown waited for a hung batch beyond the stop grace")
+	}
+	if view := runState(t, svc, run.ID); view.Status != RunRunning || view.RetryCount != 0 {
+		t.Fatalf("a stop must leave the run for the next start: %+v", view)
+	}
+}
