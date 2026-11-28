@@ -8,7 +8,7 @@ info:
   version: 0.5.0
   description: |
     Internal service-to-service authorization contract used by BKN,
-    ontology-query, context-loader, and execution-factory.
+    ontology-query, context-loader, and (Professional edition) execution-factory.
 
     The decision and resource-directory routes are tokenless and belong
     exclusively to the platform-internal network trust boundary defined by

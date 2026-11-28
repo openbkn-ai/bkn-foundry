@@ -170,9 +170,6 @@ config:
     bknAgent:
       baseURL: "http://bkn-agent:30800"
       timeout: "3s"
-    executionFactory:
-      baseURL: "http://agent-operator-integration:9000"
-      timeout: "3s"
     vegaBackend:
       baseURL: "http://vega-backend-svc:13014"
       timeout: "3s"

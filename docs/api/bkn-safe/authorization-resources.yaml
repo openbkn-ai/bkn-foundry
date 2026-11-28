@@ -20,6 +20,10 @@ paths:
           schema:
             type: string
             enum: [knowledge_network, catalog, resource, tool_box, function, mcp, skill]
+            description: |
+              `knowledge_network`, `catalog` and `resource` are served by every edition.
+              `tool_box`, `function`, `mcp` and `skill` (Execution Factory) are part of the
+              Professional edition: a Community deployment does not know them and answers 400.
         - name: name
           in: query
           schema:

@@ -40,7 +40,6 @@ func TestRoleResourceMatrix(t *testing.T) {
 		"workshop_app": "create", "graph_analysis": "view",
 		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",
 		"action_type": "execute", "metric": "query_data", "risk_type": "view_detail",
-		"tool_box": "execute", "function": "execute", "mcp": "execute", "skill": "execute",
 		"small_model": "execute", "large_model": "execute", "agent": "use", "agent_tpl": "publish",
 	}
 	roleAllowed := map[string]map[string]string{
