@@ -58,4 +58,16 @@ jobs:
         run: |
           echo "${{ github.token }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
           CHART_FILE="/tmp/charts/${{ inputs.chart-name }}-${{ inputs.version }}.tgz"
-          helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts
+          # GHCR sometimes answers the tag request right after the manifest
+          # upload with "not found"; pushing the same chart again succeeds.
+          for attempt in 1 2 3; do
+            if helm push "$CHART_FILE" oci://ghcr.io/${{ github.repository_owner }}/charts; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::helm push attempt $attempt failed; retrying"
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "::error::helm push failed after 3 attempts"
+          exit 1
