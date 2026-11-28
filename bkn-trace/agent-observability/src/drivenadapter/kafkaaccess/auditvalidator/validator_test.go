@@ -75,7 +75,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
-		"registry-runtime-v1.json":      "5fbd65fea71b9b66757caf1327f1f811866d2aabee97237a17d529d392b0243e",
+		"registry-runtime-v1.json":      "230d7201de117dd9b972fd666f3007a7edc72392fb004e709e2c00b4f009d744",
 		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
 		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -506,6 +506,42 @@ func TestBackendObservedOperationIsAdmittedOnlyAfterSourceCutover(t *testing.T) 
 	record.Key = []byte("bkn-backend\x1fvalue_type\x1famount_cny")
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("a value type operation must pass Writer validation: %v", err)
+	}
+}
+
+func TestEvalTargetsAreAdmittedAsBackendOperations(t *testing.T) {
+	validator, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile("assets/audit-record-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(content, &value); err != nil {
+		t.Fatal(err)
+	}
+	value["event_name"] = "backend.operation.observed"
+	now := time.Now().UTC()
+	value["occurred_at"] = now.Format(time.RFC3339Nano)
+	for _, targetType := range []string{"eval_case", "eval_template_config", "eval_scope", "eval_run_plan", "eval_rule_application"} {
+		t.Run(targetType, func(t *testing.T) {
+			value["target"] = map[string]any{"type": targetType, "id": "eval-target", "name": "Evaluation target"}
+			value["facts"] = map[string]any{"action": "update", "decision": "allowed", "changed_fields": []string{"revision"}}
+			content, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := auditconsumer.Record{
+				Topic: auditconsumer.Topic, Key: []byte("bkn-backend\x1f" + targetType + "\x1feval-target"),
+				Value: content, BrokerTime: now,
+				Headers: []auditconsumer.Header{{Key: SchemaHeader, Value: []byte(SchemaVersion)}},
+			}
+			if _, err := validator.Validate(context.Background(), record); err != nil {
+				t.Fatalf("registered Eval operation was rejected: %v", err)
+			}
+		})
 	}
 }
 

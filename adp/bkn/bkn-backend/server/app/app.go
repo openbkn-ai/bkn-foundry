@@ -86,6 +86,8 @@ type Application struct {
 	evidenceRuntime  *evidencepublisher.PublisherRuntime
 	evidenceProducer interface{ Close() error }
 	auditRuntime     *operationaudit.KafkaRuntime
+	auditRecorder    *operationaudit.KafkaRecorder
+	auditRecovery    bool
 	auditTelemetry   *operationaudit.PublishTelemetry
 	refresh          func(stop <-chan struct{})
 	stop             chan struct{}
@@ -219,6 +221,28 @@ func (server *Application) freezeRouteExtensions() []func(*gin.Engine) {
 // Run freezes the assembled process shape and serves until shutdown.
 func (server *Application) Run() {
 	logger.Info("Server Starting")
+	// Recovery stays alive until all mutation producers have drained.
+	auditStop, auditDone := make(chan struct{}), make(chan struct{})
+	if server.auditRecovery {
+		go func() {
+			defer close(auditDone)
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			operationaudit.ReconnectPublisher(auditStop, ticker.C, server.auditRecorder, func() (operationaudit.KafkaPublisher, func(), error) {
+				runtime, err := operationaudit.NewKafkaRuntimeFromEnv(server.auditTelemetry)
+				if err != nil {
+					return nil, nil, err
+				}
+				return runtime.Publisher, func() {
+					if err := runtime.Close(); err != nil {
+						logger.Warn("Recovered Audit Kafka producer close failed")
+					}
+				}, nil
+			})
+		}()
+	} else {
+		close(auditDone)
+	}
 	routeExtensions := server.freezeRouteExtensions()
 	workerExtensions := server.frozenWorkerExtensions()
 	entitlement.Freeze()
@@ -319,6 +343,8 @@ func (server *Application) Run() {
 			logger.Warnf("Evidence Kafka producer close failed: %v", err)
 		}
 	}
+	close(auditStop)
+	<-auditDone
 	if err := server.auditRuntime.Close(); err != nil {
 		logger.Warnf("Audit Kafka producer close failed: %v", err)
 	}
@@ -475,9 +501,7 @@ func Boot(options Options) *Application {
 	}
 
 	// Create and start the service.
-	var auditRecorder interface {
-		Record(context.Context, operationaudit.Entry) error
-	} = operationaudit.NewKafkaRecorder(nil, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
+	auditRecorder := operationaudit.NewKafkaRecorder(nil, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
 	if auditRuntime != nil {
 		auditRecorder = operationaudit.NewKafkaRecorder(auditRuntime.Publisher, os.Getenv("BKN_AUDIT_ENVIRONMENT"), auditTelemetry)
 	}
@@ -487,6 +511,8 @@ func Boot(options Options) *Application {
 		otelProviders:    otelProviders,
 		restHandler:      driveradapters.NewRestHandler(appSetting, auditRecorder),
 		auditRuntime:     auditRuntime,
+		auditRecorder:    auditRecorder,
+		auditRecovery:    auditRuntime == nil && strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_ENABLED")), "true"),
 		auditTelemetry:   auditTelemetry,
 		refresh:          refresh,
 		stop:             make(chan struct{}),

@@ -244,8 +244,8 @@ func TestLogSourceInventorySeparatesRegisteredTargetsFromQueryableSources(t *tes
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.RegistryVersion != "0.3.32" || len(body.Data) != 15 {
-		t.Fatalf("expected 15 runtime sources in 0.3.32 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
+	if body.RegistryVersion != "0.3.33" || len(body.Data) != 15 {
+		t.Fatalf("expected 15 runtime sources in 0.3.33 registry inventory, got version=%q count=%d", body.RegistryVersion, len(body.Data))
 	}
 	modelManagerFound := false
 	for _, source := range body.Data {
