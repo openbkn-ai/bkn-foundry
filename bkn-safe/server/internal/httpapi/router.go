@@ -100,6 +100,7 @@ func New(deps Deps) *gin.Engine {
 	locale.Register()
 
 	r := gin.New()
+	r.Use(requestLogMiddleware())
 	r.Use(gin.CustomRecovery(func(c *gin.Context, _ any) {
 		if strings.HasPrefix(c.Request.URL.Path, "/health/") {
 			c.AbortWithStatus(http.StatusInternalServerError)
