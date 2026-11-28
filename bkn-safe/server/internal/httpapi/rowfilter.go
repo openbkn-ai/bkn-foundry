@@ -71,7 +71,7 @@ func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directo
 				replyPublicError(c, http.StatusForbidden)
 				return
 			}
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		decision, err := coresocket.Resolve(c.Request.Context(), coresocket.Request{
@@ -79,7 +79,7 @@ func registerRowFilter(group *gin.RouterGroup, enforcer *authz.Enforcer, directo
 			Caller:         caller,
 		})
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		response := rowFilterResponse{Entries: make([]rowFilterResponseEntry, 0, len(decision.Entries))}

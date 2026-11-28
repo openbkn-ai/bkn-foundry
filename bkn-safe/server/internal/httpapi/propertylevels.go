@@ -61,13 +61,13 @@ func registerPropertyLevels(group *gin.RouterGroup, enforcer *authz.Enforcer, db
 
 		active, err := activeAccount(c, db, body.AccessorID)
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		if !active {
 			response, err := permdata.Fallback(request)
 			if err != nil {
-				replyPublicError(c, http.StatusServiceUnavailable)
+				unavailableError(c, err)
 				return
 			}
 			c.JSON(http.StatusOK, response)
@@ -80,7 +80,7 @@ func registerPropertyLevels(group *gin.RouterGroup, enforcer *authz.Enforcer, db
 		}
 		allowed, err := enforcer.FilterResourceOps(body.AccessorID, refs, nil, []string{"view_detail", "query_data"})
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		operationsByObject := make(map[string][]string, len(allowed))
@@ -95,7 +95,7 @@ func registerPropertyLevels(group *gin.RouterGroup, enforcer *authz.Enforcer, db
 		if err != nil {
 			// A missing, partial, or unknown enterprise result is an unavailable
 			// authorization decision, never permission to reuse the core fallback.
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, response)

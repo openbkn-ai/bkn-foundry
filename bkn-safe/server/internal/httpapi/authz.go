@@ -86,7 +86,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		if !active {
@@ -222,7 +222,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		if !active {
@@ -455,7 +455,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 		}
 		active, err := activeAccount(c, db, accessorID)
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		if !active {
@@ -565,7 +565,7 @@ func registerAuthzExplain(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
-			replyPublicError(c, http.StatusServiceUnavailable)
+			unavailableError(c, err)
 			return
 		}
 		if !active {
@@ -1132,6 +1132,20 @@ func bind(c *gin.Context, v any) bool {
 	return true
 }
 
-func serverError(c *gin.Context, _ error) {
+// serverError answers 500. The cause is never sent to the caller, so it is
+// attached to the request for requestLogMiddleware to log.
+func serverError(c *gin.Context, err error) {
+	if err != nil {
+		_ = c.Error(err)
+	}
 	replyInternalError(c)
+}
+
+// unavailableError answers 503 when a decision cannot be made, keeping the
+// cause for requestLogMiddleware the way serverError does.
+func unavailableError(c *gin.Context, err error) {
+	if err != nil {
+		_ = c.Error(err)
+	}
+	replyPublicError(c, http.StatusServiceUnavailable)
 }
