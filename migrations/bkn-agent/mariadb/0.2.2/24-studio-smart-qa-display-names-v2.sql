@@ -5,8 +5,11 @@
 -- names, never by property ids or field names such as contract_number, and state
 -- values as the business says them, not as property=value. Scenario regression
 -- shows these answers to business users. Upgrade only the untouched official v1
--- body/locales, retain every historical version and runtime setting, and resume
--- partially applied changes idempotently, as 04-graph-explorer-count-first-v2.sql.
+-- body/locales (any line endings: the v1 hashes are taken after removing CR, as
+-- 23-graph-explorer-count-first-v2-crlf.sql), retain every historical version and
+-- runtime setting, and resume partially applied changes idempotently, as
+-- 04-graph-explorer-count-first-v2.sql. A customized prompt, a prompt already at
+-- v2 or later, or an operator-authored v2 is left alone.
 
 
 USE openbkn;
@@ -37,10 +40,10 @@ where v.f_prompt_id = 'studio_smart_qa_prompt'
   and v.f_version = 1 and p.f_current_version = 1
   and p.f_update_user = '266c6a42-6131-4d62-8f39-853e7093701c'
   and v.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
-  and sha2(v.f_content, 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
+  and sha2(replace(v.f_content, char(13), ''), 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
   and (v.f_localized_content is null or json_type(v.f_localized_content) = 'NULL'
-      or (sha2(json_unquote(json_extract(v.f_localized_content, '$."zh-CN"')), 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
-          and sha2(json_unquote(json_extract(v.f_localized_content, '$."en-US"')), 256) = '0b430b104483056639742d4eeedab52b1fe0300ffc60f7d20943da4b1b68ea1f'))
+      or (sha2(replace(json_unquote(json_extract(v.f_localized_content, '$."zh-CN"')), char(13), ''), 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
+          and sha2(replace(json_unquote(json_extract(v.f_localized_content, '$."en-US"')), char(13), ''), 256) = '0b430b104483056639742d4eeedab52b1fe0300ffc60f7d20943da4b1b68ea1f'))
   and not exists (
       select 1 from t_agent_prompt_version newer
       where newer.f_prompt_id = v.f_prompt_id and newer.f_version > 1
@@ -56,7 +59,7 @@ where f_prompt_id = 'studio_smart_qa_prompt'
   and exists (
       select 1 from t_agent_prompt_version v
       where v.f_prompt_id = t_agent_prompt.f_prompt_id and v.f_version = 1
-        and sha2(v.f_content, 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
+        and sha2(replace(v.f_content, char(13), ''), 256) = '6ef561c167134f3cae1abf1d3996b4a3830b1287e2161203f338294a52934ad2'
   )
   and exists (
       select 1 from t_agent_prompt_version v
