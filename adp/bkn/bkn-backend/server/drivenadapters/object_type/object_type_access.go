@@ -2105,6 +2105,43 @@ func (ota *objectTypeAccess) ListAliasedObjectTypes(ctx context.Context, knID st
 	return result, rows.Err()
 }
 
+// ListHandlingEventClasses lists the ID, name, kinds and event configuration of every object type
+// of the branch whose event configuration names a handling action.
+func (ota *objectTypeAccess) ListHandlingEventClasses(ctx context.Context, knID string, branch string) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListHandlingEventClasses")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_kinds", "f_event").From(OT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Like{"f_event": "%handling_action%"}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ota.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query event classes with a handling action failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ObjectType
+	for rows.Next() {
+		objectType := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+		var kinds, event []byte
+		if err = rows.Scan(&objectType.OTID, &objectType.OTName, &kinds, &event); err != nil {
+			return nil, err
+		}
+		objectType.Kinds, objectType.Event = decodeKinds(kinds, event)
+		if objectType.Event == nil || objectType.Event.HandlingAction == nil {
+			continue
+		}
+		result = append(result, objectType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}
+
 func (ota *objectTypeAccess) ListDeprecatedObjectTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ObjectType, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListDeprecatedObjectTypes")
 	defer span.End()

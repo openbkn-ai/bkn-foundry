@@ -2560,6 +2560,12 @@ paths:
         运行版本中该事件类已不由此行动类识别）同样记为执行失败，原因写入结果的 `error_message`。
         仅专业版及以上支持，其他版本中 `event` 按未知操作类型返回 400。
 
+        处置事件（`trigger_type: event`）只接受 bkn-backend 经上述内部路由、以事件类识别的执行身份提交，
+        本路由上提交返回 400；`_instance_identities` 为事件关于的对象。请求可带 `input_bindings`，
+        只在 `trigger_type: event` 时接受，否则返回 400：按参数名给行动类的 input 参数取值，
+        `value_from: const` 时 `value` 即取值，`value_from: property` 时 `value` 是对象类的属性名，执行时取目标对象该属性的值。
+        绑定了的参数不再从 `dynamic_params` 取值；参数名不是行动类的 input 参数、`value_from` 不是这两种、缺参数名或缺 `value` 时返回 400。
+
 
   /api/ontology-query/v1/knowledge-networks/{kn_id}/action-executions/{execution_id}:
     summary: 获取行动执行状态
@@ -2715,12 +2721,13 @@ paths:
             type: string
           in: query
         - name: trigger_type
-          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起
+          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起；event 表示平台按事件类的处置行动类处置事件
           schema:
             enum:
               - manual
               - scheduled
               - agent
+              - event
             type: string
           in: query
         - name: governance_request_id
@@ -5076,6 +5083,12 @@ components:
           description: 与行动类 input 参数名对应的取值（支持点分路径）。有 input 参数时必填且不能为 null。
           type: object
           additionalProperties: true
+        input_bindings:
+          description: |
+            仅内部路由、`trigger_type: event` 时接受：按参数名给行动类的 input 参数取值，绑定了的参数不再从 dynamic_params 取值。
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ActionInputBinding'
         governance_request_id:
           description: 治理请求 ID；受管控行动必填。
           type: string
@@ -5102,6 +5115,18 @@ components:
             interaction_id:
               type: string
               maxLength: 128
+
+    ActionInputBinding:
+      description: 行动类一个 input 参数的取值。
+      type: object
+      required: [value_from, value]
+      properties:
+        value_from:
+          description: const 表示 value 即取值；property 表示 value 是对象类的属性名，取目标对象该属性的值。
+          type: string
+          enum: [const, property]
+        value:
+          description: 常量取值，或对象类的属性名。
 
     ActionExecutionResponse:
       description: 行动执行响应（异步）
@@ -5152,11 +5177,12 @@ components:
           description: 对象类ID
           type: string
         trigger_type:
-          description: 触发类型；agent 表示 Agent 经 Context Loader 发起
+          description: 触发类型；agent 表示 Agent 经 Context Loader 发起；event 表示平台按事件类的处置行动类处置事件
           enum:
             - manual
             - scheduled
             - agent
+            - event
           type: string
         status:
           description: 执行状态。取消被接受后保持 cancelled，执行器随后写入的终态不会覆盖它。
@@ -5290,11 +5316,12 @@ components:
           description: 对象类ID
           type: string
         trigger_type:
-          description: 触发类型；agent 表示 Agent 经 Context Loader 发起
+          description: 触发类型；agent 表示 Agent 经 Context Loader 发起；event 表示平台按事件类的处置行动类处置事件
           enum:
             - manual
             - scheduled
             - agent
+            - event
           type: string
         status:
           description: 执行状态
@@ -5487,11 +5514,12 @@ components:
             - cancelled
           type: string
         trigger_type:
-          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起
+          description: 触发类型（可选）；agent 表示 Agent 经 Context Loader 发起；event 表示平台按事件类的处置行动类处置事件
           enum:
             - manual
             - scheduled
             - agent
+            - event
           type: string
         keyword:
           description: 按执行 ID 过滤（可选），不区分大小写的字面子串匹配，最长 128 个字符
@@ -5780,6 +5808,10 @@ components:
           type: string
           maxLength: 256
           description: The display name of the object, or its key.
+        identity:
+          type: object
+          additionalProperties: true
+          description: The object's primary keys and their values. A check sends it so the handling action of an event of the object can run on it; a trial leaves it out.
         attributes:
           type: object
           maxProperties: 64

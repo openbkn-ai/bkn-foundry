@@ -31,6 +31,16 @@ func (f *fakeObjectTypes) ListDeprecatedObjectTypes(context.Context, string, str
 	return out, nil
 }
 
+func (f *fakeObjectTypes) ListHandlingEventClasses(context.Context, string, string) ([]*interfaces.ObjectType, error) {
+	var out []*interfaces.ObjectType
+	for _, ot := range f.stored {
+		if ot.Event != nil && ot.Event.HandlingAction != nil {
+			out = append(out, ot)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeObjectTypes) GetObjectTypeIdentitiesByIDsOrNames(_ context.Context, _, _ string, ids, _ []string) ([]*interfaces.ObjectType, error) {
 	var out []*interfaces.ObjectType
 	for _, ot := range f.stored {
@@ -146,9 +156,19 @@ func (n storedNetwork) checker() (*NetworkRelations, *fakeRelationTypes) {
 }
 
 // A supply network: an order ships from a warehouse (primary), or through its site (fallback).
+// handledBy is an event class that handles its events with the action type.
+func handledBy(id, actionTypeID string) *interfaces.ObjectType {
+	class := objectType(id, nil)
+	class.Kinds = []string{"event"}
+	class.Event = &interfaces.ObjectTypeEvent{Source: "rule", Subject: "order",
+		HandlingAction: &interfaces.ObjectTypeEventHandling{ActionTypeID: actionTypeID, Mode: "suggest"}}
+	return class
+}
+
 func supplyNetwork() storedNetwork {
 	return storedNetwork{
-		objects: []*interfaces.ObjectType{objectType("order", nil), objectType("warehouse", nil), objectType("legacy_order", deprecated("order"))},
+		objects: []*interfaces.ObjectType{objectType("order", nil), objectType("warehouse", nil), objectType("legacy_order", deprecated("order")),
+			handledBy("late_order", "notify_buyer")},
 		relations: []*interfaces.RelationType{
 			relationType("ships_from", "order", "warehouse", interfaces.RelationDeclarations{Cardinality: "many_to_one"}),
 			relationType("ships_via_site", "order", "warehouse", interfaces.RelationDeclarations{Importance: "secondary", FallbackFor: "ships_from"}),
@@ -349,6 +369,8 @@ func TestNetworkRelationsDeleteReferrers(t *testing.T) {
 		{"an object type with the one replaced by it", interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"order", "legacy_order"}, nil},
 		{"the action type another one is replaced by", interfaces.RESOURCE_TYPE_ACTION_TYPE, []string{"ship"},
 			[]string{`action type "ship" is the lifecycle replaced_by of action type "ship_v1"`}},
+		{"the handling action of an event class", interfaces.RESOURCE_TYPE_ACTION_TYPE, []string{"notify_buyer", "ship_v1"},
+			[]string{`action type "notify_buyer" handles the events of event class "late_order" (late_order)`}},
 		{"the primary relation of a fallback path", interfaces.RESOURCE_TYPE_RELATION_TYPE, []string{"ships_from"},
 			[]string{`relation type "ships_from" is the fallback_for of relation type "ships_via_site"`}},
 		{"a primary relation with its fallback path", interfaces.RESOURCE_TYPE_RELATION_TYPE, []string{"ships_from", "ships_via_site"}, nil},

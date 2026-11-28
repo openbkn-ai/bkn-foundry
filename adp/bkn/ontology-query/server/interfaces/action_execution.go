@@ -31,6 +31,9 @@ const (
 	TriggerTypeScheduled = "scheduled"
 	// TriggerTypeAgent marks an execution an Agent started through the Context Loader.
 	TriggerTypeAgent = "agent"
+	// TriggerTypeEvent marks an execution the platform started to handle an event: the handling
+	// action of the event's class, run on the event's object. Only the internal route takes it.
+	TriggerTypeEvent = "event"
 )
 
 // Execution mode constants.
@@ -50,19 +53,31 @@ const (
 	ActionSourceTypeMCP  = "mcp"
 )
 
+// ActionInputBinding is the value an event class gives an input of its handling action: a
+// constant (value_from const), or the property of the object the action runs on that value names
+// (value_from property).
+type ActionInputBinding struct {
+	ValueFrom string `json:"value_from"`
+	Value     any    `json:"value"`
+}
+
 // ActionExecutionRequest represents the request to execute an action
 type ActionExecutionRequest struct {
-	RelationTarget       *ActionRelationTarget `json:"relation_target,omitempty"`
-	ObjectInput          map[string]any        `json:"object_input,omitempty"`
-	KNID                 string                `json:"-"`
-	Branch               string                `json:"-"`
-	ActionTypeID         string                `json:"-"`
-	TriggerType          string                `json:"trigger_type,omitempty"` // "manual", "scheduled" or "agent", defaults to "manual"
-	InstanceIdentities   []map[string]any      `json:"_instance_identities"`
-	DynamicParams        map[string]any        `json:"dynamic_params,omitempty"`
-	GovernanceRequestID  string                `json:"governance_request_id,omitempty"`
-	GovernancePermitID   string                `json:"governance_permit_id,omitempty"`
-	GovernancePlanDigest string                `json:"governance_plan_digest,omitempty"`
+	RelationTarget     *ActionRelationTarget `json:"relation_target,omitempty"`
+	ObjectInput        map[string]any        `json:"object_input,omitempty"`
+	KNID               string                `json:"-"`
+	Branch             string                `json:"-"`
+	ActionTypeID       string                `json:"-"`
+	TriggerType        string                `json:"trigger_type,omitempty"` // "manual", "scheduled" or "agent", defaults to "manual"
+	InstanceIdentities []map[string]any      `json:"_instance_identities"`
+	DynamicParams      map[string]any        `json:"dynamic_params,omitempty"`
+	// InputBindings gives inputs of the action the values an event class binds them to: a
+	// constant, or a property of the object the action runs on. Only the platform's handling of
+	// an event (trigger_type event) sends them.
+	InputBindings        map[string]ActionInputBinding `json:"input_bindings,omitempty"`
+	GovernanceRequestID  string                        `json:"governance_request_id,omitempty"`
+	GovernancePermitID   string                        `json:"governance_permit_id,omitempty"`
+	GovernancePlanDigest string                        `json:"governance_plan_digest,omitempty"`
 	// BKNContext is the caller's optional correlation label: the Conversation and Interaction
 	// (BKN Trace) the execution belongs to. It is never used for authorization.
 	BKNContext *ActionBKNContext `json:"bkn_context,omitempty"`

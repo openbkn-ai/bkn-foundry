@@ -50,7 +50,8 @@ info:
     A delete refused because definitions still refer to it answers 409 `BknBackend.ActionType.StillReferenced`.
     `error_details.references` lists the English sentences, as before. `metadata.references` holds one record per
     reference: `kind` and `id` name what is referred to, `referrer_kind` and `referrer_id` who refers to it, `via`
-    the declaration (`replaced_by` or `fallback_for`), and `message` the English sentence.
+    the declaration (`replaced_by`, `fallback_for`, or `handling_action`: an event class handles its events
+    with the action type), and `message` the English sentence.
 
     Rules of this definition kind:
 
@@ -622,7 +623,8 @@ paths:
         "409":
           description: |
             BknBackend.ActionType.StillReferenced: an action type to delete is still the lifecycle replaced_by of a deprecated action type
-            that this request does not delete. `error_details.references` lists each reference; change or remove them
+            that this request does not delete, or the handling action of an event class (`via: handling_action`; clear the class's
+            handling action first). `error_details.references` lists each reference; change or remove them
             first, or delete the referring definitions in the same request.
 
             On a versioned network the request also answers 409 `BknBackend.KNVersion.DefinitionModified` when `If-Match`

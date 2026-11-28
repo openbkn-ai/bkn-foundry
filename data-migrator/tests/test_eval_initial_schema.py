@@ -22,6 +22,7 @@ UPGRADE = SNAPSHOT.with_name("06-eval-tables.sql")
 AFTER_EVAL = [
     SNAPSHOT.with_name("07-kn-event-classes.sql"),
     SNAPSHOT.with_name("08-kn-event-recognition-actions.sql"),
+    SNAPSHOT.with_name("09-kn-event-handling.sql"),
 ]
 LATEST = AFTER_EVAL[-1]
 EVAL_TABLES = {

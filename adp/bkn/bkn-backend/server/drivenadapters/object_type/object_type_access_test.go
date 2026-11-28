@@ -2164,6 +2164,25 @@ func Test_objectTypeAccess_ListDeprecatedObjectTypes(t *testing.T) {
 	})
 }
 
+func Test_objectTypeAccess_ListHandlingEventClasses(t *testing.T) {
+	Convey("ListHandlingEventClasses reads the event classes that name a handling action\n", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id, f_name, f_kinds, f_event FROM t_object_type WHERE f_kn_id = ? AND f_branch = ? AND f_event LIKE ?").
+			WithArgs("kn1", "main", "%handling_action%").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name", "f_kinds", "f_event"}).
+				AddRow("late_order", "超期订单", `["event"]`,
+					`{"source":"rule","subject":"order","handling_action":{"action_type_id":"notify_buyer","mode":"suggest"}}`).
+				// The text matched, but no handling action is named: the note mentions it.
+				AddRow("complaint", "投诉", `["event"]`, `{"source":"report","subject":"order","handling_note":"no handling_action yet"}`))
+		list, err := ota.ListHandlingEventClasses(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(len(list), ShouldEqual, 1)
+		So(list[0].OTID, ShouldEqual, "late_order")
+		So(list[0].Event.HandlingAction.ActionTypeID, ShouldEqual, "notify_buyer")
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
+
 func Test_objectTypeAccess_ListObjectTypeSummaries(t *testing.T) {
 	Convey("test ListObjectTypeSummaries\n", t, func() {
 		appSetting := &common.AppSetting{}

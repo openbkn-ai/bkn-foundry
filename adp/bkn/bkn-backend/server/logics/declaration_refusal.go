@@ -96,6 +96,8 @@ func DeclarationRefusal(ctx context.Context, code, message string, issues ...Dec
 const (
 	ReferenceViaReplacedBy  = "replaced_by"
 	ReferenceViaFallbackFor = "fallback_for"
+	// ReferenceViaHandlingAction: an event class names the action type as its handling action.
+	ReferenceViaHandlingAction = "handling_action"
 )
 
 // Reference is a definition that still refers to one a delete removes. Kind and ID name what is

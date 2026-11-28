@@ -21,6 +21,9 @@ type ObjectTypeAccess interface {
 	ListAliasedObjectTypes(ctx context.Context, knID string, branch string) ([]*ObjectType, error)
 	// ListDeprecatedObjectTypes lists the ID, name and lifecycle of every deprecated object type of the branch.
 	ListDeprecatedObjectTypes(ctx context.Context, knID string, branch string) ([]*ObjectType, error)
+	// ListHandlingEventClasses lists the event classes of the branch that name a handling action,
+	// with their event configuration.
+	ListHandlingEventClasses(ctx context.Context, knID string, branch string) ([]*ObjectType, error)
 
 	CreateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
 	CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error

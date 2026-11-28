@@ -26,6 +26,27 @@ type ObjectTypeEvent struct {
 	MergeHours float64 `json:"merge_hours,omitzero" mapstructure:"merge_hours"`
 	// HandlingNote says what to do about an event of the class.
 	HandlingNote string `json:"handling_note,omitempty" mapstructure:"handling_note"`
+	// HandlingAction is the action type that handles an event of the class, if any.
+	HandlingAction *ObjectTypeEventHandling `json:"handling_action,omitempty" mapstructure:"handling_action"`
+}
+
+// ObjectTypeEventHandling is the action type that handles the events of a class, and how: auto
+// runs it on the object of each event a check newly finds, suggest only offers it to the person
+// handling an event.
+type ObjectTypeEventHandling struct {
+	ActionTypeID string `json:"action_type_id" mapstructure:"action_type_id"`
+	Mode         string `json:"mode" mapstructure:"mode"`
+	// Parameters gives inputs of the action type a value, by the input's name: run by itself, the
+	// action needs each of its inputs given here; suggested, these are the values offered.
+	Parameters map[string]ObjectTypeEventHandlingParameter `json:"parameters,omitempty" mapstructure:"parameters"`
+}
+
+// ObjectTypeEventHandlingParameter is the value of an input of a handling action: a constant
+// (value_from const), or the property of the object the event is about that value names
+// (value_from property).
+type ObjectTypeEventHandlingParameter struct {
+	ValueFrom string `json:"value_from" mapstructure:"value_from"`
+	Value     any    `json:"value" mapstructure:"value"`
 }
 
 // HasKind reports whether the object type has the kind.

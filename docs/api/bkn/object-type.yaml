@@ -2718,6 +2718,50 @@ components:
           description: What to do about an event of the class.
           type: string
           maxLength: 500
+        handling_action:
+          $ref: "#/components/schemas/ObjectTypeEventHandling"
+    ObjectTypeEventHandling:
+      description: |
+        The action type that handles the events of the class. It acts on the subject and does not record events
+        (operation type `event`). With `auto` every input of the action type must be given in `parameters`; an action
+        type the network does not have yet is taken, and the platform says why a handling it cannot run did not run.
+      type: object
+      required: [action_type_id, mode]
+      additionalProperties: false
+      properties:
+        action_type_id:
+          description: ID of the action type.
+          type: string
+        mode:
+          description: |
+            `auto`: for each event a check newly finds (not one of a backlog), the platform executes the action type on
+            the event's object as the class's execution subject, with trigger type `event`; only a class whose source is
+            `rule`. A governed action type is not started by the platform: the event's handling is `needs_person`.
+            `suggest`: the action type is offered to the person handling an event; nothing runs by itself.
+          type: string
+          enum: [auto, suggest]
+        parameters:
+          description: |
+            Values for inputs of the action type, by the input's name. With `auto` each input must have one; with
+            `suggest` these are the values offered. A name that is not an input of the action type, or a property the
+            subject does not have, is refused (400). The values an event is handled with are the ones when it was found.
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ObjectTypeEventHandlingParameter"
+    ObjectTypeEventHandlingParameter:
+      description: The value of an input of a handling action.
+      type: object
+      required: [value_from, value]
+      additionalProperties: false
+      properties:
+        value_from:
+          description: |
+            `const`: `value` is the value. `property`: `value` names a data property of the subject, and the action
+            gets that property of the event's object.
+          type: string
+          enum: [const, property]
+        value:
+          description: The constant, or the name of the subject's property.
     ConceptGroup:
       description: Concept groups
       required:
