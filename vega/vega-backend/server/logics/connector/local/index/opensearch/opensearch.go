@@ -49,6 +49,38 @@ type opensearchConfig struct {
 	Username      string   `mapstructure:"username"`
 	Password      string   `mapstructure:"password"`
 	IndexPatterns []string `mapstructure:"index_patterns"`
+	// IndexSettings 覆盖创建本地索引时使用的索引级设置。
+	IndexSettings map[string]any `mapstructure:"index_settings"`
+}
+
+// defaultLocalIndexSettings 每个索引一个主分片，副本数随集群规模自动调整：
+// 单节点时副本永远无法分配，因此为 0；多节点时为 1。
+var defaultLocalIndexSettings = map[string]any{
+	"number_of_shards":     1,
+	"auto_expand_replicas": "0-1",
+}
+
+// localIndexSettings 在默认值上合并配置的覆盖项。只配置 number_of_replicas、
+// 未配置 auto_expand_replicas 时，以固定副本数取代自动调整的默认值。
+func (c *OpenSearchConnector) localIndexSettings() map[string]any {
+	settings := make(map[string]any, len(defaultLocalIndexSettings)+2)
+	for key, value := range defaultLocalIndexSettings {
+		settings[key] = value
+	}
+	var overrides map[string]any
+	if c.Config != nil {
+		overrides = c.Config.IndexSettings
+	}
+	if _, ok := overrides["number_of_replicas"]; ok {
+		if _, ok := overrides["auto_expand_replicas"]; !ok {
+			delete(settings, "auto_expand_replicas")
+		}
+	}
+	for key, value := range overrides {
+		settings[key] = value
+	}
+	settings["knn"] = true
+	return settings
 }
 
 // OpenSearchConnector implements IndexConnector for OpenSearch/ElasticSearch.
@@ -261,12 +293,8 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 		mappings["_meta"] = mappingMeta
 	}
 
-	indexSettings := map[string]any{
-		"knn": true,
-	}
-
 	settings := map[string]any{
-		"index": indexSettings,
+		"index": c.localIndexSettings(),
 	}
 
 	config := map[string]any{

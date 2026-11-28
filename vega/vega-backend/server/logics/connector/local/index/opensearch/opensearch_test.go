@@ -325,7 +325,7 @@ func TestOpenSearchConnectorCreateIndex(t *testing.T) {
 				if r.Method == http.MethodPut {
 					var config map[string]any
 					require.NoError(t, json.NewDecoder(r.Body).Decode(&config))
-					assert.Equal(t, map[string]any{"knn": true}, config["settings"].(map[string]any)["index"])
+					assert.Equal(t, map[string]any{"knn": true, "number_of_shards": float64(1), "auto_expand_replicas": "0-1"}, config["settings"].(map[string]any)["index"])
 					assert.Equal(t, map[string]any{"resource_id": "resource"}, config["mappings"].(map[string]any)["_meta"])
 					status, body = http.StatusOK, `{"acknowledged":true}`
 				} else {
@@ -339,6 +339,42 @@ func TestOpenSearchConnectorCreateIndex(t *testing.T) {
 			assert.Equal(t, 2, calls)
 		})
 	}
+}
+
+func TestOpenSearchConnectorLocalIndexSettings(t *testing.T) {
+	cases := []struct {
+		name      string
+		overrides map[string]any
+		want      map[string]any
+	}{
+		{
+			name: "defaults avoid unassignable replicas on a single node",
+			want: map[string]any{"knn": true, "number_of_shards": 1, "auto_expand_replicas": "0-1"},
+		},
+		{
+			name:      "fixed replica count replaces auto expansion",
+			overrides: map[string]any{"number_of_replicas": 2},
+			want:      map[string]any{"knn": true, "number_of_shards": 1, "number_of_replicas": 2},
+		},
+		{
+			name:      "explicit auto expansion and shards win",
+			overrides: map[string]any{"number_of_shards": 3, "auto_expand_replicas": "0-all", "number_of_replicas": 1},
+			want:      map[string]any{"knn": true, "number_of_shards": 3, "auto_expand_replicas": "0-all", "number_of_replicas": 1},
+		},
+		{
+			name:      "knn stays enabled",
+			overrides: map[string]any{"knn": false},
+			want:      map[string]any{"knn": true, "number_of_shards": 1, "auto_expand_replicas": "0-1"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			instance, err := (&OpenSearchConnector{}).New(interfaces.ConnectorConfig{"host": "search.example.com", "port": 9200, "index_settings": tc.overrides})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, instance.(*OpenSearchConnector).localIndexSettings())
+		})
+	}
+	assert.Equal(t, map[string]any{"number_of_shards": 1, "auto_expand_replicas": "0-1"}, defaultLocalIndexSettings)
 }
 
 func TestUpdateIndexOnlyUpdatesMapping(t *testing.T) {

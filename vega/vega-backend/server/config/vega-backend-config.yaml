@@ -59,6 +59,10 @@ depServices:
     protocol: http
     user: admin
     password: ""
+    # 可选：覆盖新建本地索引（Dataset、构建索引）的索引级设置。
+    # 默认 number_of_shards: 1、auto_expand_replicas: "0-1"（单节点 0 副本，多节点 1 副本）。
+    # index_settings:
+    #   number_of_replicas: 1
   hydra-admin:
     host: hydra-admin
     port: 4445
