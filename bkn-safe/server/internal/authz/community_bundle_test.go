@@ -11,6 +11,8 @@ import (
 
 	"github.com/openbkn-ai/licverify"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -20,10 +22,6 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 		"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
 		"knowledge_base":    {"view_detail", "modify", "delete", "query_data", "document_manage", "task_manage"},
 		"connector_type":    {"view_detail", "modify", "delete"},
-		"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
-		"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
-		"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
-		"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 		"small_model":       {"display", "modify", "delete", "execute"},
 		"large_model":       {"display", "modify", "delete", "execute"},
 		"agent": {
@@ -46,7 +44,7 @@ func TestCommunityBundleWhitelistIsExplicitAndDefensive(t *testing.T) {
 			}
 		}
 	}
-	for _, unsupported := range []string{"resource", "object_type", "admin-authz", "safe_admin", "operator", "unknown"} {
+	for _, unsupported := range []string{"resource", "object_type", "admin-authz", "safe_admin", "operator", "unknown", "tool_box", "function", "mcp", "skill"} {
 		if got, ok := CommunityBundleOperations(unsupported); ok || got != nil {
 			t.Errorf("unsupported type %q returned %v, %v", unsupported, got, ok)
 		}
@@ -220,7 +218,31 @@ func TestAgentFamilyBundlesKeepPrivilegedOperationsExplicit(t *testing.T) {
 	}
 }
 
+// registerExecutionFactoryTypesForTest stands in for an edition build that
+// contributes the Execution Factory types through extension/authzseed.
+func registerExecutionFactoryTypesForTest(t *testing.T) {
+	t.Helper()
+	ops := []string{"view", "modify", "delete", "publish", "unpublish", "execute"}
+	authzseed.ResetForTest()
+	authzseed.Register(authzseed.Extension{BundleOperations: map[string][]string{
+		"tool_box": ops, "function": ops, "mcp": ops, "skill": ops,
+	}})
+	t.Cleanup(authzseed.ResetForTest)
+}
+
+func TestExtensionBundleOperationsAreServedOnlyWhenRegistered(t *testing.T) {
+	if _, ok := CommunityBundleOperations("tool_box"); ok {
+		t.Fatal("tool_box is a bundle root without an extension")
+	}
+	registerExecutionFactoryTypesForTest(t)
+	got, ok := CommunityBundleOperations("tool_box")
+	if !ok || !reflect.DeepEqual(got, []string{"view", "modify", "delete", "publish", "unpublish", "execute"}) {
+		t.Fatalf("CommunityBundleOperations(tool_box) = %v, %v", got, ok)
+	}
+}
+
 func TestIndependentResourceFamilyBundlesUseTheUnifiedRuntimeDecision(t *testing.T) {
+	registerExecutionFactoryTypesForTest(t)
 	families := map[string]struct {
 		view string
 		ops  []string

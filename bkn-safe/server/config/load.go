@@ -188,14 +188,6 @@ func applyEnv(cfg *Config) error {
 			cfg.Upstreams.BKNAgent.Timeout = d
 		}
 	}
-	if v := os.Getenv("SAFE_EXECUTION_FACTORY_BASE_URL"); v != "" {
-		cfg.Upstreams.ExecutionFactory.BaseURL = v
-	}
-	if v := os.Getenv("SAFE_EXECUTION_FACTORY_TIMEOUT"); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			cfg.Upstreams.ExecutionFactory.Timeout = d
-		}
-	}
 	if v := os.Getenv("SAFE_VEGA_BACKEND_BASE_URL"); v != "" {
 		cfg.Upstreams.VegaBackend.BaseURL = v
 	}

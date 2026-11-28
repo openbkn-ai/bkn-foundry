@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
@@ -351,8 +353,7 @@ func TestSeededRoleGrants(t *testing.T) {
 		{"audit views audit logs", audit, "admin-audit", "x", "view", true},
 		{"audit not user edit", audit, "admin-user", "x", "edit", false},
 		{"network-builder manages catalog", networkBuilder, "catalog", "x", "create", true},
-		{"network-builder creates skill", networkBuilder, "skill", "s1", "create", true},
-		{"network-builder cannot publish arbitrary skill", networkBuilder, "skill", "s1", "publish", false},
+		{"community knows no Execution Factory skill type", networkBuilder, "skill", "s1", "create", false},
 		{"network-builder manages large models", networkBuilder, "large_model", "m1", "modify", true},
 		{"network-builder manages small models", networkBuilder, "small_model", "m1", "delete", true},
 		{"network-builder not system users", networkBuilder, "admin-user", "x", "create", false},
@@ -863,17 +864,15 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 		"workshop_app:*":      {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
-		"tool_box:*":          {"create"},
-		"function:*":          {"create"},
-		"skill:*":             {"create"},
-		"mcp:*":               {"create"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("network_builder grants = %#v, want %#v", got, want)
 	}
 }
 
-func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
+// A Community binary seeds no Execution Factory type: a fresh install holds
+// neither the catalog rows nor the built-in role grants.
+func TestApplySeedsNoExecutionFactoryTypes(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -882,39 +881,67 @@ func TestApplyRemovesFormerNetworkBuilderExecutionFactoryGrants(t *testing.T) {
 	if err := Apply(db, e); err != nil {
 		t.Fatal(err)
 	}
-
-	const (
-		roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
-		user   = "network-builder-upgrade"
-	)
-	if err := e.AssignRole(user, roleID); err != nil {
+	const roleID = "1572fb82-526f-11f0-bde6-e674ec8dde71"
+	types := []string{"skill", "mcp", "function", "tool_box"}
+	var rows int64
+	if err := db.Model(&model.ResourceType{}).Where("id IN ?", types).Count(&rows).Error; err != nil || rows != 0 {
+		t.Fatalf("resource types seeded = %d, err %v", rows, err)
+	}
+	if err := db.Model(&model.Operation{}).Where("resource_type_id IN ?", types).Count(&rows).Error; err != nil || rows != 0 {
+		t.Fatalf("operations seeded = %d, err %v", rows, err)
+	}
+	grants, err := e.RolePermissions(roleID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
-		if err := e.GrantRolePermission(roleID, resourceType, "*", "publish"); err != nil {
-			t.Fatal(err)
+	for _, grant := range grants {
+		for _, resourceType := range types {
+			if strings.HasPrefix(grant.Object, resourceType+":") {
+				t.Fatalf("built-in role holds a grant on %s", grant.Object)
+			}
 		}
+	}
+}
+
+// An edition build contributes its own types and role grants through
+// extension/authzseed; the seed validates and writes them with core's.
+func TestApplySeedsExtensionCatalogAndGrants(t *testing.T) {
+	authzseed.ResetForTest()
+	t.Cleanup(authzseed.ResetForTest)
+	authzseed.Register(authzseed.Extension{
+		Catalog: []byte(`{"resource_types":[{"id":"ext_thing","name":"Ext","operations":[
+			{"id":"view","name":"View"},{"id":"create","name":"Create"},
+			{"id":"modify","name":"Modify","requires":["view"]}]}]}`),
+		Grants: []byte(`{"grants":[{"role_id":"1572fb82-526f-11f0-bde6-e674ec8dde71","resource_type":"ext_thing","id_pattern":"*","operations":["create"]}]}`),
+	})
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := Apply(db, e); err != nil {
 		t.Fatal(err)
 	}
+	var rows int64
+	if err := db.Model(&model.Operation{}).Where("resource_type_id = ?", "ext_thing").Count(&rows).Error; err != nil || rows != 3 {
+		t.Fatalf("extension operations = %d, err %v", rows, err)
+	}
+	if ok, err := e.Check("1572fb82-526f-11f0-bde6-e674ec8dde71", "ext_thing", "x", "create"); err != nil || !ok {
+		t.Fatalf("extension grant Check = %v, %v", ok, err)
+	}
+}
 
-	for _, resourceType := range []string{"skill", "mcp", "function", "tool_box"} {
-		for _, tc := range []struct {
-			operation string
-			want      bool
-		}{
-			{"create", true},
-			{"publish", false},
-		} {
-			got, err := e.Check(user, resourceType, "other-owner-resource", tc.operation)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != tc.want {
-				t.Errorf("%s/%s after re-seed = %v, want %v", resourceType, tc.operation, got, tc.want)
-			}
-		}
+func TestApplyRejectsExtensionRedeclaringCoreType(t *testing.T) {
+	authzseed.ResetForTest()
+	t.Cleanup(authzseed.ResetForTest)
+	authzseed.Register(authzseed.Extension{Catalog: []byte(`{"resource_types":[{"id":"catalog","name":"x","operations":[]}]}`)})
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err == nil {
+		t.Fatal("extension redeclaring a core type was accepted")
 	}
 }
 

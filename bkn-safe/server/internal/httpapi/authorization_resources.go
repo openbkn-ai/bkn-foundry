@@ -31,10 +31,6 @@ const (
 	actionTypeResourceType       = "action_type"
 	metricResourceType           = "metric"
 	conceptGroupResourceType     = "concept_group"
-	toolBoxResourceType          = "tool_box"
-	functionResourceType         = "function"
-	mcpResourceType              = "mcp"
-	skillResourceType            = "skill"
 )
 
 type AuthorizationResource struct {
@@ -70,7 +66,7 @@ type authorizationResourceCatalog struct {
 	providers map[string]AuthorizationResourceProvider
 }
 
-func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
+func NewAuthorizationResourceCatalog(bknBackend, bknAgent, vegaBackend config.UpstreamConfig) (AuthorizationResourceCatalog, error) {
 	knowledgeNetworks, err := newAuthorizationResourceProvider(bknBackend, "/api/bkn-backend/in/v1/authorization-resources", "bkn backend", knowledgeNetworkResourceType)
 	if err != nil {
 		return nil, err
@@ -115,22 +111,6 @@ func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, veg
 	if err != nil {
 		return nil, err
 	}
-	toolBoxes, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", toolBoxResourceType)
-	if err != nil {
-		return nil, err
-	}
-	functions, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", functionResourceType)
-	if err != nil {
-		return nil, err
-	}
-	mcp, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", mcpResourceType)
-	if err != nil {
-		return nil, err
-	}
-	skills, err := newAuthorizationResourceProvider(executionFactory, "/api/agent-operator-integration/internal-v1/authorization-resources", "execution factory", skillResourceType)
-	if err != nil {
-		return nil, err
-	}
 	return &authorizationResourceCatalog{providers: map[string]AuthorizationResourceProvider{
 		knowledgeNetworkResourceType: knowledgeNetworks,
 		agentResourceType:            agents,
@@ -143,10 +123,6 @@ func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, veg
 		actionTypeResourceType:       actionTypes,
 		metricResourceType:           metrics,
 		conceptGroupResourceType:     conceptGroups,
-		toolBoxResourceType:          toolBoxes,
-		functionResourceType:         functions,
-		mcpResourceType:              mcp,
-		skillResourceType:            skills,
 	}}, nil
 }
 

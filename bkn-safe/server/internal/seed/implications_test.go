@@ -221,28 +221,11 @@ func TestShippedIndependentResourceFamiliesDeclareViewRequirements(t *testing.T)
 		types[resourceType.ID] = operations
 	}
 
+	// Execution Factory types are an Enterprise-build contribution; the
+	// Community catalog must not declare them.
 	for _, resourceType := range []string{"tool_box", "function", "mcp", "skill"} {
-		for _, operation := range []string{"modify", "delete", "publish", "unpublish", "authorize"} {
-			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "view" {
-				t.Errorf("%s/%s requires %v, want [view]", resourceType, operation, got)
-			}
-		}
-		for _, operation := range []string{"create", "view", "public_access", "execute"} {
-			if got := types[resourceType][operation]; len(got) != 0 {
-				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
-			}
-		}
-	}
-	for _, resourceType := range []string{"small_model", "large_model"} {
-		for _, operation := range []string{"modify", "delete"} {
-			if got := types[resourceType][operation]; len(got) != 1 || got[0] != "display" {
-				t.Errorf("%s/%s requires %v, want [display]", resourceType, operation, got)
-			}
-		}
-		for _, operation := range []string{"create", "display", "execute"} {
-			if got := types[resourceType][operation]; len(got) != 0 {
-				t.Errorf("%s/%s unexpectedly requires %v", resourceType, operation, got)
-			}
+		if _, ok := types[resourceType]; ok {
+			t.Errorf("Community catalog declares %s", resourceType)
 		}
 	}
 }
@@ -464,7 +447,6 @@ func TestIndependentResourceRequirementsDoNotChangeChecksAndLists(t *testing.T) 
 	}
 
 	viewByType := map[string]string{
-		"tool_box": "view", "function": "view", "mcp": "view", "skill": "view",
 		"small_model": "display", "large_model": "display",
 	}
 	for resourceType, viewOperation := range viewByType {

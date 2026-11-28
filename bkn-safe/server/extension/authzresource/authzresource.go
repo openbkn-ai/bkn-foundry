@@ -6,9 +6,9 @@
 // that core bkn-safe has no upstream for.
 //
 // Core lists and checks the resources of the services it ships with (bkn
-// backend, bkn agent, execution factory, vega backend) through fixed upstreams.
-// A resource type owned by a paid service — knowledge_base, served by the
-// enterprise kb-api — registers a Provider here instead, keyed by its resource
+// backend, bkn agent, vega backend) through fixed upstreams. A resource type
+// owned by a paid service — knowledge_base, served by the enterprise kb-api, or
+// the Execution Factory types tool_box, function, mcp and skill — registers a Provider here instead, keyed by its resource
 // type. Core consults the socket only for types it does not handle itself:
 //
 //   - the authorization workbench lists and resolves the type's resources

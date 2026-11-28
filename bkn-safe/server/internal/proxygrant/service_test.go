@@ -14,6 +14,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/managedproxy"
@@ -555,7 +556,31 @@ func TestKNBindingDerivesFromOperationWithoutAuthorize(t *testing.T) {
 	assertAllowed(t, f, true)
 }
 
+// registerExecutionFactoryProxyOperations stands in for an edition build that
+// contributes the Execution Factory types through extension/authzseed.
+func registerExecutionFactoryProxyOperations(t *testing.T) {
+	t.Helper()
+	authzseed.ResetForTest()
+	authzseed.Register(authzseed.Extension{ProxyOperations: map[string][]string{
+		"tool_box": {"execute"}, "function": {"execute"}, "mcp": {"execute"}, "skill": {"execute"},
+	}})
+	t.Cleanup(authzseed.ResetForTest)
+}
+
+func TestExecutionFactorySourcesAreInvalidWithoutAnExtension(t *testing.T) {
+	f := newFixture(t)
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "skill"} {
+		request := f.request("source-"+resourceType, "binding-"+resourceType, resourceType+"-1")
+		request.Source.ResourceType = resourceType
+		request.Source.Operation = "execute"
+		if _, err := f.service.Check(t.Context(), request); !errors.Is(err, proxygrant.ErrInvalidRequest) {
+			t.Fatalf("%s Check() error = %v, want invalid request", resourceType, err)
+		}
+	}
+}
+
 func TestKNBindingDerivesExecuteOperationsWithoutAuthorize(t *testing.T) {
+	registerExecutionFactoryProxyOperations(t)
 	f := newFixture(t)
 	for _, resourceType := range []string{"tool_box", "mcp"} {
 		if err := f.db.Create(&model.ResourceType{ID: resourceType, Name: resourceType}).Error; err != nil {
@@ -597,6 +622,7 @@ func TestKNBindingDerivesExecuteOperationsWithoutAuthorize(t *testing.T) {
 }
 
 func TestSkillCapabilityBindingAcceptsOnlyExecute(t *testing.T) {
+	registerExecutionFactoryProxyOperations(t)
 	f := newFixture(t)
 	if err := f.db.Create(&model.ResourceType{ID: "skill", Name: "skill"}).Error; err != nil {
 		t.Fatal(err)

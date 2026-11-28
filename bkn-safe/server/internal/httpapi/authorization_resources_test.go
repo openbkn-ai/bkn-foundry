@@ -21,7 +21,7 @@ func TestAuthorizationResourceCatalogCoversEveryObjectGrantProvider(t *testing.T
 		wantPath := map[string]string{
 			"agent":          "/api/bkn-agent/in/v1/authorization-resources",
 			"agent_tpl":      "/api/bkn-agent/in/v1/authorization-resources",
-			"skill":          "/api/agent-operator-integration/internal-v1/authorization-resources",
+			"catalog":        "/api/vega-backend/in/v1/authorization-resources",
 			"connector_type": "/api/vega-backend/in/v1/authorization-resources",
 		}[resourceType]
 		if r.URL.Path != wantPath {
@@ -36,11 +36,11 @@ func TestAuthorizationResourceCatalogCoversEveryObjectGrantProvider(t *testing.T
 	defer server.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, resourceType := range []string{"agent", "agent_tpl", "skill", "connector_type"} {
+	for _, resourceType := range []string{"agent", "agent_tpl", "catalog", "connector_type"} {
 		t.Run(resourceType, func(t *testing.T) {
 			resourceID := resourceType + "-1"
 			if resourceType == "agent_tpl" {
@@ -73,7 +73,7 @@ func TestAuthorizationResourcesForwardsKnowledgeNetworkQuery(t *testing.T) {
 		_, _ = w.Write([]byte(`{"entries":[{"id":"kn-1","name":"Supply"}],"total":1}`))
 	}))
 	defer backend.Close()
-	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
+	catalog, err := NewAuthorizationResourceCatalog(config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}, config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestAuthorizationResourceCatalogResolvesExactProducerSnapshot(t *testing.T)
 	}))
 	defer backend.Close()
 	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestAuthorizationResourceCatalogAcceptsProducerNameEqualToID(t *testing.T) 
 	}))
 	defer backend.Close()
 	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,36 +149,35 @@ func TestAuthorizationResourcesRejectsUnsupportedResourceType(t *testing.T) {
 	}
 }
 
-func TestAuthorizationResourcesForwardsExecutionFactoryQuery(t *testing.T) {
+// Execution Factory resource types are not part of the Community authorization
+// model: the catalog neither lists nor resolves them, and no upstream is called.
+func TestAuthorizationResourcesDoNotKnowExecutionFactoryTypes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	executionFactory := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/agent-operator-integration/internal-v1/authorization-resources" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		if got := r.URL.Query().Get("resource_type"); got != "skill" {
-			t.Fatalf("resource_type = %q", got)
-		}
-		if got := r.URL.Query().Get("direction"); got != "desc" {
-			t.Fatalf("direction = %q", got)
-		}
-		_, _ = w.Write([]byte(`{"entries":[{"id":"skill-1","name":"Runbook"}],"total":1}`))
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"entries":[],"total":0}`))
 	}))
-	defer executionFactory.Close()
-	catalog, err := NewAuthorizationResourceCatalog(
-		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
-		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
-		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
-		config.UpstreamConfig{BaseURL: executionFactory.URL, Timeout: time.Second},
-	)
+	defer upstream.Close()
+	cfg := config.UpstreamConfig{BaseURL: upstream.URL, Timeout: time.Second}
+	catalog, err := NewAuthorizationResourceCatalog(cfg, cfg, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := gin.New()
 	registerAuthorizationResources(r.Group("/api/safe/v1/admin"), catalog)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type=skill&direction=desc", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "skill"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/safe/v1/admin/authorization-resources?resource_type="+resourceType, nil))
+		if w.Code == http.StatusOK {
+			t.Fatalf("%s listed: %s", resourceType, w.Body.String())
+		}
+		if _, err := catalog.Resolve(t.Context(), resourceType, "id-1"); err == nil {
+			t.Fatalf("%s resolved", resourceType)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("upstream called %d times for Execution Factory types", calls)
 	}
 }
 
@@ -199,7 +198,7 @@ func TestAuthorizationResourcesForwardsVegaQuery(t *testing.T) {
 	defer vega.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +225,7 @@ func TestAuthorizationResourcesForwardsVegaResourceQuery(t *testing.T) {
 	defer vega.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: vega.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +254,7 @@ func TestAuthorizationResourcesForwardsChildParentQuery(t *testing.T) {
 	}))
 	defer backend.Close()
 	upstream := config.UpstreamConfig{BaseURL: backend.URL, Timeout: time.Second}
-	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream, upstream)
+	catalog, err := NewAuthorizationResourceCatalog(upstream, upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}

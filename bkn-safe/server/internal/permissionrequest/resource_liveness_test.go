@@ -1,6 +1,7 @@
 package permissionrequest
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,7 +23,7 @@ func TestResourceLivenessEscapesResourceIDAsOnePathSegment(t *testing.T) {
 	defer server.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second}
-	resolver, err := NewHTTPResourceLivenessResolver(upstream, upstream, upstream)
+	resolver, err := NewHTTPResourceLivenessResolver(upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestResourceLivenessDoesNotFollowUpstreamRedirects(t *testing.T) {
 	defer server.Close()
 
 	upstream := config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second}
-	resolver, err := NewHTTPResourceLivenessResolver(upstream, upstream, upstream)
+	resolver, err := NewHTTPResourceLivenessResolver(upstream, upstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,5 +54,30 @@ func TestResourceLivenessDoesNotFollowUpstreamRedirects(t *testing.T) {
 	}
 	if redirectFollowed {
 		t.Fatal("liveness client followed an upstream redirect")
+	}
+}
+
+// Execution Factory resource types are not part of the Community authorization
+// model: liveness reports them unsupported without calling any upstream.
+func TestResourceLivenessDoesNotKnowExecutionFactoryTypes(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	upstream := config.UpstreamConfig{BaseURL: server.URL, Timeout: time.Second}
+	resolver, err := NewHTTPResourceLivenessResolver(upstream, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, resourceType := range []string{"tool_box", "function", "mcp", "skill"} {
+		if _, err := resolver.Exists(t.Context(), resourceType, "id-1"); !errors.Is(err, ErrUnsupportedResourceType) {
+			t.Fatalf("Exists(%s) error = %v, want ErrUnsupportedResourceType", resourceType, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("upstream called %d times", calls)
 	}
 }

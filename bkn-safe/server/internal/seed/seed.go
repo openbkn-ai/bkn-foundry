@@ -16,6 +16,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
 	"log/slog"
 	"strings"
 
@@ -407,7 +408,33 @@ func reconcileSeedRoles(enforcer *authz.Enforcer) error {
 }
 
 func seedCatalog(db *gorm.DB) error {
-	return seedCatalogData(db, catalogJSON)
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		return err
+	}
+	// Types an edition build contributes are validated together with core's, so
+	// a parent or requirement may not dangle across the two.
+	known := map[string]bool{}
+	for _, rt := range c.ResourceTypes {
+		known[rt.ID] = true
+	}
+	for _, ext := range authzseed.Registered() {
+		if len(ext.Catalog) == 0 {
+			continue
+		}
+		var extra catalog
+		if err := json.Unmarshal(ext.Catalog, &extra); err != nil {
+			return fmt.Errorf("extension catalog: %w", err)
+		}
+		for _, rt := range extra.ResourceTypes {
+			if known[rt.ID] {
+				return fmt.Errorf("extension catalog redeclares resource type %q", rt.ID)
+			}
+			known[rt.ID] = true
+		}
+		c.ResourceTypes = append(c.ResourceTypes, extra.ResourceTypes...)
+	}
+	return seedCatalogParsed(db, c)
 }
 
 func seedCatalogData(db *gorm.DB, data []byte) error {
@@ -415,6 +442,10 @@ func seedCatalogData(db *gorm.DB, data []byte) error {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return err
 	}
+	return seedCatalogParsed(db, c)
+}
+
+func seedCatalogParsed(db *gorm.DB, c catalog) error {
 	// The hierarchy is validated BEFORE anything is written: a typo'd parent type
 	// or a parent_operation the parent does not define would otherwise be stored
 	// and then silently deny at enforce time, which reads as "the grant does not
@@ -540,6 +571,16 @@ func seedGrants(enforcer *authz.Enforcer) error {
 	var g grantsFile
 	if err := json.Unmarshal(grantsJSON, &g); err != nil {
 		return err
+	}
+	for _, ext := range authzseed.Registered() {
+		if len(ext.Grants) == 0 {
+			continue
+		}
+		var extra grantsFile
+		if err := json.Unmarshal(ext.Grants, &extra); err != nil {
+			return fmt.Errorf("extension grants: %w", err)
+		}
+		g.Grants = append(g.Grants, extra.Grants...)
 	}
 	return enforcer.Transaction(context.Background(), func(tx *authz.PolicyTransaction) error {
 		for _, gr := range g.Grants {

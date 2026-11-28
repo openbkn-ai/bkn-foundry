@@ -108,9 +108,6 @@ hydra:
 	if cfg.License.ServerURL != "https://license.openbkn.ai" {
 		t.Fatalf("license server_url = %q", cfg.License.ServerURL)
 	}
-	if cfg.Upstreams.ExecutionFactory.BaseURL != "http://agent-operator-integration:9000" {
-		t.Fatalf("execution factory base_url = %q", cfg.Upstreams.ExecutionFactory.BaseURL)
-	}
 	if cfg.Upstreams.BKNAgent.BaseURL != "http://bkn-agent:30800" {
 		t.Fatalf("bkn agent base_url = %q", cfg.Upstreams.BKNAgent.BaseURL)
 	}

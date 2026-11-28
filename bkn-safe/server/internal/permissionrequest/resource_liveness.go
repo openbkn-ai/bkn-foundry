@@ -25,13 +25,11 @@ type ResourceLivenessResolver interface {
 }
 
 type httpResourceLivenessResolver struct {
-	endpoints                    map[string]string
-	clients                      map[string]*http.Client
-	authorizationURL             string
-	authorizationClient          *http.Client
-	executionAuthorizationURL    string
-	executionAuthorizationClient *http.Client
-	accessorID                   string
+	endpoints           map[string]string
+	clients             map[string]*http.Client
+	authorizationURL    string
+	authorizationClient *http.Client
+	accessorID          string
 }
 
 // resourceResolverAccessorID is the platform service identity used only for
@@ -40,7 +38,7 @@ const resourceResolverAccessorID = "266c6a42-6131-4d62-8f39-853e7093701c"
 
 // NewHTTPResourceLivenessResolver builds resolvers for resource types whose
 // owning services already expose stable internal GET-by-ID endpoints.
-func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend config.UpstreamConfig) (ResourceLivenessResolver, error) {
+func NewHTTPResourceLivenessResolver(bknBackend, vegaBackend config.UpstreamConfig) (ResourceLivenessResolver, error) {
 	resolver := &httpResourceLivenessResolver{
 		endpoints:  make(map[string]string),
 		clients:    make(map[string]*http.Client),
@@ -65,22 +63,6 @@ func NewHTTPResourceLivenessResolver(bknBackend, executionFactory, vegaBackend c
 	if err := resolver.add(vegaBackend, "vega backend", "resource", "/api/vega-backend/in/v1/resources/"); err != nil {
 		return nil, err
 	}
-	if err := resolver.add(executionFactory, "execution factory", "tool_box", "/api/agent-operator-integration/internal-v1/tool-box/"); err != nil {
-		return nil, err
-	}
-	if err := resolver.add(executionFactory, "execution factory", "mcp", "/api/agent-operator-integration/internal-v1/mcp/"); err != nil {
-		return nil, err
-	}
-	executionBase, err := internalBaseURL(executionFactory.BaseURL, "execution factory")
-	if err != nil {
-		return nil, err
-	}
-	if executionFactory.Timeout <= 0 {
-		return nil, fmt.Errorf("execution factory timeout must be positive")
-	}
-	executionBase.Path = strings.TrimRight(executionBase.Path, "/") + "/api/agent-operator-integration/internal-v1/authorization-resources"
-	resolver.executionAuthorizationURL = executionBase.String()
-	resolver.executionAuthorizationClient = internalHTTPClient(executionFactory.Timeout)
 	return resolver, nil
 }
 
@@ -135,9 +117,6 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 	if isKnowledgeNetworkChild(resourceType) {
 		return r.existsChild(ctx, resourceType, resourceID)
 	}
-	if resourceType == "function" || resourceType == "skill" {
-		return r.existsExecutionFactoryResource(ctx, resourceType, resourceID)
-	}
 	endpoint, ok := r.endpoints[resourceType]
 	if !ok {
 		// A type an edition build serves (extension/authzresource); unknown and
@@ -155,7 +134,7 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 		return false, err
 	}
 	// BKN Backend and Vega internal reads authorize the caller identified by
-	// these headers. Execution Factory ignores them on its private read face.
+	// these headers.
 	request.Header.Set("x-account-id", r.accessorID)
 	request.Header.Set("x-account-type", "user")
 	response, err := r.clients[resourceType].Do(request)
@@ -170,51 +149,6 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 		return false, nil
 	default:
 		return false, fmt.Errorf("query %s liveness: upstream returned status %d", resourceType, response.StatusCode)
-	}
-}
-
-// Function and Skill have no private GET-by-ID endpoint. The execution
-// factory's internal authorization-resource catalog is the authoritative
-// read model used by bkn-safe's object-grant picker, so reuse it for a
-// fail-closed existence check.
-func (r *httpResourceLivenessResolver) existsExecutionFactoryResource(ctx context.Context, resourceType, resourceID string) (bool, error) {
-	for offset := 0; ; offset += 100 {
-		u, err := url.Parse(r.executionAuthorizationURL)
-		if err != nil {
-			return false, err
-		}
-		values := u.Query()
-		values.Set("resource_type", resourceType)
-		values.Set("sort", "name")
-		values.Set("direction", "asc")
-		values.Set("offset", strconv.Itoa(offset))
-		values.Set("limit", "100")
-		u.RawQuery = values.Encode()
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-		if err != nil {
-			return false, err
-		}
-		response, err := r.executionAuthorizationClient.Do(request)
-		if err != nil {
-			return false, fmt.Errorf("query %s liveness: %w", resourceType, err)
-		}
-		var page authorizationResourcePage
-		decodeErr := json.NewDecoder(response.Body).Decode(&page)
-		_ = response.Body.Close()
-		if response.StatusCode != http.StatusOK {
-			return false, fmt.Errorf("query %s liveness: upstream returned status %d", resourceType, response.StatusCode)
-		}
-		if decodeErr != nil {
-			return false, decodeErr
-		}
-		for _, entry := range page.Entries {
-			if entry.ID == resourceID {
-				return true, nil
-			}
-		}
-		if len(page.Entries) == 0 || offset+len(page.Entries) >= page.Total {
-			return false, nil
-		}
 	}
 }
 

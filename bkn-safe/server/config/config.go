@@ -29,11 +29,10 @@ type Config struct {
 // UpstreamsConfig contains environment-specific base URLs. Provider paths and
 // response mappings remain compiled into bkn-safe.
 type UpstreamsConfig struct {
-	BKNBackend       UpstreamConfig `yaml:"bkn_backend"`
-	BKNAgent         UpstreamConfig `yaml:"bkn_agent"`
-	ExecutionFactory UpstreamConfig `yaml:"execution_factory"`
-	VegaBackend      UpstreamConfig `yaml:"vega_backend"`
-	OntologyQuery    UpstreamConfig `yaml:"ontology_query"`
+	BKNBackend    UpstreamConfig `yaml:"bkn_backend"`
+	BKNAgent      UpstreamConfig `yaml:"bkn_agent"`
+	VegaBackend   UpstreamConfig `yaml:"vega_backend"`
+	OntologyQuery UpstreamConfig `yaml:"ontology_query"`
 }
 
 type UpstreamConfig struct {

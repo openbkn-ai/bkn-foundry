@@ -34,6 +34,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/federation"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
@@ -117,6 +118,10 @@ func Boot(opts Options) (*App, error) {
 		return nil, fmt.Errorf("retire business provenance owner: %w", err)
 	}
 
+	// Extensions contribute their authorization vocabulary before the seed
+	// reads it; nothing registers one after this point.
+	authzseed.Seal()
+
 	if cfg.SeedOnStart {
 		if err := seed.ApplyWithAudit(db, enforcer, auditRuntime.Recorder); err != nil {
 			return nil, fmt.Errorf("seed: %w", err)
@@ -156,11 +161,11 @@ func Boot(opts Options) (*App, error) {
 		os.Getenv("BKN_AUDIT_ENVIRONMENT"),
 		func(outcome string) { auditRuntime.Telemetry.ObserveForSource("bkn-safe-security", outcome) },
 	)
-	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.BKNAgent, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
+	authorizationResources, err := httpapi.NewAuthorizationResourceCatalog(cfg.Upstreams.BKNBackend, cfg.Upstreams.BKNAgent, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("authorization resource catalog: %w", err)
 	}
-	permissionRequestResources, err := permissionrequest.NewHTTPResourceLivenessResolver(cfg.Upstreams.BKNBackend, cfg.Upstreams.ExecutionFactory, cfg.Upstreams.VegaBackend)
+	permissionRequestResources, err := permissionrequest.NewHTTPResourceLivenessResolver(cfg.Upstreams.BKNBackend, cfg.Upstreams.VegaBackend)
 	if err != nil {
 		return nil, fmt.Errorf("permission request resource resolver: %w", err)
 	}

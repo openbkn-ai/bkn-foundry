@@ -27,7 +27,7 @@ import (
 // under /admin (admin-only). It manages the "grant a specific object to a
 // specific user or role" matrix that sits ON TOP of role-based RBAC: each grant
 // binds one accessor to concrete ops on one concrete resource instance
-// (catalog/tool_box/knowledge_network/…).
+// (catalog/knowledge_network/…).
 //
 // This is the gateway-exposed, audited management surface for object grants.
 // The internal /api/safe/v1/authz/policies endpoints stay for service-to-service
@@ -43,7 +43,7 @@ import (
 //
 // Rejecting only the literal "*" is not enough: the casbin matcher is keyMatch,
 // which treats a "*" ANYWHERE in the object as a wildcard. An id of "tb-*" is
-// stored verbatim by SetObjectPermissions and then matches every tool_box whose
+// stored verbatim by SetObjectPermissions and then matches every catalog whose
 // id starts with "tb-", including ones created later — a grant the console can
 // neither show nor revoke, because every screen there works from a concrete id.
 //
@@ -114,8 +114,8 @@ const (
 	// The three types that carry data no longer have one: sharing a knowledge
 	// network, a data connection or a table is its creator's call, so the grant
 	// sits on the object rather than the type (#513, #977, #1150). A role may
-	// still hold it type-wide — for example on connector_type or the
-	// execution-factory types (tool_box, function, mcp, skill) — and a custom
+	// still hold it type-wide — for example on connector_type or a type an
+	// edition build contributes — and a custom
 	// role may be given one anywhere; this branch is what makes such a grant
 	// decide something.
 	authorityTypeAuthorize grantAuthority = "type-authorize"
@@ -236,7 +236,7 @@ func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, registry *authz.Re
 
 // resourceViewOperation resolves the view vocabulary from the registered
 // operation catalog. The authorization engine does not normalize these names:
-// BKN/Vega use view_detail, execution-factory uses view, and models use display.
+// BKN/Vega use view_detail, workshop and edition-contributed types use view, and models use display.
 func resourceViewOperation(ctx context.Context, registry *authz.Registry, resourceType string) (string, error) {
 	ops, err := registry.Operations(ctx, resourceType)
 	if err != nil {
@@ -301,7 +301,7 @@ func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, op
 }
 
 func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service, catalog AuthorizationResourceCatalog, reviewerSync reviewerInboxSyncer) {
- registerPermissionProjection(g, e, db)
+	registerPermissionProjection(g, e, db)
 	// GET /policies?resource_type=&resource_id= — the p-lines written directly
 	// against this exact object key, grouped by subject. -> { entries:[
 	// { accessor_id, resource{type,id}, operations:[...] } ] }

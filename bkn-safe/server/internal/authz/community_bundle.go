@@ -4,7 +4,11 @@
 
 package authz
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzseed"
+)
 
 // communityBundleOperations is the reviewed Community business-operation
 // contract. It is deliberately an explicit per-root whitelist: the operation
@@ -18,10 +22,6 @@ var communityBundleOperations = map[string][]string{
 	"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
 	"knowledge_base":    {"view_detail", "modify", "delete", "query_data", "document_manage", "task_manage"},
 	"connector_type":    {"view_detail", "modify", "delete"},
-	"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"mcp":               {"view", "modify", "delete", "publish", "unpublish", "execute"},
-	"skill":             {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"small_model":       {"display", "modify", "delete", "execute"},
 	"large_model":       {"display", "modify", "delete", "execute"},
 	"agent": {
@@ -38,7 +38,8 @@ var communityBundleOperations = map[string][]string{
 func CommunityBundleOperations(resourceType string) ([]string, bool) {
 	ops, ok := communityBundleOperations[resourceType]
 	if !ok {
-		return nil, false
+		// A type an edition build contributes (extension/authzseed).
+		return authzseed.BundleOperations(resourceType)
 	}
 	return append([]string(nil), ops...), true
 }
@@ -53,7 +54,8 @@ func isCommunityBundleSourceRow(row []string) bool {
 }
 
 func communityBundleAllows(resourceType, operation string) bool {
-	for _, allowed := range communityBundleOperations[resourceType] {
+	ops, _ := CommunityBundleOperations(resourceType)
+	for _, allowed := range ops {
 		if allowed == operation {
 			return true
 		}
