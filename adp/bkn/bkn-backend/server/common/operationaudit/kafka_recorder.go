@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
@@ -24,6 +25,7 @@ type KafkaPublisher interface {
 // Audit. The HTTP middleware owns business-response isolation and logs errors
 // as coverage gaps; this adapter never retries or writes a local Outbox.
 type KafkaRecorder struct {
+	mu          sync.RWMutex
 	publisher   KafkaPublisher
 	environment string
 	telemetry   *PublishTelemetry
@@ -37,8 +39,25 @@ func NewKafkaRecorder(publisher KafkaPublisher, environment string, telemetry ..
 	return recorder
 }
 
+// SetPublisher replaces the initially unavailable publisher without changing
+// the recorder already registered with the HTTP handlers.
+func (r *KafkaRecorder) SetPublisher(publisher KafkaPublisher) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.publisher = publisher
+}
+
 func (r *KafkaRecorder) Record(_ context.Context, entry Entry) error {
-	if r == nil || r.publisher == nil {
+	var publisher KafkaPublisher
+	if r != nil {
+		r.mu.RLock()
+		publisher = r.publisher
+		r.mu.RUnlock()
+	}
+	if publisher == nil {
 		r.reportDrop("unavailable", "")
 		return errors.New("audit Kafka publisher is not configured")
 	}
@@ -52,7 +71,7 @@ func (r *KafkaRecorder) Record(_ context.Context, entry Entry) error {
 		}
 		return err
 	}
-	if result := r.publisher.TryPublish(value); result != auditpublisher.Accepted {
+	if result := publisher.TryPublish(value); result != auditpublisher.Accepted {
 		r.reportDrop(strings.TrimPrefix(string(result), "dropped_"), "")
 		return fmt.Errorf("audit Kafka publish disposition: %s", result)
 	}

@@ -136,6 +136,67 @@ func basicOperationAuditActor(authorization string, visitor hydra.Visitor) opera
 	}
 }
 
+// ExtensionAuditChange is a committed management change supplied by an app
+// extension. The host resolves the verified actor and publishes it alongside
+// its built-in operation audit events.
+type ExtensionAuditChange struct {
+	Action        string
+	TargetType    string
+	TargetID      string
+	TargetName    string
+	ChangedFields []string
+}
+
+const extensionAuditChangeKey = "bkn.operation_audit.extension_change"
+
+type extensionAuditChange struct {
+	visitor hydra.Visitor
+	change  ExtensionAuditChange
+}
+
+// SetExtensionAuditChange reports one actual state change on the current
+// request. Callers supply the visitor returned by their token verification.
+func SetExtensionAuditChange(c *gin.Context, visitor hydra.Visitor, change ExtensionAuditChange) {
+	if _, exists := c.Get(extensionAuditChangeKey); !exists {
+		operationAuditRequestID(c)
+		c.Set(extensionAuditChangeKey, extensionAuditChange{visitor: visitor, change: change})
+	}
+}
+
+func (r *restHandler) publishExtensionAudit(c *gin.Context) {
+	if r == nil || r.auditRecorder == nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 ||
+		c.Writer.Status() == http.StatusAccepted || c.GetBool("operation_audit_skip") ||
+		strings.EqualFold(strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE)), http.MethodGet) {
+		return
+	}
+	switch c.Request.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	default:
+		return
+	}
+	raw, _ := c.Get(extensionAuditChangeKey)
+	pending, ok := raw.(extensionAuditChange)
+	if !ok || pending.visitor.ID == "" || pending.visitor.Type != hydra.VisitorType_User || c.Param("kn_id") == "" {
+		return
+	}
+	actor := r.operationAuditIdentity(c.Request.Context(), c.GetHeader("Authorization"), pending.visitor)
+	if actor.ActorID != pending.visitor.ID || actor.ActorName == "" || actor.ActorName == actor.ActorID {
+		logger.Warn("extension operation audit fact rejected: missing readable authenticated actor")
+		return
+	}
+	change := pending.change
+	now := time.Now().UTC()
+	_ = r.auditRecorder.Record(c.Request.Context(), operationaudit.Entry{
+		EventID: uuid.NewV7().String(), EventTime: now, RecordedAt: now,
+		KnowledgeNetworkID: c.Param("kn_id"), ActorID: actor.ActorID, ActorName: actor.ActorName,
+		ActorType: actor.ActorType, AuthMethod: actor.AuthMethod, CredentialID: actor.CredentialID,
+		RequestID: operationAuditRequestID(c), SourceChannel: operationAuditSourceChannel(c.FullPath()),
+		Method: c.Request.Method, HTTPStatus: c.Writer.Status(), Action: change.Action, TargetType: change.TargetType,
+		TargetID: change.TargetID, TargetName: change.TargetName, Outcome: "success",
+		ChangeSummary: map[string]any{"changed_fields": change.ChangedFields},
+	})
+}
+
 // OperationAudit records exactly one bounded management fact after a registered
 // request attempt. It never changes the business response when audit persistence
 // fails; the Kafka recorder counts and rate-limits the resulting coverage gap.
@@ -144,6 +205,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		rule, registered := registeredOperationAudit(c.Request.Method, c.FullPath(), c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 		if !registered {
 			c.Next()
+			r.publishExtensionAudit(c)
 			return
 		}
 		requestBody := captureRequestBody(c.Request)

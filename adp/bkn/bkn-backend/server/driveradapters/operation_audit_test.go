@@ -153,6 +153,85 @@ func TestOperationAuditOversizedNetworkPathStillProducesFailureFact(t *testing.T
 	}
 }
 
+func TestExtensionOperationAuditPublishesOnlyCommittedChanges(t *testing.T) {
+	for _, tt := range []struct {
+		name, method, override, actorName string
+		status                            int
+		report, wantRecord                bool
+	}{
+		{name: "committed", method: http.MethodPatch, status: http.StatusOK, actorName: "Alice", report: true, wantRecord: true},
+		{name: "deleted", method: http.MethodDelete, status: http.StatusNoContent, actorName: "Alice", report: true, wantRecord: true},
+		{name: "no change", method: http.MethodPatch, status: http.StatusOK, actorName: "Alice"},
+		{name: "rollback", method: http.MethodPatch, status: http.StatusInternalServerError, actorName: "Alice"},
+		{name: "denied", method: http.MethodPatch, status: http.StatusForbidden, actorName: "Alice", report: true},
+		{name: "asynchronous", method: http.MethodPost, status: http.StatusAccepted, actorName: "Alice", report: true},
+		{name: "query", method: http.MethodGet, status: http.StatusOK, actorName: "Alice", report: true},
+		{name: "query override", method: http.MethodPost, override: http.MethodGet, status: http.StatusOK, actorName: "Alice", report: true},
+		{name: "unresolved identity", method: http.MethodPatch, status: http.StatusOK, report: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := &recordingOperationAuditStore{}
+			host := &restHandler{auditRecorder: recorder, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: visitor.ID, ActorName: tt.actorName, ActorType: string(visitor.Type), AuthMethod: "oauth"}
+			}}
+			engine := gin.New()
+			engine.Use(host.OperationAudit())
+			const route = "/api/bkn-backend/v1/knowledge-networks/:kn_id/eval/cases/:case_id"
+			engine.Handle(tt.method, route, func(c *gin.Context) {
+				if tt.report {
+					visitor := hydra.Visitor{ID: "user-a", Type: hydra.VisitorType_User, TokenID: "credential-id"}
+					SetExtensionAuditChange(c, visitor, ExtensionAuditChange{
+						Action: "disable", TargetType: "eval_case", TargetID: c.Param("case_id"),
+						TargetName: "Committed Case", ChangedFields: []string{"enabled"},
+					})
+					SetExtensionAuditChange(c, visitor, ExtensionAuditChange{
+						Action: "update", TargetType: "eval_case", TargetID: "duplicate",
+					})
+				}
+				c.Status(tt.status)
+			})
+			req := httptest.NewRequest(tt.method, "/api/bkn-backend/v1/knowledge-networks/kn-1/eval/cases/case-1", strings.NewReader("private evaluation payload"))
+			req.Header.Set("Authorization", "Bearer private-credential")
+			req.Header.Set("X-Request-Id", "request-1")
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, tt.override)
+			res := httptest.NewRecorder()
+			engine.ServeHTTP(res, req)
+			if res.Code != tt.status {
+				t.Fatalf("status = %d, want %d", res.Code, tt.status)
+			}
+			if !tt.wantRecord {
+				if len(recorder.entries) != 0 {
+					t.Fatalf("published %d unexpected records", len(recorder.entries))
+				}
+				return
+			}
+			if res.Result().Header.Get(headerBKNRequestID) != "request-1" {
+				t.Fatalf("response lacks the audit request ID: %v", res.Result().Header)
+			}
+			if len(recorder.entries) != 1 {
+				t.Fatalf("published %d records, want 1", len(recorder.entries))
+			}
+			entry := recorder.entries[0]
+			if entry.Action != "disable" || entry.TargetID != "case-1" || entry.TargetName != "Committed Case" ||
+				entry.KnowledgeNetworkID != "kn-1" || entry.RequestID != "request-1" || entry.ActorID != "user-a" || entry.ActorName != "Alice" {
+				t.Fatalf("unexpected audit entry: %+v", entry)
+			}
+			record, err := operationaudit.BuildKafkaAuditRecord(entry, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, private := range []string{"private evaluation payload", "private-credential", "credential-id"} {
+				if strings.Contains(string(record), private) {
+					t.Fatalf("audit record contains %q", private)
+				}
+			}
+			if !strings.Contains(string(record), `"changed_fields":["enabled"]`) {
+				t.Fatalf("audit record omitted changed fields: %s", record)
+			}
+		})
+	}
+}
+
 type recordingOperationAuditStore struct {
 	entries []operationaudit.Entry
 }
