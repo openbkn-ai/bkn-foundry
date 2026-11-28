@@ -185,6 +185,9 @@ func (r *restHandler) publishExtensionAudit(c *gin.Context) {
 		return
 	}
 	change := pending.change
+	if change.ChangedFields == nil {
+		change.ChangedFields = []string{}
+	}
 	now := time.Now().UTC()
 	_ = r.auditRecorder.Record(c.Request.Context(), operationaudit.Entry{
 		EventID: uuid.NewV7().String(), EventTime: now, RecordedAt: now,

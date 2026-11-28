@@ -232,6 +232,57 @@ func TestExtensionOperationAuditPublishesOnlyCommittedChanges(t *testing.T) {
 	}
 }
 
+func TestExtensionOperationAuditSerializesChangedFieldsAsArray(t *testing.T) {
+	for _, test := range []struct {
+		name, action, method string
+		fields               []string
+		want                 string
+	}{
+		{name: "create without fields", action: "create", method: http.MethodPost, want: "[]"},
+		{name: "delete without fields", action: "delete", method: http.MethodDelete, want: "[]"},
+		{name: "archive without fields", action: "archive", method: http.MethodPatch, want: "[]"},
+		{name: "explicit empty fields", action: "update", method: http.MethodPatch, fields: []string{}, want: "[]"},
+		{name: "ordered fields", action: "update", method: http.MethodPatch, fields: []string{"title", "enabled"}, want: `["title","enabled"]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &recordingOperationAuditStore{}
+			host := &restHandler{auditRecorder: recorder, auditIdentityResolver: func(_ context.Context, _ string, visitor hydra.Visitor) operationAuditActor {
+				return operationAuditActor{ActorID: visitor.ID, ActorName: "Alice", ActorType: string(visitor.Type), AuthMethod: "oauth"}
+			}}
+			engine := gin.New()
+			engine.Use(host.OperationAudit())
+			engine.Handle(test.method, "/api/bkn-backend/v1/knowledge-networks/:kn_id/eval/cases/:case_id", func(c *gin.Context) {
+				change := ExtensionAuditChange{Action: test.action, TargetType: "eval_case", TargetID: c.Param("case_id"), TargetName: "Committed Case"}
+				if test.fields != nil {
+					change.ChangedFields = test.fields
+				}
+				SetExtensionAuditChange(c, hydra.Visitor{ID: "user-a", Type: hydra.VisitorType_User}, change)
+				c.Status(http.StatusNoContent)
+			})
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, httptest.NewRequest(test.method, "/api/bkn-backend/v1/knowledge-networks/kn-1/eval/cases/case-1", nil))
+			if response.Code != http.StatusNoContent || len(recorder.entries) != 1 {
+				t.Fatalf("status=%d records=%d", response.Code, len(recorder.entries))
+			}
+			record, err := operationaudit.BuildKafkaAuditRecord(recorder.entries[0], "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded struct {
+				Facts struct {
+					ChangedFields json.RawMessage `json:"changed_fields"`
+				} `json:"facts"`
+			}
+			if err := json.Unmarshal(record, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if string(decoded.Facts.ChangedFields) != test.want {
+				t.Fatalf("facts.changed_fields=%s want %s", decoded.Facts.ChangedFields, test.want)
+			}
+		})
+	}
+}
+
 type recordingOperationAuditStore struct {
 	entries []operationaudit.Entry
 }
