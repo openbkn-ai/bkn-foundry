@@ -8,7 +8,7 @@ package operationaudit
 import "time"
 
 var allowedActions = map[string]struct{}{
-	"create": {}, "update": {}, "delete": {}, "import": {},
+	"create": {}, "update": {}, "delete": {}, "archive": {}, "import": {},
 	"add_members": {}, "remove_members": {}, "enable": {}, "disable": {},
 	"attach": {}, "detach": {},
 }
@@ -17,6 +17,7 @@ var allowedTargetTypes = map[string]struct{}{
 	"knowledge_network": {}, "object_type": {}, "relation_type": {}, "action_type": {},
 	"metric": {}, "risk_type": {}, "concept_group": {}, "action_schedule": {},
 	"kn_capability_binding": {}, "value_type": {},
+	"eval_case": {}, "eval_template_config": {}, "eval_scope": {}, "eval_run_plan": {}, "eval_rule_application": {},
 }
 
 var allowedOutcomes = map[string]struct{}{"success": {}, "failure": {}, "denied": {}}
