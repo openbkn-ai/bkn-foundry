@@ -28,7 +28,6 @@
 package authzseed
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -114,7 +113,7 @@ func lookup(resourceType string, pick func(Extension) map[string][]string) ([]st
 // ResetForTest empties and reopens the registry. Test binaries only.
 func ResetForTest() {
 	if !testing.Testing() {
-		panic(fmt.Sprint("authzseed: ResetForTest outside a test binary"))
+		panic("authzseed: ResetForTest outside a test binary")
 	}
 	mu.Lock()
 	defer mu.Unlock()
