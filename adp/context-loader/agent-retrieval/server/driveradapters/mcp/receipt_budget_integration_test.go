@@ -19,6 +19,7 @@ import (
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/knversion"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
@@ -237,6 +238,72 @@ func TestManagedListingStaysWithinTheLimitWithItsReceipt(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A managed call repeated against a newer draft answers from its second run, so its receipt
+// names the types that run returned and none from the first: refs left over from the first
+// run would name the old draft and outgrow the room the second run left for its receipt.
+func TestRepeatedCallReceiptNamesOnlyTheLastRun(t *testing.T) {
+	t.Setenv("CONFIG_PROFILE", "../../infra/config")
+	core := receiptEchoingCore(t)
+	defer core.Close()
+
+	srv, _ := newMCPServer(bkntrace.NewLifecycleClient(core.URL, core.Client()))
+	registered := srv.GetTool(toolKeyGetObjectTypes)
+	if registered == nil {
+		t.Fatalf("assembled MCP server omitted %s", toolKeyGetObjectTypes)
+	}
+	runs := 0
+	srv.AddTool(registered.Tool, withKnVersion(func(ctx context.Context, _ mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		runs++
+		if runs == 1 {
+			bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", "kn-001", []string{"ot_first_a", "ot_first_b"}, nil, true)
+			knversion.FromContext(ctx).Observe(http.StatusConflict, http.Header{},
+				[]byte(`{"error_code":"`+knversion.CodeDraftRevisionMismatch+`"}`))
+			return mcpsdk.NewToolResultError("draft moved"), nil
+		}
+		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", "kn-001", []string{"ot_second"}, nil, true)
+		return mcpsdk.NewToolResultStructured(map[string]any{"object_types": []any{map[string]any{"id": "ot_second"}}}, "ot_second"), nil
+	}))
+	var sequence atomic.Uint64
+	handler := newMCPStreamableHTTPHandler(srv, endpointPath)
+	mcpHTTP := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r.WithContext(trustedMCPIntegrationContext(r.Context(), sequence.Add(1))))
+	}))
+	defer mcpHTTP.Close()
+
+	ctx := context.Background()
+	client := newInitializedMCPClient(t, ctx, mcpHTTP.URL+endpointPath, "2025-11-25")
+	defer func() { _ = client.Close() }()
+
+	result, err := client.CallTool(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
+		Name: toolKeyGetObjectTypes,
+		Arguments: map[string]any{
+			"kn_id": "kn-001", "kn_version": "draft",
+			"bkn_context": map[string]any{"conversation_id": "conv-a", "interaction_id": "int-a"},
+		},
+	}})
+	if err != nil || result.IsError {
+		t.Fatalf("call: %v %+v", err, result)
+	}
+	if runs != 2 {
+		t.Fatalf("runs = %d, want the call repeated once against the new draft", runs)
+	}
+	payload, _ := result.StructuredContent.(map[string]any)
+	receipt, _ := payload["bkn_receipt"].(map[string]any)
+	if receipt["receipt_status"] != "completed" {
+		t.Fatalf("no completed receipt: %+v", payload)
+	}
+	var objectRefs []string
+	refs, _ := receipt["business_refs"].([]any)
+	for _, ref := range refs {
+		if entry, _ := ref.(map[string]any); entry["ref_type"] == "object_type" {
+			objectRefs = append(objectRefs, entry["ref_id"].(string))
+		}
+	}
+	if len(objectRefs) != 1 || objectRefs[0] != "object:kn-001:ot_second" {
+		t.Fatalf("receipt names object types %v, want only the second run's object:kn-001:ot_second", objectRefs)
 	}
 }
 

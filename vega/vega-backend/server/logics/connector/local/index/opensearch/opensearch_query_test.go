@@ -191,7 +191,7 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
-	assert.Equal(t, int64(4), result.TotalCount)
+	assert.Equal(t, new(int64(4)), result.TotalCount)
 }
 
 func TestOpenSearchQueryUsesTextKeywordField(t *testing.T) {
@@ -298,7 +298,7 @@ func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {
 	require.Len(t, result.Entries, 1)
 	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
 	assert.Equal(t, float64(1.5), result.Entries[0]["_score"])
-	assert.Equal(t, int64(1), result.TotalCount)
+	assert.Equal(t, new(int64(1)), result.TotalCount)
 }
 
 func TestValidateAnalyzerCallsOpenSearch(t *testing.T) {
@@ -715,12 +715,12 @@ func TestOpenSearchConnectorExecuteQueryRequiresCompleteShards(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		body    string
-		total   int64
+		total   *int64
 		wantErr string
 	}{
-		{name: "returns the selected document", body: valid, total: 9},
-		{name: "accepts shards skipped by prefiltering", body: strings.Replace(valid, `"failed":0`, `"skipped":1,"failed":0`, 1), total: 9},
-		{name: "accepts a confirmed empty index", body: empty},
+		{name: "returns the selected document", body: valid, total: new(int64(9))},
+		{name: "accepts shards skipped by prefiltering", body: strings.Replace(valid, `"failed":0`, `"skipped":1,"failed":0`, 1), total: new(int64(9))},
+		{name: "accepts a confirmed empty index", body: empty, total: new(int64(0))},
 		{name: "rejects timeout", body: strings.Replace(empty, `"timed_out":false`, `"timed_out":true`, 1), wantErr: "index search timed out"},
 		{name: "rejects premature termination when exact total is requested", body: strings.Replace(empty, `"timed_out":false`, `"timed_out":false,"terminated_early":true`, 1), wantErr: "terminated before completion"},
 		{name: "rejects failed shards", body: strings.Replace(empty, `"failed":0`, `"failed":1`, 1), wantErr: "incomplete index search"},
@@ -728,8 +728,8 @@ func TestOpenSearchConnectorExecuteQueryRequiresCompleteShards(t *testing.T) {
 		{name: "rejects a missing successful shard count", body: strings.Replace(empty, `"successful":2,`, "", 1), wantErr: "incomplete index search"},
 		{name: "rejects a missing failed shard count", body: strings.Replace(empty, `,"failed":0`, "", 1), wantErr: "incomplete index search"},
 		{name: "rejects missing shard status", body: `{"timed_out":false,"hits":{"total":{"value":0,"relation":"eq"},"hits":[]}}`, wantErr: "incomplete index search"},
-		{name: "rejects inexact total", body: strings.Replace(empty, `"relation":"eq"`, `"relation":"gte"`, 1), wantErr: "no exact total"},
-		{name: "rejects missing exact total", body: strings.Replace(empty, `"total":{"value":0,"relation":"eq"},`, "", 1), wantErr: "no exact total"},
+		{name: "omits an inexact total", body: strings.Replace(valid, `"relation":"eq"`, `"relation":"gte"`, 1)},
+		{name: "omits an unavailable total", body: strings.Replace(valid, `"total":{"value":9,"relation":"eq"},`, "", 1)},
 		{name: "rejects a missing document list", body: strings.Replace(empty, `,"hits":[]`, "", 1), wantErr: "no document list"},
 		{name: "rejects an inconsistent empty total", body: strings.Replace(valid, `"value":9`, `"value":0`, 1), wantErr: "more documents than its exact total"},
 	} {
@@ -765,7 +765,7 @@ func TestOpenSearchConnectorExecuteQueryRequiresCompleteShards(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.total, result.TotalCount)
-			if tc.total == 0 {
+			if tc.total != nil && *tc.total == 0 {
 				require.Empty(t, result.Entries)
 			} else {
 				require.Len(t, result.Entries, 1)

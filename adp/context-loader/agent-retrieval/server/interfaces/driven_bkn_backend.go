@@ -352,14 +352,6 @@ type QueryConceptsReq struct {
 	ExcludeDeprecated bool `json:"exclude_deprecated,omitzero"`
 }
 
-// Concepts Retrieved concepts list
-type Concepts struct {
-	Entries     []any `json:"entries"`
-	TotalCount  int64 `json:"total_count,omitzero"`
-	SearchAfter []any `json:"search_after,omitempty"`
-	OverallMs   int64 `json:"overall_ms"`
-}
-
 // ObjectTypeConcepts Object type concepts list
 type ObjectTypeConcepts struct {
 	Entries    []*ObjectType `json:"entries"`              // Object type data
@@ -691,8 +683,9 @@ type ObjectTypesResp struct {
 
 	// The two below appear only when the caller listed instead of naming ids.
 	// TotalCount is how many object types the caller may see in this network, so a
-	// page can be read as "20 of 1000" rather than "20, and who knows".
-	TotalCount int64 `json:"total_count,omitzero"`
+	// page can be read as "20 of 1000" rather than "20, and who knows". It is set on
+	// every listing, so an empty one says 0 (#3414), and nil when ids were named.
+	TotalCount *int64 `json:"total_count,omitempty"`
 	// NextOffset is the offset that continues the walk, absent on the last page.
 	// The caller should not compute it: what it means is this service's business,
 	// and a caller that derives it will be wrong the day the walk changes.
@@ -774,7 +767,7 @@ type RelationTypesResp struct {
 
 	// The three below appear only when the caller listed instead of naming ids, and
 	// mean what they mean on ObjectTypesResp.
-	TotalCount int64  `json:"total_count,omitzero"`
+	TotalCount *int64 `json:"total_count,omitempty"`
 	NextOffset *int   `json:"next_offset,omitempty"`
 	Notice     string `json:"notice,omitempty"`
 }

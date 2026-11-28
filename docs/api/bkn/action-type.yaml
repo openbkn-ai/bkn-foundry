@@ -1011,7 +1011,7 @@ components:
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
         total_count:
-          description: Total count
+          description: Total count when available. A known zero is returned as 0.
           type: integer
         next_cursor:
           description: Opaque continuation cursor. Send it back as cursor for the next page.
@@ -1042,8 +1042,11 @@ components:
             - target_identity
           type: string
         value:
-          description: Literal constant, or an object property name for property. Omit for input
-            and endpoint identity sources.
+          description: |
+            Literal constant, or an object property name for property. Omit for input and endpoint
+            identity sources. In action type detail, list, and search responses, a const parameter
+            whose declared type permits null returns an explicit JSON null when its stored value
+            is null or absent. The same rule applies after BKN import.
     ActionTypeDetails:
       description: Action type details
       required:
@@ -1090,7 +1093,7 @@ components:
           description: Returned item count. Defaults to 10 and ranges from 1 to 10000.
           type: integer
         need_total:
-          description: Whether total count is required. Defaults to false.
+          description: Whether to attempt to get the total count. Defaults to false.
           type: boolean
         exclude_deprecated:
           description: |-
@@ -1122,7 +1125,7 @@ components:
           description: Returned item count. Defaults to 10 and ranges from 1 to 10000.
           type: integer
         need_total:
-          description: Whether total count is required. Defaults to false.
+          description: Whether to attempt to get the total count. Defaults to false.
           type: boolean
         exclude_deprecated:
           description: |-

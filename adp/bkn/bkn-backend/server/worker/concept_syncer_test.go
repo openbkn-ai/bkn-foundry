@@ -1434,7 +1434,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 						"ot_name": "object_type1",
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1458,7 +1458,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 						"name": make(chan int), // Non-decodable type.
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1492,7 +1492,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 						"rt_name": "relation_type1",
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1516,7 +1516,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 						"name": make(chan int), // Non-decodable type.
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1550,7 +1550,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 						"at_name": "action_type1",
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1574,7 +1574,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 						"name": make(chan int), // Non-decodable type.
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1608,7 +1608,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 						"cg_name": "concept_group1",
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1632,7 +1632,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 						"name": make(chan int), // Non-decodable type.
 					},
 				},
-				TotalCount: 1,
+				TotalCount: new(int64(1)),
 			}
 
 			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
@@ -1683,7 +1683,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle relation types\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
@@ -1692,7 +1692,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle action types\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(2)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil).Times(2)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
 
@@ -1702,7 +1702,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle concept groups\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(3)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil).Times(3)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
@@ -1713,7 +1713,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to update KN detail\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil).Times(4)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
@@ -1725,7 +1725,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to insert dataset data for KN\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil).Times(4)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
@@ -1782,7 +1782,7 @@ func TestConceptSyncer_handleObjectTypes_Errors(t *testing.T) {
 			}
 
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(objectTypes, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleObjectTypes(ctx, knID, branch)
@@ -1835,7 +1835,7 @@ func TestConceptSyncer_handleRelationTypes_Errors(t *testing.T) {
 			}
 
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(relationTypes, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleRelationTypes(ctx, knID, branch)
@@ -1888,7 +1888,7 @@ func TestConceptSyncer_handleActionTypes_Errors(t *testing.T) {
 			}
 
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(actionTypes, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleActionTypes(ctx, knID, branch)
@@ -1939,7 +1939,7 @@ func TestConceptSyncer_handleConceptGroups_Errors(t *testing.T) {
 			}
 
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(conceptGroups, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: new(int64(0))}, nil)
 			vbs.EXPECT().WriteDatasetDocument(ctx, interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleConceptGroups(ctx, knID, branch)

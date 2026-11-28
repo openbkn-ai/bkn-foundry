@@ -169,7 +169,7 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 				assert.Equal(t, 2, params.Paging.Limit)
 				return &interfaces.ResourceDataQueryResult{
 					Entries:     []map[string]any{{"id": "doc-1"}},
-					TotalCount:  1,
+					TotalCount:  new(int64(1)),
 					Paging:      &interfaces.PagingResponse{},
 					QuerySource: interfaces.ResourceQuerySourceLocalIndex,
 				}, nil
@@ -450,8 +450,7 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 				assert.False(t, params.NeedTotal)
 				return &interfaces.ResourceDataQueryResult{
 					Entries:    []map[string]any{{"id": "doc-1"}},
-					TotalCount: 2,
-					NeedTotal:  true,
+					TotalCount: new(int64(2)),
 					Paging:     &interfaces.PagingResponse{},
 				}, nil
 			})
@@ -493,7 +492,7 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 			assert.True(t, params.NeedTotal)
 			assert.Equal(t, new(interfaces.BinaryModeMetadata), params.BinaryMode)
 			assert.Equal(t, interfaces.Format_Original, params.Format)
-			return &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: 8, Paging: &interfaces.PagingResponse{}}, nil
+			return &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: new(int64(8)), Paging: &interfaces.PagingResponse{}}, nil
 		})
 		request := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"paging":{"mode":"single","offset":0,"limit":2},"need_total":true}`))
 		request.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodGet)
@@ -501,8 +500,9 @@ func Test_ResourceDataRestHandler_QueryResourceData(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
 		require.Equal(t, http.StatusOK, recorder.Code)
-		assert.JSONEq(t, `{"query_source":"source","is_approximate":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`, recorder.Body.String())
+		assert.JSONEq(t, `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`, recorder.Body.String())
 	})
+
 }
 
 func TestResourceDataOperationsDoNotRequireViewDetail(t *testing.T) {
@@ -1272,19 +1272,20 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 		{name: "default", body: `{}`},
 		{name: "null body", body: `null`},
 		{name: "large API limit", body: `{"paging":{"limit":10001}}`, paging: interfaces.PagingRequest{Limit: 10001}},
-		{name: "cursor ignores caller total", body: `{"paging":{"cursor":"opaque"},"need_total":true}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "cursor ignores caller total", body: `{"paging":{"cursor":"opaque"},"need_total":true}`, paging: interfaces.PagingRequest{Cursor: "opaque"}},
 		{name: "empty paging", body: `{"paging":{}}`},
+		{name: "cursor with a sort", body: `{"paging":{"cursor":"opaque"},"sort":[{"field":"id"}]}`, invalid: true},
 		{name: "explicit single", body: `{"paging":{"mode":"single"}}`},
 		{name: "empty mode", body: `{"paging":{"mode":""}}`},
 		{name: "empty cursor", body: `{"paging":{"cursor":""}}`},
 		{name: "explicit offset zero", body: `{"paging":{"offset":0}}`},
 		{name: "offset and limit", body: `{"paging":{"offset":2,"limit":2}}`, paging: interfaces.PagingRequest{Offset: 2, Limit: 2}},
 		{name: "limit only", body: `{"paging":{"limit":2}}`, paging: interfaces.PagingRequest{Limit: 2}},
-		{name: "cursor initial default limit", body: `{"paging":{"mode":"cursor"}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}, invalid: true},
-		{name: "cursor initial", body: `{"paging":{"mode":"cursor","limit":2,"keep_alive_sec":60}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, KeepAliveSec: 60}, invalid: true},
-		{name: "cursor default keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}, invalid: true},
+		{name: "cursor initial default limit", body: `{"paging":{"mode":"cursor"}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}},
+		{name: "cursor initial", body: `{"paging":{"mode":"cursor","limit":2,"keep_alive_sec":60}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, KeepAliveSec: 60}},
+		{name: "cursor default keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor}},
 		{name: "single ignores keep alive", body: `{"paging":{"keep_alive_sec":1}}`, paging: interfaces.PagingRequest{KeepAliveSec: 1}},
-		{name: "cursor continuation", body: `{"paging":{"cursor":"opaque-cursor"}}`, paging: interfaces.PagingRequest{Cursor: "opaque-cursor"}, invalid: true},
+		{name: "cursor continuation", body: `{"paging":{"cursor":"opaque-cursor"}}`, paging: interfaces.PagingRequest{Cursor: "opaque-cursor"}},
 		{name: "need total", body: `{"need_total":true}`, needTotal: true},
 		{name: "false need total", body: `{"need_total":false}`},
 		{name: "null need total", body: `{"need_total":null}`},
@@ -1311,10 +1312,10 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 		{name: "unsupported mode", body: `{"paging":{"mode":"offset"}}`, invalid: true},
 		{name: "cursor short keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":59}}`, invalid: true},
 		{name: "cursor long keep alive", body: `{"paging":{"mode":"cursor","keep_alive_sec":3601}}`, invalid: true},
-		{name: "cursor with offset zero", body: `{"paging":{"cursor":"opaque","offset":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
-		{name: "cursor with empty mode", body: `{"paging":{"cursor":"opaque","mode":""}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
-		{name: "cursor with keep alive zero", body: `{"paging":{"cursor":"opaque","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
-		{name: "cursor with false need total", body: `{"paging":{"cursor":"opaque"},"need_total":false}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, invalid: true},
+		{name: "cursor with offset zero", body: `{"paging":{"cursor":"opaque","offset":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}},
+		{name: "cursor with empty mode", body: `{"paging":{"cursor":"opaque","mode":""}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}},
+		{name: "cursor with keep alive zero", body: `{"paging":{"cursor":"opaque","keep_alive_sec":0}}`, paging: interfaces.PagingRequest{Cursor: "opaque"}},
+		{name: "cursor with false need total", body: `{"paging":{"cursor":"opaque"},"need_total":false}`, paging: interfaces.PagingRequest{Cursor: "opaque"}},
 		{name: "unknown top field", body: `{"unknown":0}`},
 		{name: "null filter", body: `{"filter_condition":null}`},
 		{name: "empty sort", body: `{"sort":[]}`},
@@ -1324,10 +1325,10 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 		{name: "content binary mode", body: `{"binary_mode":"content"}`, binaryMode: new(interfaces.BinaryModeContent)},
 		{name: "cursor binary mode", body: `{"paging":{"cursor":"opaque"},"binary_mode":"content","need_total":true}`, paging: interfaces.PagingRequest{Cursor: "opaque"}, binaryMode: new(interfaces.BinaryModeContent), invalid: true},
 		{name: "null aggregation", body: `{"aggregation":null,"group_by":null,"having":null}`},
-		{name: "null sort item", body: `{"sort":[null]}`, invalid: true},
+		{name: "null sort item", body: `{"sort":[null]}`},
 		{name: "null group item", body: `{"group_by":[null]}`, invalid: true},
 		{name: "invalid binary mode", body: `{"binary_mode":"raw"}`, invalid: true},
-		{name: "invalid sort direction", body: `{"sort":[{"field":"id","direction":"wrong"}]}`, invalid: true},
+		{name: "invalid sort direction", body: `{"sort":[{"field":"id","direction":"wrong"}]}`},
 		{name: "invalid aggregation", body: `{"aggregation":{"property":"id","aggr":"wrong"}}`, invalid: true},
 		{name: "safe bind error", body: `{"paging":{"limit":"fixture-private-input"}}`, invalid: true},
 	}
@@ -1430,7 +1431,10 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 							return &interfaces.ResourceDataQueryResult{Entries: []map[string]any{{"id": want}}}, nil
 						case strings.Contains(body, "sort"):
 							require.Len(t, params.Sort, 1)
-							assert.Equal(t, "ASC", params.Sort[0].Direction)
+							assert.Equal(t, "asc", params.Sort[0].Direction)
+							return &interfaces.ResourceDataQueryResult{
+								Entries: []map[string]any{}, Warnings: []string{"API Resource does not support sorting; sort was ignored"},
+							}, nil
 						case strings.Contains(body, "aggregation"):
 							require.NotNil(t, params.Aggregation)
 							assert.Equal(t, "sum", params.Aggregation.Aggr)
@@ -1451,6 +1455,11 @@ func TestRestHandlerAPIResourceDataInput(t *testing.T) {
 					}
 					recorder := httptest.NewRecorder()
 					engine.ServeHTTP(recorder, request)
+					if strings.Contains(body, "sort") {
+						require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+						assert.Contains(t, recorder.Body.String(), "API Resource does not support sorting; sort was ignored")
+						return
+					}
 					if strings.Contains(body, `"operation":"=="`) {
 						require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 						assert.Contains(t, recorder.Body.String(), "9007199254740993")
@@ -1482,16 +1491,39 @@ func TestRestHandlerAPIResourceDataResponse(t *testing.T) {
 		for _, test := range []struct {
 			name, body, expected string
 			result               *interfaces.ResourceDataQueryResult
+			deprecated           bool
+			category             string
 		}{
 			{
 				name: "single without total", body: `{}`,
-				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{{"id": json.Number("9007199254740993")}}, TotalCount: 8, Columns: []string{"id"}, Paging: &interfaces.PagingResponse{}},
-				expected: `{"query_source":"source","is_approximate":false,"entries":[{"id":9007199254740993}],"paging":{"next_cursor":null,"expires_at_sec":null}}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{{"id": json.Number("9007199254740993")}}, Columns: []string{"id"}, Paging: &interfaces.PagingResponse{}},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[{"id":9007199254740993}],"paging":{"next_cursor":null,"expires_at_sec":null}}`,
 			},
 			{
 				name: "requested total single page", body: `{"paging":{"mode":"single","limit":2},"need_total":true}`,
-				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: 8, Paging: &interfaces.PagingResponse{}},
-				expected: `{"query_source":"source","is_approximate":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: new(int64(8)), Paging: &interfaces.PagingResponse{}},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[],"total_count":8,"paging":{"next_cursor":null,"expires_at_sec":null}}`,
+			},
+			{
+				name: "requested total unavailable", body: `{"need_total":true}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{{"id": 1}}},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[{"id":1}]}`,
+			},
+			{
+				name: "requested total is a known zero", body: `{"need_total":true}`,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, TotalCount: new(int64(0))},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[],"total_count":0}`,
+			},
+			{
+				name: "includes sort and deprecation warnings", body: `{"sort":[null]}`, deprecated: true,
+				result: &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{},
+					Warnings: []string{"API Resource does not support sorting; sort was ignored"}},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":false,"entries":[],"warnings":["resource resource-1 (example) is deprecated","API Resource does not support sorting; sort was ignored"]}`,
+			},
+			{
+				name: "passes through known sorting", body: `{"sort":[{"field":"id","direction":"asc"}]}`, category: interfaces.ResourceCategoryTable,
+				result:   &interfaces.ResourceDataQueryResult{QuerySource: interfaces.ResourceQuerySourceSource, Entries: []map[string]any{}, IsSorted: true},
+				expected: `{"query_source":"source","is_approximate":false,"is_sorted":true,"entries":[]}`,
 			},
 		} {
 			t.Run(fmt.Sprintf("proxy_%t/%s", proxy, test.name), func(t *testing.T) {
@@ -1499,6 +1531,13 @@ func TestRestHandlerAPIResourceDataResponse(t *testing.T) {
 				var rs *vmock.MockResourceService
 				var rds *vmock.MockResourceDataService
 				resource := &interfaces.Resource{ID: "resource-1", Category: interfaces.ResourceCategoryAPI, APIEffectType: interfaces.APIEffectRead, Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id", OriginalName: "id", Type: interfaces.DataType_Integer}}}
+				if test.category != "" {
+					resource.Category = test.category
+				}
+				if test.deprecated {
+					resource.Name = "example"
+					resource.Status = interfaces.ResourceStatusDeprecated
+				}
 				url := "/api/vega-backend/in/v1/resources/resource-1/data"
 				if proxy {
 					engine, _, rs, rds, _, _ = setupProxyReadHandlerTest(t, nil)

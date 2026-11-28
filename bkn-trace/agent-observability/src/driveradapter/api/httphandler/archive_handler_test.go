@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -34,77 +35,75 @@ func (s *archiveErrorSource) Purge(context.Context, observabilityvo.ArchiveKind,
 	return nil
 }
 
-func TestArchiveCreateErrorMapping(t *testing.T) {
+func archiveTestAuth(admin bool) *EvidenceHandler {
+	roles := []string{"user"}
+	if admin {
+		roles = []string{"admin"}
+	}
+	return NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
+		})},
+		AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: roles}},
+	})
+}
+
+type archiveCountSource struct {
+	archiveErrorSource
+	count int
+}
+
+func (s *archiveCountSource) Count(context.Context, observabilityvo.ArchiveKind, observabilityvo.ArchiveRange) (int, error) {
+	s.freezes++
+	return s.count, s.err
+}
+
+func serveArchive(handler http.HandlerFunc, method, target string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	return rec
+}
+
+// Submission answers only what is known before any batch runs; batch failures
+// are recorded on the run by the worker and never reach this response.
+func TestArchiveSubmitErrorMapping(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
+		count      int
 		err        error
+		prepare    func(archivesvc.Store)
 		status     int
 		code       string
 		authorized bool
 	}{
-		{"capacity", &archivesvc.Failure{Stage: "payload_bytes", Unit: "bytes", CandidateID: "large-log", Actual: 2048, Limit: 1024}, 409, "archive_capacity_exceeded", true},
-		{"config", archivesvc.ErrInvalidLogLimits, 503, "archive_configuration_invalid", true},
-		{"signed-url", fmt.Errorf("https://private.test/object?signature=secret"), 500, "archive_failed", true},
-		{"payload-budget", archivesvc.ErrArchivePayloadTooLarge, 409, "archive_incomplete_candidates", true},
-		{"incomplete", fmt.Errorf("internal detail: %w", archivesvc.ErrIncompleteCandidates), 409, "archive_incomplete_candidates", true},
-		{"busy", archivesvc.ErrArchiveBusy, 409, "archive_busy", true},
-		{"unknown", fmt.Errorf("internal detail"), 500, "archive_failed", true},
-		{"unauthorized", archivesvc.ErrIncompleteCandidates, 403, "archive_access_denied", false},
+		{name: "signed-url", count: 1, err: fmt.Errorf("https://private.test/object?signature=secret"), status: 500, code: "archive_failed", authorized: true},
+		{name: "nothing", count: 0, status: 409, code: "archive_nothing_to_do", authorized: true},
+		{name: "cleanup", count: 1, status: 409, code: "archive_cleanup_required", authorized: true, prepare: func(store archivesvc.Store) {
+			_ = store.Create(archivesvc.Job{ID: "pending", Kind: observabilityvo.ArchiveKindLog, Status: observabilityvo.ArchiveStatusCleanupIncomplete})
+		}},
+		{name: "busy", count: 1, status: 409, code: "archive_busy", authorized: true, prepare: func(store archivesvc.Store) {
+			_ = store.(archivesvc.RunStore).CreateRun(context.Background(), archivesvc.Run{ID: "active", Kind: observabilityvo.ArchiveKindLog, Status: archivesvc.RunRunning})
+		}},
+		{name: "unauthorized", count: 1, status: 403, code: "archive_access_denied"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			roles := []string{"user"}
-			if tc.authorized {
-				roles = []string{"admin"}
-			}
-			auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
-				HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
-				})},
-				AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: roles}},
-			})
-			source := &archiveErrorSource{err: tc.err}
-			// Both adapters must preserve errors.Is identity through their wrapping layers.
-			routed := archivesvc.Router{Log: archivesvc.TraceBundleSource{Core: source}}
+			source := &archiveCountSource{archiveErrorSource: archiveErrorSource{err: tc.err}, count: tc.count}
 			jobs := archivesvc.NewMemoryStore()
-			h := NewArchiveHandler(archivesvc.New(jobs, routed, nil, archivesvc.Options{}), auth)
-			req := httptest.NewRequest(http.MethodPost, "/archives", strings.NewReader(`{}`))
-			req.Header.Set("Authorization", "Bearer test-token")
-			rec := httptest.NewRecorder()
-			h.Create(observabilityvo.ArchiveKindLog)(rec, req)
+			if tc.prepare != nil {
+				tc.prepare(jobs)
+			}
+			h := NewArchiveHandler(archivesvc.New(jobs, source, nil, archivesvc.Options{}), archiveTestAuth(tc.authorized))
+			rec := serveArchive(h.Create(observabilityvo.ArchiveKindLog), http.MethodPost, "/archives")
 			if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.code) {
 				t.Fatalf("unexpected response %d %s", rec.Code, rec.Body.String())
 			}
-			if strings.Contains(rec.Body.String(), "internal detail") || strings.Contains(rec.Body.String(), "signature=secret") || strings.Contains(rec.Body.String(), "private.test") {
+			if strings.Contains(rec.Body.String(), "signature=secret") || strings.Contains(rec.Body.String(), "private.test") {
 				t.Fatal("internal error leaked")
 			}
-			if tc.name == "capacity" {
-				var body struct {
-					Error struct {
-						Retryable bool `json:"retryable"`
-						Details   struct {
-							Failure archivesvc.Failure `json:"failure"`
-						} `json:"details"`
-					} `json:"error"`
-				}
-				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-					t.Fatal(err)
-				}
-				f := body.Error.Details.Failure
-				if body.Error.Retryable || f.Stage != "payload_bytes" || f.CandidateID != "large-log" || f.Actual != 2048 || f.Limit != 1024 {
-					t.Fatalf("capacity details lost: %+v", body)
-				}
-			}
-			if tc.name == "payload-budget" && !strings.Contains(rec.Body.String(), "8 MiB") {
-				t.Fatal("missing archive budget explanation")
-			}
-			if tc.name == "incomplete" && !strings.Contains(rec.Body.String(), "this batch was not started; earlier batches remain recorded") {
-				t.Fatal("missing safe failure explanation")
-			}
 			if source.purges != 0 {
-				t.Fatal("error must not purge")
-			}
-			if _, ok := jobs.Latest(observabilityvo.ArchiveKindLog); ok {
-				t.Fatal("error must not create a job")
+				t.Fatal("submission must not purge")
 			}
 			if !tc.authorized && source.freezes != 0 {
 				t.Fatal("unauthorized request queried archive source")
@@ -113,43 +112,102 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 	}
 }
 
-func TestArchiveCreateReturnsDurableBlockage(t *testing.T) {
-	auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
-		HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
-		})},
-		AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: []string{"admin"}}},
-	})
-	blocked := &archivesvc.PayloadBudgetError{InteractionID: "large-interaction", Stage: "sql_payload", Actual: 12598557, Limit: 8388608, Unit: "bytes"}
-	source := &archiveErrorSource{err: fmt.Errorf("must never expose private URL: %w", blocked)}
+func TestArchiveSubmitQueuesRunAndExposesProgressAndRetained(t *testing.T) {
 	jobs := archivesvc.NewMemoryStore()
-	h := NewArchiveHandler(archivesvc.New(jobs, source, nil, archivesvc.Options{}), auth)
-	req := httptest.NewRequest(http.MethodPost, "/archives", strings.NewReader(`{}`))
-	req.Header.Set("Authorization", "Bearer test-token")
-	req.Header.Set("X-Request-Id", "archive-test-request")
-	rec := httptest.NewRecorder()
-	h.Create(observabilityvo.ArchiveKindTrace)(rec, req)
-	var response struct {
-		Error struct {
-			Code, Message  string
-			Retryable      bool
-			RequiredAction string `json:"required_action"`
-			RequestID      string `json:"request_id"`
-			Details        struct {
-				JobID   string                         `json:"archive_job_id"`
-				Blocked *archivesvc.PayloadBudgetError `json:"blocked"`
-			}
-		}
+	source := &archiveCountSource{count: 3}
+	service := archivesvc.New(jobs, archivesvc.Router{Trace: source}, nil, archivesvc.Options{})
+	h := NewArchiveHandler(service, archiveTestAuth(true))
+	rec := serveArchive(h.Create(observabilityvo.ArchiveKindTrace), http.MethodPost, "/archives")
+	var run struct {
+		RunID           string `json:"run_id"`
+		Status          string `json:"status"`
+		EligibleAtStart int    `json:"eligible_at_start"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+	if err := json.Unmarshal(rec.Body.Bytes(), &run); err != nil || rec.Code != http.StatusAccepted || run.RunID == "" || run.Status != "queued" || run.EligibleAtStart != 3 {
+		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
+	}
+	if source.purges != 0 {
+		t.Fatal("submission must return before any batch runs")
+	}
+	retained := archivesvc.RetainedInteraction{InteractionID: "large", RunID: run.RunID, PolicyVersion: archivesvc.TraceArchivePolicyVersion(), Stage: "sql_payload", Measured: 12 << 20, Budget: 8 << 20, Unit: "bytes", RetainedAt: time.Now()}
+	if err := jobs.(archivesvc.RunStore).RetainInteraction(context.Background(), retained); err != nil {
 		t.Fatal(err)
 	}
-	detail := response.Error.Details
-	if rec.Code != 409 || response.Error.Code != "archive_incomplete_candidates" || response.Error.Retryable || response.Error.RequestID != "archive-test-request" || response.Error.RequiredAction != "review_oversized_interaction" || detail.JobID == "" || detail.Blocked == nil || *detail.Blocked != *blocked || strings.Contains(rec.Body.String(), "private URL") {
-		t.Fatalf("bad response: %s", rec.Body.String())
+	rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/"+run.RunID)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"interaction_id"`) || !strings.Contains(rec.Body.String(), `"retained_count":1`) {
+		t.Fatalf("run result: %d %s", rec.Code, rec.Body.String())
 	}
-	saved, ok := jobs.Get(detail.JobID)
-	if !ok || saved.BatchProgress.Blocked.InteractionID != blocked.InteractionID || source.purges != 0 {
-		t.Fatal("response does not identify durable safe blockage")
+	rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/"+run.RunID+"/retained?offset=0&limit=20")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"interaction_id":"large"`) || !strings.Contains(rec.Body.String(), `"total":1`) {
+		t.Fatalf("run retained page: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained?limit=20")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"budget":8388608`) || !strings.Contains(rec.Body.String(), `"total":1`) {
+		t.Fatalf("retained list: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, bad := range []string{"?limit=101", "?limit=0", "?offset=-1", "?limit=x"} {
+		if rec = serveArchive(h.Retained, http.MethodGet, "/api/observability/v1/trace-archive-retained"+bad); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s accepted: %d", bad, rec.Code)
+		}
+	}
+	if rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/missing/retained"); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing run retained page: %d", rec.Code)
+	}
+	rec = serveArchive(h.Overview(observabilityvo.ArchiveKindTrace), http.MethodGet, "/overview")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"retained_count":1`) || !strings.Contains(rec.Body.String(), `"run_id":"`+run.RunID+`"`) {
+		t.Fatalf("overview: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = serveArchive(h.RunResult, http.MethodGet, "/api/observability/v1/archive-runs/missing")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing run: %d", rec.Code)
+	}
+	if rec := serveArchive(NewArchiveHandler(service, archiveTestAuth(false)).RunResult, http.MethodGet, "/api/observability/v1/archive-runs/"+run.RunID); rec.Code != http.StatusForbidden {
+		t.Fatalf("unauthorized run result: %d", rec.Code)
+	}
+}
+
+type failedArchiveHistoryStore struct {
+	archivesvc.Store
+	calls int
+}
+
+func (store *failedArchiveHistoryStore) ListJobs(context.Context, observabilityvo.ArchiveKind, int) ([]archivesvc.Job, error) {
+	store.calls++
+	return nil, fmt.Errorf("database password and private URL must not escape")
+}
+
+func TestArchiveHistoryFailureIsUnavailableAndAuthorized(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		roles := []string{"user"}
+		if allowed {
+			roles = []string{"admin"}
+		}
+		auth := NewEvidenceHandlerWithSecurityConfig(nil, EvidenceHandlerSecurityConfig{
+			HydraAdminURL: "http://hydra.test", QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"cli","ext":{"visitor_type":"user"}}`))}, nil
+			})},
+			AuthorizationScopeResolver: &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: roles}},
+		})
+		store := &failedArchiveHistoryStore{Store: archivesvc.NewMemoryStore()}
+		handler := NewArchiveHandler(archivesvc.New(store, nil, nil, archivesvc.Options{}), auth)
+		for _, kind := range []observabilityvo.ArchiveKind{observabilityvo.ArchiveKindLog, observabilityvo.ArchiveKindTrace} {
+			req := httptest.NewRequest(http.MethodGet, "/archives", nil)
+			req.Header.Set("Authorization", "Bearer test-token")
+			rec := httptest.NewRecorder()
+			handler.ListOrCreate(kind)(rec, req)
+			want := http.StatusForbidden
+			if allowed {
+				want = http.StatusServiceUnavailable
+			}
+			if rec.Code != want || strings.Contains(rec.Body.String(), "password") {
+				t.Fatalf("%d %s", rec.Code, rec.Body.String())
+			}
+			if allowed && !strings.Contains(rec.Body.String(), "archive_history_unavailable") {
+				t.Fatal(rec.Body.String())
+			}
+		}
+		if !allowed && store.calls != 0 {
+			t.Fatal("unauthorized history query")
+		}
 	}
 }

@@ -50,12 +50,15 @@ type CursorSession struct {
 	ResourceDataCategory   string
 	ResourceDataSource     *ResourceDataCursorSource
 
+	// API 页码按固定页长推进，但到达总数由实际已返回行数决定。
+	ResourceDataAPIPageMode bool
+	ResourceDataAPIRowsRead int64
+
 	PageOffset int
 	PageLimit  int
 
-	TotalCount    int64
-	HasTotalCount bool
-	NeedTotal     bool
+	TotalCount *int64
+	NeedTotal  bool
 
 	KeepAliveSec    int
 	QueryTimeoutSec int

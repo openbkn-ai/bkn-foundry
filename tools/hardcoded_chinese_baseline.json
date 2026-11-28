@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2421,
+  "violation_count": 2401,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -217,26 +217,6 @@
     "adp/bkn/bkn-backend/server/interfaces/risk_type.go": [
       "ba68ed3bc79439437560"
     ],
-    "adp/bkn/bkn-backend/server/logics/action_type/action_type_service.go": [
-      "c1d446fe318d1ec7470c",
-      "8368ef159310aec5fbfc",
-      "966f05c9ddb78fd749ac",
-      "9e07af1b63a6a294a25d",
-      "a03f5ce0026b96b58f2e",
-      "a5b522ca89d57cfb42d5",
-      "bf1450e3e59c28e998f1",
-      "18c7c12697054aa6bbf3",
-      "0474edb65db34338bc90",
-      "b6228ab52c735697bf1e",
-      "7a161f33ab5fa6c7ef74",
-      "7138702e828e3cde799d",
-      "ed9e096820f45d4d9f21",
-      "22967d555cb1781aa144",
-      "31738831f71889c16bc7",
-      "5a31e8a37714a475e360",
-      "0fa0378121d686378bc4",
-      "73f556da8366553172cb"
-    ],
     "adp/bkn/bkn-backend/server/logics/bkn/bkn_service.go": [
       "ab772529642a1d270c0e"
     ],
@@ -387,9 +367,6 @@
       "b191c7626c40bc21705d",
       "6eca8bbe2f20f86c7650",
       "2f385b90471272736c46"
-    ],
-    "adp/bkn/ontology-query/server/logics/action_logs/action_logs_service.go": [
-      "76a3c707fc92d45711b7"
     ],
     "adp/bkn/ontology-query/server/logics/common.go": [
       "2681bac9a67fd71bf325",
@@ -1020,8 +997,7 @@
     "infra/bkn-agent/app/core/structured.py": [
       "6eefa4e921e841cfc3b6",
       "78ac3b2677560fc5b4d0",
-      "4b65e37420bf4520c4ed",
-      "a9f1d32695e2867af48b"
+      "4b65e37420bf4520c4ed"
     ],
     "infra/bkn-agent/app/core/tools.py": [
       "49eedd85992130cef479",

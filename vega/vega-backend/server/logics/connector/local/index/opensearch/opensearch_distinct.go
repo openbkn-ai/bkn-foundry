@@ -146,7 +146,8 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 	if params.Having != nil && params.Having.Field == "count(*)" && len(params.GroupBy) > 0 {
 		phases = []bool{true, false}
 	}
-	var total int64
+	var total *int64
+	requireTotal := params.Having != nil && params.Having.Field == "count(*)" && len(params.GroupBy) == 0
 	for _, documentsOnly := range phases {
 		pageSources := sources
 		if documentsOnly {
@@ -161,7 +162,7 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 			if after != nil {
 				composite["after"] = after
 			}
-			needTotal := after == nil && (params.NeedTotal || params.Having != nil && params.Having.Field == "count(*)" && len(params.GroupBy) == 0)
+			needTotal := after == nil && (params.NeedTotal || requireTotal)
 			body := map[string]any{
 				"size":             0,
 				"query":            filter,
@@ -186,20 +187,10 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 			}
 			if needTotal {
 				hits, _ := response["hits"].(map[string]any)
-				if _, ok := hits["total"].(map[string]any); !ok {
-					return nil, fmt.Errorf("exact distinct search is missing its document count")
-				}
-			}
-			if hits, ok := response["hits"].(map[string]any); ok {
-				if hitTotal, ok := hits["total"].(map[string]any); ok {
-					if hitTotal["relation"] != "eq" {
-						return nil, fmt.Errorf("exact distinct search returned an inexact document count")
-					}
-					var valid bool
-					total, valid = openSearchInt64(hitTotal["value"])
-					if !valid || total < 0 {
-						return nil, fmt.Errorf("exact distinct search returned an invalid document count")
-					}
+				if counted := searchTotal(hits); counted != nil {
+					total = counted
+				} else if requireTotal {
+					return nil, fmt.Errorf("exact distinct search is missing an exact document count for HAVING")
 				}
 			}
 			aggs, _ := response["aggregations"].(map[string]any)
@@ -301,8 +292,8 @@ func (c *OpenSearchConnector) executeExactDistinct(ctx context.Context, indexNam
 			value := group.count
 			if params.Having.Field == "count(*)" {
 				value = group.documents
-				if len(params.GroupBy) == 0 {
-					value = total
+				if requireTotal {
+					value = *total
 				}
 			}
 			if !matchesAggregationHaving(value, params.Having.Operation, havingParams) {

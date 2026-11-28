@@ -5,7 +5,11 @@
 
 package rdto
 
-import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
+import (
+	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
+)
 
 type ArchiveOverviewResponse struct {
 	ArchiveKind    string `json:"archive_kind"`
@@ -15,6 +19,76 @@ type ArchiveOverviewResponse struct {
 	Storage        struct {
 		Status string `json:"status"`
 	} `json:"storage"`
+	// CurrentRun is the latest background run, kept after it ends until the next starts.
+	CurrentRun    *ArchiveRunResponse `json:"current_run,omitempty"`
+	RetainedCount int                 `json:"retained_count"`
+}
+
+type ArchiveRunResponse struct {
+	RunID           string  `json:"run_id"`
+	ArchiveKind     string  `json:"archive_kind"`
+	Trigger         string  `json:"trigger"`
+	Status          string  `json:"status"`
+	EligibleAtStart int     `json:"eligible_at_start"`
+	ProcessedCount  int     `json:"processed_count"`
+	RetainedCount   int     `json:"retained_count"`
+	BatchCount      int     `json:"batch_count"`
+	RetryCount      int     `json:"retry_count"`
+	NextAttemptAt   *string `json:"next_attempt_at,omitempty"`
+	LastFailureCode string  `json:"last_failure_code,omitempty"`
+	CreatedAt       string  `json:"created_at"`
+	StartedAt       *string `json:"started_at,omitempty"`
+	FinishedAt      *string `json:"finished_at,omitempty"`
+}
+
+type RetainedInteractionResponse struct {
+	InteractionID string `json:"interaction_id"`
+	RunID         string `json:"run_id"`
+	Stage         string `json:"stage"`
+	Measured      int64  `json:"measured"`
+	AtLeast       bool   `json:"at_least,omitempty"`
+	Budget        int64  `json:"budget"`
+	Unit          string `json:"unit"`
+	RetainedAt    string `json:"retained_at"`
+}
+
+// RetainedPageResponse is one page of retained interactions and their total.
+type RetainedPageResponse struct {
+	Items []RetainedInteractionResponse `json:"items"`
+	Total int                           `json:"total"`
+}
+
+func optionalTime(value time.Time) *string {
+	if value.IsZero() {
+		return nil
+	}
+	formatted := value.UTC().Format(time.RFC3339)
+	return &formatted
+}
+
+func NewArchiveRun(view archivesvc.RunView) ArchiveRunResponse {
+	return ArchiveRunResponse{
+		RunID: view.ID, ArchiveKind: string(view.Kind), Trigger: string(view.Trigger), Status: string(view.Status),
+		EligibleAtStart: view.EligibleAtStart, ProcessedCount: view.ProcessedCount, RetainedCount: view.RetainedCount,
+		BatchCount: view.BatchCount, RetryCount: view.RetryCount, NextAttemptAt: optionalTime(view.NextAttemptAt),
+		LastFailureCode: view.LastFailureCode, CreatedAt: view.CreatedAt.UTC().Format(time.RFC3339),
+		StartedAt: optionalTime(view.StartedAt), FinishedAt: optionalTime(view.FinishedAt),
+	}
+}
+
+func NewRetainedInteractions(items []archivesvc.RetainedInteraction) []RetainedInteractionResponse {
+	response := make([]RetainedInteractionResponse, 0, len(items))
+	for _, item := range items {
+		response = append(response, RetainedInteractionResponse{
+			InteractionID: item.InteractionID, RunID: item.RunID, Stage: item.Stage, Measured: item.Measured,
+			AtLeast: item.AtLeast, Budget: item.Budget, Unit: item.Unit, RetainedAt: item.RetainedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return response
+}
+
+func NewRetainedPage(page archivesvc.RetainedPage) RetainedPageResponse {
+	return RetainedPageResponse{Items: NewRetainedInteractions(page.Items), Total: page.Total}
 }
 
 type ArchiveJobResponse struct {

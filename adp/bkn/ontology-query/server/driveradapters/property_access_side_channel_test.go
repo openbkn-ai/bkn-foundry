@@ -15,10 +15,8 @@ import (
 func TestEvidenceQueryShapeDoesNotContainRawPaginationValues(t *testing.T) {
 	const watermark = "raw-property-watermark-1342"
 	shape := safeObjectQueryShape(&interfaces.ObjectQueryBaseOnObjectType{
-		PageQuery: interfaces.PageQuery{
-			Cursor:            "opaque-cursor",
-			SearchAfterParams: interfaces.SearchAfterParams{SearchAfter: []any{watermark}},
-		},
+		Cursor:    watermark,
+		PageQuery: interfaces.PageQuery{},
 	})
 	body, err := json.Marshal(shape)
 	if err != nil {

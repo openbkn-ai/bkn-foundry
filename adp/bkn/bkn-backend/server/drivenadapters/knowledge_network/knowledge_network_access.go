@@ -88,7 +88,7 @@ func (kna *knowledgeNetworkAccess) CheckKNExistByID(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = kna.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -128,7 +128,7 @@ func (oma *knowledgeNetworkAccess) CheckKNExistByName(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var knID string
 	err = oma.db.QueryRow(sqlStr, vals...).Scan(
@@ -200,7 +200,7 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -267,7 +267,7 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -343,7 +343,7 @@ func (kna *knowledgeNetworkAccess) ListAuthorizationResources(ctx context.Contex
 		common.LogSafeError(ctx, "Failed to build authorization resource count SQL", err)
 		return []*interfaces.AuthorizationResource{}, 0, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(countSQL, len(countValues)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(countSQL, len(countValues)))
 
 	total := 0
 	if err := kna.db.QueryRow(countSQL, countValues...).Scan(&total); err != nil {
@@ -373,7 +373,7 @@ func (kna *knowledgeNetworkAccess) ListAuthorizationResources(ctx context.Contex
 		common.LogSafeError(ctx, "Failed to build authorization resource list SQL", err)
 		return []*interfaces.AuthorizationResource{}, 0, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(values)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(values)))
 
 	rows, err := kna.db.Query(sqlStr, values...)
 	if err != nil {
@@ -418,7 +418,7 @@ func (kna *knowledgeNetworkAccess) GetKNsTotal(ctx context.Context, query interf
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = kna.db.QueryRow(sqlStr, vals...).Scan(&total)
@@ -467,7 +467,7 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	tagsStr := ""
 	KN := interfaces.KN{
@@ -558,7 +558,7 @@ func (kna *knowledgeNetworkAccess) execUpdate(ctx context.Context, tx *sql.Tx, b
 		common.LogSafeError(ctx, "Failed to build the sql of update knowledge network, error", err)
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -591,7 +591,7 @@ func (kna *knowledgeNetworkAccess) UpdateKNDetail(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var q interface {
 		ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -625,7 +625,7 @@ func (kna *knowledgeNetworkAccess) ListKNBranches(ctx context.Context, knID stri
 		common.LogSafeError(ctx, "Failed to build the sql of listing knowledge network branches", err)
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
@@ -666,7 +666,7 @@ func (kna *knowledgeNetworkAccess) DeleteKN(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1052,7 +1052,7 @@ func (kna *knowledgeNetworkAccess) getAllKNs(ctx context.Context, branch string)
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1127,7 +1127,7 @@ func (kna *knowledgeNetworkAccess) GetKNNamesByIDs(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1180,7 +1180,7 @@ func (kna *knowledgeNetworkAccess) ListKnSrcs(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := kna.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1245,7 +1245,7 @@ func (kna *knowledgeNetworkAccess) ListKNChildResourceCandidates(ctx context.Con
 	}
 
 	query := strings.Join(queries, " UNION ALL ")
-	otellog.LogInfo(ctx, common.SafeQuerySummary(query, len(args)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(query, len(args)))
 	rows, err := kna.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to list knowledge network child resources", err)

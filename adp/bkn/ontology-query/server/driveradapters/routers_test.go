@@ -463,3 +463,16 @@ func Test_NewRestHandler(t *testing.T) {
 		})
 	})
 }
+
+func TestCommunityDoesNotRegisterActionExecution(t *testing.T) {
+	engine := gin.New()
+	NewRestHandler(&common.AppSetting{}).RegisterPublic(engine)
+	for _, prefix := range []string{"/api/ontology-query/v1", "/api/ontology-query/in/v1"} {
+		req := httptest.NewRequest(http.MethodPost, prefix+"/knowledge-networks/network/action-types/action/execute", nil)
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, req)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", prefix, response.Code)
+		}
+	}
+}

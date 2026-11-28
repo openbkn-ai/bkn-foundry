@@ -67,6 +67,11 @@ func checkArgumentNames(name string, schema json.RawMessage, arguments []string)
 	}
 }
 
+// These tools ignore the retired search_after field.
+func ignoresLegacySearchAfter(name string) bool {
+	return name == toolKeyQueryObjectInstance || name == toolKeyExploreSubgraph
+}
+
 // publishedToolResolver returns a tool as a profile publishes it at this
 // moment: licence filter first, then the profile's own filter and view, the
 // order in which the server applies them.
@@ -85,6 +90,17 @@ func compactArgumentsMiddleware(published publishedToolResolver) server.ToolHand
 			tool, ok := published(ctx, req.Params.Name)
 			if !ok {
 				return next(ctx, req)
+			}
+			if _, hasLegacyField := req.GetArguments()["search_after"]; hasLegacyField && ignoresLegacySearchAfter(req.Params.Name) {
+				arguments, err := rawObject(req.GetRawArguments())
+				if err != nil {
+					return nil, err
+				}
+				delete(arguments, "search_after")
+				req, err = innerRequest(req, req.Params.Name, arguments, nil)
+				if err != nil {
+					return nil, err
+				}
 			}
 			names := make([]string, 0, len(req.GetArguments()))
 			for argument := range req.GetArguments() {

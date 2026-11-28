@@ -562,7 +562,8 @@ func NewApp() (*App, error) {
 	if openSearchConfig.LogIndex != "" {
 		archiveSource.Log = opensearchconversationaudit.NewArchiveSource(openSearchClient, openSearchConfig.LogIndex)
 	}
-	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{LogLimits: conf.ReadLogArchiveLimits}), evidenceHandler)
+	archiveService := archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{LogLimits: conf.ReadLogArchiveLimits})
+	archiveHandler := httphandler.NewArchiveHandler(archiveService, evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
 		traceQueryService, evidenceService, sessionService, observabilityConfig.CursorSigningKey,
 	)
@@ -608,6 +609,12 @@ func NewApp() (*App, error) {
 	go func() {
 		defer app.workers.Done()
 		runRecordIntegritySupervisor(workerContext, evidenceService, 5*time.Second)
+	}()
+	// Archive runs continue in the background; a stop lets the current batch finish.
+	app.workers.Add(1)
+	go func() {
+		defer app.workers.Done()
+		archiveService.RunWorker(workerContext, 5*time.Second)
 	}()
 	if captureController != nil {
 		app.workers.Add(1)
@@ -1037,6 +1044,8 @@ func newAppWithArchiveAndCapture(
 		mux.HandleFunc(ObservabilityAPIBasePath+"/log-archive-jobs", readAuth(archiveHandler.ListOrCreate(observabilityvo.ArchiveKindLog)))
 		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-jobs", readAuth(archiveHandler.ListOrCreate(observabilityvo.ArchiveKindTrace)))
 		mux.HandleFunc(ObservabilityAPIBasePath+"/archive-jobs/", readAuth(archiveHandler.GetOrRetry))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/archive-runs/", readAuth(archiveHandler.RunResult))
+		mux.HandleFunc(ObservabilityAPIBasePath+"/trace-archive-retained", readAuth(archiveHandler.Retained))
 	}
 	var enterpriseReader enterpriseroute.Reader
 	if len(enterpriseReaders) > 0 {

@@ -35,6 +35,7 @@ func ontologyQueryServer(t *testing.T, status int, body string) (*ontologyQueryC
 	logger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Warnf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	logger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
 	return &ontologyQueryClient{
 		logger:     logger,
 		baseURL:    srv.URL + "/api/ontology-query",
@@ -67,6 +68,24 @@ func TestQueryInstanceSubgraph_DownstreamPathErrorCarriesCodeAndDetails(t *testi
 	}
 	if strings.Contains(he.Error(), internalURL) {
 		t.Errorf("error exposes the internal service URL: %s", he.Error())
+	}
+}
+
+func TestSubgraphQueriesPreserveConflictDetails(t *testing.T) {
+	client, _ := ontologyQueryServer(t, http.StatusConflict,
+		`{"error_code":"Public.Conflict","error_details":"knowledge network version changed"}`)
+	ctx := t.Context()
+	_, exploreErr := client.ExploreSubgraph(ctx, &interfaces.ExploreSubgraphReq{
+		KnID: "kn-1", SourceObjectTypeID: "ot1", Direction: "forward", PathLength: 1, Limit: 10,
+	})
+	_, pathErr := client.QueryInstanceSubgraph(ctx, &interfaces.QueryInstanceSubgraphReq{
+		KnID: "kn-1", RelationTypePaths: []any{},
+	})
+	for _, err := range []error{exploreErr, pathErr} {
+		he := asHTTPError(t, err)
+		if he.HTTPCode != http.StatusConflict || he.ErrorDetails != "Public.Conflict: knowledge network version changed" {
+			t.Fatalf("conflict error = %#v", he)
+		}
 	}
 }
 

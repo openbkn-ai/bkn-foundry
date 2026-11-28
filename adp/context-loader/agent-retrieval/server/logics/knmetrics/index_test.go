@@ -14,6 +14,7 @@ import (
 
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 type stubBknBackend struct {
@@ -252,41 +253,65 @@ func TestDrillThroughMetric_EmptyParticipantsAreArray(t *testing.T) {
 	}
 }
 
-// definitionBackend answers by-id object type reads from a fixed set and records each read's ids.
+// definitionBackend answers by-id reads the way bkn-backend does: when any id is gone, the
+// whole read is 404 and returns nothing.
 type definitionBackend struct {
 	interfaces.BknBackendAccess
 	definitions map[string]*interfaces.ObjectType
 	reads       [][]string
 	err         error
+	// failSingleRead fails a one-id read of this id with err instead of answering it.
+	failSingleRead string
 }
 
-func (b *definitionBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
+func (b *definitionBackend) GetObjectTypeDetail(ctx context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
 	b.reads = append(b.reads, append([]string(nil), ids...))
-	if b.err != nil {
+	if b.err != nil && (b.failSingleRead == "" || (len(ids) == 1 && ids[0] == b.failSingleRead)) {
 		return nil, b.err
 	}
 	var found []*interfaces.ObjectType
 	for _, id := range ids {
-		if definition, ok := b.definitions[id]; ok {
-			found = append(found, definition)
+		definition, ok := b.definitions[id]
+		if !ok {
+			return nil, objectTypeGone(ctx)
 		}
+		found = append(found, definition)
 	}
 	return found, nil
 }
 
-// The listing's summaries are replaced by the by-id definitions, in the listing's order and in
-// batches of 50 ids; one the by-id read no longer returns keeps its summary (#3412).
-func TestWithObjectTypeDefinitionsReadsDefinitionsInBatches(t *testing.T) {
-	backend := &definitionBackend{definitions: map[string]*interfaces.ObjectType{}}
-	var listed []*interfaces.ObjectType
-	for i := range 120 {
+// objectTypeGone is the error the bkn-backend client returns for a by-id read naming a missing id.
+func objectTypeGone(ctx context.Context) error {
+	return infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonExternalServerError,
+		httperrors.BaseError{ErrorCode: "BknBackend.ObjectType.ObjectTypeNotFound"})
+}
+
+func definitionsFor(listed []*interfaces.ObjectType, missing ...string) map[string]*interfaces.ObjectType {
+	definitions := make(map[string]*interfaces.ObjectType, len(listed))
+	for _, objectType := range listed {
+		definitions[objectType.ID] = &interfaces.ObjectType{ID: objectType.ID, Name: objectType.Name,
+			DataProperties: []*interfaces.DataProperty{{Name: "id", Type: "string"}}, PrimaryKeys: []string{"id"}}
+	}
+	for _, id := range missing {
+		delete(definitions, id)
+	}
+	return definitions
+}
+
+func listedSummaries(n int) []*interfaces.ObjectType {
+	listed := make([]*interfaces.ObjectType, 0, n)
+	for i := range n {
 		id := fmt.Sprintf("ot-%03d", i)
 		listed = append(listed, &interfaces.ObjectType{ID: id, Name: id})
-		if i != 7 {
-			backend.definitions[id] = &interfaces.ObjectType{ID: id, Name: id,
-				DataProperties: []*interfaces.DataProperty{{Name: "id", Type: "string"}}, PrimaryKeys: []string{"id"}}
-		}
 	}
+	return listed
+}
+
+// The listing's summaries are replaced by the by-id definitions, in the listing's order and in
+// batches of 50 ids (#3412).
+func TestWithObjectTypeDefinitionsReadsDefinitionsInBatches(t *testing.T) {
+	listed := listedSummaries(120)
+	backend := &definitionBackend{definitions: definitionsFor(listed)}
 	listed = append(listed, nil)
 
 	got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", listed)
@@ -304,14 +329,85 @@ func TestWithObjectTypeDefinitionsReadsDefinitionsInBatches(t *testing.T) {
 		if want := fmt.Sprintf("ot-%03d", i); objectType.ID != want {
 			t.Fatalf("entry %d = %s, want %s in the listing's order", i, objectType.ID, want)
 		}
+		if len(objectType.DataProperties) != 1 || len(objectType.PrimaryKeys) != 1 {
+			t.Fatalf("%s carries no definition: %+v", objectType.ID, objectType)
+		}
+	}
+}
+
+// An object type deleted between the listing and the by-id read makes bkn-backend answer its
+// whole batch 404. get_kn_detail must still answer: that batch is read one id at a time, the
+// deleted one keeps its summary, and every other object type gets its definition.
+func TestWithObjectTypeDefinitionsKeepsTheSummaryOfADeletedObjectType(t *testing.T) {
+	listed := listedSummaries(60)
+	backend := &definitionBackend{definitions: definitionsFor(listed, "ot-007")}
+
+	got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", listed)
+	if err != nil {
+		t.Fatalf("a deleted object type failed the whole detail: %v", err)
+	}
+	if len(got) != 60 {
+		t.Fatalf("got %d object types, want the 60 listed", len(got))
+	}
+	for i, objectType := range got {
+		if want := fmt.Sprintf("ot-%03d", i); objectType.ID != want {
+			t.Fatalf("entry %d = %s, want %s in the listing's order", i, objectType.ID, want)
+		}
 		if i == 7 {
 			if objectType != listed[7] {
-				t.Fatalf("an object type the by-id read did not return must keep its summary")
+				t.Fatalf("the deleted object type must keep its summary, got %+v", objectType)
 			}
 			continue
 		}
 		if len(objectType.DataProperties) != 1 || len(objectType.PrimaryKeys) != 1 {
 			t.Fatalf("%s carries no definition: %+v", objectType.ID, objectType)
+		}
+	}
+	// The failed batch of 50, its 50 one-id reads, then the second batch of 10 in one read.
+	if len(backend.reads) != 52 || len(backend.reads[0]) != 50 || len(backend.reads[51]) != 10 {
+		t.Fatalf("reads = %d, want 1 batch + 50 single + 1 batch", len(backend.reads))
+	}
+	for _, read := range backend.reads[1:51] {
+		if len(read) != 1 {
+			t.Fatalf("the 404 batch must be read again one id at a time, got a read of %d", len(read))
+		}
+	}
+
+	only := listedSummaries(1)
+	backend = &definitionBackend{definitions: definitionsFor(only, "ot-000")}
+	got, err = WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", only)
+	if err != nil || len(got) != 1 || got[0] != only[0] || len(backend.reads) != 1 {
+		t.Fatalf("a lone deleted object type: %v, %v, %d reads; want its summary from one read", got, err, len(backend.reads))
+	}
+}
+
+// A one-id read that fails for any other reason than 404 still fails the detail.
+func TestWithObjectTypeDefinitionsFailsWhenAOneIDReadFails(t *testing.T) {
+	listed := listedSummaries(3)
+	backend := &definitionBackend{definitions: definitionsFor(listed, "ot-000"),
+		err: errors.New("bkn-backend down"), failSingleRead: "ot-002"}
+	if got, err := WithObjectTypeDefinitions(context.Background(), backend, "kn-1", "main", listed); err == nil || got != nil {
+		t.Fatalf("got %v, %v; want the one-id read's error", got, err)
+	}
+}
+
+// A 404 that does not say an object type is gone, such as the network deleted after the listing
+// or a route bkn-backend does not have, still fails the detail and is not read again id by id.
+func TestWithObjectTypeDefinitionsFailsOnAnyOther404(t *testing.T) {
+	ctx := context.Background()
+	for name, notFound := range map[string]error{
+		"network gone": infraerrors.NewHTTPError(ctx, http.StatusNotFound, infraerrors.ErrExtCommonExternalServerError,
+			httperrors.BaseError{ErrorCode: "BknBackend.KnowledgeNetwork.NotFound"}),
+		"no route": infraerrors.DefaultHTTPError(ctx, http.StatusNotFound, "request not found"),
+	} {
+		listed := listedSummaries(3)
+		backend := &definitionBackend{definitions: definitionsFor(listed), err: notFound}
+		got, err := WithObjectTypeDefinitions(ctx, backend, "kn-1", "main", listed)
+		if err == nil || got != nil {
+			t.Fatalf("%s: got %v, %v; want the 404", name, got, err)
+		}
+		if len(backend.reads) != 1 {
+			t.Fatalf("%s: %d reads, want the one batch read and no id-by-id retry", name, len(backend.reads))
 		}
 	}
 }

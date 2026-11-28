@@ -66,6 +66,8 @@ func (kns *knowledgeNetworkService) PublishKNMain(ctx context.Context, knID, src
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "load capability proxy bindings")
 		}
 	}
+	// Like the content, the bindings become main's: the copy keeps their ids.
+	bindings = rebranchBindings(bindings, interfaces.MAIN_BRANCH)
 	sources, _, err := kns.buildTypedProxyGrantSourcesWithCapabilities(ctx, candidate, bindings)
 	if err != nil {
 		return invalidProxyTargetError(ctx, err)
@@ -222,6 +224,21 @@ func rebranch(kn *interfaces.KN, branch string) {
 	}
 }
 
+// rebranchBindings returns copies of bindings on branch, so that grant sources built from them
+// name that branch; the listed rows themselves are left as read.
+func rebranchBindings(bindings []*interfaces.CapabilityBinding, branch string) []*interfaces.CapabilityBinding {
+	moved := make([]*interfaces.CapabilityBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding == nil {
+			continue
+		}
+		copied := *binding
+		copied.Branch = branch
+		moved = append(moved, &copied)
+	}
+	return moved
+}
+
 // refreshConceptIndex rewrites the concept index of a branch after its content was replaced
 // by a copy: documents of definitions no longer on the branch are deleted, the others written
 // again. Like the index writes of an import, it runs after commit, and a failure is only logged.
@@ -239,7 +256,7 @@ func (kns *knowledgeNetworkService) refreshConceptIndex(ctx context.Context, old
 		{"concept groups", func() error { return kns.cgs.InsertDatasetDatas(ctx, newKN.ConceptGroups) }},
 		{"object types", func() error { return kns.ots.InsertDatasetData(ctx, newKN.ObjectTypes) }},
 		{"relation types", func() error { return kns.rts.InsertDatasetData(ctx, newKN.RelationTypes) }},
-		{"action types", func() error { return kns.ats.InsertDatasetData(ctx, newKN.ActionTypes) }},
+		{"action types", func() error { return kns.indexActionTypes(ctx, newKN.ActionTypes) }},
 		{"risk types", func() error { return kns.riskTypeS.InsertDatasetData(ctx, newKN.RiskTypes) }},
 		{"network", func() error { return kns.InsertDatasetData(ctx, newKN) }},
 	}
@@ -378,6 +395,13 @@ func (kns *knowledgeNetworkService) IndexVersion(ctx context.Context, knID, src,
 	return kns.writeConceptDocuments(ctx, kn)
 }
 
+func (kns *knowledgeNetworkService) indexActionTypes(ctx context.Context, actions []*interfaces.ActionType) error {
+	if kns.ats == nil {
+		return nil
+	}
+	return kns.ats.InsertDatasetData(ctx, actions)
+}
+
 // writeConceptDocuments writes the concept index document of every definition of kn and of the
 // network itself, on kn's branch, stopping at the first failure.
 func (kns *knowledgeNetworkService) writeConceptDocuments(ctx context.Context, kn *interfaces.KN) error {
@@ -385,7 +409,7 @@ func (kns *knowledgeNetworkService) writeConceptDocuments(ctx context.Context, k
 		func() error { return kns.cgs.InsertDatasetDatas(ctx, kn.ConceptGroups) },
 		func() error { return kns.ots.InsertDatasetData(ctx, kn.ObjectTypes) },
 		func() error { return kns.rts.InsertDatasetData(ctx, kn.RelationTypes) },
-		func() error { return kns.ats.InsertDatasetData(ctx, kn.ActionTypes) },
+		func() error { return kns.indexActionTypes(ctx, kn.ActionTypes) },
 		func() error { return kns.riskTypeS.InsertDatasetData(ctx, kn.RiskTypes) },
 		func() error { return kns.InsertDatasetData(ctx, kn) },
 	} {

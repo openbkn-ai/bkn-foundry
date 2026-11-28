@@ -84,7 +84,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByID(ctx context.Context, k
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var name string
 	err = cga.db.QueryRow(sqlStr, vals...).Scan(&name)
@@ -124,7 +124,7 @@ func (cga *conceptGroupAccess) CheckConceptGroupExistByName(ctx context.Context,
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	var cgID string
 	err = cga.db.QueryRow(sqlStr, vals...).Scan(
@@ -175,7 +175,7 @@ func (cga *conceptGroupAccess) GetConceptGroupIdentitiesByIDsOrNames(ctx context
 			common.LogSafeError(ctx, "Failed to build concept group identity query", err)
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := cga.db.Query(sqlStr, vals...)
 		if err != nil {
 			common.LogSafeError(ctx, "Query concept group identities failed", err)
@@ -259,7 +259,7 @@ func (cga *conceptGroupAccess) CreateConceptGroup(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -302,7 +302,7 @@ func (cga *conceptGroupAccess) CreateConceptGroups(ctx context.Context, tx *sql.
 			common.LogSafeError(ctx, "Failed to build the sql of batch insert concept groups", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if _, err = tx.Exec(sqlStr, vals...); err != nil {
 			common.LogSafeError(ctx, "Batch insert concept groups failed", err)
 			return err
@@ -364,7 +364,7 @@ func (cga *conceptGroupAccess) ListConceptGroups(ctx context.Context, query inte
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -430,7 +430,7 @@ func (cga *conceptGroupAccess) ListConceptGroupTags(ctx context.Context,
 		common.LogSafeError(ctx, "Failed to build the sql of select concept group tags, error", err)
 		return nil, err
 	}
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -502,7 +502,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByIDs(ctx context.Context, tx *sq
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
 	if err != nil {
@@ -568,7 +568,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsTotal(ctx context.Context, query 
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	total := 0
 	err = cga.db.QueryRow(sqlStr, vals...).Scan(&total)
@@ -618,7 +618,7 @@ func (cga *conceptGroupAccess) GetConceptGroupByID(ctx context.Context, knID str
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	tagsStr := ""
 	conceptGroup := &interfaces.ConceptGroup{
@@ -693,7 +693,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroup(ctx context.Context, tx *sql.T
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -776,7 +776,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroups(ctx context.Context, tx *sql.
 		}
 		statement.WriteByte(')')
 		sqlStr := statement.String()
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(args)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(args)))
 		if _, err := tx.Exec(sqlStr, args...); err != nil {
 			common.LogSafeError(ctx, "Batch update concept groups failed", err)
 			return err
@@ -836,7 +836,7 @@ func (cga *conceptGroupAccess) UpdateConceptGroupDetail(ctx context.Context, knI
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := cga.db.Exec(sqlStr, vals...)
 	if err != nil {
@@ -878,7 +878,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupByID(ctx context.Context, tx *s
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -917,7 +917,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupsByKnID(ctx context.Context, tx
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -956,7 +956,7 @@ func (cga *conceptGroupAccess) DeleteConceptGroupRelationsByKnID(ctx context.Con
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -998,7 +998,7 @@ func (cga *conceptGroupAccess) GetConceptGroupIDsByKnID(ctx context.Context, knI
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1096,7 +1096,7 @@ func (cga *conceptGroupAccess) GetAllConceptGroupsByKnID(ctx context.Context, kn
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1176,7 +1176,7 @@ func (cga *conceptGroupAccess) ListConceptGroupRelations(ctx context.Context, tx
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
 	if err != nil {
@@ -1245,7 +1245,7 @@ func (cga *conceptGroupAccess) CreateConceptGroupRelation(ctx context.Context, t
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	_, err = tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1279,7 +1279,7 @@ func (cga *conceptGroupAccess) CreateConceptGroupRelations(ctx context.Context, 
 			common.LogSafeError(ctx, "Failed to build batch concept group relation insert", err)
 			return err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		if _, err = tx.Exec(sqlStr, vals...); err != nil {
 			common.LogSafeError(ctx, "Batch insert concept group relations failed", err)
 			return err
@@ -1347,7 +1347,7 @@ func (cga *conceptGroupAccess) DeleteObjectTypesFromGroup(ctx context.Context, t
 		return 0, err
 	}
 
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	ret, err := tx.Exec(sqlStr, vals...)
 	if err != nil {
@@ -1391,7 +1391,7 @@ func (cga *conceptGroupAccess) GetConceptIDsByConceptGroupIDs(ctx context.Contex
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1443,7 +1443,7 @@ func (cga *conceptGroupAccess) GetConceptIDsGroupedByConceptGroupIDs(ctx context
 		if err != nil {
 			return nil, err
 		}
-		otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+		otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 		rows, err := cga.db.QueryContext(ctx, sqlStr, vals...)
 		if err != nil {
 			return nil, err
@@ -1511,7 +1511,7 @@ func (cga *conceptGroupAccess) GetRelationTypeIDsFromConceptGroupRelation(ctx co
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1581,7 +1581,7 @@ func (cga *conceptGroupAccess) GetActionTypeIDsFromConceptGroupRelation(ctx cont
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := cga.db.Query(sqlStr, vals...)
 	if err != nil {
@@ -1649,7 +1649,7 @@ func (cga *conceptGroupAccess) GetConceptGroupsByOTIDs(ctx context.Context, tx *
 	}
 
 	// Record the processed SQL string.
-	otellog.LogInfo(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
+	otellog.LogDebug(ctx, common.SafeQuerySummary(sqlStr, len(vals)))
 
 	rows, err := tx.Query(sqlStr, vals...)
 	if err != nil {

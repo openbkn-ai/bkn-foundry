@@ -51,8 +51,18 @@ func (r *restHandler) registerKNVersionRoutes(apiV1 *gin.RouterGroup) {
 	}
 	group := apiV1.Group("/knowledge-networks/:kn_id")
 	for _, route := range routes {
-		group.Handle(route.method, route.path, r.knEventExternal(route.handle))
+		group.Handle(route.method, route.path, r.requireKNVersioning, r.knEventExternal(route.handle))
 	}
+}
+
+func (r *restHandler) requireKNVersioning(c *gin.Context) {
+	if r.versioningEntitled != nil && !r.versioningEntitled() {
+		c.Writer.Header().Del("Cache-Control")
+		c.Abort()
+		c.Data(http.StatusNotFound, gin.MIMEPlain, []byte("404 page not found"))
+		return
+	}
+	c.Next()
 }
 
 func replyKNVersionError(c *gin.Context, err error) {
@@ -447,6 +457,9 @@ func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID str
 	if req.DraftRevision, ok = optionalInt64Query(c, "draft_revision"); !ok {
 		return nil, false
 	}
+	if r.versioningEntitled != nil && !r.versioningEntitled() {
+		return resolvePublishedBranch(*ctx, c, knID, req)
+	}
 	if r.kvs == nil {
 		branch := req.Branch
 		if branch == "" {
@@ -472,6 +485,64 @@ func (r *restHandler) resolveRead(ctx *context.Context, c *gin.Context, knID str
 	// Lets a caller that named a version number tell whether it is the running one.
 	if resolved.Versioned && resolved.RunningVersion > 0 {
 		c.Header("X-Kn-Running-Version", strconv.Itoa(resolved.RunningVersion))
+	}
+	return resolved, true
+}
+
+// resolvePublishedBranch tracks a network's running branch when version management is unavailable.
+func resolvePublishedBranch(ctx context.Context, c *gin.Context, knID string, req interfaces.KNBranchRequest) (*interfaces.KNResolvedBranch, bool) {
+	if interfaces.IsReservedBranch(req.Branch) || req.DraftRevision != nil {
+		replyKNVersionError(c, logics.KNVersionEditionError(ctx))
+		return nil, false
+	}
+	branch := req.Branch
+	if branch == "" {
+		branch = interfaces.MAIN_BRANCH
+	}
+	resolved := &interfaces.KNResolvedBranch{Branch: branch}
+	if logics.KNVA != nil {
+		state, err := logics.KNVA.GetState(ctx, nil, knID, false)
+		if err != nil {
+			replyKNVersionError(c, err)
+			return nil, false
+		}
+		if state != nil {
+			if req.Write || branch != interfaces.MAIN_BRANCH || req.KNVersion == interfaces.DRAFT_BRANCH {
+				replyKNVersionError(c, logics.KNVersionEditionError(ctx))
+				return nil, false
+			}
+			resolved.Versioned = true
+			if state.RunningVersion > 0 {
+				resolved.Branch = interfaces.VersionBranch(state.RunningVersion)
+				resolved.Version = strconv.Itoa(state.RunningVersion)
+				resolved.Running = true
+				resolved.RunningVersion = state.RunningVersion
+			}
+		}
+	}
+	if !resolved.Versioned {
+		switch req.KNVersion {
+		case "":
+		case "running", interfaces.DRAFT_BRANCH, "1":
+			if branch != interfaces.MAIN_BRANCH {
+				replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+					berrors.BknBackend_KNVersion_InvalidVersion).WithErrorDetails("use either kn_version or branch, not both"))
+				return nil, false
+			}
+		default:
+			replyKNVersionError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_NotVersioned))
+			return nil, false
+		}
+		return resolved, true
+	}
+	if req.KNVersion != "" && req.KNVersion != "running" && req.KNVersion != resolved.Version {
+		replyKNVersionError(c, logics.KNVersionEditionError(ctx))
+		return nil, false
+	}
+	if resolved.Running {
+		markVersionedRead(c, knID, resolved)
+		c.Header("X-Kn-Version", resolved.Version)
+		c.Header("X-Kn-Running-Version", resolved.Version)
 	}
 	return resolved, true
 }

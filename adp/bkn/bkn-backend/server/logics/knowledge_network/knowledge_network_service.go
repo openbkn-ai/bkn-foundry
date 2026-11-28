@@ -31,9 +31,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/action_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/batchindex"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
@@ -89,8 +87,8 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			ata:        logics.ATA,
 			aoa:        logics.AOA,
 			cba:        logics.CBA,
-			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
-			ats:        action_type.NewActionTypeService(appSetting),
+			cbs:        logics.CBS,
+			ats:        logics.ATS,
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
 			db:         logics.DB,
@@ -207,6 +205,9 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	// A network versioned from the start keeps what the request defines in its draft.
 	versioned := kn.Versioning != nil && kn.Versioning.Requested
 	if versioned {
+		if !logics.KNVersioningAvailable() {
+			return "", logics.KNVersionEditionError(ctx)
+		}
 		if kn.Branch != interfaces.MAIN_BRANCH && kn.Branch != interfaces.DRAFT_BRANCH {
 			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNVersion_InvalidVersion).
 				WithErrorDetails("a versioned knowledge network is created on its main and draft branches")
@@ -512,6 +513,9 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 		}
 	}
 	if len(plan.ActionTypes) > 0 {
+		if kns.ats == nil {
+			return logics.DynamicModelEditionError(validateCtx)
+		}
 		if err := kns.ats.ValidateActionTypes(validateCtx, knID, branch, plan.ActionTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
@@ -1024,6 +1028,9 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 		},
 		func(ctx context.Context) error {
 			var err error
+			if kns.ats == nil {
+				return nil
+			}
 			actionTypes, _, err = kns.ats.ListActionTypes(ctx, interfaces.ActionTypesQueryParams{
 				PaginationQueryParameters: interfaces.PaginationQueryParameters{
 					Limit: -1,
@@ -1402,7 +1409,10 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 
 	// Capability binding counts. One grouped query covers every stored type; the service also
 	// splits function bindings into functions and APIs, which needs the owning box's kind.
-	capabilityTotals, err := kns.cbs.GetCapabilityTotalsByType(ctx, kn.KNID, kn.Branch)
+	var capabilityTotals map[string]int
+	if kns.cbs != nil {
+		capabilityTotals, err = kns.cbs.GetCapabilityTotalsByType(ctx, kn.KNID, kn.Branch)
+	}
 	if err != nil {
 		logger.Errorf("GetBindingsTotalByType in knowledge network[%s] error: %s", kn.KNID, err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("GetBindingsTotalByType in knowledge network[%s], error: %v", kn.KNID, err))
@@ -1524,6 +1534,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 			WithErrorDetails(err.Error())
 	}
 
+	kns.keepCreationInfo(ctx, kn)
 	err = kns.InsertDatasetData(ctx, kn)
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
@@ -1678,7 +1689,21 @@ func (kns *knowledgeNetworkService) deleteKNBranch(ctx context.Context, tx *sql.
 	}
 
 	// Delete all action types before the object types they can reference.
-	err := kns.ats.DeleteActionTypesByKnID(ctx, tx, knID, branch)
+	var err error
+	if kns.ats != nil {
+		err = kns.ats.DeleteActionTypesByKnID(ctx, tx, knID, branch)
+	} else if kns.ata != nil {
+		var ids []string
+		ids, err = kns.ata.GetActionTypeIDsByKnID(ctx, knID, branch)
+		if err == nil {
+			_, err = kns.ata.DeleteActionTypesByKnID(ctx, tx, knID, branch)
+		}
+		if err == nil {
+			permission.TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, branch, ids)
+		} else {
+			err = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+		}
+	}
 	if err != nil {
 		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
 		return err
@@ -1723,7 +1748,15 @@ func (kns *knowledgeNetworkService) deleteKNBranch(ctx context.Context, tx *sql.
 	// Delete the capability bindings of the business knowledge network. A knowledge network ID
 	// can be supplied by the caller, so leaving the rows behind would let a network recreated
 	// under the same ID inherit Skills and functions its owner never mounted.
-	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, knID, branch)
+	if kns.cbs != nil {
+		err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, knID, branch)
+	} else if kns.cba != nil {
+		_, err = kns.cba.DeleteBindingsByKnID(ctx, tx, knID, branch)
+		if err != nil {
+			err = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_CapabilityBinding_InternalError_DeleteBindingsFailed).WithErrorDetails(err.Error())
+		}
+	}
 	if err != nil {
 		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
 		return err
@@ -1988,6 +2021,21 @@ func (kns *knowledgeNetworkService) rewriteOtherBranchDocuments(ctx context.Cont
 		if err := kns.writeNetworkDocument(ctx, doc); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Rewrite the network concept document on %s failed", doc.Branch), err)
 		}
+	}
+}
+
+// keepCreationInfo gives kn the creator and create time stored on its branch. An update does not
+// change them and its request does not carry them, so the branch's concept document, built from
+// the request, would otherwise lose them (#3433). The other branches' documents are built from
+// their stored rows and keep them already.
+func (kns *knowledgeNetworkService) keepCreationInfo(ctx context.Context, kn *interfaces.KN) {
+	row, err := kns.kna.GetKNByID(ctx, kn.KNID, kn.Branch)
+	if err != nil {
+		otellog.LogError(ctx, fmt.Sprintf("Read the creation info of the network on %s failed", kn.Branch), err)
+		return
+	}
+	if row != nil {
+		kn.Creator, kn.CreateTime = row.Creator, row.CreateTime
 	}
 }
 

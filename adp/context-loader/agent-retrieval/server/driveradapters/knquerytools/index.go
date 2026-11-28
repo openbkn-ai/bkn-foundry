@@ -276,7 +276,7 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 	var (
 		matched    []*interfaces.ObjectType
 		err        error
-		totalCount int64
+		totalCount *int64
 		nextOffset *int
 		offset     int
 		notice     string
@@ -293,8 +293,8 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 			rest.ReplyError(c, listErr)
 			return
 		}
-		matched, totalCount = page.Entries, page.TotalCount
-		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+		matched, totalCount = page.Entries, &page.TotalCount
+		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, page.TotalCount)
 		interfaces.ShortenObjectTypeComments(matched)
 		if clamped {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": req.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
@@ -375,7 +375,7 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 	var (
 		matched    []*interfaces.RelationType
 		err        error
-		totalCount int64
+		totalCount *int64
 		nextOffset *int
 		notice     string
 		offset     int
@@ -392,8 +392,8 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 			rest.ReplyError(c, listErr)
 			return
 		}
-		matched, totalCount = page.Entries, page.TotalCount
-		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
+		matched, totalCount = page.Entries, &page.TotalCount
+		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, page.TotalCount)
 		interfaces.ReduceToRelationTypeIndex(matched)
 		if clamped {
 			notice = renderNotice(lang, "agentRetrieval.Detail.RelationTypePageLimitClamped",

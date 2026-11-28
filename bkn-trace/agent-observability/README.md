@@ -144,42 +144,79 @@ payloads into memory. The object writer also checks the Trace batch budget befor
 allocation/upload and bounds its verification download to the frozen length.
 
 An oversized Interaction commits only the already-frozen, fully verified prefix
-as a normal batch. Selection then stops at that Interaction; later candidates
-remain hot and the run is **not complete**. No oversized content is truncated,
-skipped or deleted. Other errors (cancellation, incomplete responses or dependency
-failures) still reject the current batch rather than committing a partial result.
+as a normal batch. No oversized content is truncated or deleted. Other errors
+(cancellation, incomplete responses or dependency failures) still reject the
+current batch rather than committing a partial result.
 
-The blocked selection is persisted as an existing `failed` archive job, with no
-manifest, no frozen cleanup payload and `candidate_count=0`. Its `candidate_ids`
-identifies the blocker, while `batch_progress.blocked` records `interaction_id`,
-`stage`, `actual`, `limit`, `unit` and optional `at_least`. Existing progress fields
-retain the run/batch identity, prior cleaned count and the remaining selection.
-This adds optional JSON metadata to the existing column; no migration, new status,
-archive format or streaming object protocol is introduced. Legacy jobs still read
-normally. With no newly completed prefix, an identical blocker, cutoff and
-remaining selection reuse the latest failed job so repeated POSTs do not displace
-completed batches from the bounded history. A changed measurement or selection
-creates a new diagnostic. A blocked job is never eligible for `retry-cleanup` or download.
+In a background run (below), the oversized Interaction is **retained online**:
+the run records it in `bkn_trace_archive_retained` (interaction, run, stage,
+measured size, budget, unit, `at_least`, time) and continues with later
+candidates. Trace selection and the candidate count both exclude retained
+Interactions, so the overview, the eligible-count check and the run agree.
+Exclusion applies only while the recorded `policy_version` equals the running
+image's Trace budgets (`TraceArchivePolicyVersion`); changing a budget, for
+example when a large-object archive path ships, re-evaluates them automatically.
+Cleanup deletes strictly by frozen Interaction ID and technical cleanup only by
+each candidate's own frozen documents, so a retained Interaction, its SQL child
+rows and technical traces are never touched.
 
-POST still returns HTTP 409 `archive_incomplete_candidates`, `retryable=false`,
-with `required_action=review_oversized_interaction`. `error.details` identifies the
-persisted `archive_job_id` and the same `blocked` metadata, correlated with the
-existing `request_id`. GET/list expose the metadata after a process restart.
 Stages distinguish SQL field bytes (`sql_payload`), SQL row count (`sql_rows`),
 serialized Core (`core_json`), bounded upstream response (`technical_response`),
 raw technical document/trace/bundle, and final enriched JSON (`enriched_json`).
-`actual` is the measured quantity at that check, not a predicted final archive
-size. For a bounded response, `at_least=true` explicitly means only `limit+1`
-bytes were read; the service does not fetch the rest to learn its full size.
+`measured` is the quantity at that check, not a predicted final archive size;
+`at_least=true` means only `limit+1` bytes were read.
 
-Operators should inspect the identified Interaction's size metadata and preserve
-its source. The current release has no approved large-object export/recovery path;
-retrying unchanged input remains blocked. Raising only database packet limits,
-reducing candidate count, or deleting source facts is not a remedy. Complete large
-objects or advancing beyond a blocker requires a separately reviewed archival
-protocol; this fix deliberately keeps ordering and source-version deletion checks.
-Earlier completed batches remain independently recorded and downloadable. SQL
-cleanup still verifies frozen metadata under its parent lock, as described below.
+The synchronous service path without a run (used by tests and custom stores)
+keeps the earlier behavior: it persists the blocked selection as a `failed` job
+with `batch_progress.blocked` and stops.
+
+Log and Trace job lists each return their latest 20 jobs plus any older
+`cleanup_incomplete` jobs, without duplicates. History query, scan or metadata
+errors return HTTP 503 `archive_history_unavailable`; an empty HTTP 200 means the
+read succeeded. These read-only operations do not acquire archive execution locks.
+
+## Background archive runs (#2947, #2948)
+
+`POST /log-archive-jobs`, `POST /trace-archive-jobs` and
+`POST /archive-jobs/{id}/retry-cleanup` record a run in `bkn_trace_archive_runs`
+and return HTTP 202 before any batch runs. A browser timeout or disconnect no
+longer stops archiving. Submission is refused with 409 when a run of that kind
+is queued, running or waiting to retry (`archive_busy`), when cleanup is
+unfinished (`archive_cleanup_required`), or when nothing is eligible.
+
+Each service instance runs one worker loop per kind (woken on submit, otherwise
+every 5 s). A run executes only while its instance holds the existing per-kind
+MariaDB named lock, so instances never run the same kind at once; the lock is
+released with the session if a process dies, and any instance then resumes the
+run from its latest batch (re-verifying a `cleanup_incomplete` batch first). On
+shutdown the current batch gets up to 20 s (inside the 30 s shutdown budget) and
+is then cancelled; the run stays `running` and resumes on the next start.
+Each batch is bounded to 15 minutes; a hung dependency call becomes an ordinary
+retry instead of holding the lock. A defect that panics inside a run fails that
+run (`unexpected_error`) rather than the process. The lock lives on one pooled
+connection, pinged every minute while a run holds it so server and proxy idle
+timeouts do not drop it and silently release the lock.
+
+Transient failures (`temporarily_unavailable`: object storage, OpenSearch or
+database errors and timeouts; records not yet settled; interrupted cleanup) retry after 1, 5 and 15 minutes, then the
+run fails. Invalid configuration, capacity limits, cleanup verification failure
+or another run's unfinished cleanup fail at once. Every run keeps its result:
+start/end, candidates at submission, archived-and-cleaned count, batches, retry
+count and last reason (`last_failure_code`), and retained Interactions.
+`GET /archive-runs/{run_id}` returns the summary and
+`GET /archive-runs/{run_id}/retained` pages the Interactions that run retained;
+the overview carries the latest run as `current_run` and `retained_count`;
+`GET /trace-archive-retained` pages all Interactions retained under the current
+budgets. Retained pages take `offset` and `limit` (default 20, at most 100) and
+return `{items, total}`.
+
+### v041 upgrade and rollback
+
+v041 only creates the two tables above (no change to existing tables or data)
+and runs through the normal migration ledger. As with v040, an image without
+v041 refuses to start against a ledger that contains it; roll forward instead of
+rolling the image back. Until all replicas run the new image, an old replica
+still serves synchronous archive requests; upgrade replicas together.
 
 ## Technical Trace archive cleanup safety (#1724)
 

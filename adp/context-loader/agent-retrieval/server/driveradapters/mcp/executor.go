@@ -139,8 +139,7 @@ func (e *nativeExecutor) handle(ctx context.Context, req mcp.CallToolRequest) (*
 // normalizeTargetArguments applies the fixed rewrites a caller may rely on:
 // arguments given as a JSON string are parsed, and a bkn_context equal to the
 // outer one is dropped. A different bkn_context and any response_format are
-// refused, never silently ignored. rewritten reports whether the arguments
-// differ from what the caller sent.
+// refused. rewritten marks normalizations reported to the caller.
 func normalizeTargetArguments(name string, raw, outerContext json.RawMessage) (map[string]json.RawMessage, bool, error) {
 	rewritten := false
 	if trimmed := bytes.TrimSpace(raw); len(trimmed) > 0 && trimmed[0] == '"' {
@@ -153,6 +152,9 @@ func normalizeTargetArguments(name string, raw, outerContext json.RawMessage) (m
 	arguments, err := rawObject(raw)
 	if err != nil {
 		return nil, false, &gatewayRefusal{Code: refusalInvalidArguments, Name: name, Message: "arguments must be a JSON object: " + err.Error()}
+	}
+	if ignoresLegacySearchAfter(name) {
+		delete(arguments, "search_after")
 	}
 	if _, present := arguments["response_format"]; present {
 		return nil, false, &gatewayRefusal{

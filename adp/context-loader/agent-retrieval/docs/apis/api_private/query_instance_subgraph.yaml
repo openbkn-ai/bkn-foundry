@@ -11,7 +11,8 @@ paths:
     post:
       summary: query_instance_subgraph
       description: |
-        基于预定义的关系路径查询知识图谱中的对象子图。支持多条路径查询，每条路径返回独立子图。对象以map形式返回，支持过滤条件和排序。query_type需设为"relation_path"。
+        基于预定义的关系路径查询知识图谱中的对象子图。支持多条路径查询，每条路径返回独立子图。对象以map形式返回，支持过滤条件和排序。每次请求为各条路径分别读取一页起点。
+        要翻页，调整各条路径起点的 object_types[0].offset 和 object_types[0].limit。
       parameters:
         - name: x-account-id
           in: header
@@ -218,31 +219,8 @@ components:
           description: 返回的数量，默认值 10。范围 1-10000
           type: integer
         need_total:
-          description: 是否需要总数，默认false
+          description: 是否尝试获取总数，默认 false。
           type: boolean
-    FirstQueryWithSearchAfter:
-      description: 分页查询的第一次查询请求
-      required:
-      - limit
-      type: object
-      properties:
-        condition:
-          $ref: '#/components/schemas/Condition'
-          description: 过滤条件
-        sort:
-          $ref: '#/components/schemas/Sort'
-          description: 排序字段，默认使用 @timestamp排序，排序方向为 desc
-        limit:
-          description: 返回的数量，默认值 10。范围 1-10000
-          type: integer
-        need_total:
-          description: 是否需要总数，默认false
-          type: boolean
-        properties:
-          description: 指定需要输出的属性集。默认为全部数据属性
-          type: array
-          items:
-            type: string
     FulltextConfig:
       description: 全文索引的配置
       required:
@@ -362,35 +340,6 @@ components:
         end:
           description: 结束时间戳
           type: integer
-    ObjectDataResponse:
-      description: 节点（对象类）信息
-      required:
-      - groups
-      - type
-      - datas
-      - search_after
-      type: object
-      properties:
-        object_type:
-          $ref: '#/components/schemas/ObjectTypeDetail'
-          description: 对象类信息
-        datas:
-          description: 对象实例数据。动态数据字段，其值可以是基本类型、MetricProperty
-          type: object
-          additionalProperties:
-            oneOf:
-            - type: string
-            - type: number
-            - type: boolean
-            - type: integer
-            - $ref: '#/components/schemas/MetricProperty'
-        total_count:
-          description: 总条数
-          type: integer
-        search_after:
-          description: 表示返回的最后一个文档的排序值，获取这个用于下一次 search_after 分页
-          type: array
-          items: {}
     ObjectTypeDetail:
       description: 节点（对象类）信息
       required:
@@ -678,34 +627,6 @@ components:
           - <
           - <=
           type: string
-    PageTurnQueryWithSearchAfter:
-      description: 分页查询的第一次查询请求
-      required:
-      - limit
-      - search_after
-      type: object
-      properties:
-        condition:
-          $ref: '#/components/schemas/Condition'
-          description: 过滤条件
-        sort:
-          $ref: '#/components/schemas/Sort'
-          description: 排序字段，默认使用 @timestamp排序，排序方向为 desc
-        limit:
-          description: 返回的数量，默认值 10。范围 1-10000
-          type: integer
-        need_total:
-          description: 是否需要总数，默认false
-          type: boolean
-        search_after:
-          description: 上次查询返回的最后一个文档的排序值。
-          type: array
-          items: {}
-        properties:
-          description: 指定需要输出的属性集。默认为全部数据属性
-          type: array
-          items:
-            type: string
     ObjectInfoInSubgraph:
       description: |
         子图中的对象信息。
@@ -808,45 +729,9 @@ components:
         limit:
           description: "对象类获取对象数量的限制"
           type: integer
-    SubGraphQueryBaseOnSource:
-      description: 基于起点、方向和路径长度获取对象子图
-      required:
-      - source_object_type_id
-      - direction
-      - path_length
-      type: object
-      properties:
-        source_object_type_id:
-          description: 起点对象类id
-          type: string
-        condition:
-          $ref: '#/components/schemas/Condition'
-          description: 起点对象类过滤条件
-        direction:
-          description: 探索子图的路径方向
-          enum:
-          - forward
-          - backward
-          - bidirectional
-          type: string
-        path_length:
-          description: 探索子图的路径的最大长度
+        offset:
+          description: 本次读取跳过的起点实例数，仅用于首个节点。
           type: integer
-        sort:
-          description: 对起点类的排序字段
-          type: array
-          items:
-            $ref: '#/components/schemas/Sort'
-        limit:
-          description: 对起点类的对象数量的限制。默认是10
-          type: integer
-        need_total:
-          description: 是否需要(起点类)总数，默认false。
-          type: boolean
-        search_after:
-          description: 上次查询返回的最后一个起点类对象的排序值。只对起点类生效。第一次查询不传此字段
-          type: array
-          items: {}
     SubGraphQueryBaseOnTypePath:
       description: 查询请求的顶层结构。用于基于关系类路径查询对象子图。relation_type_paths数组中可以包含多条不同的关系路径，系统会同时查询并返回所有路径的结果。每条路径必须符合严格的顺序和方向要求。
       type: object
@@ -903,8 +788,7 @@ components:
       required:
       - objects
       - relation_paths
-      - total_count
-      - search_after
+      - is_sorted
       type: object
       properties:
         objects:
@@ -950,12 +834,17 @@ components:
           items:
             $ref: '#/components/schemas/RelationPath'
         total_count:
-          description: 起点对象类的总条数
+          description: 已取得的起点对象总数。已确认零命中时返回 0，未请求或未取得时省略。
           type: integer
-        search_after:
-          description: 表示返回的最后一个起点类对象的排序值，获取这个用于下一次 search_after 分页
+        is_sorted:
+          type: boolean
+          description: 起点批次的排序状态，仅适用于本批起点实例。API 资源或 Vega 未报告排序状态时返回 false。
+        warnings:
           type: array
-          items: {}
+          minItems: 1
+          items:
+            type: string
+          description: 起点查询产生的告警。没有告警时省略。
     ObjectSubGraphWithTypePathsResponse:
       description: 基于路径获取对象子图的返回体
       type: array

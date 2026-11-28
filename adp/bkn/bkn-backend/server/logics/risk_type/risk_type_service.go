@@ -581,7 +581,15 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除风险类概念索引失败")
-			return err
+
+			// Vega returns ordinary errors. Normalize them to HTTPError before propagating.
+			// Otherwise handler type assertions panic before headers are written and the gateway reports 502.
+			var httpErr *httperrors.HTTPError
+			if errors.As(err, &httpErr) {
+				return httpErr
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 	permission.TrackKNChildAuthorizationCleanup(ctx,

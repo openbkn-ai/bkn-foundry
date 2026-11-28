@@ -134,7 +134,7 @@ func (c *OpenSearchConnector) executeGroupedQuery(ctx context.Context, indexName
 	rows := make([]map[string]any, 0)
 	var after map[string]any
 	groupKeys := make(map[string]struct{})
-	var total int64
+	var total *int64
 	stateBytes := 0
 	for {
 		if err := ctx.Err(); err != nil {
@@ -161,12 +161,7 @@ func (c *OpenSearchConnector) executeGroupedQuery(ctx context.Context, indexName
 		}
 		if params.NeedTotal && after == nil {
 			hits, _ := response["hits"].(map[string]any)
-			count, _ := hits["total"].(map[string]any)
-			var valid bool
-			total, valid = openSearchInt64(count["value"])
-			if !valid || total < 0 || count["relation"] != "eq" {
-				return nil, fmt.Errorf("group aggregation response is missing an exact document count")
-			}
+			total = searchTotal(hits)
 		}
 		aggs, _ := response["aggregations"].(map[string]any)
 		groups, _ := aggs["__vega_groups"].(map[string]any)

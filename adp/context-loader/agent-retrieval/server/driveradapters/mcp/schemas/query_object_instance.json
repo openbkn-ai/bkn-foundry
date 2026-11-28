@@ -217,13 +217,18 @@
           "additionalProperties": false
         }
       },
+      "paging_mode": {
+        "type": "string",
+        "enum": ["single", "cursor"],
+        "description": "省略或指定 single 时只查一页。要用游标翻页，首屏和续页都指定 cursor。"
+      },
       "cursor": {
         "type": "string",
-        "description": "不透明游标：将上一次响应返回的 cursor 原样传入以获取下一页；首次查询不传。仅支持顺序翻页。"
+        "description": "续页时使用上次响应返回的不透明 cursor。必须指定 paging_mode=cursor，并沿用首屏的查询参数。首次查询留空。"
       },
       "offset": {
         "type": "integer",
-        "description": "偏移翻页（资源/vega 表源路径）：跳过前 N 条，支持跳到任意页。与 cursor 互斥。"
+        "description": "首屏读取的起始偏移。游标续页时沿用首屏的 offset。"
       },
       "properties": {
         "type": "array",
@@ -240,11 +245,21 @@
   },
   "output_schema": {
     "type": "object",
+    "required": ["is_sorted"],
     "properties": {
       "query_source": {
         "type": "string",
         "enum": ["local_index", "source"],
         "description": "Vega 实际查询来源：local_index 表示资源本地索引，source 表示数据源；未执行资源查询时省略。该字段不用于决定分页，续页应使用 cursor。"
+      },
+      "is_sorted": {
+        "type": "boolean",
+        "description": "资源报告已排序时为 true。未报告排序状态或绑定 API 资源时为 false。"
+      },
+      "warnings": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Vega 返回的查询警告。API 资源收到非空 sort 时会说明排序请求已被忽略。"
       },
       "datas": {
         "type": "array",
@@ -279,11 +294,11 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "满足过滤条件的实例总数，不受 limit 限制。判断「一共有多少条」读它，不要靠翻页累加。零命中时是 0（有值），不是字段缺失。字段缺失表示服务端本次没有计算总数——用 cursor 翻页时第二页起即如此，此时不能推断为 0，要总数就回到不带 cursor 的首次查询。"
+        "description": "取得总数时返回满足过滤条件的实例总数，不受 limit 限制。已确认零命中时返回 0，未取得时省略。"
       },
       "cursor": {
         "type": "string",
-        "description": "下一页不透明游标：非空时作为下次请求的 cursor 原样传入；为空表示已无更多数据。"
+        "description": "游标模式下的下一页不透明游标。续页保持 paging_mode=cursor 并原样回传。单页模式或游标查询结束时省略。"
       },
       "permission_guidance": {
         "type": "object",

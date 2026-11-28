@@ -241,10 +241,18 @@ func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsReque
 // resolveDiffSide turns the branch or kn_version of one side into the branch to read, as a read
 // of that network would.
 func (r *restHandler) resolveDiffSide(ctx context.Context, c *gin.Context, side *KNDiffSideRequest) bool {
+	req := interfaces.KNBranchRequest{Branch: side.Branch, KNVersion: side.KNVersion}
+	if r.versioningEntitled != nil && !r.versioningEntitled() {
+		resolved, ok := resolvePublishedBranch(ctx, c, side.KNID, req)
+		if !ok {
+			return false
+		}
+		side.Branch = resolved.Branch
+		return true
+	}
 	if r.kvs == nil {
 		return true
 	}
-	req := interfaces.KNBranchRequest{Branch: side.Branch, KNVersion: side.KNVersion}
 	if req.Branch == interfaces.MAIN_BRANCH {
 		req.Branch = ""
 	}

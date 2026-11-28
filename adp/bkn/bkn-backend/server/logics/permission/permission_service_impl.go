@@ -8,10 +8,14 @@ package permission
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -20,6 +24,7 @@ import (
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -632,6 +637,27 @@ func (ps *PermissionServiceImpl) ListAccessibleResourcesWithAnyOperation(ctx con
 	return scope, nil
 }
 
+func resourceFilterFailureCause(err error) string {
+	var statusErr interface{ HTTPStatusCode() int }
+	var requestErr *url.Error
+	switch {
+	case errors.As(err, &statusErr):
+		return fmt.Sprintf("bkn-safe returned HTTP %d", statusErr.HTTPStatusCode())
+	case errors.Is(err, context.Canceled):
+		return "bkn-safe request canceled"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "bkn-safe connection refused"
+	case interfaces.DependencyTransportKind(err) == interfaces.DependencyTimeout:
+		return "bkn-safe transport failure: timeout"
+	case errors.As(err, &requestErr):
+		return "bkn-safe transport failure: unavailable"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return "bkn-safe response body truncated"
+	default:
+		return common.SafeErrorSummary(err)
+	}
+}
+
 func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceType string, ids []string,
 	visibilityOperations []string, includeOperations bool) (map[string]interfaces.PermissionResourceOps, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "FilterPermissionResources")
@@ -671,8 +697,8 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 	})
 	if err != nil {
 		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
-		otellog.LogError(ctx, "FilterResources failed", httpErr)
+			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(map[string]any{})
+		otellog.LogError(ctx, "FilterResources failed", httpErr, attribute.String("cause", resourceFilterFailureCause(err)))
 		return nil, httpErr
 	}
 

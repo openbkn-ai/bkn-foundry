@@ -178,5 +178,56 @@ func TestTraceArchiveBoundedMariaDB(t *testing.T) {
 	}
 	t.Logf("#2948: 37 outputs x400000 bytes; SQL aggregate=%d; safe prefix=1; blocked+suffix=2; persisted diagnosis survives restart; all 37 facts retained", blocked.Actual)
 
+	// Background run through the production worker: the oversized interaction is
+	// retained online and the suffix is archived in the same run.
+	background := archivesvc.New(archivestore.New(db), archivesvc.TraceBundleSource{Core: source}, objects, archivesvc.Options{Now: func() time.Time { return now }, Location: time.UTC})
+	run, err := background.Submit(ctx, observabilityvo.ArchiveKindTrace)
+	if err != nil || run.EligibleAtStart != 2 {
+		t.Fatalf("submit background run: %+v %v", run, err)
+	}
+	workerCtx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { background.RunWorker(workerCtx, 50*time.Millisecond); close(workerDone) }()
+	var result archivesvc.RunView
+	for deadline := time.Now().Add(30 * time.Second); ; {
+		if result, err = background.RunResult(ctx, run.ID); err != nil {
+			t.Fatal(err)
+		}
+		if !result.Active() {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background run did not finish: %+v", result)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	stopWorker()
+	<-workerDone
+	retained, err := background.RetainedInteractions(ctx, run.ID, 0, 20)
+	if err != nil || retained.Total != 1 || len(retained.Items) != 1 {
+		t.Fatalf("retained page: %+v %v", retained, err)
+	}
+	if result.Status != archivesvc.RunCompleted || result.ProcessedCount != 1 || result.RetainedCount != 1 || retained.Items[0].InteractionID != "archive-i-102" || retained.Items[0].Stage != "sql_payload" || retained.Items[0].PolicyVersion != archivesvc.TraceArchivePolicyVersion() {
+		t.Fatalf("background run result: %+v", result)
+	}
+	if len(objects.counts) != 2 || objects.counts[1] != 1 {
+		t.Fatalf("suffix not archived alone after retention: %v", objects.counts)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_operation_call_facts WHERE interaction_id=?`, "archive-i-102").Scan(&facts); err != nil || facts != 37 {
+		t.Fatalf("retained interaction changed: %d %v", facts, err)
+	}
+	var suffix int
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM bkn_trace_interactions WHERE interaction_id=?`, "archive-i-103").Scan(&suffix); err != nil || suffix != 0 {
+		t.Fatalf("suffix still online: %d %v", suffix, err)
+	}
+	overview, err := background.Overview(ctx, observabilityvo.ArchiveKindTrace)
+	if err != nil || overview.CandidateCount != 0 || overview.RetainedCount != 1 || overview.CurrentRun == nil || overview.CurrentRun.ID != run.ID {
+		t.Fatalf("overview after retention: %+v %v", overview, err)
+	}
+	if _, err = background.Submit(ctx, observabilityvo.ArchiveKindTrace); !errors.Is(err, archivesvc.ErrNothingToArchive) {
+		t.Fatalf("retained interaction started an empty run: %v", err)
+	}
+	t.Log("real MariaDB background run: oversized archive-i-102 retained with 37 facts intact; archive-i-103 archived and cleaned; overview excludes the retained interaction")
+
 	t.Log("real MariaDB: 101 interactions archived as 100+1, empty eligible count, oversized closure rejected before decoding and retained hot")
 }

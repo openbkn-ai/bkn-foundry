@@ -154,6 +154,10 @@
                       "additionalProperties": false
                     }
                   },
+                  "offset": {
+                    "type": "integer",
+                    "description": "本次读取跳过的起点实例数，仅用于首个节点。"
+                  },
                   "limit": {
                     "type": "integer",
                     "description": "当前对象类返回数量限制，范围以接口定义为准（通常 1-10000）"
@@ -218,7 +222,18 @@
         "description": "路径子图返回体数组（每条路径对应一个子图响应）",
         "items": {
           "type": "object",
+          "required": ["is_sorted"],
           "properties": {
+            "is_sorted": {
+              "type": "boolean",
+              "description": "这条路径的起点批次排序状态，仅适用于本批起点实例。API 资源或 Vega 未报告排序状态时返回 false。"
+            },
+            "warnings": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "string"},
+              "description": "这条路径的起点查询产生的告警。没有告警时省略。"
+            },
             "_display": {
               "type": ["string", "number", "boolean", "null"],
               "description": "给人看的展示名，由服务端按对象类的展示字段挑出；类型随展示字段而变（数值、布尔或日期等字符串），该行展示字段为空时为 null。"

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/jsoncodec"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -621,6 +622,18 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 		err := fmt.Errorf("QueryDatasetData returned HTTP %d", respCode)
 		common.LogSafeError(ctx, "QueryDatasetData failed", err)
 		logger.Debugf("QueryDatasetData response: %s", common.SafeTextSummary("response", string(respData)))
+		if respCode == http.StatusBadRequest {
+			var failure httperrors.BaseError
+			if jsoncodec.Unmarshal(respData, &failure) == nil {
+				switch failure.ErrorCode {
+				case "VegaBackend.Query.InvalidParameter",
+					"VegaBackend.Query.InvalidParameter.OutputField":
+					oteltrace.AddHttpAttrs4Error(span, respCode, failure.ErrorCode, "Vega rejected resource query parameters")
+					detail, _ := failure.ErrorDetails.(string)
+					return nil, &interfaces.VegaResourceQueryParameterError{PublicDetails: detail}
+				}
+			}
+		}
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		return nil, err
 	}

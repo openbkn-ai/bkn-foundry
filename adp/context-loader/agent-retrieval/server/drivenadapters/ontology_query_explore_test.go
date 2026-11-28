@@ -10,13 +10,16 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/toon-format/toon-go"
 	"go.uber.org/mock/gomock"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -52,6 +55,136 @@ func TestExploreSubgraph_UsesEmptyQueryType(t *testing.T) {
 	})
 }
 
+func TestExploreSubgraph_ForwardsOffsetPage(t *testing.T) {
+	client, httpClient := newObjectQueryClient(t, gomock.NewController(t))
+	httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
+			data, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(data, &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["paging_mode"] != nil || body["cursor"] != nil || body["limit"] != float64(10) || body["offset"] != float64(3) ||
+				body["search_after"] != nil {
+				t.Errorf("unexpected Ontology Query body %s", data)
+			}
+			return 200, []byte(`{"objects":{},"relation_paths":[],"cursor":"opaque-next"}`), nil
+		})
+	req := &interfaces.ExploreSubgraphReq{KnID: "kn1"}
+	if err := json.Unmarshal([]byte(`{"source_object_type_id":"ot1","direction":"forward","path_length":2,"limit":10,"offset":3,"paging_mode":"cursor","cursor":"opaque-token"}`), req); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.ExploreSubgraph(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(data, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["cursor"] != nil || response["search_after"] != nil {
+		t.Fatalf("unexpected subgraph response %s", data)
+	}
+}
+
+func TestSubgraphPreservesStartingBatchSortingMetadata(t *testing.T) {
+	const warning = "API resource uses its configured order"
+	unsorted := `{"objects":{},"relation_paths":[],"is_sorted":false,"warnings":["` + warning + `"]}`
+	sorted := `{"objects":{},"relation_paths":[],"is_sorted":true}`
+	explore, err := rawBodyClient(t, unsorted).ExploreSubgraph(t.Context(), &interfaces.ExploreSubgraphReq{
+		KnID: "kn", SourceObjectTypeID: "source", Direction: "forward", PathLength: 1, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := rawBodyClient(t, `{"entries":[`+unsorted+`,`+sorted+`]}`).QueryInstanceSubgraph(t.Context(), &interfaces.QueryInstanceSubgraphReq{
+		KnID: "kn",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, format := range []rest.ResponseFormat{rest.FormatJSON, rest.FormatTOON} {
+		t.Run(string(format), func(t *testing.T) {
+			decode := func(body any) map[string]any {
+				t.Helper()
+				_, wire, err := rest.MarshalResponse(format, body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var decoded map[string]any
+				if format == rest.FormatTOON {
+					err = toon.Unmarshal(wire, &decoded)
+				} else {
+					err = json.Unmarshal(wire, &decoded)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				return decoded
+			}
+			explore := decode(explore)
+			if explore["is_sorted"] != false || !reflect.DeepEqual(explore["warnings"], []any{warning}) {
+				t.Errorf("explore metadata = %#v", explore)
+			}
+
+			entries, ok := decode(paths)["entries"].([]any)
+			if !ok || len(entries) != 2 {
+				t.Fatalf("path entries = %#v", entries)
+			}
+			first := entries[0].(map[string]any)
+			second := entries[1].(map[string]any)
+			if first["is_sorted"] != false || !reflect.DeepEqual(first["warnings"], []any{warning}) ||
+				second["is_sorted"] != true {
+				t.Fatalf("path metadata = %#v", entries)
+			}
+			if _, present := second["warnings"]; present {
+				t.Fatalf("unexpected warnings on the second path: %#v", second)
+			}
+		})
+	}
+}
+
+func TestQueryInstanceSubgraph_ForwardsIndependentPathOffsets(t *testing.T) {
+	client, httpClient := newObjectQueryClient(t, gomock.NewController(t))
+	const body = `{"relation_type_paths":[
+		{"object_types":[{"id":"ot1","limit":10,"offset":20},{"id":"ot2"}],"relation_types":[{"relation_type_id":"rel1"}]},
+		{"object_types":[{"id":"ot3","limit":5,"offset":15},{"id":"ot4"}],"relation_types":[{"relation_type_id":"rel2"}]}
+	]}`
+	httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
+			data, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got, want map[string]any
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal([]byte(body), &want); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("downstream body = %s, want %s", data, body)
+			}
+			return http.StatusOK, []byte(`{"entries":[{},{}]}`), nil
+		})
+	req := &interfaces.QueryInstanceSubgraphReq{KnID: "kn1"}
+	if err := json.Unmarshal([]byte(body), req); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.QueryInstanceSubgraph(t.Context(), req); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The total number of starting object types has the same origin and semantics as the object query, and need_total is also not an option for the caller.
 func TestExploreSubgraph_AlwaysAsksForTotal(t *testing.T) {
 	convey.Convey("need_total 无条件为 true", t, func() {
@@ -74,10 +207,8 @@ func TestExploreSubgraph_AlwaysAsksForTotal(t *testing.T) {
 	})
 }
 
-// The tri-state semantics must match query_object_instance exactly; otherwise the same "missing" state
-// would mean different things in the two tools, which is worse than not handling it.
-func TestExploreSubgraph_TotalCountThreeState(t *testing.T) {
-	run := func(cursor []any, downstream map[string]any) *interfaces.ExploreSubgraphResp {
+func TestExploreSubgraph_TotalCount(t *testing.T) {
+	run := func(downstream map[string]any) *interfaces.ExploreSubgraphResp {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
@@ -85,25 +216,25 @@ func TestExploreSubgraph_TotalCountThreeState(t *testing.T) {
 			Return(200, jsonBytes(downstream), nil)
 		resp, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
 			KnID: "kn1", SourceObjectTypeID: "ot1", Direction: "forward", PathLength: 1,
-			Limit: 10, SearchAfter: cursor,
+			Limit: 10, Offset: 10,
 		})
 		convey.So(err, convey.ShouldBeNil)
 		return resp
 	}
 
-	convey.Convey("无游标且下游没回总数 => 补成 0", t, func() {
-		resp := run(nil, map[string]any{"objects": map[string]any{}})
+	convey.Convey("下游没回总数时保持缺失", t, func() {
+		resp := run(map[string]any{"objects": map[string]any{}})
+		convey.So(resp.TotalCount, convey.ShouldBeNil)
+	})
+
+	convey.Convey("下游确认的零命中返回 0", t, func() {
+		resp := run(map[string]any{"objects": map[string]any{}, "total_count": 0})
 		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
 		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(0))
 	})
 
-	convey.Convey("有游标且下游没回总数 => 保持缺失", t, func() {
-		resp := run([]any{"cursor"}, map[string]any{"objects": map[string]any{}})
-		convey.So(resp.TotalCount, convey.ShouldBeNil)
-	})
-
 	convey.Convey("下游给了总数就不动它", t, func() {
-		resp := run(nil, map[string]any{"objects": map[string]any{}, "total_count": 7})
+		resp := run(map[string]any{"objects": map[string]any{}, "total_count": 7})
 		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
 		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(7))
 	})
